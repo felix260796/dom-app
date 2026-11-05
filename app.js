@@ -71,80 +71,21 @@ function pickFiles({ multiple = false, camera = false } = {}) {
 }
 
 // ---------- Moodboards (Pakete) ----------
-const FIELDS = [
-  ['beschreibung', 'Kurzbeschreibung (erscheint im PDF)', 'z. B. Hochwertiges Wohlfühlbad mit edlen Materialien'],
-  ['stil', 'Stil & Farbwelt', 'z. B. modern, warm, Naturtöne, Akzente in Messing'],
-  ['wand', 'Wände (Farbe, Oberfläche, Spachtelstufe)', 'z. B. Q4 gespachtelt, Kalkputz, warmweiß matt'],
-  ['decke', 'Decke', 'z. B. Stuckleisten, indirekte LED-Beleuchtung'],
-  ['wandfliesen', 'Wandfliesen (Format, Farbe, Material, Verlegung, Höhe)', 'z. B. 60x120 cm, Marmoroptik, raumhoch'],
-  ['boden', 'Boden (Format, Farbe, Material)', 'z. B. 120x120 cm Feinsteinzeug anthrazit / Eichenparkett'],
-  ['dusche', 'Dusche / Badewanne', 'z. B. bodengleiche Dusche, rahmenlose Glaswand'],
-  ['wc', 'WC', 'z. B. wandhängend, spülrandlos'],
-  ['waschtisch', 'Waschtisch & Möbel', 'z. B. Doppelwaschtisch, Unterschrank Eiche'],
-  ['armaturen', 'Armaturen (Farbe, Stil)', 'z. B. gebürstetes Messing, Unterputz'],
-  ['licht', 'Spiegel & Licht', 'z. B. Spiegel mit LED-Hinterleuchtung'],
-  ['heizung', 'Heizkörper', 'z. B. Designheizkörper schwarz'],
-  ['tueren', 'Türen & Fenster', 'z. B. weiße Lacktüren, flächenbündig'],
-  ['sonstiges', 'Sonstiges / Hinweise für die KI', 'z. B. Nischen mit Beleuchtung, keine Deko'],
-];
+// Raumtypen, Felder und Beispiel-Pakete stehen in rooms.js
 const MAX_REF_IMAGES = 6;
 
-const DEFAULT_PACKAGES = [
-  { id: 'basic', name: 'Basic', color: '#7a8795', images: [], fields: {
-    beschreibung: 'Solide, saubere Grundsanierung zum fairen Preis.',
-    stil: 'schlicht, hell, zeitlos, Weiß und Hellgrau',
-    wand: 'Q2 gespachtelt, weiß gestrichen, matt',
-    decke: 'glatt, weiß, einfache Deckenleuchte',
-    wandfliesen: '30x60 cm, weiß glänzend, halbhoch ca. 1,20 m, im Duschbereich raumhoch',
-    boden: '30x60 cm Feinsteinzeug hellgrau, matt',
-    dusche: 'flache Duschtasse, Duschabtrennung mit Chromrahmen',
-    wc: 'Wand-WC weiß, Standard',
-    waschtisch: 'Keramik-Waschtisch 60 cm weiß, einfacher Unterschrank weiß',
-    armaturen: 'Chrom, Einhebelmischer, Brausestange',
-    licht: 'Spiegel mit einfacher Aufbauleuchte',
-    heizung: 'Röhrenheizkörper weiß',
-    tueren: 'weiße Standard-Innentür',
-    sonstiges: '' } },
-  { id: 'standard', name: 'Standard', color: '#1e3550', images: [], fields: {
-    beschreibung: 'Modernes Bad mit großformatigen Fliesen und bodengleicher Dusche.',
-    stil: 'modern, warm, Naturtöne, Akzente in Mattschwarz',
-    wand: 'Q3 gespachtelt, warmes Weiß matt',
-    decke: 'glatt, weiß, LED-Einbauspots',
-    wandfliesen: '60x120 cm, Betonoptik hellgrau, matt, im Nassbereich raumhoch',
-    boden: '60x120 cm Feinsteinzeug, Betonoptik mittelgrau',
-    dusche: 'bodengleiche Dusche mit Rinne, Walk-In-Glaswand mit schwarzem Profil',
-    wc: 'wandhängend, spülrandlos, weiß',
-    waschtisch: 'Waschtisch 80 cm mit Unterschrank in Eiche-Optik',
-    armaturen: 'Mattschwarz, Regenbrause Aufputz',
-    licht: 'Spiegel mit LED-Hintergrundbeleuchtung',
-    heizung: 'Designheizkörper weiß',
-    tueren: 'weiße Lacktür, Drücker schwarz',
-    sonstiges: '' } },
-  { id: 'premium', name: 'Premium', color: '#b8862f', images: [], fields: {
-    beschreibung: 'Exklusives Wohlfühlbad mit edlen Materialien und handwerklichen Details.',
-    stil: 'luxuriös, elegant, Marmor, Messing, warmes Licht',
-    wand: 'Q4 vollflächig gespachtelt, Feinputz in Greige, matt',
-    decke: 'umlaufende Stuckleisten, indirekte LED-Lichtvoute, Spots',
-    wandfliesen: '120x260 cm großformatig, Marmoroptik Calacatta mit feiner Goldäderung, poliert, raumhoch',
-    boden: '120x120 cm Marmoroptik passend zur Wand (in Wohnräumen: Fischgrätparkett Eiche)',
-    dusche: 'bodengleiche Dusche, rahmenlose Glaswand, beleuchtete Wandnische; freistehende Badewanne, wenn Platz ist',
-    wc: 'wandhängend, spülrandlos, Betätigungsplatte Messing',
-    waschtisch: 'Doppelwaschtisch mit Natursteinplatte, grifflose Unterschränke Nussbaum',
-    armaturen: 'gebürstetes Messing, Unterputz, Regenbrause aus der Decke',
-    licht: 'großer LED-Spiegel, Wandleuchten Messing',
-    heizung: 'Designheizkörper Messing bzw. Fußbodenheizung',
-    tueren: 'flächenbündige, deckenhohe Türen',
-    sonstiges: '' } },
-];
-
-const ROOMS = ['Badezimmer', 'Gäste-WC', 'Wohnzimmer', 'Schlafzimmer', 'Küche', 'Flur', 'Kinderzimmer', 'Sonstiger Raum'];
-
 // ---------- Zustand ----------
-const state = { tab: 'projekt', settings: null, packages: null, project: null, editPkg: null };
+const state = { tab: 'projekt', settings: null, boards: null, project: null, editPkg: null, boardRoom: 'bad' };
 
 async function loadAll() {
   state.settings = (await kvGet('settings')) || { apiKey: '', model: 'gemini-2.5-flash-image', company: 'DOM Projektmanagement GmbH', contact: 'DOM Projektmanagement GmbH', logo: null };
-  state.packages = (await kvGet('packages')) || structuredClone(DEFAULT_PACKAGES);
+  state.boards = (await kvGet('boards')) || null;
+  if (!state.boards) {
+    // Umstellung: bisherige (Bad-)Moodboards werden zu den Moodboards des Raumtyps "Badezimmer"
+    const old = await kvGet('packages');
+    state.boards = old ? { bad: old.map(migrateBathPackage) } : {};
+    await saveBoards();
+  }
   // Beim ersten Start das DOM-Logo als Standard übernehmen
   if (state.settings.logo === null) {
     try { const b = await (await fetch('assets/dom_logo.png')).blob(); state.settings.logo = await fileToDataUrl(b); } catch { state.settings.logo = ''; }
@@ -152,8 +93,23 @@ async function loadAll() {
   }
 }
 const saveSettings = () => kvSet('settings', state.settings);
-const savePackages = () => kvSet('packages', state.packages);
-const savePackagesDebounced = debounce(savePackages, 500);
+const saveBoards = () => kvSet('boards', state.boards);
+const saveBoardsDebounced = debounce(saveBoards, 500);
+/** Moodboards (Pakete) eines Raumtyps; fehlende werden mit den Beispielen angelegt. */
+function packagesFor(rt) {
+  const list = (state.boards[rt] ??= defaultPackagesFor(rt));
+  for (const p of list) { p.images ??= []; p.products ??= []; p.fields ??= {}; }
+  return list;
+}
+/** Alte Bad-Pakete: Feld "licht" hieß dort "Spiegel & Licht" und heißt jetzt "spiegel". */
+function migrateBathPackage(p) {
+  if (p.fields?.licht && !p.fields.spiegel) { p.fields.spiegel = p.fields.licht; delete p.fields.licht; }
+  p.products ??= [];
+  return p;
+}
+const fmtPrice = (v) => (v === '' || v == null || isNaN(+v) ? '' : (+v).toLocaleString('de-DE', { style: 'currency', currency: 'EUR' }));
+const parsePrice = (s) => { const t = String(s).replace(/[^\d,.-]/g, ''); const n = parseFloat(t.includes(',') ? t.replace(/\./g, '').replace(',', '.') : t); return isNaN(n) ? '' : n; };
+const safeUrl = (u) => { const t = String(u || '').trim(); if (!t) return ''; const v = /^https?:\/\//i.test(t) ? t : 'https://' + t; try { return new URL(v).href; } catch { return ''; } };
 
 async function projectIndex() { return (await kvGet('projectIndex')) || []; }
 async function saveProject(proj) {
@@ -172,6 +128,8 @@ async function deleteProject(id) {
 const MAX_PHOTOS = 4;
 /** Baut die Anweisung. ctx: { others: Anzahl weiterer Raumfotos, rendered: true wenn eine fertige Ansicht als Vorlage dabei ist } */
 function buildPrompt(pkg, room, note, ctx = { others: 0, rendered: false }) {
+  const rt = roomType(ctx.rt || roomTypeIdFromName(room));
+  const FIELDS = fieldsFor(rt.id);
   const spec = FIELDS.filter(([k]) => k !== 'beschreibung' && pkg.fields[k]?.trim())
     .map(([k, label]) => `- ${label.replace(/\s*\(.*\)/, '')}: ${pkg.fields[k].trim()}`).join('\n');
   let n = 2;
@@ -182,19 +140,22 @@ function buildPrompt(pkg, room, note, ctx = { others: 0, rendered: false }) {
   const refs = pkg.images.slice(0, MAX_REF_IMAGES)
     .map((im, i) => `- Bild ${n + i}: ${im.label?.trim() || 'Referenz für Material/Stil'} (Moodboard-Vorlage, nicht als Raum übernehmen)`).join('\n');
   const list = otherTxt + renderedTxt + (refs ? refs + '\n' : '');
+  const fieldLabel = (k) => (FIELD_LIB[k]?.[0] || '').replace(/\s*\(.*\)/, '');
+  const prods = (pkg.products || []).filter((x) => x.name?.trim())
+    .map((x) => `- ${x.area ? fieldLabel(x.area) + ': ' : ''}${x.name.trim()}`).join('\n');
+  const what = rt.outdoor ? `eines bestehenden Gebäudes von außen (${room})` : `eines bestehenden Raums (${room})`;
   return `Du bist ein Werkzeug für fotorealistische Sanierungs-Visualisierungen.
 
-Bild 1 ist ein Foto eines bestehenden Raums (${room}). Bearbeite GENAU DIESES FOTO (Bild 1) so, dass es denselben Raum nach einer kompletten Sanierung in der Ausstattungslinie "${pkg.name}" zeigt. Gib genau ein Bild aus: die sanierte Version von Bild 1.
+Bild 1 ist ein Foto ${what}. Bearbeite GENAU DIESES FOTO (Bild 1) so, dass es ${rt.outdoor ? 'dasselbe Gebäude' : 'denselben Raum'} nach einer kompletten Sanierung in der Ausstattungslinie "${pkg.name}" zeigt. Gib genau ein Bild aus: die sanierte Version von Bild 1.
 
 UNBEDINGT BEIBEHALTEN:
 - exakt dieselbe Kameraposition, Perspektive, Brennweite und Bildausschnitt wie Bild 1
-- Raumgeometrie, Grundriss, Deckenhöhe, Lage von Fenstern, Türen und Dachschrägen
-- Lage der Anschlüsse: Dusche/Wanne, WC und Waschtisch bleiben ungefähr an ihrer Position
+${rt.keep.map((k) => '- ' + k).join('\n')}
 
 ERNEUERN nach dieser Ausstattung:
 ${spec || '- moderne, hochwertige Sanierung'}
-${list ? `\nWEITERE BILDER:\n${list}` : ''}${note?.trim() ? `\nZUSÄTZLICHER HINWEIS ZU DIESEM PROJEKT: ${note.trim()}\n` : ''}
-Gilt eine Angabe für diesen Raumtyp nicht (z. B. WC in einem Wohnzimmer), lass sie weg.
+${prods ? `\nKONKRETE PRODUKTE (so originalgetreu wie möglich darstellen):\n${prods}\n` : ''}${list ? `\nWEITERE BILDER:\n${list}` : ''}${note?.trim() ? `\nZUSÄTZLICHER HINWEIS ZU DIESEM PROJEKT: ${note.trim()}\n` : ''}
+Gilt eine Angabe für diesen ${rt.outdoor ? 'Bildausschnitt' : 'Raum'} nicht, lass sie weg.
 Ergebnis: fotorealistisch wie professionelle Architektur-/Interior-Fotografie, natürliches Licht, aufgeräumt, keine Personen, kein Text, keine Wasserzeichen, kein Baustellenzustand.`;
 }
 
@@ -212,7 +173,7 @@ async function renderWithGemini(pkg, project, i, rendered) {
   const target = project.photos[i];
   const others = project.photos.filter((_, k) => k !== i);
   const img = (d) => ({ inline_data: { mime_type: mimeOf(d), data: b64(d) } });
-  const parts = [{ text: buildPrompt(pkg, project.room, project.note, { others: others.length, rendered: !!rendered }) }, img(target)];
+  const parts = [{ text: buildPrompt(pkg, project.room, project.note, { others: others.length, rendered: !!rendered, rt: project.roomType }) }, img(target)];
   for (const o of others) parts.push(img(o));
   if (rendered) parts.push(img(rendered));
   for (const im of pkg.images.slice(0, MAX_REF_IMAGES)) parts.push(img(im.data));
@@ -241,6 +202,9 @@ function normalizeProject(p) {
   delete p.photo;
   for (const k of Object.keys(p.results || {})) if (!Array.isArray(p.results[k])) p.results[k] = [p.results[k]];
   p.results ??= {};
+  if (!p.roomType) p.roomType = roomTypeIdFromName(p.room);
+  p.room ||= roomType(p.roomType).name;
+  p.pdfProducts ??= true;
   return p;
 }
 const hasAnyResult = (p) => Object.values(p.results).some((arr) => arr.some(Boolean));
@@ -261,7 +225,8 @@ async function buildPdf(project) {
   const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
   const W = 297, H = 210, M = 14;
   const S = state.settings;
-  const pkgs = state.packages.filter((p) => firstResult(project, p.id));
+  const pkgs = packagesFor(project.roomType).filter((p) => firstResult(project, p.id));
+  const FIELDS = fieldsFor(project.roomType);
   const date = new Date(project.created).toLocaleDateString('de-DE');
   const logoFmt = S.logo ? (mimeOf(S.logo) === 'image/png' ? 'PNG' : 'JPEG') : null;
 
@@ -331,8 +296,61 @@ async function buildPdf(project) {
       });
       footer(page);
     }
+    if (project.pdfProducts && p.products.some((x) => x.name?.trim())) {
+      doc.addPage(); page++;
+      productPage(doc, p, { W, H, M, logo: S.logo, logoFmt, prices: !!project.pdfPrices });
+      if (S.logo) await addFit(doc, S.logo, M, 8, 40, 14, logoFmt);
+      footer(page);
+    }
   }
   return doc;
+}
+
+/** PDF-Seite mit der Produktliste eines Pakets (klickbare Shop-Links, optional Preise). */
+function productPage(doc, p, { W, M, prices }) {
+  const rgb = hexRgb(p.color);
+  const H = 210;
+  doc.setFont('helvetica', 'bold'); doc.setFontSize(20); doc.setTextColor(...rgb);
+  doc.text(`Paket ${p.name}`, W - M, 18, { align: 'right' });
+  doc.setFont('helvetica', 'normal'); doc.setFontSize(10); doc.setTextColor(90);
+  doc.text('Ausgewählte Produkte', W - M, 24, { align: 'right' });
+  doc.setFillColor(...rgb); doc.rect(M, 29, W - 2 * M, 1, 'F');
+  const cols = prices
+    ? [['Bereich', 48], ['Produkt', 112], ['Preis', 30], ['Lieferzeit', 34], ['Link', 45]]
+    : [['Bereich', 55], ['Produkt', 145], ['Lieferzeit', 34], ['Link', 35]];
+  const xs = []; cols.reduce((x, [, w]) => (xs.push(x), x + w), M);
+  let y = 40;
+  // Die PDF-Standardschrift kennt kein € und keine Gedankenstriche
+  const pt = (t) => String(t || '').replace(/€/g, 'EUR').replace(/[–—]/g, '-').replace(/[„“”]/g, '"').replace(/[‚‘’]/g, "'");
+  const head = () => {
+    doc.setFontSize(8.5); doc.setFont('helvetica', 'bold'); doc.setTextColor(110);
+    cols.forEach(([t], i) => doc.text(t.toUpperCase(), xs[i], y));
+    doc.setFont('helvetica', 'normal'); y += 3;
+    doc.setDrawColor(220); doc.line(M, y, W - M, y); y += 6;
+  };
+  head();
+  let sum = 0, hasSum = false;
+  for (const x of p.products.filter((x) => x.name?.trim())) {
+    const area = (FIELD_LIB[x.area]?.[0] || x.area || '').replace(/\s*\(.*\)/, '');
+    const vals = { Bereich: area, Produkt: x.name.trim(), Preis: fmtPrice(x.price), Lieferzeit: x.delivery || '' };
+    const lines = cols.map(([t, w]) => (t === 'Link' ? [] : doc.splitTextToSize(pt(vals[t]), w - 4)));
+    const rowH = Math.max(1, ...lines.map((l) => l.length)) * 4.2 + 3;
+    if (y + rowH > H - 16) { doc.addPage(); y = 20; head(); }
+    doc.setFontSize(9.5); doc.setTextColor(40);
+    cols.forEach(([t], i) => {
+      if (t !== 'Link') { doc.text(lines[i], xs[i], y); return; }
+      const url = safeUrl(x.url);
+      if (url) { doc.setTextColor(37, 99, 235); doc.textWithLink('Zum Produkt', xs[i], y, { url }); doc.setTextColor(40); }
+    });
+    if (x.price !== '' && x.price != null && !isNaN(+x.price)) { sum += +x.price; hasSum = true; }
+    y += rowH; doc.setDrawColor(235); doc.line(M, y - 3.5, W - M, y - 3.5);
+  }
+  if (prices && hasSum) {
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(10); doc.setTextColor(30, 53, 80);
+    doc.text('Summe Produkte', xs[1], y + 2); doc.text(pt(fmtPrice(sum)), xs[2], y + 2); doc.setFont('helvetica', 'normal');
+    doc.setFontSize(7.5); doc.setTextColor(130);
+    doc.text('Materialpreise laut Hersteller/Händler, unverbindlich, ohne Montage.', M, y + 9);
+  }
 }
 
 async function sharePdf(project) {
@@ -355,6 +373,8 @@ async function viewProjekt() {
   const p = normalizeProject(state.project);
   if (!p) return viewProjektListe();
   setTitle(p.customer || 'Neues Projekt');
+  const pkgs = packagesFor(p.roomType);
+  const anyProducts = pkgs.some((x) => x.products.some((y) => y.name?.trim()));
   const full = p.photos.length >= MAX_PHOTOS;
   main().innerHTML = `
     <div class="card">
@@ -371,17 +391,21 @@ async function viewProjekt() {
       <h2>2. Angaben</h2>
       <label>Kunde</label><input type="text" id="customer" value="${esc(p.customer)}" placeholder="z. B. Familie Müller">
       <label>Objekt / Adresse</label><input type="text" id="address" value="${esc(p.address)}" placeholder="z. B. Hauptstr. 5, 2. OG">
-      <label>Raum</label><select id="room">${ROOMS.map((r) => `<option ${r === p.room ? 'selected' : ''}>${r}</option>`).join('')}</select>
+      <label>Raumtyp</label><select id="roomType">${ROOM_TYPES.map((r) => `<option value="${r.id}" ${r.id === p.roomType ? 'selected' : ''}>${esc(r.name)}</option>`).join('')}</select>
+      <label>Bezeichnung im PDF</label><input type="text" id="room" value="${esc(p.room)}" placeholder="z. B. Bad OG, Küche EG">
       <label>Zusatzhinweis für die KI (optional)</label><textarea id="note" placeholder="z. B. Badewanne raus, dafür große Dusche">${esc(p.note)}</textarea>
     </div>
     <div class="card">
       <h2>3. Pakete visualisieren</h2>
-      ${state.packages.map((x) => `<label class="check"><input type="checkbox" data-sel="${x.id}" ${p.selected.includes(x.id) ? 'checked' : ''}><span class="swatch" style="background:${x.color};height:20px;width:8px"></span>${esc(x.name)}</label>`).join('')}
+      <p class="muted">Moodboards für: <b>${esc(roomType(p.roomType).name)}</b></p>
+      ${pkgs.map((x) => `<label class="check"><input type="checkbox" data-sel="${x.id}" ${p.selected.includes(x.id) ? 'checked' : ''}><span class="swatch" style="background:${x.color};height:20px;width:8px"></span>${esc(x.name)}</label>`).join('')}
       <button class="btn block" id="go" ${p.photos.length ? '' : 'disabled'}>✨ Visualisierung erstellen</button>
       <p class="muted">${p.photos.length > 1 ? `${p.photos.length} Ansichten × Pakete. ` : ''}Dauert ca. 10–30 Sekunden pro Bild.</p>
     </div>
-    <div id="results">${state.packages.filter((x) => p.selected.includes(x.id) || firstResult(p, x.id)).map(resultCard).join('')}</div>
+    <div id="results">${pkgs.filter((x) => p.selected.includes(x.id) || firstResult(p, x.id)).map(resultCard).join('')}</div>
     <div class="card">
+      ${anyProducts ? `<label class="check"><input type="checkbox" id="pdfProducts" ${p.pdfProducts ? 'checked' : ''}>Produktliste mit Shop-Links ins PDF</label>
+      <label class="check"><input type="checkbox" id="pdfPrices" ${p.pdfPrices ? 'checked' : ''} ${p.pdfProducts ? '' : 'disabled'}>Preise in der Produktliste zeigen</label>` : ''}
       <button class="btn block" id="pdf" ${hasAnyResult(p) ? '' : 'disabled'}>📄 Vorher-Nachher-PDF erstellen</button>
       <div class="row" style="margin-top:10px">
         <button class="btn secondary" id="back">← Alle Projekte</button>
@@ -409,6 +433,17 @@ async function viewProjekt() {
     await saveProject(p); viewProjekt();
   }));
   for (const id of ['customer', 'address', 'room', 'note']) $('#' + id).oninput = (e) => { p[id] = e.target.value; persist(); if (id === 'customer') setTitle(p.customer || 'Neues Projekt'); };
+  $('#roomType').onchange = async (e) => {
+    const old = roomType(p.roomType).name;
+    p.roomType = e.target.value;
+    if (!p.room || p.room === old) p.room = roomType(p.roomType).name;
+    p.selected = packagesFor(p.roomType).map((x) => x.id);
+    await saveProject(p); viewProjekt();
+  };
+  if ($('#pdfProducts')) {
+    $('#pdfProducts').onchange = (e) => { p.pdfProducts = e.target.checked; $('#pdfPrices').disabled = !p.pdfProducts; persist(); };
+    $('#pdfPrices').onchange = (e) => { p.pdfPrices = e.target.checked; persist(); };
+  }
   $$('[data-sel]').forEach((c) => (c.onchange = () => { p.selected = $$('[data-sel]').filter((x) => x.checked).map((x) => x.dataset.sel); persist(); }));
   $('#go').onclick = () => runAll(p);
   $('#pdf').onclick = () => sharePdf(p).catch((e) => toast('PDF-Fehler: ' + e.message, 5000));
@@ -445,7 +480,7 @@ function refreshResult(pkg) {
   const pdf = $('#pdf'); if (pdf) pdf.disabled = !hasAnyResult(state.project);
 }
 function bindResultButtons(p) {
-  const pk = (id) => state.packages.find((x) => x.id === id);
+  const pk = (id) => packagesFor(p.roomType).find((x) => x.id === id);
   $$('[data-redo]').forEach((b) => (b.onclick = () => runView(p, pk(b.dataset.redo), +b.dataset.view)));
   $$('[data-redoall]').forEach((b) => (b.onclick = () => runPackage(p, pk(b.dataset.redoall))));
 }
@@ -475,7 +510,7 @@ async function runPackage(p, pkg) {
 }
 async function runAll(p) {
   if (!state.settings.apiKey) { toast('Bitte zuerst in den Einstellungen den API-Schlüssel eintragen.', 4000); return; }
-  const pkgs = state.packages.filter((x) => p.selected.includes(x.id));
+  const pkgs = packagesFor(p.roomType).filter((x) => p.selected.includes(x.id));
   if (!pkgs.length) { toast('Bitte mindestens ein Paket auswählen.'); return; }
   await Promise.all(pkgs.map((pkg) => runPackage(p, pkg)));
   const total = pkgs.length * p.photos.length;
@@ -497,7 +532,7 @@ async function viewProjektListe() {
       <div class="list-item" data-open="${x.id}">${x.thumb ? `<img src="${x.thumb}" alt="">` : '<div style="width:56px;height:56px;background:#eee;border-radius:8px"></div>'}
       <div><div><b>${esc(x.customer || 'Ohne Namen')}</b></div><div class="muted">${esc(x.room || '')} · ${new Date(x.created).toLocaleDateString('de-DE')}</div></div></div>`).join('')}</div>` : ''}`;
   $('#new').onclick = () => {
-    state.project = { id: uid(), created: Date.now(), customer: '', address: '', room: ROOMS[0], note: '', photos: [], thumb: '', results: {}, selected: state.packages.map((x) => x.id) };
+    state.project = { id: uid(), created: Date.now(), customer: '', address: '', roomType: ROOM_TYPES[0].id, room: ROOM_TYPES[0].name, note: '', photos: [], thumb: '', results: {}, selected: packagesFor(ROOM_TYPES[0].id).map((x) => x.id), pdfProducts: true, pdfPrices: false };
     viewProjekt();
   };
   $('#toSet') && ($('#toSet').onclick = (e) => { e.preventDefault(); switchTab('einstellungen'); });
@@ -508,23 +543,28 @@ async function viewProjektListe() {
 function viewPakete() {
   if (state.editPkg) return viewPaketEdit(state.editPkg);
   setTitle('Moodboards');
+  const rt = state.boardRoom;
+  const pkgs = packagesFor(rt);
   main().innerHTML = `
     <div class="card">
       <h2>Deine Ausstattungspakete</h2>
-      <p class="muted">Hier legst du pro Paket fest, wie der Raum nach der Sanierung aussehen soll: per Text und mit Referenzbildern (Fliesen, Armaturen, Farben …). Du kannst alles jederzeit ändern.</p>
-      <div class="pkg-list">${state.packages.map((p) => `
+      <p class="muted">Jeder Raumtyp hat eigene Moodboards. Lege pro Paket fest, wie der Raum nach der Sanierung aussehen soll: per Text, mit Referenzbildern und mit echten Produkten (Shop-Link, Preis, Lieferzeit).</p>
+      <label>Raumtyp</label>
+      <select id="boardRoom">${ROOM_TYPES.map((r) => `<option value="${r.id}" ${r.id === rt ? 'selected' : ''}>${esc(r.name)}</option>`).join('')}</select>
+      <div class="pkg-list" style="margin-top:12px">${pkgs.map((p) => `
         <div class="pkg" data-edit="${p.id}"><span class="swatch" style="background:${p.color}"></span>
-        <div style="flex:1"><div class="name">${esc(p.name)}</div><div class="muted">${esc(p.fields.beschreibung || '')}</div><div class="muted">${p.images.length} Bild(er)</div></div><span>›</span></div>`).join('')}</div>
+        <div style="flex:1"><div class="name">${esc(p.name)}</div><div class="muted">${esc(p.fields.beschreibung || '')}</div><div class="muted">${p.images.length} Bild(er) · ${p.products.length} Produkt(e)</div></div><span>›</span></div>`).join('')}</div>
     </div>
     <div class="card">
       <h2>Sicherung</h2>
-      <p class="muted">Moodboards als Datei sichern oder auf ein anderes Gerät übertragen (z. B. vom PC aufs iPhone).</p>
+      <p class="muted">Alle Moodboards (alle Raumtypen) als Datei sichern oder auf ein anderes Gerät übertragen (z. B. vom PC aufs iPhone).</p>
       <div class="row"><button class="btn secondary" id="exp">⬇️ Exportieren</button><button class="btn secondary" id="imp">⬆️ Importieren</button></div>
-      <button class="btn danger block" id="reset" style="margin-top:10px">Auf Beispiel-Pakete zurücksetzen</button>
+      <button class="btn danger block" id="reset" style="margin-top:10px">${esc(roomType(rt).name)}: auf Beispiel-Pakete zurücksetzen</button>
     </div>`;
+  $('#boardRoom').onchange = (e) => { state.boardRoom = e.target.value; viewPakete(); };
   $$('[data-edit]').forEach((el) => (el.onclick = () => { state.editPkg = el.dataset.edit; viewPakete(); }));
   $('#exp').onclick = () => {
-    const blob = new Blob([JSON.stringify({ version: 1, packages: state.packages })], { type: 'application/json' });
+    const blob = new Blob([JSON.stringify({ version: 2, boards: state.boards })], { type: 'application/json' });
     const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'moodboards.json'; a.click();
   };
   $('#imp').onclick = () => {
@@ -532,51 +572,110 @@ function viewPakete() {
     inp.onchange = async () => {
       try {
         const data = JSON.parse(await inp.files[0].text());
-        if (!Array.isArray(data.packages)) throw new Error('Keine Moodboard-Datei');
-        state.packages = data.packages; await savePackages(); toast('Moodboards importiert'); viewPakete();
+        if (data.boards && typeof data.boards === 'object') state.boards = { ...state.boards, ...data.boards };
+        else if (Array.isArray(data.packages)) state.boards.bad = data.packages.map(migrateBathPackage); // alte Sicherung (nur Bad)
+        else throw new Error('Keine Moodboard-Datei');
+        await saveBoards(); toast('Moodboards importiert'); viewPakete();
       } catch (e) { toast('Import fehlgeschlagen: ' + e.message, 4000); }
     };
     inp.click();
   };
   $('#reset').onclick = async () => {
-    if (!confirm('Alle Moodboards durch die Beispiel-Pakete ersetzen? Deine Bilder gehen verloren.')) return;
-    state.packages = structuredClone(DEFAULT_PACKAGES); await savePackages(); viewPakete();
+    if (!confirm(`Moodboards für „${roomType(rt).name}“ durch die Beispiel-Pakete ersetzen? Bilder und Produkte dieses Raumtyps gehen verloren.`)) return;
+    state.boards[rt] = defaultPackagesFor(rt); await saveBoards(); viewPakete();
   };
 }
 
+function productRow(x, i, fields) {
+  const url = safeUrl(x.url);
+  return `<div class="product">
+    <div class="row">
+      <div style="flex:2"><label>Bereich</label><select data-prod="${i}" data-k="area"><option value="">–</option>${fields.filter(([k]) => k !== 'beschreibung').map(([k, l]) => `<option value="${k}" ${k === x.area ? 'selected' : ''}>${esc(l.replace(/\s*\(.*\)/, ''))}</option>`).join('')}</select></div>
+      <div style="flex:3"><label>Produkt (Hersteller, Serie, Farbe)</label><input type="text" data-prod="${i}" data-k="name" value="${esc(x.name)}" placeholder="z. B. Hansgrohe Talis E, Mattschwarz"></div>
+    </div>
+    <label>Shop-Link</label>
+    <div class="row" style="flex-wrap:nowrap"><input type="url" inputmode="url" data-prod="${i}" data-k="url" value="${esc(x.url)}" placeholder="https://…" style="flex:1">
+      <a class="btn small secondary" style="flex:none" data-prodlink="${i}" href="${esc(url || '#')}" target="_blank" rel="noopener" ${url ? '' : 'hidden'}>Öffnen ↗</a></div>
+    <div class="row">
+      <div><label>Preis (€, brutto)</label><input type="text" inputmode="decimal" data-prod="${i}" data-k="price" value="${x.price === '' || x.price == null ? '' : esc((+x.price).toFixed(2).replace('.', ','))}" placeholder="z. B. 249,90"></div>
+      <div><label>Lieferzeit</label><input type="text" data-prod="${i}" data-k="delivery" value="${esc(x.delivery)}" placeholder="z. B. 2–3 Wochen"></div>
+    </div>
+    <div class="row" style="margin-top:8px">
+      <button class="btn small secondary" data-prodimg="${i}">📷 Produktbild als Referenz</button>
+      <button class="btn small danger" data-delprod="${i}">Entfernen</button>
+    </div>
+  </div>`;
+}
+
 function viewPaketEdit(id) {
-  const p = state.packages.find((x) => x.id === id);
-  setTitle('Moodboard ' + p.name);
+  const rt = state.boardRoom;
+  const FIELDS = fieldsFor(rt);
+  const p = packagesFor(rt).find((x) => x.id === id);
+  if (!p) { state.editPkg = null; return viewPakete(); }
+  const sum = p.products.reduce((n, x) => n + (x.price === '' || x.price == null || isNaN(+x.price) ? 0 : +x.price), 0);
+  setTitle(`${p.name} · ${roomType(rt).name}`);
   main().innerHTML = `
     <button class="btn secondary small" id="back" style="margin-bottom:12px">← Zurück</button>
     <div class="card">
       <h2>Allgemein</h2>
+      <p class="muted">Raumtyp: <b>${esc(roomType(rt).name)}</b></p>
       <div class="row"><div style="flex:3"><label>Name des Pakets</label><input type="text" id="pname" value="${esc(p.name)}"></div>
       <div style="flex:1"><label>Farbe</label><input type="color" id="pcolor" value="${p.color}" style="width:100%;height:44px;border:0;background:none"></div></div>
     </div>
     <div class="card">
       <h2>Referenzbilder</h2>
-      <p class="muted">Fotos von Fliesen, Armaturen, Farbmustern oder Beispielbädern. Beschrifte jedes Bild (z. B. „Wandfliese“, „Armatur Waschtisch“), damit die KI weiß, wofür es steht. Die ersten ${MAX_REF_IMAGES} Bilder werden verwendet.</p>
+      <p class="muted">Fotos von Fliesen, Armaturen, Farbmustern oder Beispielräumen. Beschrifte jedes Bild (z. B. „Wandfliese“, „Armatur Waschtisch“), damit die KI weiß, wofür es steht. Die ersten ${MAX_REF_IMAGES} Bilder werden verwendet.</p>
       <div class="thumbs">${p.images.map((im, i) => `
         <div class="thumb"><img src="${im.data}" alt=""><input type="text" data-label="${i}" value="${esc(im.label)}" placeholder="Wofür steht das Bild?"><button class="del" data-delimg="${i}">Entfernen</button></div>`).join('')}</div>
       <button class="btn secondary block" id="addimg" style="margin-top:10px">＋ Bilder hinzufügen</button>
+    </div>
+    <div class="card">
+      <h2>Produkte</h2>
+      <p class="muted">Echte Produkte mit Shop-Link, Preis und Lieferzeit. Die KI bekommt die Produktnamen als Vorgabe, im PDF erscheint auf Wunsch eine Produktliste mit klickbaren Links. Tipp: Im Shop den Link kopieren und hier einfügen.</p>
+      <div id="prods">${p.products.map((x, i) => productRow(x, i, FIELDS)).join('')}</div>
+      ${p.products.length ? `<p class="muted" id="psum">Summe: <b>${fmtPrice(sum)}</b></p>` : ''}
+      <button class="btn secondary block" id="addprod" style="margin-top:10px">＋ Produkt hinzufügen</button>
     </div>
     <div class="card">
       <h2>Ausstattung</h2>
       <p class="muted">Je genauer, desto besser trifft die KI dein Paket. Leere Felder werden ignoriert.</p>
       ${FIELDS.map(([k, label, ph]) => `<label>${esc(label)}</label><textarea data-field="${k}" placeholder="${esc(ph)}" rows="2">${esc(p.fields[k] || '')}</textarea>`).join('')}
     </div>`;
-  $('#back').onclick = () => { savePackages(); state.editPkg = null; viewPakete(); };
-  $('#pname').oninput = (e) => { p.name = e.target.value; setTitle('Moodboard ' + p.name); savePackagesDebounced(); };
-  $('#pcolor').oninput = (e) => { p.color = e.target.value; savePackagesDebounced(); };
-  $$('[data-field]').forEach((t) => (t.oninput = () => { p.fields[t.dataset.field] = t.value; savePackagesDebounced(); }));
-  $$('[data-label]').forEach((t) => (t.oninput = () => { p.images[+t.dataset.label].label = t.value; savePackagesDebounced(); }));
-  $$('[data-delimg]').forEach((b) => (b.onclick = async () => { p.images.splice(+b.dataset.delimg, 1); await savePackages(); viewPaketEdit(id); }));
+  const rerender = async () => { await saveBoards(); const y = window.scrollY; viewPaketEdit(id); window.scrollTo(0, y); };
+  $('#back').onclick = () => { saveBoards(); state.editPkg = null; viewPakete(); };
+  $('#pname').oninput = (e) => { p.name = e.target.value; setTitle(`${p.name} · ${roomType(rt).name}`); saveBoardsDebounced(); };
+  $('#pcolor').oninput = (e) => { p.color = e.target.value; saveBoardsDebounced(); };
+  $$('[data-field]').forEach((t) => (t.oninput = () => { p.fields[t.dataset.field] = t.value; saveBoardsDebounced(); }));
+  $$('[data-label]').forEach((t) => (t.oninput = () => { p.images[+t.dataset.label].label = t.value; saveBoardsDebounced(); }));
+  $$('[data-delimg]').forEach((b) => (b.onclick = async () => { p.images.splice(+b.dataset.delimg, 1); rerender(); }));
   $('#addimg').onclick = async () => {
     const files = await pickFiles({ multiple: true });
     for (const f of files) p.images.push({ id: uid(), label: '', data: await resize(await fileToDataUrl(f), 1024) });
-    await savePackages(); viewPaketEdit(id);
+    rerender();
   };
+  // Produkte
+  $$('[data-prod]').forEach((el) => {
+    const x = p.products[+el.dataset.prod], k = el.dataset.k;
+    el.oninput = () => {
+      x[k] = k === 'price' ? parsePrice(el.value) : el.value;
+      if (k === 'price' && $('#psum')) $('#psum').innerHTML = `Summe: <b>${fmtPrice(p.products.reduce((n, y) => n + (y.price === '' || isNaN(+y.price) ? 0 : +y.price), 0))}</b>`;
+      saveBoardsDebounced();
+    };
+    if (k === 'url') el.addEventListener('input', () => {
+      const a = $(`[data-prodlink="${el.dataset.prod}"]`), u = safeUrl(el.value);
+      a.hidden = !u; a.href = u || '#';
+    });
+  });
+  $$('[data-delprod]').forEach((b) => (b.onclick = () => { if (!confirm('Produkt entfernen?')) return; p.products.splice(+b.dataset.delprod, 1); rerender(); }));
+  $$('[data-prodimg]').forEach((b) => (b.onclick = async () => {
+    const x = p.products[+b.dataset.prodimg];
+    const [f] = await pickFiles(); if (!f) return;
+    const area = (FIELD_LIB[x.area]?.[0] || '').replace(/\s*\(.*\)/, '');
+    p.images.push({ id: uid(), label: [area, x.name].filter(Boolean).join(': ') || 'Produkt', data: await resize(await fileToDataUrl(f), 1024) });
+    toast('Produktbild bei den Referenzbildern ergänzt');
+    rerender();
+  }));
+  $('#addprod').onclick = () => { p.products.push({ id: uid(), area: '', name: '', url: '', price: '', delivery: '' }); rerender(); };
 }
 
 // ---------- Ansicht: Einstellungen ----------
@@ -644,7 +743,10 @@ function switchTab(tab) {
   window.scrollTo(0, 0);
   ({ projekt: viewProjekt, pakete: viewPakete, einstellungen: viewEinstellungen })[tab]();
 }
-$$('.tabbar button').forEach((b) => (b.onclick = () => { if (b.dataset.tab === 'pakete') state.editPkg = null; switchTab(b.dataset.tab); }));
+$$('.tabbar button').forEach((b) => (b.onclick = () => {
+  if (b.dataset.tab === 'pakete') { state.editPkg = null; if (state.project?.roomType) state.boardRoom = state.project.roomType; }
+  switchTab(b.dataset.tab);
+}));
 
 (async () => {
   await loadAll();
