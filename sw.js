@@ -1,5 +1,5 @@
 // Offline-Cache für die App-Dateien. Bei Änderungen VERSION erhöhen.
-const VERSION = 'v8';
+const VERSION = 'v9';
 const FILES = ['./', 'index.html', 'style.css', 'app.js', 'rooms.js', 'voice.js', 'social.js', 'angebot.js', 'data/preisliste.json', 'vendor/xlsx.mini.min.js', 'manifest.webmanifest', 'vendor/jspdf.umd.min.js', 'icons/icon-180.png', 'icons/icon-192.png', 'icons/icon-512.png', 'assets/dom_logo.png'];
 self.addEventListener('install', (e) => { e.waitUntil(caches.open(VERSION).then((c) => c.addAll(FILES))); self.skipWaiting(); });
 self.addEventListener('activate', (e) => {
