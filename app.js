@@ -383,6 +383,7 @@ async function viewProjekt() {
     <div id="results">${state.packages.filter((x) => p.selected.includes(x.id) || firstResult(p, x.id)).map(resultCard).join('')}</div>
     <div class="card">
       <button class="btn block" id="pdf" ${hasAnyResult(p) ? '' : 'disabled'}>📄 Vorher-Nachher-PDF erstellen</button>
+      <button class="btn secondary block" id="social" style="margin-top:10px" ${hasAnyResult(p) ? '' : 'disabled'}>🎬 Instagram-Video & Post</button>
       <div class="row" style="margin-top:10px">
         <button class="btn secondary" id="back">← Alle Projekte</button>
         <button class="btn danger" id="del">Projekt löschen</button>
@@ -412,6 +413,7 @@ async function viewProjekt() {
   $$('[data-sel]').forEach((c) => (c.onchange = () => { p.selected = $$('[data-sel]').filter((x) => x.checked).map((x) => x.dataset.sel); persist(); }));
   $('#go').onclick = () => runAll(p);
   $('#pdf').onclick = () => sharePdf(p).catch((e) => toast('PDF-Fehler: ' + e.message, 5000));
+  $('#social').onclick = () => viewSocial(p).catch((e) => toast('Fehler: ' + e.message, 5000));
   $('#back').onclick = () => { state.project = null; viewProjekt(); };
   $('#del').onclick = async () => { if (!confirm('Projekt wirklich löschen?')) return; await deleteProject(p.id); state.project = null; viewProjekt(); };
   bindResultButtons(p);
@@ -443,6 +445,7 @@ function refreshResult(pkg) {
   else el.outerHTML = resultCard(pkg);
   bindResultButtons(state.project);
   const pdf = $('#pdf'); if (pdf) pdf.disabled = !hasAnyResult(state.project);
+  const soc = $('#social'); if (soc) soc.disabled = !hasAnyResult(state.project);
 }
 function bindResultButtons(p) {
   const pk = (id) => state.packages.find((x) => x.id === id);
