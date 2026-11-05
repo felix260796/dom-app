@@ -242,6 +242,138 @@ const Angebot = (() => {
     return `voraussichtlich ${w === 1 ? '1 Woche' : `${w} Wochen`} (ca. ${bz.gesamt} Arbeitstage inkl. Trocknungszeiten), Beginn nach Absprache`;
   };
 
+  // ---------- Material- und Mengenliste ----------
+  // Verbrauchswerte sind Richtwerte (Herstellerangaben schwanken). Gebinde zum Aufrunden.
+  const stufe = (pkgId) => { const k = ['basic', 'standard', 'premium'].indexOf(pkgId); return k >= 0 ? k : Math.min(2, Math.max(0, state.packages.findIndex((x) => x.id === pkgId))); };
+  const ELEKTRO = {
+    nass: { steckdosen: [2, 3, 4], licht: [2, 2, 3], schalter: [1, 2, 2] },
+    kueche: { steckdosen: [5, 8, 10], licht: [2, 3, 4], schalter: [1, 2, 2] },
+  };
+  function materialliste(p, pkgId, positionen) {
+    const lvl = stufe(pkgId);
+    const out = []; // { raum, gruppe, text, menge, einheit, hinweis }
+    const add = (raum, gr, text, menge, einheit, hinweis = '') => { if (menge > 0) out.push({ raum, gruppe: gr, text, menge, einheit, hinweis }); };
+    const geb = (menge, groesse, name) => `${Math.ceil(menge / groesse - 1e-9)} × ${name}`;
+    const raeume = p.aufmass.raeume.filter((r) => masse(r).boden > 0);
+    for (const r of raeume) {
+      const m = masse(r), g = gruppe(r.typ), rn = r.name;
+      const q = (nr) => positionen.filter((x) => x.raum === rn && x.nr === nr).reduce((s, x) => s + x.menge, 0);
+      const qs = (re) => positionen.filter((x) => x.raum === rn && re.test(x.nr)).reduce((s, x) => s + x.menge, 0);
+      // Fliesen
+      const fl = { 'FL-01': 'Wandfliesen bis 30×60', 'FL-02': 'Bodenfliesen bis 60×60', 'FL-03': 'Großformat-Fliesen ab 60×120', 'FL-04': 'Mosaik' };
+      let fliese = 0, gross = 0;
+      for (const [nr, name] of Object.entries(fl)) {
+        const a = q(nr); if (!a) continue;
+        const v = nr === 'FL-03' ? 1.12 : 1.1; fliese += a; if (nr === 'FL-03') gross += a;
+        add(rn, 'Fliesen & Abdichtung', name, Math.ceil(a * v * 10) / 10, 'm²', `${fmtNum(a)} m² + ${Math.round((v - 1) * 100)} % Verschnitt`);
+      }
+      if (fliese) {
+        const kleber = (fliese - gross) * 4 + gross * 6;
+        add(rn, 'Fliesen & Abdichtung', 'Fliesenkleber (flexibel)', Math.ceil(kleber), 'kg', geb(kleber, 25, 'Sack 25 kg'));
+        add(rn, 'Fliesen & Abdichtung', 'Fugenmörtel', Math.ceil(fliese * 0.5), 'kg', geb(fliese * 0.5, 5, 'Eimer 5 kg'));
+      }
+      const abd = q('AB-01'); if (abd) add(rn, 'Fliesen & Abdichtung', 'Flüssigabdichtung, 2 Lagen', Math.ceil(abd * 1.5), 'kg', geb(abd * 1.5, 15, 'Eimer 15 kg'));
+      const band = q('AB-02'); if (band) add(rn, 'Fliesen & Abdichtung', 'Dichtband', Math.ceil(band * 1.1), 'lfm', geb(band * 1.1, 10, 'Rolle 10 m'));
+      const man = q('AB-03'); if (man) add(rn, 'Fliesen & Abdichtung', 'Dichtmanschetten Rohr/Wand', man, 'Stück');
+      const sil = q('FL-08'); if (sil) add(rn, 'Fliesen & Abdichtung', 'Sanitär-Silikon', Math.ceil(sil / 8), 'Kartuschen', `für ${fmtNum(sil)} lfm`);
+      const sch = q('FL-07'); if (sch) add(rn, 'Fliesen & Abdichtung', 'Abschlussschiene', Math.ceil(sch * 1.1 / 2.5), 'Stück à 2,5 m', `${fmtNum(sch)} lfm`);
+      const nivel = q('PE-03'); if (nivel) add(rn, 'Untergrund', 'Ausgleichsmasse (ca. 5 mm)', Math.ceil(nivel * 7.5), 'kg', geb(nivel * 7.5, 25, 'Sack 25 kg'));
+      const grund = q('PE-04') + q('MA-02'); if (grund) add(rn, 'Untergrund', 'Tiefgrund / Grundierung', Math.ceil(grund * 0.15), 'l', geb(grund * 0.15, 10, 'Kanister 10 l'));
+      // Maler
+      const farbe = q('MA-03') + q('MA-04'); if (farbe) add(rn, 'Maler', 'Dispersionsfarbe (2 Anstriche)', Math.ceil(farbe * 0.3), 'l', geb(farbe * 0.3, 12.5, 'Eimer 12,5 l'));
+      const sp = q('MA-05') * 0.5 + q('MA-06') * 1.2; if (sp) add(rn, 'Maler', 'Spachtelmasse (Q3/Q4)', Math.ceil(sp), 'kg', geb(sp, 20, 'Eimer 20 kg'));
+      const rf = q('MA-07'); if (rf) add(rn, 'Maler', 'Raufaser', Math.ceil(rf * 1.1 / 9), 'Rollen', `${fmtNum(rf)} m², Rolle ca. 9 m²`);
+      const vl = q('MA-08'); if (vl) add(rn, 'Maler', 'Vliestapete', Math.ceil(vl * 1.1 / 13), 'Rollen', `${fmtNum(vl)} m², Rolle ca. 13 m²`);
+      if (q('MA-01')) add(rn, 'Maler', 'Abdeckfolie / Malervlies', Math.ceil(q('MA-01') * 1.2), 'm²');
+      // Boden
+      const bo = { 'BO-01': ['Laminat', 2.2], 'BO-02': ['Vinyl Klick', 2.2], 'BO-03': ['Vinyl zum Kleben', 3.3], 'BO-04': ['Parkett schwimmend', 2], 'BO-05': ['Parkett zum Kleben', 2], 'BO-07': ['Teppich', 4] };
+      for (const [nr, [name, pk]] of Object.entries(bo)) {
+        const a = q(nr); if (!a) continue;
+        add(rn, 'Boden', name, Math.ceil(a * 1.08 * 10) / 10, 'm²', `${fmtNum(a)} m² + 8 %, ca. ${Math.ceil(a * 1.08 / pk)} Pakete à ${fmtNum(pk)} m²`);
+        if (/BO-0[124]/.test(nr)) add(rn, 'Boden', 'Trittschalldämmung', Math.ceil(a * 1.05), 'm²');
+        if (/BO-0[35]/.test(nr)) add(rn, 'Boden', 'Parkett-/Vinylkleber', Math.ceil(a * 1.1), 'kg');
+      }
+      const sock = q('BO-08'); if (sock) add(rn, 'Boden', 'Sockelleisten', Math.ceil(sock * 1.1 / 2.4), 'Stück à 2,4 m', `${fmtNum(sock)} lfm`);
+      const tu = q('TU-01'); if (tu) add(rn, 'Türen', 'Innentür mit Zarge und Drücker', tu, 'Stück', 'Maß und Anschlag vor Ort prüfen');
+      // Sanitär-Objekte
+      if (g === 'nass') {
+        const gaeste = /wc/i.test(r.typ) && !/bad/i.test(r.typ);
+        const becken = gaeste ? 1 : lvl >= 2 ? 2 : 1;
+        add(rn, 'Sanitär (Fachbetrieb)', 'Wand-WC mit Vorwandelement und Betätigungsplatte', 1, 'Stück');
+        add(rn, 'Sanitär (Fachbetrieb)', gaeste ? 'Handwaschbecken' : becken > 1 ? 'Doppelwaschtisch' : 'Waschtisch', 1, 'Stück', becken > 1 ? '2 Becken' : '');
+        add(rn, 'Sanitär (Fachbetrieb)', 'Waschtischarmatur', becken, 'Stück');
+        if (!gaeste) {
+          if (r.dusche) { add(rn, 'Sanitär (Fachbetrieb)', 'Duschrinne mit Ablauf', 1, 'Stück'); add(rn, 'Sanitär (Fachbetrieb)', lvl ? 'Glaswand Walk-In / rahmenlos' : 'Duschabtrennung', 1, 'Stück'); }
+          else add(rn, 'Sanitär (Fachbetrieb)', 'Duschtasse flach mit Ablauf', 1, 'Stück');
+          add(rn, 'Sanitär (Fachbetrieb)', lvl ? 'Duschsystem mit Thermostat (Regenbrause)' : 'Brausegarnitur mit Einhebelmischer', 1, 'Stück');
+          add(rn, 'Sanitär (Fachbetrieb)', lvl ? 'Designheizkörper' : 'Badheizkörper', 1, 'Stück');
+        }
+        add(rn, 'Sanitär (Fachbetrieb)', lvl ? 'Spiegel mit LED-Beleuchtung' : 'Spiegel', 1, 'Stück');
+      }
+      // Elektro (Richtwerte, an DIN 18015-2 angelehnt)
+      const e = ELEKTRO[g];
+      const steck = e ? e.steckdosen[lvl] : Math.ceil(m.boden / 5) + [1, 2, 4][lvl];
+      const licht = e ? e.licht[lvl] : [1, 2, 3][lvl] + (m.boden > 20 ? 1 : 0);
+      const schalter = e ? e.schalter[lvl] : Math.max(1, m.tueren) * (lvl >= 2 ? 2 : 1);
+      add(rn, 'Elektro (Fachbetrieb)', 'Steckdosen', steck, 'Stück', 'Richtwert');
+      add(rn, 'Elektro (Fachbetrieb)', 'Licht-Auslässe', licht, 'Stück', lvl >= 2 && g !== 'wohn' ? 'z. B. Spots / LED-Profil' : '');
+      add(rn, 'Elektro (Fachbetrieb)', 'Lichtschalter', schalter, 'Stück');
+      if (g === 'kueche') add(rn, 'Elektro (Fachbetrieb)', 'Geräteanschlüsse (Herd, Spüle, Kühlschrank …)', 3 + lvl, 'Stück');
+      if (g === 'wohn' && lvl) add(rn, 'Elektro (Fachbetrieb)', 'Netzwerk-/TV-Dosen', lvl, 'Stück');
+      if (g === 'nass') add(rn, 'Elektro (Fachbetrieb)', 'Lüfter-Anschluss', 1, 'Stück', 'bei innenliegendem Bad Pflicht');
+    }
+    return out;
+  }
+  const listeText = (p, pk, liste) => {
+    const zeilen = [`Materialliste ${p.customer || ''} · Paket ${pk.name}`.trim(), 'Richtwerte aus Aufmaß und Angebot, vor Bestellung prüfen.', ''];
+    for (const rn of [...new Set(liste.map((x) => x.raum))]) {
+      zeilen.push(`== ${rn} ==`);
+      for (const gr of [...new Set(liste.filter((x) => x.raum === rn).map((x) => x.gruppe))]) {
+        zeilen.push(`${gr}:`);
+        for (const x of liste.filter((y) => y.raum === rn && y.gruppe === gr)) zeilen.push(`- ${x.text}: ${fmtNum(x.menge, x.menge % 1 ? 1 : 0)} ${x.einheit}${x.hinweis ? ` (${x.hinweis})` : ''}`);
+      }
+      zeilen.push('');
+    }
+    return zeilen.join('\n');
+  };
+
+  // ---------- Maße aus Fotos schätzen (Gemini) ----------
+  async function masseAusFotos(p) {
+    const key = state.settings.apiKey;
+    if (!key) throw new Error('Kein API-Schlüssel hinterlegt (Einstellungen).');
+    if (!p.photos.length) throw new Error('Bitte zuerst Fotos vom Raum aufnehmen.');
+    const prompt = `Du bist ein erfahrener Bauleiter. Schätze aus den Fotos die Innenmaße dieses Raums (${p.room || 'Raum'}) in Metern.
+Nutze bekannte Bezugsgrößen: Innentür ca. 2,01 m hoch und 0,885 m breit (Rohbaumaß), Türklinke ca. 1,05 m, Steckdosen ca. 0,30 m, Lichtschalter ca. 1,05 m, WC-Sitz ca. 0,40 m hoch, Waschtisch ca. 0,85 m hoch, Fliesenformate und Fugen zählen.
+Gib Länge (längere Seite) und Breite der Grundfläche, Raumhöhe, Anzahl und Größe von Türen und Fenstern und ob eine bodengleiche Dusche sinnvoll ist. Sei ehrlich bei der Unsicherheit.`;
+    const body = {
+      contents: [{ role: 'user', parts: [{ text: prompt }, ...p.photos.map((d) => ({ inline_data: { mime_type: mimeOf(d), data: b64(d) } }))] }],
+      generationConfig: {
+        responseMimeType: 'application/json',
+        responseSchema: { type: 'OBJECT', properties: {
+          laenge: { type: 'NUMBER' }, breite: { type: 'NUMBER' }, hoehe: { type: 'NUMBER' },
+          tueren: { type: 'ARRAY', items: { type: 'OBJECT', properties: { breite: { type: 'NUMBER' }, hoehe: { type: 'NUMBER' } } } },
+          fenster: { type: 'ARRAY', items: { type: 'OBJECT', properties: { breite: { type: 'NUMBER' }, hoehe: { type: 'NUMBER' } } } },
+          duschwand: { type: 'NUMBER', description: 'Wandlänge im Duschbereich in m, 0 wenn keine Dusche' },
+          genauigkeit_prozent: { type: 'NUMBER', description: 'geschätzte Abweichung in Prozent' },
+          begruendung: { type: 'STRING' } }, required: ['laenge', 'breite', 'hoehe'] },
+      },
+    };
+    const r = await fetch('https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent', { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-goog-api-key': key }, body: JSON.stringify(body) });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(j.error?.message || `Fehler ${r.status}`);
+    const txt = j.candidates?.[0]?.content?.parts?.map((x) => x.text).filter(Boolean).join('');
+    try { return JSON.parse(txt); } catch { throw new Error('Die KI hat keine Maße geliefert. Bitte nochmal versuchen.'); }
+  }
+  const dez = (x, d = 2) => (x > 0 ? String(Math.round(x * 10 ** d) / 10 ** d).replace('.', ',') : '');
+  function uebernimmSchaetzung(r, s) {
+    r.teile = [{ l: dez(s.laenge), b: dez(s.breite) }];
+    if (s.hoehe > 0) r.h = dez(s.hoehe);
+    const oe = [...(s.tueren || []).map((o) => ({ art: 'Tür', n: 1, b: dez(o.breite, 3), h: dez(o.hoehe) })), ...(s.fenster || []).map((o) => ({ art: 'Fenster', n: 1, b: dez(o.breite), h: dez(o.hoehe) }))].filter((o) => o.b && o.h);
+    if (oe.length) r.oeff = oe;
+    if (gruppe(r.typ) === 'nass' && s.duschwand > 0) { r.duschwand = dez(s.duschwand); r.dusche = true; }
+    r.schaetzung = { genau: s.genauigkeit_prozent || null, text: s.begruendung || '', zeit: Date.now() };
+  }
+
   // ---------- Projektdaten ----------
   function init(p) {
     p.aufmass ??= { raeume: [] };
@@ -281,11 +413,11 @@ const Angebot = (() => {
     setTitle((p.customer || 'Projekt') + ' · Angebot');
     main().innerHTML = `
       <button class="btn secondary small" id="aBack" style="margin-bottom:12px">← Zurück zum Projekt</button>
-      <div class="seg">${[['aufmass', '📐 Aufmaß'], ['angebot', '💶 Angebot'], ['bauzeit', '📅 Bauzeit']].map(([k, l]) => `<button data-atab="${k}" class="${tab === k ? 'on' : ''}">${l}</button>`).join('')}</div>
+      <div class="seg">${[['aufmass', '📐 Aufmaß'], ['angebot', '💶 Angebot'], ['material', '🧾 Material'], ['bauzeit', '📅 Bauzeit']].map(([k, l]) => `<button data-atab="${k}" class="${tab === k ? 'on' : ''}">${l}</button>`).join('')}</div>
       <div id="aBody"></div>`;
     $('#aBack').onclick = () => viewProjekt();
     $$('[data-atab]').forEach((b) => (b.onclick = () => { tab = b.dataset.atab; ansicht(p); }));
-    ({ aufmass: aufmassView, angebot: angebotView, bauzeit: bauzeitView })[tab](p);
+    ({ aufmass: aufmassView, angebot: angebotView, material: materialView, bauzeit: bauzeitView })[tab](p);
     if (scrollTop) window.scrollTo(0, 0);
   }
   const persist = debounce((p) => saveProject(p), 400);
@@ -301,6 +433,8 @@ const Angebot = (() => {
         return `<div class="card" data-raum="${ri}">
         <div class="row" style="align-items:flex-end"><div style="flex:2"><label>Raum</label><input type="text" data-rf="name" value="${esc(r.name)}"></div>
           <div style="flex:2"><label>Raumtyp</label><select data-rf="typ">${typen.map((t) => `<option ${t === r.typ ? 'selected' : ''}>${esc(t)}</option>`).join('')}</select></div></div>
+        ${p.photos.length ? `<button class="btn small secondary block" data-schaetzen style="margin-top:10px">📷 Maße grob aus den Fotos schätzen (KI)</button>` : ''}
+        ${r.schaetzung ? `<p class="muted" style="color:#9a6a12">⚠️ Geschätzt aus Fotos${r.schaetzung.genau ? `, ca. ±${Math.round(r.schaetzung.genau)} %` : ''}. Bitte mit dem Meterstab prüfen und korrigieren.${r.schaetzung.text ? `<br><i>${esc(r.schaetzung.text)}</i>` : ''}</p>` : ''}
         <h3>Grundfläche</h3>
         ${r.teile.map((t, ti) => `<div class="mrow"><span class="muted">${ti ? 'Teilfl. ' + (ti + 1) : 'Länge × Breite'}</span>${numIn(`data-teil="${ti}" data-k="l"`, t.l, 'Länge')}<span>×</span>${numIn(`data-teil="${ti}" data-k="b"`, t.b, 'Breite')}${ti ? `<button class="x" data-delteil="${ti}" aria-label="Entfernen">✕</button>` : '<span class="x"></span>'}</div>`).join('')}
         <button class="btn small secondary" data-addteil>＋ Teilfläche (L-Form, Nische)</button>
@@ -338,8 +472,15 @@ const Angebot = (() => {
           updSum(ri); persist(p);
         };
       });
-      $$('[data-teil]', card).forEach((el) => (el.oninput = () => { r.teile[+el.dataset.teil][el.dataset.k] = el.value; updSum(ri); persist(p); }));
+      $$('[data-teil]', card).forEach((el) => (el.oninput = () => { r.teile[+el.dataset.teil][el.dataset.k] = el.value; if (r.schaetzung) r.schaetzung.bearbeitet = true; updSum(ri); persist(p); }));
       $$('[data-oe]', card).forEach((el) => (el.oninput = el.onchange = () => { r.oeff[+el.dataset.oe][el.dataset.k] = el.value; updSum(ri); persist(p); }));
+      const sb = $('[data-schaetzen]', card);
+      if (sb) sb.onclick = async () => {
+        if (masse(r).boden && !confirm('Eingetragene Maße durch die KI-Schätzung ersetzen?')) return;
+        sb.disabled = true; sb.textContent = 'KI schätzt die Maße …';
+        try { uebernimmSchaetzung(r, await masseAusFotos(p)); toast('Maße geschätzt. Bitte nachmessen.'); rerender(); }
+        catch (e) { toast('❌ ' + e.message, 6000); sb.disabled = false; sb.textContent = '📷 Maße grob aus den Fotos schätzen (KI)'; }
+      };
       $('[data-addteil]', card).onclick = () => { r.teile.push({ l: '', b: '' }); rerender(); };
       $$('[data-delteil]', card).forEach((b) => (b.onclick = () => { r.teile.splice(+b.dataset.delteil, 1); rerender(); }));
       $('[data-addoe]', card).onclick = () => { r.oeff.push({ art: 'Fenster', n: 1, b: '', h: '' }); rerender(); };
@@ -425,6 +566,24 @@ const Angebot = (() => {
       const tsv = A.positionen.map((x) => [x.nr, x.raum || 'Allgemein', String(x.menge).replace('.', ','), x.bem].join('\t')).join('\n');
       try { await navigator.clipboard.writeText(tsv); toast('Kopiert. In Excel „Eingabe“ ab B12 einfügen.'); } catch { toast('Kopieren nicht möglich.'); }
     };
+  }
+
+  function materialView(p) {
+    const A = p.angebot;
+    if (!A.positionen) A.positionen = erzeuge(p, A.paket).positionen;
+    const pk = state.packages.find((x) => x.id === A.paket) || state.packages[0];
+    const liste = materialliste(p, pk.id, A.positionen);
+    const raeume = [...new Set(liste.map((x) => x.raum))];
+    $('#aBody').innerHTML = `
+      <div class="card"><h2>Material- und Mengenliste</h2>
+        <p class="muted">Aus Aufmaß und Angebot (Paket „${esc(pk.name)}“), inklusive Verschnitt und Gebinden. Sanitär- und Elektro-Mengen sind Richtwerte für das Gespräch mit dem Fachbetrieb. Paket wechseln im Tab „Angebot“.</p>
+        <div class="row"><button class="btn" id="mShare">📤 Liste teilen</button><button class="btn secondary" id="mCopy">📋 Kopieren</button></div>
+      </div>
+      ${raeume.map((rn) => `<div class="card"><h2>${esc(rn)}</h2>${[...new Set(liste.filter((x) => x.raum === rn).map((x) => x.gruppe))].map((gr) => `<h3>${esc(gr)}</h3>
+        ${liste.filter((x) => x.raum === rn && x.gruppe === gr).map((x) => `<div class="mat"><div><b>${esc(x.text)}</b>${x.hinweis ? `<span class="muted">${esc(x.hinweis)}</span>` : ''}</div><div class="mq">${fmtNum(x.menge, x.menge % 1 ? 1 : 0)} ${esc(x.einheit)}</div></div>`).join('')}`).join('')}</div>`).join('') || '<div class="card"><p class="muted">Noch kein Aufmaß eingetragen.</p></div>'}`;
+    const text = listeText(p, pk, liste);
+    $('#mCopy').onclick = async () => { try { await navigator.clipboard.writeText(text); toast('Liste kopiert'); } catch { toast('Kopieren nicht möglich.'); } };
+    $('#mShare').onclick = async () => { if (navigator.share) { try { await navigator.share({ title: 'Materialliste', text }); return; } catch (e) { if (e.name === 'AbortError') return; } } try { await navigator.clipboard.writeText(text); toast('Liste kopiert'); } catch { toast('Teilen nicht möglich.'); } };
   }
 
   function bauzeitView(p) {
@@ -682,6 +841,6 @@ const Angebot = (() => {
     $('#vReset').onclick = async () => { if (!confirm('Alle Paket-Vorlagen zurücksetzen?')) return; await kvDel('angebotVorlagen'); VORL = null; vorlagenView(pkgId, grp); };
   }
 
-  return { projektKarte, ansicht, einstellungenKarte, _intern: { masse, rechne, erzeuge, summen, bauzeit, ep, lohnEp, preisliste, vorlagen, neuerRaum, baueAngebotPdf, importExcel } };
+  return { projektKarte, ansicht, einstellungenKarte, _intern: { materialliste, uebernimmSchaetzung, masse, rechne, erzeuge, summen, bauzeit, ep, lohnEp, preisliste, vorlagen, neuerRaum, baueAngebotPdf, importExcel } };
 })();
 window.Angebot = Angebot;

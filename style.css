@@ -91,3 +91,8 @@ span.x { background: none; }
 .vrow .vt { font-size: 14px; }
 .vrow input { padding: 8px 10px; }
 .vrow .row { justify-content: flex-end; } .vrow .row > * { flex: none; }
+.mat { display: flex; justify-content: space-between; gap: 10px; padding: 7px 0; border-top: 1px solid var(--line); font-size: 14px; }
+.mat > div:first-child { display: flex; flex-direction: column; min-width: 0; }
+.mat .muted { font-size: 12px; }
+.mat .mq { flex: none; text-align: right; font-weight: 600; }
+.seg button { font-size: 13px; padding: 9px 2px; }
