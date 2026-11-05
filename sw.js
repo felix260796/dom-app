@@ -1,6 +1,6 @@
 // Offline-Cache für die App-Dateien. Bei Änderungen VERSION erhöhen.
-const VERSION = 'v11';
-const FILES = ['./', 'index.html', 'style.css', 'app.js', 'backup.js', 'rooms.js', 'voice.js', 'social.js', 'angebot.js', 'data/preisliste.json', 'vendor/xlsx.mini.min.js', 'manifest.webmanifest', 'vendor/jspdf.umd.min.js', 'icons/icon-180.png', 'icons/icon-192.png', 'icons/icon-512.png', 'assets/dom_logo.png', 'assets/dom_logo_weiss.png'];
+const VERSION = 'v12';
+const FILES = ['./', 'index.html', 'style.css', 'app.js', 'backup.js', 'rooms.js', 'voice.js', 'social.js', 'angebot.js', 'wohnung.js', 'data/preisliste.json', 'vendor/xlsx.mini.min.js', 'manifest.webmanifest', 'vendor/jspdf.umd.min.js', 'icons/icon-180.png', 'icons/icon-192.png', 'icons/icon-512.png', 'assets/dom_logo.png', 'assets/dom_logo_weiss.png'];
 self.addEventListener('install', (e) => { e.waitUntil(caches.open(VERSION).then((c) => c.addAll(FILES))); self.skipWaiting(); });
 self.addEventListener('activate', (e) => {
   e.waitUntil(caches.keys().then((ks) => Promise.all(ks.filter((k) => k !== VERSION).map((k) => caches.delete(k)))));

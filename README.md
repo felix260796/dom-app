@@ -26,3 +26,9 @@ Foto vom Raum machen → KI baut den Raum in den Paketen Basic / Standard / Prem
 1. App online stellen (HTTPS), z. B. GitHub Pages.
 2. Auf dem iPhone in Safari öffnen → Teilen → „Zum Home-Bildschirm“.
 3. In der App unter Einstellungen den Gemini-API-Schlüssel eintragen (https://aistudio.google.com/apikey), Firmenname und Logo hinterlegen.
+
+## Wohnungen (mehrere Räume)
+„Neue Wohnung“ in der Projektliste: Räume mit Raumtyp und Titel anlegen, je Raum Fotos machen.
+Jeder Raum ist ein normales Projekt (Angebot, Sprachnotizen, Instagram funktionieren wie gewohnt).
+In der Wohnung: alle Räume auf einmal visualisieren, ein PDF je Paket (Basic/Standard/Premium)
+und eine eigene Mappe mit einem Paket pro Raum (z. B. Bad Premium, Wohnzimmer Basic). Code: `wohnung.js`.

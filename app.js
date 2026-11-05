@@ -76,7 +76,7 @@ function pickFiles({ multiple = false, camera = false } = {}) {
 const MAX_REF_IMAGES = 6;
 
 // ---------- Zustand ----------
-const state = { tab: 'projekt', settings: null, boards: null, project: null, editPkg: null, boardRoom: 'bad' };
+const state = { tab: 'projekt', settings: null, boards: null, project: null, wohnung: null, editPkg: null, boardRoom: 'bad' };
 
 async function loadAll() {
   state.settings = (await kvGet('settings')) || { apiKey: '', model: 'gemini-2.5-flash-image', company: 'DOM Projektmanagement GmbH', contact: 'DOM Projektmanagement GmbH', logo: null };
@@ -116,6 +116,8 @@ async function projectIndex() { return (await kvGet('projectIndex')) || []; }
 async function saveProject(proj) {
   const { status, ...p } = proj;
   await kvSet('project:' + p.id, p);
+  // Räume einer Wohnung stehen nicht einzeln in der Projektliste, sondern unter ihrer Wohnung (wohnung.js)
+  if (p.wohnungId) return window.Wohnung?.raumGespeichert(p);
   const idx = (await projectIndex()).filter((x) => x.id !== p.id);
   idx.unshift({ id: p.id, customer: p.customer, room: p.room, created: p.created, thumb: p.thumb || '' });
   await kvSet('projectIndex', idx.slice(0, 100));
@@ -221,24 +223,79 @@ async function addFit(doc, dataUrl, x, y, w, h, fmt = 'JPEG') {
   return { x: x + (w - iw) / 2, y: y + (h - ih) / 2, w: iw, h: ih };
 }
 
-async function buildPdf(project) {
+/** Neues PDF (A4 quer) mit gemeinsamen Helfern: Fußzeile, Seitenzähler, Logo-Format. Auch von wohnung.js genutzt. */
+function pdfStart() {
   const { jsPDF } = window.jspdf;
   const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
-  const W = 297, H = 210, M = 14;
   const S = state.settings;
-  const pkgs = packagesFor(project.roomType).filter((p) => firstResult(project, p.id));
-  const FIELDS = fieldsFor(project.roomType);
-  const date = new Date(project.created).toLocaleDateString('de-DE');
-  const logoFmt = S.logo ? (mimeOf(S.logo) === 'image/png' ? 'PNG' : 'JPEG') : null;
-
-  const footer = (n) => {
+  const c = { doc, W: 297, H: 210, M: 14, S, page: 1, logoFmt: S.logo ? (mimeOf(S.logo) === 'image/png' ? 'PNG' : 'JPEG') : null };
+  c.footer = () => {
     doc.setFontSize(8); doc.setTextColor(120);
-    doc.text(S.contact || S.company || '', M, H - 7);
-    doc.text(`KI-Visualisierung, unverbindliche Darstellung  ·  Seite ${n}`, W - M, H - 7, { align: 'right' });
+    doc.text(S.contact || S.company || '', c.M, c.H - 7);
+    doc.text(`KI-Visualisierung, unverbindliche Darstellung  ·  Seite ${c.page}`, c.W - c.M, c.H - 7, { align: 'right' });
   };
+  c.newPage = () => { doc.addPage(); c.page++; };
+  c.logo = async (x, y, w, h) => { if (S.logo) await addFit(doc, S.logo, x, y, w, h, c.logoFmt); };
+  return c;
+}
+
+/** Vorher-/Nachher-Seiten eines Pakets p für ein Projekt (eine Seite pro Ansicht).
+ * opt.room: Raumtitel für Wohnungs-PDFs (steht dann in der Überschrift). */
+async function pdfViewPages(c, project, p, opt = {}) {
+  const { doc, W, H, M } = c;
+  const FIELDS = fieldsFor(project.roomType);
+  const views = project.photos.map((ph, i) => [ph, project.results[p.id]?.[i], i]).filter(([, r]) => r);
+  for (const [vi, [photo, result]] of views.entries()) {
+    c.newPage();
+    const rgb = hexRgb(p.color);
+    await c.logo(M, 8, 40, 14);
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(20); doc.setTextColor(...rgb);
+    doc.text(opt.room ? `${opt.room}  ·  ${p.name}` : `Paket ${p.name}`, W - M, 18, { align: 'right' });
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(10); doc.setTextColor(90);
+    const sub = [views.length > 1 ? `Ansicht ${vi + 1} von ${views.length}` : '', p.fields.beschreibung || ''].filter(Boolean).join('  ·  ');
+    if (sub) doc.text(doc.splitTextToSize(sub, 170), W - M, 24, { align: 'right' });
+    doc.setFillColor(...rgb); doc.rect(M, 29, W - 2 * M, 1, 'F');
+    const bw = (W - 2 * M - 8) / 2, by = 40, bh = 108;
+    doc.setFontSize(10); doc.setFont('helvetica', 'bold'); doc.setTextColor(110);
+    doc.text('VORHER', M, by - 3); doc.setTextColor(...rgb); doc.text(`NACHHER – ${p.name.toUpperCase()}`, M + bw + 8, by - 3);
+    doc.setFont('helvetica', 'normal');
+    await addFit(doc, photo, M, by, bw, bh);
+    await addFit(doc, result, M + bw + 8, by, bw, bh);
+    // Ausstattungsliste in 3 Spalten
+    const items = FIELDS.filter(([k]) => !['beschreibung', 'sonstiges'].includes(k) && p.fields[k]?.trim());
+    doc.setFontSize(10); doc.setFont('helvetica', 'bold'); doc.setTextColor(30, 53, 80);
+    doc.text('Ausstattung', M, 156); doc.setFont('helvetica', 'normal');
+    const cols = 3, cw = (W - 2 * M - (cols - 1) * 6) / cols, perCol = Math.ceil(items.length / cols);
+    items.forEach(([k, label], n) => {
+      const col = Math.floor(n / perCol), r = n % perCol;
+      const x = M + col * (cw + 6), yy = 162 + r * 7.2;
+      if (yy > H - 12) return;
+      doc.setFontSize(7.5); doc.setTextColor(130); doc.text(label.replace(/\s*\(.*\)/, ''), x, yy);
+      doc.setFontSize(8); doc.setTextColor(40);
+      doc.text(doc.splitTextToSize(p.fields[k].trim(), cw)[0], x, yy + 3.3);
+    });
+    c.footer();
+  }
+  return views.length;
+}
+
+/** Produktseite eines Pakets anhängen (wenn Produkte gepflegt sind). */
+async function pdfProductPage(c, p, { prices, sub } = {}) {
+  if (!p.products.some((x) => x.name?.trim())) return;
+  c.newPage();
+  productPage(c.doc, p, { W: c.W, H: c.H, M: c.M, prices: !!prices, sub });
+  await c.logo(c.M, 8, 40, 14);
+  c.footer();
+}
+
+async function buildPdf(project) {
+  const c = pdfStart();
+  const { doc, W, M, S } = c;
+  const pkgs = packagesFor(project.roomType).filter((p) => firstResult(project, p.id));
+  const date = new Date(project.created).toLocaleDateString('de-DE');
 
   // Deckblatt
-  if (S.logo) await addFit(doc, S.logo, M, M, 60, 22, logoFmt);
+  if (S.logo) await c.logo(M, M, 60, 22);
   else if (S.company) { doc.setFontSize(16); doc.setTextColor(30, 53, 80); doc.text(S.company, M, M + 10); }
   doc.setTextColor(30, 53, 80);
   doc.setFontSize(24); doc.setFont('helvetica', 'bold');
@@ -260,61 +317,24 @@ async function buildPdf(project) {
     doc.text(p.name, x, 145); doc.setFont('helvetica', 'normal');
     await addFit(doc, firstResult(project, p.id), x, 147, tw, 48);
   }
-  footer(1);
+  c.footer();
 
   // Pro Paket und Ansicht eine Seite: Vorher / Nachher + Ausstattung
-  let page = 1;
   for (const p of pkgs) {
-    const views = project.photos.map((ph, i) => [ph, project.results[p.id]?.[i], i]).filter(([, r]) => r);
-    for (const [vi, [photo, result, i]] of views.entries()) {
-      doc.addPage(); page++;
-      const rgb = hexRgb(p.color);
-      if (S.logo) await addFit(doc, S.logo, M, 8, 40, 14, logoFmt);
-      doc.setFont('helvetica', 'bold'); doc.setFontSize(20); doc.setTextColor(...rgb);
-      doc.text(`Paket ${p.name}`, W - M, 18, { align: 'right' });
-      doc.setFont('helvetica', 'normal'); doc.setFontSize(10); doc.setTextColor(90);
-      const sub = [views.length > 1 ? `Ansicht ${vi + 1} von ${views.length}` : '', p.fields.beschreibung || ''].filter(Boolean).join('  ·  ');
-      if (sub) doc.text(doc.splitTextToSize(sub, 170), W - M, 24, { align: 'right' });
-      doc.setFillColor(...rgb); doc.rect(M, 29, W - 2 * M, 1, 'F');
-      const bw = (W - 2 * M - 8) / 2, by = 40, bh = 108;
-      doc.setFontSize(10); doc.setFont('helvetica', 'bold'); doc.setTextColor(110);
-      doc.text('VORHER', M, by - 3); doc.setTextColor(...rgb); doc.text(`NACHHER – ${p.name.toUpperCase()}`, M + bw + 8, by - 3);
-      doc.setFont('helvetica', 'normal');
-      await addFit(doc, photo, M, by, bw, bh);
-      await addFit(doc, result, M + bw + 8, by, bw, bh);
-      // Ausstattungsliste in 3 Spalten
-      const items = FIELDS.filter(([k]) => !['beschreibung', 'sonstiges'].includes(k) && p.fields[k]?.trim());
-      doc.setFontSize(10); doc.setFont('helvetica', 'bold'); doc.setTextColor(30, 53, 80);
-      doc.text('Ausstattung', M, 156); doc.setFont('helvetica', 'normal');
-      const cols = 3, cw = (W - 2 * M - (cols - 1) * 6) / cols, perCol = Math.ceil(items.length / cols);
-      items.forEach(([k, label], n) => {
-        const c = Math.floor(n / perCol), r = n % perCol;
-        const x = M + c * (cw + 6), yy = 162 + r * 7.2;
-        if (yy > H - 12) return;
-        doc.setFontSize(7.5); doc.setTextColor(130); doc.text(label.replace(/\s*\(.*\)/, ''), x, yy);
-        doc.setFontSize(8); doc.setTextColor(40);
-        doc.text(doc.splitTextToSize(p.fields[k].trim(), cw)[0], x, yy + 3.3);
-      });
-      footer(page);
-    }
-    if (project.pdfProducts && p.products.some((x) => x.name?.trim())) {
-      doc.addPage(); page++;
-      productPage(doc, p, { W, H, M, logo: S.logo, logoFmt, prices: !!project.pdfPrices });
-      if (S.logo) await addFit(doc, S.logo, M, 8, 40, 14, logoFmt);
-      footer(page);
-    }
+    await pdfViewPages(c, project, p);
+    if (project.pdfProducts) await pdfProductPage(c, p, { prices: project.pdfPrices });
   }
   return doc;
 }
 
 /** PDF-Seite mit der Produktliste eines Pakets (klickbare Shop-Links, optional Preise). */
-function productPage(doc, p, { W, M, prices }) {
+function productPage(doc, p, { W, M, prices, sub }) {
   const rgb = hexRgb(p.color);
   const H = 210;
   doc.setFont('helvetica', 'bold'); doc.setFontSize(20); doc.setTextColor(...rgb);
   doc.text(`Paket ${p.name}`, W - M, 18, { align: 'right' });
   doc.setFont('helvetica', 'normal'); doc.setFontSize(10); doc.setTextColor(90);
-  doc.text('Ausgewählte Produkte', W - M, 24, { align: 'right' });
+  doc.text(sub ? `Ausgewählte Produkte  ·  ${sub}` : 'Ausgewählte Produkte', W - M, 24, { align: 'right' });
   doc.setFillColor(...rgb); doc.rect(M, 29, W - 2 * M, 1, 'F');
   const cols = prices
     ? [['Bereich', 48], ['Produkt', 112], ['Preis', 30], ['Lieferzeit', 34], ['Link', 45]]
@@ -357,7 +377,10 @@ function productPage(doc, p, { W, M, prices }) {
 async function sharePdf(project) {
   toast('PDF wird erstellt …', 8000);
   const doc = await buildPdf(project);
-  const name = `Visualisierung_${(project.customer || 'Projekt').replace(/[^\wäöüÄÖÜß-]+/g, '_')}.pdf`;
+  await shareDoc(doc, `Visualisierung_${(project.customer || 'Projekt').replace(/[^\wäöüÄÖÜß-]+/g, '_')}.pdf`);
+}
+/** PDF teilen (iPhone: Teilen-Menü) oder herunterladen. */
+async function shareDoc(doc, name) {
   const blob = doc.output('blob');
   const file = new File([blob], name, { type: 'application/pdf' });
   $('#toast').hidden = true;
@@ -372,8 +395,10 @@ async function sharePdf(project) {
 // ---------- Ansicht: Projekt ----------
 async function viewProjekt() {
   const p = normalizeProject(state.project);
-  if (!p) return viewProjektListe();
-  setTitle(p.customer || 'Neues Projekt');
+  if (!p) return state.wohnung && window.Wohnung ? Wohnung.view() : viewProjektListe();
+  const isRoom = !!p.wohnungId; // Raum einer Wohnung
+  const titleOf = () => (isRoom ? `${p.room || 'Raum'} · ${p.customer || 'Wohnung'}` : p.customer || 'Neues Projekt');
+  setTitle(titleOf());
   const pkgs = packagesFor(p.roomType);
   const anyProducts = pkgs.some((x) => x.products.some((y) => y.name?.trim()));
   const full = p.photos.length >= MAX_PHOTOS;
@@ -389,11 +414,12 @@ async function viewProjekt() {
       </div>
     </div>
     <div class="card">
-      <h2>2. Angaben</h2>
+      <h2>2. ${isRoom ? 'Raum' : 'Angaben'}</h2>
+      ${isRoom ? `<p class="muted">Teil der Wohnung <b>${esc(p.customer || 'ohne Namen')}</b>${p.address ? ' · ' + esc(p.address) : ''}</p>` : `
       <label>Kunde</label><input type="text" id="customer" value="${esc(p.customer)}" placeholder="z. B. Familie Müller">
-      <label>Objekt / Adresse</label><input type="text" id="address" value="${esc(p.address)}" placeholder="z. B. Hauptstr. 5, 2. OG">
+      <label>Objekt / Adresse</label><input type="text" id="address" value="${esc(p.address)}" placeholder="z. B. Hauptstr. 5, 2. OG">`}
       <label>Raumtyp</label><select id="roomType">${ROOM_TYPES.map((r) => `<option value="${r.id}" ${r.id === p.roomType ? 'selected' : ''}>${esc(r.name)}</option>`).join('')}</select>
-      <label>Bezeichnung im PDF</label><input type="text" id="room" value="${esc(p.room)}" placeholder="z. B. Bad OG, Küche EG">
+      <label>${isRoom ? 'Raumtitel (steht so im PDF)' : 'Bezeichnung im PDF'}</label><input type="text" id="room" value="${esc(p.room)}" placeholder="${isRoom ? 'z. B. Kinderzimmer 1, Bad OG' : 'z. B. Bad OG, Küche EG'}">
       <label>Zusatzhinweis für die KI (optional)</label><textarea id="note" placeholder="z. B. Badewanne raus, dafür große Dusche">${esc(p.note)}</textarea>
     </div>
     ${voiceCard(p)}
@@ -412,8 +438,8 @@ async function viewProjekt() {
       <button class="btn block" id="pdf" ${hasAnyResult(p) ? '' : 'disabled'}>📄 Vorher-Nachher-PDF erstellen</button>
       <button class="btn secondary block" id="social" style="margin-top:10px" ${hasAnyResult(p) ? '' : 'disabled'}>🎬 Instagram-Video & Post</button>
       <div class="row" style="margin-top:10px">
-        <button class="btn secondary" id="back">← Alle Projekte</button>
-        <button class="btn danger" id="del">Projekt löschen</button>
+        <button class="btn secondary" id="back">${isRoom ? '← Zur Wohnung' : '← Alle Projekte'}</button>
+        <button class="btn danger" id="del">${isRoom ? 'Raum löschen' : 'Projekt löschen'}</button>
       </div>
     </div>`;
 
@@ -436,7 +462,7 @@ async function viewProjekt() {
     p.thumb = p.photos[0] ? await resize(p.photos[0], 200) : '';
     await saveProject(p); viewProjekt();
   }));
-  for (const id of ['customer', 'address', 'room', 'note']) $('#' + id).oninput = (e) => { p[id] = e.target.value; persist(); if (id === 'customer') setTitle(p.customer || 'Neues Projekt'); };
+  for (const id of ['customer', 'address', 'room', 'note']) if ($('#' + id)) $('#' + id).oninput = (e) => { p[id] = e.target.value; persist(); if (id === 'customer' || id === 'room') setTitle(titleOf()); };
   $('#roomType').onchange = async (e) => {
     const old = roomType(p.roomType).name;
     p.roomType = e.target.value;
@@ -454,7 +480,12 @@ async function viewProjekt() {
   $('#pdf').onclick = () => sharePdf(p).catch((e) => toast('PDF-Fehler: ' + e.message, 5000));
   $('#social').onclick = () => viewSocial(p).catch((e) => toast('Fehler: ' + e.message, 5000));
   $('#back').onclick = () => { state.project = null; viewProjekt(); };
-  $('#del').onclick = async () => { if (!confirm('Projekt wirklich löschen?')) return; await deleteProject(p.id); state.project = null; viewProjekt(); };
+  $('#del').onclick = async () => {
+    if (!confirm(isRoom ? `Raum „${p.room || 'Raum'}“ mit Fotos und Visualisierungen löschen?` : 'Projekt wirklich löschen?')) return;
+    await deleteProject(p.id);
+    if (isRoom) await window.Wohnung?.raumEntfernt(p);
+    state.project = null; viewProjekt();
+  };
   bindResultButtons(p);
   window.Angebot?.projektKarte(p);
 }
@@ -534,16 +565,19 @@ async function viewProjektListe() {
       <h2>Neues Projekt</h2>
       <p class="muted">Foto machen, Pakete auswählen, KI-Visualisierung und Vorher-Nachher-PDF für den Kunden.</p>
       <button class="btn block" id="new">＋ Neues Projekt starten</button>
+      <button class="btn secondary block" id="newWohnung" style="margin-top:10px">🏠 Neue Wohnung (mehrere Räume)</button>
       ${state.settings.apiKey ? '' : '<p class="muted" style="margin-top:10px">⚠️ Noch kein API-Schlüssel hinterlegt. Bitte zuerst unter <a href="#" id="toSet">Einstellungen</a> eintragen.</p>'}
     </div>
     <div id="backupHint"></div>
     ${idx.length ? `<div class="card"><h2>Letzte Projekte</h2>${idx.map((x) => `
-      <div class="list-item" data-open="${x.id}">${x.thumb ? `<img src="${x.thumb}" alt="">` : '<div style="width:56px;height:56px;background:#eee;border-radius:8px"></div>'}
-      <div><div><b>${esc(x.customer || 'Ohne Namen')}</b></div><div class="muted">${esc(x.room || '')} · ${new Date(x.created).toLocaleDateString('de-DE')}</div></div></div>`).join('')}</div>` : ''}`;
+      <div class="list-item" ${x.kind === 'wohnung' ? 'data-wohnung' : 'data-open'}="${x.id}">${x.thumb ? `<img src="${x.thumb}" alt="">` : '<div style="width:56px;height:56px;background:#eee;border-radius:8px"></div>'}
+      <div><div>${x.kind === 'wohnung' ? '🏠 ' : ''}<b>${esc(x.customer || 'Ohne Namen')}</b></div><div class="muted">${esc(x.room || '')} · ${new Date(x.created).toLocaleDateString('de-DE')}</div></div></div>`).join('')}</div>` : ''}`;
   $('#new').onclick = () => {
     state.project = { id: uid(), created: Date.now(), customer: '', address: '', roomType: ROOM_TYPES[0].id, room: ROOM_TYPES[0].name, note: '', photos: [], thumb: '', results: {}, selected: packagesFor(ROOM_TYPES[0].id).map((x) => x.id), pdfProducts: true, pdfPrices: false };
     viewProjekt();
   };
+  $('#newWohnung').onclick = () => window.Wohnung?.neu();
+  $$('[data-wohnung]').forEach((el) => (el.onclick = () => window.Wohnung?.oeffnen(el.dataset.wohnung)));
   window.Backup?.hinweis($('#backupHint'));
   $('#toSet') && ($('#toSet').onclick = (e) => { e.preventDefault(); switchTab('einstellungen'); });
   $$('[data-open]').forEach((el) => (el.onclick = async () => { state.project = normalizeProject(await kvGet('project:' + el.dataset.open)); viewProjekt(); }));
@@ -751,7 +785,7 @@ function viewEinstellungen() {
 // ---------- Navigation ----------
 function setTitle(t) { $('#title').textContent = t; }
 // Zurück-Knopf oben: spiegelt den Zurück-Knopf der jeweiligen Ansicht (falls vorhanden)
-const BACK_SEL = '#back, #aBack, #vBack, #soBack';
+const BACK_SEL = '#back, #aBack, #vBack, #soBack, #wBack';
 function syncTopBack() {
   const tb = $('#topback'), src = main().querySelector(BACK_SEL);
   if (!src) { tb.hidden = true; tb.onclick = null; return; }
