@@ -1,7 +1,7 @@
 'use strict';
 /* Sanierungs-Visualisierung – Web-App (PWA)
  * Alle Daten (Moodboards, Projekte, Einstellungen) liegen lokal auf dem Gerät (IndexedDB).
- * Komplettsicherung/Wiederherstellung als Datei: backup.js
+ * Komplettsicherung/Wiederherstellung als Datei: backup.js · Cloud-Abgleich (Supabase): sync.js
  * Bildbearbeitung über die Google Gemini API (Bild-Modell), direkt aus dem Browser. */
 
 // ---------- Hilfsfunktionen ----------
@@ -34,11 +34,11 @@ async function kvGet(k) {
 }
 async function kvSet(k, v) {
   const d = await db();
-  return new Promise((res, rej) => { const tx = d.transaction('kv', 'readwrite'); tx.objectStore('kv').put(v, k); tx.oncomplete = () => { window.Backup?.markChange(); res(); }; tx.onerror = () => rej(tx.error); });
+  return new Promise((res, rej) => { const tx = d.transaction('kv', 'readwrite'); tx.objectStore('kv').put(v, k); tx.oncomplete = () => { window.Backup?.markChange(); window.Sync?.changed(k); res(); }; tx.onerror = () => rej(tx.error); });
 }
 async function kvDel(k) {
   const d = await db();
-  return new Promise((res, rej) => { const tx = d.transaction('kv', 'readwrite'); tx.objectStore('kv').delete(k); tx.oncomplete = () => { window.Backup?.markChange(); res(); }; tx.onerror = () => rej(tx.error); });
+  return new Promise((res, rej) => { const tx = d.transaction('kv', 'readwrite'); tx.objectStore('kv').delete(k); tx.oncomplete = () => { window.Backup?.markChange(); window.Sync?.deleted(k); res(); }; tx.onerror = () => rej(tx.error); });
 }
 
 // ---------- Bilder ----------
@@ -117,7 +117,7 @@ async function saveProject(proj) {
   const { status, ...p } = proj;
   await kvSet('project:' + p.id, p);
   const idx = (await projectIndex()).filter((x) => x.id !== p.id);
-  idx.unshift({ id: p.id, customer: p.customer, room: p.room, created: p.created, thumb: p.thumb || '' });
+  idx.unshift({ id: p.id, customer: p.customer, room: p.room, created: p.created, updated: Date.now(), thumb: p.thumb || '' });
   await kvSet('projectIndex', idx.slice(0, 100));
 }
 async function deleteProject(id) {
@@ -716,6 +716,7 @@ function viewEinstellungen() {
       <button class="btn secondary block" id="test" style="margin-top:12px">Verbindung testen & Modelle laden</button>
     </div>
     <div id="angebot-settings"></div>
+    <div id="sync-settings"></div>
     <div id="backup-settings"></div>`;
   const save = debounce(saveSettings, 300);
   for (const id of ['company', 'contact', 'apiKey']) $('#' + id).oninput = (e) => { S[id] = e.target.value.trim(); save(); };
@@ -727,6 +728,7 @@ function viewEinstellungen() {
   };
   $('#nologo') && ($('#nologo').onclick = async () => { S.logo = ''; await saveSettings(); viewEinstellungen(); });
   window.Angebot?.einstellungenKarte();
+  window.Sync?.einstellungenKarte($('#sync-settings'));
   window.Backup?.einstellungenKarte($('#backup-settings'));
   $('#test').onclick = async () => {
     if (!S.apiKey) { toast('Bitte zuerst den API-Schlüssel eintragen.'); return; }

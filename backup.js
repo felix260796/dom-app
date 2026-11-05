@@ -111,11 +111,11 @@ window.Backup = (() => {
     if (!el) return;
     const idx = (await kvGet('projectIndex')) || [];
     if (!idx.length) {
-      el.innerHTML = `<div class="card backup-hint"><b>Neues Gerät oder App neu installiert?</b><p class="muted">Projekte aus einer Sicherungsdatei zurückholen.</p><button class="btn secondary block" id="bhRestore">⬆️ Sicherung wiederherstellen</button></div>`;
+      el.innerHTML = `<div class="card backup-hint"><b>Neues Gerät oder App neu installiert?</b><p class="muted">${window.Sync?.active() ? 'Der Cloud-Abgleich holt deine Projekte gleich automatisch. Alternativ aus einer Sicherungsdatei zurückholen.' : 'Unter Einstellungen den Cloud-Abgleich verbinden oder Projekte aus einer Sicherungsdatei zurückholen.'}</p><button class="btn secondary block" id="bhRestore">⬆️ Sicherung wiederherstellen</button></div>`;
       $('#bhRestore', el).onclick = restore;
       return;
     }
-    if (!needsBackup()) { el.innerHTML = ''; return; }
+    if (!needsBackup() || window.Sync?.active()) { el.innerHTML = ''; return; }
     el.innerHTML = `<div class="card backup-hint warn"><b>💾 Nicht gesicherte Änderungen</b><p class="muted">Letzte Sicherung: ${esc(ago(lastBackup()))}. Sichere jetzt, damit keine Projekte verloren gehen (z. B. in iCloud Drive).</p><button class="btn block" id="bhCreate">Jetzt sichern</button></div>`;
     $('#bhCreate', el).onclick = async () => { if (await create()) hinweis(el); };
   }
