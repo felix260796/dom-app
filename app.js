@@ -1,6 +1,7 @@
 'use strict';
 /* Sanierungs-Visualisierung – Web-App (PWA)
  * Alle Daten (Moodboards, Projekte, Einstellungen) liegen lokal auf dem Gerät (IndexedDB).
+ * Komplettsicherung/Wiederherstellung als Datei: backup.js
  * Bildbearbeitung über die Google Gemini API (Bild-Modell), direkt aus dem Browser. */
 
 // ---------- Hilfsfunktionen ----------
@@ -33,11 +34,11 @@ async function kvGet(k) {
 }
 async function kvSet(k, v) {
   const d = await db();
-  return new Promise((res, rej) => { const tx = d.transaction('kv', 'readwrite'); tx.objectStore('kv').put(v, k); tx.oncomplete = () => res(); tx.onerror = () => rej(tx.error); });
+  return new Promise((res, rej) => { const tx = d.transaction('kv', 'readwrite'); tx.objectStore('kv').put(v, k); tx.oncomplete = () => { window.Backup?.markChange(); res(); }; tx.onerror = () => rej(tx.error); });
 }
 async function kvDel(k) {
   const d = await db();
-  return new Promise((res, rej) => { const tx = d.transaction('kv', 'readwrite'); tx.objectStore('kv').delete(k); tx.oncomplete = () => res(); tx.onerror = () => rej(tx.error); });
+  return new Promise((res, rej) => { const tx = d.transaction('kv', 'readwrite'); tx.objectStore('kv').delete(k); tx.oncomplete = () => { window.Backup?.markChange(); res(); }; tx.onerror = () => rej(tx.error); });
 }
 
 // ---------- Bilder ----------
@@ -535,6 +536,7 @@ async function viewProjektListe() {
       <button class="btn block" id="new">＋ Neues Projekt starten</button>
       ${state.settings.apiKey ? '' : '<p class="muted" style="margin-top:10px">⚠️ Noch kein API-Schlüssel hinterlegt. Bitte zuerst unter <a href="#" id="toSet">Einstellungen</a> eintragen.</p>'}
     </div>
+    <div id="backupHint"></div>
     ${idx.length ? `<div class="card"><h2>Letzte Projekte</h2>${idx.map((x) => `
       <div class="list-item" data-open="${x.id}">${x.thumb ? `<img src="${x.thumb}" alt="">` : '<div style="width:56px;height:56px;background:#eee;border-radius:8px"></div>'}
       <div><div><b>${esc(x.customer || 'Ohne Namen')}</b></div><div class="muted">${esc(x.room || '')} · ${new Date(x.created).toLocaleDateString('de-DE')}</div></div></div>`).join('')}</div>` : ''}`;
@@ -542,6 +544,7 @@ async function viewProjektListe() {
     state.project = { id: uid(), created: Date.now(), customer: '', address: '', roomType: ROOM_TYPES[0].id, room: ROOM_TYPES[0].name, note: '', photos: [], thumb: '', results: {}, selected: packagesFor(ROOM_TYPES[0].id).map((x) => x.id), pdfProducts: true, pdfPrices: false };
     viewProjekt();
   };
+  window.Backup?.hinweis($('#backupHint'));
   $('#toSet') && ($('#toSet').onclick = (e) => { e.preventDefault(); switchTab('einstellungen'); });
   $$('[data-open]').forEach((el) => (el.onclick = async () => { state.project = normalizeProject(await kvGet('project:' + el.dataset.open)); viewProjekt(); }));
 }
@@ -564,7 +567,7 @@ function viewPakete() {
     </div>
     <div class="card">
       <h2>Sicherung</h2>
-      <p class="muted">Alle Moodboards (alle Raumtypen) als Datei sichern oder auf ein anderes Gerät übertragen (z. B. vom PC aufs iPhone).</p>
+      <p class="muted">Nur die Moodboards (alle Raumtypen) als Datei sichern oder auf ein anderes Gerät übertragen (z. B. vom PC aufs iPhone).</p>
       <div class="row"><button class="btn secondary" id="exp">⬇️ Exportieren</button><button class="btn secondary" id="imp">⬆️ Importieren</button></div>
       <button class="btn danger block" id="reset" style="margin-top:10px">${esc(roomType(rt).name)}: auf Beispiel-Pakete zurücksetzen</button>
     </div>`;
@@ -713,7 +716,7 @@ function viewEinstellungen() {
       <button class="btn secondary block" id="test" style="margin-top:12px">Verbindung testen & Modelle laden</button>
     </div>
     <div id="angebot-settings"></div>
-    <div class="card"><p class="muted">Alle Daten liegen nur auf diesem Gerät. Sichere deine Moodboards regelmäßig über „Moodboards → Exportieren“.</p></div>`;
+    <div id="backup-settings"></div>`;
   const save = debounce(saveSettings, 300);
   for (const id of ['company', 'contact', 'apiKey']) $('#' + id).oninput = (e) => { S[id] = e.target.value.trim(); save(); };
   $('#model').onchange = (e) => { S.model = e.target.value; save(); };
@@ -724,6 +727,7 @@ function viewEinstellungen() {
   };
   $('#nologo') && ($('#nologo').onclick = async () => { S.logo = ''; await saveSettings(); viewEinstellungen(); });
   window.Angebot?.einstellungenKarte();
+  window.Backup?.einstellungenKarte($('#backup-settings'));
   $('#test').onclick = async () => {
     if (!S.apiKey) { toast('Bitte zuerst den API-Schlüssel eintragen.'); return; }
     try {
