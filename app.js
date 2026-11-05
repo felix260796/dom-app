@@ -171,7 +171,7 @@ async function deleteProject(id) {
 // ---------- KI: Prompt & Gemini-Aufruf ----------
 const MAX_PHOTOS = 4;
 /** Baut die Anweisung. ctx: { others: Anzahl weiterer Raumfotos, rendered: true wenn eine fertige Ansicht als Vorlage dabei ist } */
-function buildPrompt(pkg, room, note, ctx = { others: 0, rendered: false }) {
+function buildPrompt(pkg, room, note, ctx = { others: 0, rendered: false, wishes: '' }) {
   const spec = FIELDS.filter(([k]) => k !== 'beschreibung' && pkg.fields[k]?.trim())
     .map(([k, label]) => `- ${label.replace(/\s*\(.*\)/, '')}: ${pkg.fields[k].trim()}`).join('\n');
   let n = 2;
@@ -193,7 +193,7 @@ UNBEDINGT BEIBEHALTEN:
 
 ERNEUERN nach dieser Ausstattung:
 ${spec || '- moderne, hochwertige Sanierung'}
-${list ? `\nWEITERE BILDER:\n${list}` : ''}${note?.trim() ? `\nZUSÄTZLICHER HINWEIS ZU DIESEM PROJEKT: ${note.trim()}\n` : ''}
+${list ? `\nWEITERE BILDER:\n${list}` : ''}${note?.trim() ? `\nZUSÄTZLICHER HINWEIS ZU DIESEM PROJEKT: ${note.trim()}\n` : ''}${ctx.wishes?.trim() ? `\nKUNDENWÜNSCHE AUS DEM GESPRÄCH VOR ORT (haben Vorrang vor der Ausstattung oben, wenn sie sich widersprechen; Perspektive und Raumgeometrie bleiben trotzdem gleich):\n${ctx.wishes.trim()}\n` : ''}
 Gilt eine Angabe für diesen Raumtyp nicht (z. B. WC in einem Wohnzimmer), lass sie weg.
 Ergebnis: fotorealistisch wie professionelle Architektur-/Interior-Fotografie, natürliches Licht, aufgeräumt, keine Personen, kein Text, keine Wasserzeichen, kein Baustellenzustand.`;
 }
@@ -212,7 +212,7 @@ async function renderWithGemini(pkg, project, i, rendered) {
   const target = project.photos[i];
   const others = project.photos.filter((_, k) => k !== i);
   const img = (d) => ({ inline_data: { mime_type: mimeOf(d), data: b64(d) } });
-  const parts = [{ text: buildPrompt(pkg, project.room, project.note, { others: others.length, rendered: !!rendered }) }, img(target)];
+  const parts = [{ text: buildPrompt(pkg, project.room, project.note, { others: others.length, rendered: !!rendered, wishes: project.wishes }) }, img(target)];
   for (const o of others) parts.push(img(o));
   if (rendered) parts.push(img(rendered));
   for (const im of pkg.images.slice(0, MAX_REF_IMAGES)) parts.push(img(im.data));
@@ -374,6 +374,7 @@ async function viewProjekt() {
       <label>Raum</label><select id="room">${ROOMS.map((r) => `<option ${r === p.room ? 'selected' : ''}>${r}</option>`).join('')}</select>
       <label>Zusatzhinweis für die KI (optional)</label><textarea id="note" placeholder="z. B. Badewanne raus, dafür große Dusche">${esc(p.note)}</textarea>
     </div>
+    ${voiceCard(p)}
     <div class="card">
       <h2>3. Pakete visualisieren</h2>
       ${state.packages.map((x) => `<label class="check"><input type="checkbox" data-sel="${x.id}" ${p.selected.includes(x.id) ? 'checked' : ''}><span class="swatch" style="background:${x.color};height:20px;width:8px"></span>${esc(x.name)}</label>`).join('')}
@@ -410,6 +411,7 @@ async function viewProjekt() {
   }));
   for (const id of ['customer', 'address', 'room', 'note']) $('#' + id).oninput = (e) => { p[id] = e.target.value; persist(); if (id === 'customer') setTitle(p.customer || 'Neues Projekt'); };
   $$('[data-sel]').forEach((c) => (c.onchange = () => { p.selected = $$('[data-sel]').filter((x) => x.checked).map((x) => x.dataset.sel); persist(); }));
+  bindVoice(p, persist);
   $('#go').onclick = () => runAll(p);
   $('#pdf').onclick = () => sharePdf(p).catch((e) => toast('PDF-Fehler: ' + e.message, 5000));
   $('#back').onclick = () => { state.project = null; viewProjekt(); };
