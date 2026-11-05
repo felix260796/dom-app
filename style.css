@@ -107,3 +107,14 @@ span.x { background: none; }
 [hidden] { display: none !important; }
 .backup-hint.warn { border: 1px solid #f5c26b; background: #fff8eb; }
 .backup-hint p { margin: 4px 0 10px; }
+
+/* Vorher-Nachher-Schieberegler */
+.ba { position: relative; width: 100%; overflow: hidden; user-select: none; -webkit-user-select: none; touch-action: pan-y; cursor: ew-resize; background: #ddd; }
+.ba img { display: block; width: 100%; pointer-events: none; -webkit-touch-callout: none; }
+.ba .ba-before { position: absolute; inset: 0; height: 100%; object-fit: cover; clip-path: inset(0 calc(100% - var(--pos)) 0 0); }
+.ba-line { position: absolute; top: 0; bottom: 0; left: var(--pos); width: 2px; margin-left: -1px; background: #fff; box-shadow: 0 0 4px rgba(0,0,0,.4); pointer-events: none; }
+.ba-knob { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 40px; height: 40px; border-radius: 50%; background: #fff; color: #1e3550; font-weight: 700; font-size: 15px; display: flex; align-items: center; justify-content: center; box-shadow: 0 1px 6px rgba(0,0,0,.35); }
+.ba-tag { position: absolute; top: 10px; padding: 3px 8px; border-radius: 999px; font-size: 12px; font-weight: 600; background: rgba(30,53,80,.8); color: #fff; pointer-events: none; }
+.ba-tag.l { left: 10px; }
+.ba-tag.r { right: 10px; background: rgba(184,134,47,.9); }
+.seg.mood { position: static; margin: 10px; }
