@@ -169,23 +169,31 @@ async function deleteProject(id) {
 }
 
 // ---------- KI: Prompt & Gemini-Aufruf ----------
-function buildPrompt(pkg, room, note) {
+const MAX_PHOTOS = 4;
+/** Baut die Anweisung. ctx: { others: Anzahl weiterer Raumfotos, rendered: true wenn eine fertige Ansicht als Vorlage dabei ist } */
+function buildPrompt(pkg, room, note, ctx = { others: 0, rendered: false }) {
   const spec = FIELDS.filter(([k]) => k !== 'beschreibung' && pkg.fields[k]?.trim())
     .map(([k, label]) => `- ${label.replace(/\s*\(.*\)/, '')}: ${pkg.fields[k].trim()}`).join('\n');
+  let n = 2;
+  const otherTxt = ctx.others ? `- Bild ${n}${ctx.others > 1 ? ` bis ${n + ctx.others - 1}` : ''}: weitere Fotos DESSELBEN Raums aus anderen Blickwinkeln (nur zum Verständnis von Grundriss, Fenstern, Anschlüssen und Größe, nicht ausgeben)\n` : '';
+  n += ctx.others;
+  const renderedTxt = ctx.rendered ? `- Bild ${n}: bereits fertig sanierte Ansicht DESSELBEN Raums in diesem Paket. Verwende EXAKT dieselben Fliesen, Farben, Möbel, Armaturen und Leuchten, damit alle Ansichten zusammenpassen\n` : '';
+  if (ctx.rendered) n += 1;
   const refs = pkg.images.slice(0, MAX_REF_IMAGES)
-    .map((im, i) => `- Bild ${i + 2}: ${im.label?.trim() || 'Referenz für Material/Stil'}`).join('\n');
+    .map((im, i) => `- Bild ${n + i}: ${im.label?.trim() || 'Referenz für Material/Stil'} (Moodboard-Vorlage, nicht als Raum übernehmen)`).join('\n');
+  const list = otherTxt + renderedTxt + (refs ? refs + '\n' : '');
   return `Du bist ein Werkzeug für fotorealistische Sanierungs-Visualisierungen.
 
-Bild 1 ist ein Foto eines bestehenden Raums (${room}). Bearbeite GENAU DIESES FOTO so, dass es denselben Raum nach einer kompletten Sanierung in der Ausstattungslinie "${pkg.name}" zeigt.
+Bild 1 ist ein Foto eines bestehenden Raums (${room}). Bearbeite GENAU DIESES FOTO (Bild 1) so, dass es denselben Raum nach einer kompletten Sanierung in der Ausstattungslinie "${pkg.name}" zeigt. Gib genau ein Bild aus: die sanierte Version von Bild 1.
 
 UNBEDINGT BEIBEHALTEN:
-- exakt dieselbe Kameraposition, Perspektive, Brennweite und Bildausschnitt
+- exakt dieselbe Kameraposition, Perspektive, Brennweite und Bildausschnitt wie Bild 1
 - Raumgeometrie, Grundriss, Deckenhöhe, Lage von Fenstern, Türen und Dachschrägen
 - Lage der Anschlüsse: Dusche/Wanne, WC und Waschtisch bleiben ungefähr an ihrer Position
 
 ERNEUERN nach dieser Ausstattung:
 ${spec || '- moderne, hochwertige Sanierung'}
-${refs ? `\nREFERENZBILDER (als Vorlage für Materialien, Farben und Produkte verwenden, nicht als Raum übernehmen):\n${refs}\n` : ''}${note?.trim() ? `\nZUSÄTZLICHER HINWEIS ZU DIESEM PROJEKT: ${note.trim()}\n` : ''}
+${list ? `\nWEITERE BILDER:\n${list}` : ''}${note?.trim() ? `\nZUSÄTZLICHER HINWEIS ZU DIESEM PROJEKT: ${note.trim()}\n` : ''}
 Gilt eine Angabe für diesen Raumtyp nicht (z. B. WC in einem Wohnzimmer), lass sie weg.
 Ergebnis: fotorealistisch wie professionelle Architektur-/Interior-Fotografie, natürliches Licht, aufgeräumt, keine Personen, kein Text, keine Wasserzeichen, kein Baustellenzustand.`;
 }
@@ -197,14 +205,20 @@ async function nearestAspect(dataUrl) {
   return Object.entries(ASPECTS).sort((a, b) => Math.abs(Math.log(a[1] / r)) - Math.abs(Math.log(b[1] / r)))[0][0];
 }
 
-async function renderWithGemini(pkg, project) {
+/** Rendert Ansicht i eines Projekts im Paket pkg. rendered = fertige Ansicht als Material-Vorlage (optional). */
+async function renderWithGemini(pkg, project, i, rendered) {
   const { apiKey, model } = state.settings;
   if (!apiKey) throw new Error('Kein API-Schlüssel hinterlegt (Einstellungen).');
-  const parts = [{ text: buildPrompt(pkg, project.room, project.note) }, { inline_data: { mime_type: 'image/jpeg', data: b64(project.photo) } }];
-  for (const im of pkg.images.slice(0, MAX_REF_IMAGES)) parts.push({ inline_data: { mime_type: mimeOf(im.data), data: b64(im.data) } });
+  const target = project.photos[i];
+  const others = project.photos.filter((_, k) => k !== i);
+  const img = (d) => ({ inline_data: { mime_type: mimeOf(d), data: b64(d) } });
+  const parts = [{ text: buildPrompt(pkg, project.room, project.note, { others: others.length, rendered: !!rendered }) }, img(target)];
+  for (const o of others) parts.push(img(o));
+  if (rendered) parts.push(img(rendered));
+  for (const im of pkg.images.slice(0, MAX_REF_IMAGES)) parts.push(img(im.data));
   const body = {
     contents: [{ role: 'user', parts }],
-    generationConfig: { responseModalities: ['TEXT', 'IMAGE'], imageConfig: { aspectRatio: await nearestAspect(project.photo) } },
+    generationConfig: { responseModalities: ['TEXT', 'IMAGE'], imageConfig: { aspectRatio: await nearestAspect(target) } },
   };
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model || 'gemini-2.5-flash-image')}:generateContent`;
   const r = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey }, body: JSON.stringify(body) });
@@ -219,6 +233,18 @@ async function renderWithGemini(pkg, project) {
   const d = imgPart.inlineData || imgPart.inline_data;
   return resize(`data:${d.mimeType || d.mime_type || 'image/png'};base64,${d.data}`, 1600);
 }
+
+/** Ältere Projekte (ein Foto) auf das neue Format (mehrere Fotos) umstellen. */
+function normalizeProject(p) {
+  if (!p) return p;
+  if (!Array.isArray(p.photos)) p.photos = p.photo ? [p.photo] : [];
+  delete p.photo;
+  for (const k of Object.keys(p.results || {})) if (!Array.isArray(p.results[k])) p.results[k] = [p.results[k]];
+  p.results ??= {};
+  return p;
+}
+const hasAnyResult = (p) => Object.values(p.results).some((arr) => arr.some(Boolean));
+const firstResult = (p, id) => (p.results[id] || []).find(Boolean);
 
 // ---------- PDF ----------
 const hexRgb = (h) => [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16));
@@ -235,7 +261,7 @@ async function buildPdf(project) {
   const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
   const W = 297, H = 210, M = 14;
   const S = state.settings;
-  const pkgs = state.packages.filter((p) => project.results[p.id]);
+  const pkgs = state.packages.filter((p) => firstResult(project, p.id));
   const date = new Date(project.created).toLocaleDateString('de-DE');
   const logoFmt = S.logo ? (mimeOf(S.logo) === 'image/png' ? 'PNG' : 'JPEG') : null;
 
@@ -258,7 +284,7 @@ async function buildPdf(project) {
     doc.setTextColor(130); doc.text(k, M, y); doc.setTextColor(40); doc.text(doc.splitTextToSize(String(v), 80), M + 22, y); y += 8;
   }
   doc.setFontSize(9); doc.setTextColor(130); doc.text('Ist-Zustand', 120, 26);
-  await addFit(doc, project.photo, 120, 28, W - M - 120, 100);
+  await addFit(doc, project.photos[0], 120, 28, W - M - 120, 100);
   // Übersicht der Varianten
   const tw = (W - 2 * M - (pkgs.length - 1) * 6) / Math.max(pkgs.length, 1);
   for (const [i, p] of pkgs.entries()) {
@@ -266,41 +292,45 @@ async function buildPdf(project) {
     doc.setFillColor(...hexRgb(p.color)); doc.rect(x, 138, tw, 1.5, 'F');
     doc.setFontSize(10); doc.setTextColor(...hexRgb(p.color)); doc.setFont('helvetica', 'bold');
     doc.text(p.name, x, 145); doc.setFont('helvetica', 'normal');
-    await addFit(doc, project.results[p.id], x, 147, tw, 48);
+    await addFit(doc, firstResult(project, p.id), x, 147, tw, 48);
   }
   footer(1);
 
-  // Seite pro Paket: Vorher / Nachher + Ausstattung
+  // Pro Paket und Ansicht eine Seite: Vorher / Nachher + Ausstattung
   let page = 1;
   for (const p of pkgs) {
-    doc.addPage(); page++;
-    const rgb = hexRgb(p.color);
-    if (S.logo) await addFit(doc, S.logo, M, 8, 40, 14, logoFmt);
-    doc.setFont('helvetica', 'bold'); doc.setFontSize(20); doc.setTextColor(...rgb);
-    doc.text(`Paket ${p.name}`, W - M, 18, { align: 'right' });
-    doc.setFont('helvetica', 'normal'); doc.setFontSize(10); doc.setTextColor(90);
-    if (p.fields.beschreibung) doc.text(doc.splitTextToSize(p.fields.beschreibung, 150), W - M, 24, { align: 'right' });
-    doc.setFillColor(...rgb); doc.rect(M, 29, W - 2 * M, 1, 'F');
-    const bw = (W - 2 * M - 8) / 2, by = 40, bh = 108;
-    doc.setFontSize(10); doc.setFont('helvetica', 'bold'); doc.setTextColor(110);
-    doc.text('VORHER', M, by - 3); doc.setTextColor(...rgb); doc.text(`NACHHER – ${p.name.toUpperCase()}`, M + bw + 8, by - 3);
-    doc.setFont('helvetica', 'normal');
-    await addFit(doc, project.photo, M, by, bw, bh);
-    await addFit(doc, project.results[p.id], M + bw + 8, by, bw, bh);
-    // Ausstattungsliste in 3 Spalten
-    const items = FIELDS.filter(([k]) => !['beschreibung', 'sonstiges'].includes(k) && p.fields[k]?.trim());
-    doc.setFontSize(10); doc.setFont('helvetica', 'bold'); doc.setTextColor(30, 53, 80);
-    doc.text('Ausstattung', M, 156); doc.setFont('helvetica', 'normal');
-    const cols = 3, cw = (W - 2 * M - (cols - 1) * 6) / cols, perCol = Math.ceil(items.length / cols);
-    items.forEach(([k, label], i) => {
-      const c = Math.floor(i / perCol), r = i % perCol;
-      const x = M + c * (cw + 6), yy = 162 + r * 7.2;
-      if (yy > H - 12) return;
-      doc.setFontSize(7.5); doc.setTextColor(130); doc.text(label.replace(/\s*\(.*\)/, ''), x, yy);
-      doc.setFontSize(8); doc.setTextColor(40);
-      doc.text(doc.splitTextToSize(p.fields[k].trim(), cw)[0], x, yy + 3.3);
-    });
-    footer(page);
+    const views = project.photos.map((ph, i) => [ph, project.results[p.id]?.[i], i]).filter(([, r]) => r);
+    for (const [vi, [photo, result, i]] of views.entries()) {
+      doc.addPage(); page++;
+      const rgb = hexRgb(p.color);
+      if (S.logo) await addFit(doc, S.logo, M, 8, 40, 14, logoFmt);
+      doc.setFont('helvetica', 'bold'); doc.setFontSize(20); doc.setTextColor(...rgb);
+      doc.text(`Paket ${p.name}`, W - M, 18, { align: 'right' });
+      doc.setFont('helvetica', 'normal'); doc.setFontSize(10); doc.setTextColor(90);
+      const sub = [views.length > 1 ? `Ansicht ${vi + 1} von ${views.length}` : '', p.fields.beschreibung || ''].filter(Boolean).join('  ·  ');
+      if (sub) doc.text(doc.splitTextToSize(sub, 170), W - M, 24, { align: 'right' });
+      doc.setFillColor(...rgb); doc.rect(M, 29, W - 2 * M, 1, 'F');
+      const bw = (W - 2 * M - 8) / 2, by = 40, bh = 108;
+      doc.setFontSize(10); doc.setFont('helvetica', 'bold'); doc.setTextColor(110);
+      doc.text('VORHER', M, by - 3); doc.setTextColor(...rgb); doc.text(`NACHHER – ${p.name.toUpperCase()}`, M + bw + 8, by - 3);
+      doc.setFont('helvetica', 'normal');
+      await addFit(doc, photo, M, by, bw, bh);
+      await addFit(doc, result, M + bw + 8, by, bw, bh);
+      // Ausstattungsliste in 3 Spalten
+      const items = FIELDS.filter(([k]) => !['beschreibung', 'sonstiges'].includes(k) && p.fields[k]?.trim());
+      doc.setFontSize(10); doc.setFont('helvetica', 'bold'); doc.setTextColor(30, 53, 80);
+      doc.text('Ausstattung', M, 156); doc.setFont('helvetica', 'normal');
+      const cols = 3, cw = (W - 2 * M - (cols - 1) * 6) / cols, perCol = Math.ceil(items.length / cols);
+      items.forEach(([k, label], n) => {
+        const c = Math.floor(n / perCol), r = n % perCol;
+        const x = M + c * (cw + 6), yy = 162 + r * 7.2;
+        if (yy > H - 12) return;
+        doc.setFontSize(7.5); doc.setTextColor(130); doc.text(label.replace(/\s*\(.*\)/, ''), x, yy);
+        doc.setFontSize(8); doc.setTextColor(40);
+        doc.text(doc.splitTextToSize(p.fields[k].trim(), cw)[0], x, yy + 3.3);
+      });
+      footer(page);
+    }
   }
   return doc;
 }
@@ -322,17 +352,19 @@ async function sharePdf(project) {
 
 // ---------- Ansicht: Projekt ----------
 async function viewProjekt() {
-  const p = state.project;
+  const p = normalizeProject(state.project);
   if (!p) return viewProjektListe();
   setTitle(p.customer || 'Neues Projekt');
-  const ready = state.packages.filter((x) => p.results[x.id]).length;
+  const full = p.photos.length >= MAX_PHOTOS;
   main().innerHTML = `
     <div class="card">
-      <h2>1. Foto</h2>
-      ${p.photo ? `<img class="photo" src="${p.photo}" alt="Foto">` : '<p class="muted">Mach ein Foto vom Raum (am besten quer, aus einer Ecke, möglichst viel vom Raum sichtbar).</p>'}
+      <h2>1. Fotos</h2>
+      <p class="muted">1 bis ${MAX_PHOTOS} Fotos aus verschiedenen Blickwinkeln, am besten quer und aus den Ecken. Die KI nutzt alle Fotos, um den Raum besser zu verstehen, und erstellt <b>pro Foto eine Nachher-Ansicht</b> mit denselben Materialien.</p>
+      ${p.photos.length ? `<div class="thumbs">${p.photos.map((ph, i) => `
+        <div class="thumb"><img src="${ph}" alt="Ansicht ${i + 1}"><div style="padding:6px 8px;font-size:13px">Ansicht ${i + 1}</div><button class="del" data-delphoto="${i}">Entfernen</button></div>`).join('')}</div>` : ''}
       <div class="row" style="margin-top:10px">
-        <button class="btn" id="cam">📷 Kamera</button>
-        <button class="btn secondary" id="gal">🖼️ Fotos</button>
+        <button class="btn" id="cam" ${full ? 'disabled' : ''}>📷 Kamera</button>
+        <button class="btn secondary" id="gal" ${full ? 'disabled' : ''}>🖼️ Fotos</button>
       </div>
     </div>
     <div class="card">
@@ -345,12 +377,12 @@ async function viewProjekt() {
     <div class="card">
       <h2>3. Pakete visualisieren</h2>
       ${state.packages.map((x) => `<label class="check"><input type="checkbox" data-sel="${x.id}" ${p.selected.includes(x.id) ? 'checked' : ''}><span class="swatch" style="background:${x.color};height:20px;width:8px"></span>${esc(x.name)}</label>`).join('')}
-      <button class="btn block" id="go" ${p.photo ? '' : 'disabled'}>✨ Visualisierung erstellen</button>
-      <p class="muted">Dauert ca. 10–30 Sekunden pro Paket.</p>
+      <button class="btn block" id="go" ${p.photos.length ? '' : 'disabled'}>✨ Visualisierung erstellen</button>
+      <p class="muted">${p.photos.length > 1 ? `${p.photos.length} Ansichten × Pakete. ` : ''}Dauert ca. 10–30 Sekunden pro Bild.</p>
     </div>
-    <div id="results">${state.packages.filter((x) => p.selected.includes(x.id) || p.results[x.id]).map(resultCard).join('')}</div>
+    <div id="results">${state.packages.filter((x) => p.selected.includes(x.id) || firstResult(p, x.id)).map(resultCard).join('')}</div>
     <div class="card">
-      <button class="btn block" id="pdf" ${ready ? '' : 'disabled'}>📄 Vorher-Nachher-PDF erstellen</button>
+      <button class="btn block" id="pdf" ${hasAnyResult(p) ? '' : 'disabled'}>📄 Vorher-Nachher-PDF erstellen</button>
       <div class="row" style="margin-top:10px">
         <button class="btn secondary" id="back">← Alle Projekte</button>
         <button class="btn danger" id="del">Projekt löschen</button>
@@ -358,16 +390,24 @@ async function viewProjekt() {
     </div>`;
 
   const persist = debounce(() => saveProject(p), 400);
-  const setPhoto = async (camera) => {
-    const [f] = await pickFiles({ camera });
-    if (!f) return;
-    p.photo = await resize(await fileToDataUrl(f), 1600);
-    p.thumb = await resize(p.photo, 200);
-    p.results = {};
+  const addPhotos = async (camera) => {
+    const files = await pickFiles({ camera, multiple: !camera });
+    if (!files.length) return;
+    const free = MAX_PHOTOS - p.photos.length;
+    for (const f of files.slice(0, free)) p.photos.push(await resize(await fileToDataUrl(f), 1600));
+    if (files.length > free) toast(`Maximal ${MAX_PHOTOS} Fotos pro Projekt.`);
+    p.thumb = await resize(p.photos[0], 200);
     await saveProject(p); viewProjekt();
   };
-  $('#cam').onclick = () => setPhoto(true);
-  $('#gal').onclick = () => setPhoto(false);
+  $('#cam').onclick = () => addPhotos(true);
+  $('#gal').onclick = () => addPhotos(false);
+  $$('[data-delphoto]').forEach((b) => (b.onclick = async () => {
+    const i = +b.dataset.delphoto;
+    p.photos.splice(i, 1);
+    for (const k of Object.keys(p.results)) p.results[k].splice(i, 1);
+    p.thumb = p.photos[0] ? await resize(p.photos[0], 200) : '';
+    await saveProject(p); viewProjekt();
+  }));
   for (const id of ['customer', 'address', 'room', 'note']) $('#' + id).oninput = (e) => { p[id] = e.target.value; persist(); if (id === 'customer') setTitle(p.customer || 'Neues Projekt'); };
   $$('[data-sel]').forEach((c) => (c.onchange = () => { p.selected = $$('[data-sel]').filter((x) => x.checked).map((x) => x.dataset.sel); persist(); }));
   $('#go').onclick = () => runAll(p);
@@ -378,16 +418,23 @@ async function viewProjekt() {
 }
 
 function resultCard(pkg) {
-  const p = state.project, st = p.status?.[pkg.id];
-  let body;
-  if (st?.loading) body = `<div class="status"><div class="spinner"></div>KI arbeitet an „${esc(pkg.name)}“ …</div>`;
-  else if (st?.error) body = `<div class="status err">${esc(st.error)}</div>`;
-  else if (p.results[pkg.id]) body = `<img src="${p.results[pkg.id]}" alt="Nachher ${esc(pkg.name)}">`;
-  else body = '<div class="status">Noch nicht erstellt</div>';
+  const p = state.project;
+  const views = p.photos.map((_, i) => {
+    const st = p.status?.[`${pkg.id}:${i}`], res = p.results[pkg.id]?.[i];
+    let body;
+    if (st?.loading) body = `<div class="status"><div class="spinner"></div>KI arbeitet an „${esc(pkg.name)}“${p.photos.length > 1 ? `, Ansicht ${i + 1}` : ''} …</div>`;
+    else if (st?.error) body = `<div class="status err">${esc(st.error)}</div>`;
+    else if (res) body = `<img src="${res}" alt="Nachher ${esc(pkg.name)}">`;
+    else body = '<div class="status">Noch nicht erstellt</div>';
+    const label = p.photos.length > 1 ? `<span class="muted">Ansicht ${i + 1}</span>` : '<span></span>';
+    return `<div style="border-top:1px solid var(--line)"><div class="head" style="font-weight:400;padding:6px 12px">${label}
+      ${res || st?.error ? `<button class="btn small secondary" data-redo="${pkg.id}" data-view="${i}">↻ Neu</button>` : ''}</div>
+      <div class="body">${body}</div></div>`;
+  }).join('');
   return `<div class="result" id="res-${pkg.id}">
     <div class="head"><span><span class="swatch" style="display:inline-block;background:${pkg.color};height:14px;width:6px;vertical-align:-1px"></span> ${esc(pkg.name)}</span>
-    ${p.results[pkg.id] || st?.error ? `<button class="btn small secondary" data-redo="${pkg.id}">↻ Neu</button>` : ''}</div>
-    <div class="body">${body}</div>
+    ${p.photos.length > 1 && firstResult(p, pkg.id) ? `<button class="btn small secondary" data-redoall="${pkg.id}">↻ Alle neu</button>` : ''}</div>
+    ${views}
   </div>`;
 }
 function refreshResult(pkg) {
@@ -395,30 +442,45 @@ function refreshResult(pkg) {
   if (!el) { $('#results')?.insertAdjacentHTML('beforeend', resultCard(pkg)); }
   else el.outerHTML = resultCard(pkg);
   bindResultButtons(state.project);
-  const pdf = $('#pdf'); if (pdf) pdf.disabled = !Object.keys(state.project.results).length;
+  const pdf = $('#pdf'); if (pdf) pdf.disabled = !hasAnyResult(state.project);
 }
-function bindResultButtons(p) { $$('[data-redo]').forEach((b) => (b.onclick = () => runOne(p, state.packages.find((x) => x.id === b.dataset.redo)))); }
+function bindResultButtons(p) {
+  const pk = (id) => state.packages.find((x) => x.id === id);
+  $$('[data-redo]').forEach((b) => (b.onclick = () => runView(p, pk(b.dataset.redo), +b.dataset.view)));
+  $$('[data-redoall]').forEach((b) => (b.onclick = () => runPackage(p, pk(b.dataset.redoall))));
+}
 
-async function runOne(p, pkg) {
+/** Eine Ansicht rendern. Für Ansicht 2+ dient die erste fertige Ansicht als Material-Vorlage. */
+async function runView(p, pkg, i) {
   p.status ??= {};
-  p.status[pkg.id] = { loading: true };
+  const key = `${pkg.id}:${i}`;
+  p.status[key] = { loading: true };
   if (state.project === p) refreshResult(pkg);
   try {
-    p.results[pkg.id] = await renderWithGemini(pkg, p);
-    p.status[pkg.id] = {};
+    const arr = (p.results[pkg.id] ??= []);
+    const ref = arr.find((r, k) => r && k !== i);
+    arr[i] = await renderWithGemini(pkg, p, i, ref);
+    p.status[key] = {};
     await saveProject(p);
   } catch (e) {
-    p.status[pkg.id] = { error: e.message };
+    p.status[key] = { error: e.message };
   }
   if (state.project === p) refreshResult(pkg);
+}
+/** Alle Ansichten eines Pakets: erst Ansicht 1, dann die übrigen mit Ansicht 1 als Vorlage. */
+async function runPackage(p, pkg) {
+  p.results[pkg.id] = [];
+  await runView(p, pkg, 0);
+  await Promise.all(p.photos.slice(1).map((_, k) => runView(p, pkg, k + 1)));
 }
 async function runAll(p) {
   if (!state.settings.apiKey) { toast('Bitte zuerst in den Einstellungen den API-Schlüssel eintragen.', 4000); return; }
   const pkgs = state.packages.filter((x) => p.selected.includes(x.id));
   if (!pkgs.length) { toast('Bitte mindestens ein Paket auswählen.'); return; }
-  await Promise.all(pkgs.map((pkg) => runOne(p, pkg)));
-  const ok = pkgs.filter((x) => p.results[x.id]).length;
-  toast(ok === pkgs.length ? 'Fertig! Jetzt kannst du das PDF erstellen.' : `${ok} von ${pkgs.length} fertig. Fehlgeschlagene mit „Neu“ wiederholen.`, 4000);
+  await Promise.all(pkgs.map((pkg) => runPackage(p, pkg)));
+  const total = pkgs.length * p.photos.length;
+  const ok = pkgs.reduce((n, x) => n + (p.results[x.id] || []).filter(Boolean).length, 0);
+  toast(ok === total ? 'Fertig! Jetzt kannst du das PDF erstellen.' : `${ok} von ${total} Bildern fertig. Fehlgeschlagene mit „Neu“ wiederholen.`, 4000);
 }
 
 async function viewProjektListe() {
@@ -435,11 +497,11 @@ async function viewProjektListe() {
       <div class="list-item" data-open="${x.id}">${x.thumb ? `<img src="${x.thumb}" alt="">` : '<div style="width:56px;height:56px;background:#eee;border-radius:8px"></div>'}
       <div><div><b>${esc(x.customer || 'Ohne Namen')}</b></div><div class="muted">${esc(x.room || '')} · ${new Date(x.created).toLocaleDateString('de-DE')}</div></div></div>`).join('')}</div>` : ''}`;
   $('#new').onclick = () => {
-    state.project = { id: uid(), created: Date.now(), customer: '', address: '', room: ROOMS[0], note: '', photo: '', thumb: '', results: {}, selected: state.packages.map((x) => x.id) };
+    state.project = { id: uid(), created: Date.now(), customer: '', address: '', room: ROOMS[0], note: '', photos: [], thumb: '', results: {}, selected: state.packages.map((x) => x.id) };
     viewProjekt();
   };
   $('#toSet') && ($('#toSet').onclick = (e) => { e.preventDefault(); switchTab('einstellungen'); });
-  $$('[data-open]').forEach((el) => (el.onclick = async () => { state.project = await kvGet('project:' + el.dataset.open); viewProjekt(); }));
+  $$('[data-open]').forEach((el) => (el.onclick = async () => { state.project = normalizeProject(await kvGet('project:' + el.dataset.open)); viewProjekt(); }));
 }
 
 // ---------- Ansicht: Moodboards ----------
