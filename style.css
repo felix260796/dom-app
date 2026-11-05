@@ -105,3 +105,5 @@ span.x { background: none; }
 .product { border: 1px solid var(--line); border-radius: 12px; padding: 4px 12px 12px; margin-bottom: 10px; background: #fafbfc; }
 .product label { margin-top: 8px; }
 [hidden] { display: none !important; }
+.backup-hint.warn { border: 1px solid #f5c26b; background: #fff8eb; }
+.backup-hint p { margin: 4px 0 10px; }
