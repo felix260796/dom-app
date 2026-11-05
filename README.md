@@ -18,6 +18,7 @@ Foto vom Raum machen → KI baut den Raum in den Paketen Basic / Standard / Prem
 ## Dateien
 - `app.js`: gesamte Logik (Moodboards, KI-Aufruf `renderWithGemini`, Prompt `buildPrompt`, PDF `buildPdf`)
 - `angebot.js`: Aufmaß, Angebot, Bauzeitenplan, Excel-Import (`vendor/xlsx.mini.min.js`, wird erst beim Import geladen)
+- `social.js`: Instagram-Video (Vorher-Nachher-Wisch-Effekt, MP4 per MediaRecorder) und Post-/Karussell-Bilder, alles lokal im Browser
 - `index.html`, `style.css`, `manifest.webmanifest`, `sw.js`, `icons/`, `vendor/jspdf.umd.min.js`
 
 ## Aufs iPhone bringen
