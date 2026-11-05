@@ -183,7 +183,7 @@ function socialCaption(p, pkg, company) {
 
 /** Ansicht: Marketing / Instagram für das aktuelle Projekt. */
 async function viewSocial(p) {
-  const pkgs = state.packages.filter((x) => firstResult(p, x.id));
+  const pkgs = packagesFor(p.roomType).filter((x) => firstResult(p, x.id));
   if (!pkgs.length) { toast('Bitte zuerst eine Visualisierung erstellen.'); return; }
   const S = state.settings, company = S.company || 'DOM Projektmanagement GmbH';
   const sel = { pkg: pkgs[pkgs.length - 1].id, view: 0, fmt: 'reel' };
@@ -217,7 +217,7 @@ async function viewSocial(p) {
     <div class="card"><button class="btn secondary block" id="soBack">← Zurück zum Projekt</button></div>`;
 
   const canvas = $('#soCanvas'), ctx = canvas.getContext('2d');
-  const pkgOf = () => state.packages.find((x) => x.id === sel.pkg);
+  const pkgOf = () => packagesFor(p.roomType).find((x) => x.id === sel.pkg);
   const renderViewSelect = () => {
     const v = views(sel.pkg);
     if (!v.includes(sel.view)) sel.view = v[0];
