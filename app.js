@@ -127,7 +127,7 @@ async function deleteProject(id) {
 // ---------- KI: Prompt & Gemini-Aufruf ----------
 const MAX_PHOTOS = 4;
 /** Baut die Anweisung. ctx: { others: Anzahl weiterer Raumfotos, rendered: true wenn eine fertige Ansicht als Vorlage dabei ist } */
-function buildPrompt(pkg, room, note, ctx = { others: 0, rendered: false }) {
+function buildPrompt(pkg, room, note, ctx = { others: 0, rendered: false, wishes: '' }) {
   const rt = roomType(ctx.rt || roomTypeIdFromName(room));
   const FIELDS = fieldsFor(rt.id);
   const spec = FIELDS.filter(([k]) => k !== 'beschreibung' && pkg.fields[k]?.trim())
@@ -154,7 +154,7 @@ ${rt.keep.map((k) => '- ' + k).join('\n')}
 
 ERNEUERN nach dieser Ausstattung:
 ${spec || '- moderne, hochwertige Sanierung'}
-${prods ? `\nKONKRETE PRODUKTE (so originalgetreu wie möglich darstellen):\n${prods}\n` : ''}${list ? `\nWEITERE BILDER:\n${list}` : ''}${note?.trim() ? `\nZUSÄTZLICHER HINWEIS ZU DIESEM PROJEKT: ${note.trim()}\n` : ''}
+${prods ? `\nKONKRETE PRODUKTE (so originalgetreu wie möglich darstellen):\n${prods}\n` : ''}${list ? `\nWEITERE BILDER:\n${list}` : ''}${note?.trim() ? `\nZUSÄTZLICHER HINWEIS ZU DIESEM PROJEKT: ${note.trim()}\n` : ''}${ctx.wishes?.trim() ? `\nKUNDENWÜNSCHE AUS DEM GESPRÄCH VOR ORT (haben Vorrang vor der Ausstattung oben, wenn sie sich widersprechen; Perspektive und Raumgeometrie bleiben trotzdem gleich):\n${ctx.wishes.trim()}\n` : ''}
 Gilt eine Angabe für diesen ${rt.outdoor ? 'Bildausschnitt' : 'Raum'} nicht, lass sie weg.
 Ergebnis: fotorealistisch wie professionelle Architektur-/Interior-Fotografie, natürliches Licht, aufgeräumt, keine Personen, kein Text, keine Wasserzeichen, kein Baustellenzustand.`;
 }
@@ -173,7 +173,7 @@ async function renderWithGemini(pkg, project, i, rendered) {
   const target = project.photos[i];
   const others = project.photos.filter((_, k) => k !== i);
   const img = (d) => ({ inline_data: { mime_type: mimeOf(d), data: b64(d) } });
-  const parts = [{ text: buildPrompt(pkg, project.room, project.note, { others: others.length, rendered: !!rendered, rt: project.roomType }) }, img(target)];
+  const parts = [{ text: buildPrompt(pkg, project.room, project.note, { others: others.length, rendered: !!rendered, wishes: project.wishes, rt: project.roomType }) }, img(target)];
   for (const o of others) parts.push(img(o));
   if (rendered) parts.push(img(rendered));
   for (const im of pkg.images.slice(0, MAX_REF_IMAGES)) parts.push(img(im.data));
@@ -395,6 +395,7 @@ async function viewProjekt() {
       <label>Bezeichnung im PDF</label><input type="text" id="room" value="${esc(p.room)}" placeholder="z. B. Bad OG, Küche EG">
       <label>Zusatzhinweis für die KI (optional)</label><textarea id="note" placeholder="z. B. Badewanne raus, dafür große Dusche">${esc(p.note)}</textarea>
     </div>
+    ${voiceCard(p)}
     <div class="card">
       <h2>3. Pakete visualisieren</h2>
       <p class="muted">Moodboards für: <b>${esc(roomType(p.roomType).name)}</b></p>
@@ -407,6 +408,7 @@ async function viewProjekt() {
       ${anyProducts ? `<label class="check"><input type="checkbox" id="pdfProducts" ${p.pdfProducts ? 'checked' : ''}>Produktliste mit Shop-Links ins PDF</label>
       <label class="check"><input type="checkbox" id="pdfPrices" ${p.pdfPrices ? 'checked' : ''} ${p.pdfProducts ? '' : 'disabled'}>Preise in der Produktliste zeigen</label>` : ''}
       <button class="btn block" id="pdf" ${hasAnyResult(p) ? '' : 'disabled'}>📄 Vorher-Nachher-PDF erstellen</button>
+      <button class="btn secondary block" id="social" style="margin-top:10px" ${hasAnyResult(p) ? '' : 'disabled'}>🎬 Instagram-Video & Post</button>
       <div class="row" style="margin-top:10px">
         <button class="btn secondary" id="back">← Alle Projekte</button>
         <button class="btn danger" id="del">Projekt löschen</button>
@@ -445,8 +447,10 @@ async function viewProjekt() {
     $('#pdfPrices').onchange = (e) => { p.pdfPrices = e.target.checked; persist(); };
   }
   $$('[data-sel]').forEach((c) => (c.onchange = () => { p.selected = $$('[data-sel]').filter((x) => x.checked).map((x) => x.dataset.sel); persist(); }));
+  bindVoice(p, persist);
   $('#go').onclick = () => runAll(p);
   $('#pdf').onclick = () => sharePdf(p).catch((e) => toast('PDF-Fehler: ' + e.message, 5000));
+  $('#social').onclick = () => viewSocial(p).catch((e) => toast('Fehler: ' + e.message, 5000));
   $('#back').onclick = () => { state.project = null; viewProjekt(); };
   $('#del').onclick = async () => { if (!confirm('Projekt wirklich löschen?')) return; await deleteProject(p.id); state.project = null; viewProjekt(); };
   bindResultButtons(p);
@@ -478,6 +482,7 @@ function refreshResult(pkg) {
   else el.outerHTML = resultCard(pkg);
   bindResultButtons(state.project);
   const pdf = $('#pdf'); if (pdf) pdf.disabled = !hasAnyResult(state.project);
+  const soc = $('#social'); if (soc) soc.disabled = !hasAnyResult(state.project);
 }
 function bindResultButtons(p) {
   const pk = (id) => packagesFor(p.roomType).find((x) => x.id === id);
