@@ -18,7 +18,7 @@ main { padding: 16px 16px calc(90px + env(safe-area-inset-bottom)); max-width: 7
 .card h2 { margin: 0 0 10px; font-size: 18px; }
 .card h3 { margin: 14px 0 8px; font-size: 15px; }
 label { display: block; font-size: 13px; color: var(--muted); margin: 10px 0 4px; }
-input[type=text], input[type=url], input[type=password], input[type=tel], textarea, select {
+input[type=text], input[type=url], input[type=password], input[type=tel], input[type=date], textarea, select {
   width: 100%; font: inherit; padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; background: #fff; color: var(--text); }
 textarea { min-height: 64px; resize: vertical; }
 .btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; border: 0; border-radius: 12px; padding: 12px 16px;
@@ -58,6 +58,44 @@ textarea { min-height: 64px; resize: vertical; }
 .compare figcaption { font-size: 12px; color: var(--muted); padding: 4px 2px; }
 .logo-prev { max-height: 60px; max-width: 200px; display: block; margin-top: 8px; }
 a { color: #2563eb; }
+
+/* Aufmaß & Angebot */
+.seg { display: flex; background: #e8eaee; border-radius: 12px; padding: 3px; margin-bottom: 14px; position: sticky; top: calc(env(safe-area-inset-top) + 54px); z-index: 4; }
+.seg button { flex: 1; border: 0; background: none; padding: 9px 4px; border-radius: 9px; font: inherit; font-size: 14px; color: var(--text); }
+.seg button.on { background: #fff; font-weight: 600; box-shadow: 0 1px 2px rgba(0,0,0,.08); }
+.mrow { display: flex; align-items: center; gap: 6px; margin-bottom: 8px; }
+.mrow > span:first-child { flex: 0 0 92px; font-size: 13px; }
+.mrow input, .mrow select { min-width: 0; flex: 1; padding: 9px 8px; }
+.mrow select { flex: 0 0 92px; }
+.x { flex: 0 0 30px; height: 30px; border: 0; border-radius: 8px; background: #fde8e6; color: var(--danger); font-size: 14px; }
+span.x { background: none; }
+.sum { margin-top: 12px; padding: 10px 12px; background: #f2f4f7; border-radius: 10px; font-size: 14px; }
+.prow { display: flex; align-items: center; gap: 10px; padding: 8px 0; border-top: 1px solid var(--line); }
+.posrow { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; padding: 8px 0; border-top: 1px solid var(--line); }
+.posrow .pt { flex: 1 1 100%; min-width: 0; display: flex; flex-direction: column; font-size: 14px; }
+.posrow .pt .muted, .posrow .pg .muted { font-size: 12px; }
+.posrow .pm { flex: 1; display: flex; align-items: center; gap: 6px; }
+.posrow .pm input { max-width: 96px; }
+.posrow .pm input { padding: 7px 6px; text-align: right; }
+.posrow .pg { flex: 0 0 auto; text-align: right; display: flex; flex-direction: column; font-size: 14px; }
+.tot { display: flex; justify-content: space-between; gap: 10px; padding: 5px 0; font-size: 15px; }
+.tot.big { font-size: 18px; border-top: 1px solid var(--line); padding-top: 8px; }
+.gantt .gr { display: flex; gap: 10px; align-items: center; padding: 6px 0; border-top: 1px solid var(--line); }
+.gantt .gl { flex: 0 0 46%; display: flex; flex-direction: column; font-size: 13px; }
+.gantt .gb { flex: 1; position: relative; height: 16px; background: #f2f4f7; border-radius: 4px; }
+.gantt .gb span { position: absolute; top: 0; bottom: 0; background: var(--accent); border-radius: 4px; }
+.gantt .gb span.fb, .lg.fb { background: #b8862f; }
+.gantt .gb span.tr, .lg.tr { background: #cdd3dc; }
+.lg { display: inline-block; width: 12px; height: 10px; border-radius: 3px; background: var(--accent); vertical-align: 0; }
+.vrow { padding: 10px 0; border-top: 1px solid var(--line); display: flex; flex-direction: column; gap: 6px; }
+.vrow .vt { font-size: 14px; }
+.vrow input { padding: 8px 10px; }
+.vrow .row { justify-content: flex-end; } .vrow .row > * { flex: none; }
+.mat { display: flex; justify-content: space-between; gap: 10px; padding: 7px 0; border-top: 1px solid var(--line); font-size: 14px; }
+.mat > div:first-child { display: flex; flex-direction: column; min-width: 0; }
+.mat .muted { font-size: 12px; }
+.mat .mq { flex: none; text-align: right; font-weight: 600; }
+.seg button { font-size: 13px; padding: 9px 2px; }
 .social-canvas { width: 100%; max-height: 62vh; object-fit: contain; display: block; border-radius: 12px; background: #1e3550; }
 .social-prog { height: 6px; background: #e8eaee; border-radius: 3px; overflow: hidden; margin-top: 10px; }
 .social-prog > div { height: 100%; width: 0; background: #b8862f; transition: width .2s linear; }

@@ -404,6 +404,7 @@ async function viewProjekt() {
       <p class="muted">${p.photos.length > 1 ? `${p.photos.length} Ansichten × Pakete. ` : ''}Dauert ca. 10–30 Sekunden pro Bild.</p>
     </div>
     <div id="results">${pkgs.filter((x) => p.selected.includes(x.id) || firstResult(p, x.id)).map(resultCard).join('')}</div>
+    <div id="angebot-card"></div>
     <div class="card">
       ${anyProducts ? `<label class="check"><input type="checkbox" id="pdfProducts" ${p.pdfProducts ? 'checked' : ''}>Produktliste mit Shop-Links ins PDF</label>
       <label class="check"><input type="checkbox" id="pdfPrices" ${p.pdfPrices ? 'checked' : ''} ${p.pdfProducts ? '' : 'disabled'}>Preise in der Produktliste zeigen</label>` : ''}
@@ -454,6 +455,7 @@ async function viewProjekt() {
   $('#back').onclick = () => { state.project = null; viewProjekt(); };
   $('#del').onclick = async () => { if (!confirm('Projekt wirklich löschen?')) return; await deleteProject(p.id); state.project = null; viewProjekt(); };
   bindResultButtons(p);
+  window.Angebot?.projektKarte(p);
 }
 
 function resultCard(pkg) {
@@ -710,6 +712,7 @@ function viewEinstellungen() {
       <label>Eigenes Modell (optional, überschreibt Auswahl)</label><input type="text" id="modelCustom" placeholder="Modell-ID">
       <button class="btn secondary block" id="test" style="margin-top:12px">Verbindung testen & Modelle laden</button>
     </div>
+    <div id="angebot-settings"></div>
     <div class="card"><p class="muted">Alle Daten liegen nur auf diesem Gerät. Sichere deine Moodboards regelmäßig über „Moodboards → Exportieren“.</p></div>`;
   const save = debounce(saveSettings, 300);
   for (const id of ['company', 'contact', 'apiKey']) $('#' + id).oninput = (e) => { S[id] = e.target.value.trim(); save(); };
@@ -720,6 +723,7 @@ function viewEinstellungen() {
     S.logo = await resize(await fileToDataUrl(f), 800, 'image/png'); await saveSettings(); viewEinstellungen();
   };
   $('#nologo') && ($('#nologo').onclick = async () => { S.logo = ''; await saveSettings(); viewEinstellungen(); });
+  window.Angebot?.einstellungenKarte();
   $('#test').onclick = async () => {
     if (!S.apiKey) { toast('Bitte zuerst den API-Schlüssel eintragen.'); return; }
     try {
