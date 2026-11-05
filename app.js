@@ -535,13 +535,14 @@ function viewEinstellungen() {
       <p class="muted">Schlüssel kostenlos erstellen unter <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">aistudio.google.com/apikey</a>. Abgerechnet wird pro Bild bei Google. Der Schlüssel bleibt nur auf diesem Gerät gespeichert.</p>
       <label>API-Schlüssel</label><input type="password" id="apiKey" value="${esc(S.apiKey)}" placeholder="AIza…" autocomplete="off">
       <label>Modell</label>
-      <select id="model">
+      <select id="model">${S.modelList?.length ? S.modelList.map((m) => `<option value="${esc(m.id)}" ${m.id === S.model ? 'selected' : ''}>${esc(m.label)}</option>`).join('') : `
         <option value="gemini-2.5-flash-image" ${S.model === 'gemini-2.5-flash-image' ? 'selected' : ''}>Gemini 2.5 Flash Image (schnell, günstig)</option>
         <option value="gemini-3-pro-image-preview" ${S.model === 'gemini-3-pro-image-preview' ? 'selected' : ''}>Gemini 3 Pro Image (beste Qualität, teurer)</option>
-        ${['gemini-2.5-flash-image', 'gemini-3-pro-image-preview'].includes(S.model) ? '' : `<option selected value="${esc(S.model)}">${esc(S.model)}</option>`}
+        ${['gemini-2.5-flash-image', 'gemini-3-pro-image-preview'].includes(S.model) ? '' : `<option selected value="${esc(S.model)}">${esc(S.model)}</option>`}`}
       </select>
+      <p class="muted">Tipp: Nach dem Eintragen des Schlüssels auf „Verbindung testen“ tippen. Dann zeigt die Liste alle aktuell verfügbaren Bild-Modelle von Google. Für beste Qualität das „Pro“-Modell wählen.</p>
       <label>Eigenes Modell (optional, überschreibt Auswahl)</label><input type="text" id="modelCustom" placeholder="Modell-ID">
-      <button class="btn secondary block" id="test" style="margin-top:12px">Verbindung testen</button>
+      <button class="btn secondary block" id="test" style="margin-top:12px">Verbindung testen & Modelle laden</button>
     </div>
     <div class="card"><p class="muted">Alle Daten liegen nur auf diesem Gerät. Sichere deine Moodboards regelmäßig über „Moodboards → Exportieren“.</p></div>`;
   const save = debounce(saveSettings, 300);
@@ -554,11 +555,22 @@ function viewEinstellungen() {
   };
   $('#nologo') && ($('#nologo').onclick = async () => { S.logo = ''; await saveSettings(); viewEinstellungen(); });
   $('#test').onclick = async () => {
+    if (!S.apiKey) { toast('Bitte zuerst den API-Schlüssel eintragen.'); return; }
     try {
-      const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(S.model)}`, { headers: { 'x-goog-api-key': S.apiKey } });
+      // Alle verfügbaren Modelle laden und die Bild-Modelle zur Auswahl anbieten
+      const r = await fetch('https://generativelanguage.googleapis.com/v1beta/models?pageSize=1000', { headers: { 'x-goog-api-key': S.apiKey } });
       const j = await r.json().catch(() => ({}));
-      toast(r.ok ? `✅ Verbunden: ${j.displayName || S.model}` : `❌ ${j.error?.message || r.status}`, 5000);
-    } catch (e) { toast('❌ ' + e.message, 5000); }
+      if (!r.ok) { toast(`❌ ${j.error?.message || r.status}`, 6000); return; }
+      const imgModels = (j.models || [])
+        .filter((m) => /image/i.test(m.name) && !/imagen/i.test(m.name) && (m.supportedGenerationMethods || []).includes('generateContent'))
+        .map((m) => ({ id: m.name.replace(/^models\//, ''), label: m.displayName || m.name }));
+      if (!imgModels.length) { toast('✅ Schlüssel ok, aber kein Bild-Modell gefunden.', 6000); return; }
+      const sel = $('#model');
+      sel.innerHTML = imgModels.map((m) => `<option value="${esc(m.id)}" ${m.id === S.model ? 'selected' : ''}>${esc(m.label)}</option>`).join('');
+      if (!imgModels.some((m) => m.id === S.model)) { S.model = imgModels[0].id; sel.value = S.model; await saveSettings(); }
+      S.modelList = imgModels; await saveSettings();
+      toast(`✅ Verbunden. ${imgModels.length} Bild-Modell(e) gefunden, ausgewählt: ${sel.selectedOptions[0].textContent}`, 6000);
+    } catch (e) { toast('❌ ' + e.message, 6000); }
   };
 }
 
