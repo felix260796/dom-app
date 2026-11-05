@@ -746,6 +746,16 @@ function viewEinstellungen() {
 
 // ---------- Navigation ----------
 function setTitle(t) { $('#title').textContent = t; }
+// Zurück-Knopf oben: spiegelt den Zurück-Knopf der jeweiligen Ansicht (falls vorhanden)
+const BACK_SEL = '#back, #aBack, #vBack, #soBack';
+function syncTopBack() {
+  const tb = $('#topback'), src = main().querySelector(BACK_SEL);
+  if (!src) { tb.hidden = true; tb.onclick = null; return; }
+  tb.textContent = src.textContent.trim().startsWith('←') ? src.textContent.trim() : '← ' + src.textContent.trim();
+  tb.hidden = false;
+  tb.onclick = () => src.click();
+}
+new MutationObserver(syncTopBack).observe(document.getElementById('main'), { childList: true, subtree: true });
 function switchTab(tab) {
   state.tab = tab;
   $$('.tabbar button').forEach((b) => b.classList.toggle('active', b.dataset.tab === tab));

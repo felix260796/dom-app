@@ -7,7 +7,7 @@
   <meta name="theme-color" content="#1e3550">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="mobile-web-app-capable" content="yes">
-  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="DOM">
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="apple-touch-icon" href="icons/icon-180.png">
@@ -15,7 +15,13 @@
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
-  <header class="topbar"><h1 id="title">Projekt</h1></header>
+  <header class="topbar">
+    <div class="brand-row">
+      <img class="brand" src="assets/dom_logo_weiss.png" alt="DOM Projektmanagement">
+      <button class="topback" id="topback" hidden></button>
+    </div>
+    <h1 id="title">Projekt</h1>
+  </header>
   <main id="main"></main>
   <nav class="tabbar">
     <button data-tab="projekt" class="active"><span class="ico">📷</span>Projekt</button>
