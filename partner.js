@@ -58,11 +58,11 @@ window.Partner = (() => {
     const all = liste();
     main().innerHTML = `
       <label class="search big">${icon('search')}<input type="search" id="pq" value="${esc(filter)}" placeholder="Firma, Gewerk, Name oder Telefon" autocomplete="off"></label>
-      <button class="cta" id="pNew"><span class="cta-ico">${icon('plus')}</span>
-        <span class="cta-t"><b>Neuer Subunternehmer</b><span>Kontakt, Konditionen, Rahmenvertrag, Geburtstage</span></span>${icon('chevron', 'cta-chev')}</button>
+      <button class="cta slim" id="pNew"><span class="cta-ico">${icon('plus')}</span>
+        <span class="cta-t"><b>Neuer Subunternehmer</b></span>${icon('chevron', 'cta-chev')}</button>
       ${all.length ? `<div class="chips gfilter">${[['', 'Alle'], ...ARTEN].map(([id, n]) => `<button class="qchip ${artFilter === id ? 'on' : ''}" data-pa="${id}">${n} ${id ? all.filter((p) => p.art === id).length : all.length}</button>`).join('')}</div>
         <div class="plist" id="plist" style="margin-top:12px"></div>`
-        : `<div class="empty-state">${icon('users')}<b>Noch keine Subunternehmer</b><span>Lege Fliesenleger, Installateure, Elektriker und Lieferanten mit ihren Konditionen an. Rahmenverträge kannst du als PDF oder Foto ablegen.</span></div>`}`;
+        : `<div class="empty-state">${icon('wrench')}<b>Noch keine Subunternehmer</b><span>Lege Fliesenleger, Installateure, Elektriker und Lieferanten mit ihren Konditionen an. Rahmenverträge kannst du als PDF oder Foto ablegen.</span></div>`}`;
     const render = () => {
       const el = $('#plist'); if (!el) return;
       const q = filter.trim().toLowerCase().split(/\s+/).filter(Boolean);
