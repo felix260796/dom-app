@@ -988,6 +988,72 @@
    "auf": 0.0,
    "richtwert": "eigene Kalk.",
    "status": "verhandelt"
+  },
+  {
+   "nr": "WP-01",
+   "gewerk": "Wärmepumpe",
+   "text": "Fundament Wärmepumpe herstellen (Aushub frostfrei, Frostschutzschotter, Schalung, Beton C25/30 bewehrt)",
+   "einheit": "m²",
+   "lohn": 220.0,
+   "mat": 110.0,
+   "auf": null,
+   "richtwert": "250–450",
+   "status": "geschätzt"
+  },
+  {
+   "nr": "WP-02",
+   "gewerk": "Wärmepumpe",
+   "text": "Kernbohrung Hauswand für Leitungen inkl. Abdichtung",
+   "einheit": "Stück",
+   "lohn": 150.0,
+   "mat": 40.0,
+   "auf": null,
+   "richtwert": "120–250",
+   "status": "geschätzt"
+  },
+  {
+   "nr": "WP-03",
+   "gewerk": "Wärmepumpe",
+   "text": "Leitungsgraben Wärmepumpe bis Haus inkl. Schutzrohr, wieder verfüllen",
+   "einheit": "lfm",
+   "lohn": 45.0,
+   "mat": 12.0,
+   "auf": null,
+   "richtwert": "40–80",
+   "status": "geschätzt"
+  },
+  {
+   "nr": "WP-04",
+   "gewerk": "Wärmepumpe",
+   "text": "Kiesbett / Kondensatversickerung am Fundament",
+   "einheit": "pauschal",
+   "lohn": 120.0,
+   "mat": 60.0,
+   "auf": null,
+   "richtwert": "150–300",
+   "status": "geschätzt"
+  },
+  {
+   "nr": "WP-05",
+   "gewerk": "Wärmepumpe",
+   "text": "Sicht- und Schallschutz-Lamellenverkleidung Wärmepumpe",
+   "einheit": "Stück",
+   "lohn": 250.0,
+   "mat": 650.0,
+   "auf": null,
+   "richtwert": "700–1.500",
+   "status": "geschätzt"
+  },
+  {
+   "nr": "HZ-01",
+   "gewerk": "Rückbau",
+   "text": "Demontage und Entsorgung Altkessel / Öltank (Vorbereitung für Heizungsbauer)",
+   "einheit": "pauschal",
+   "lohn": 450.0,
+   "mat": 150.0,
+   "auf": null,
+   "richtwert": "400–1.200",
+   "status": "geschätzt"
   }
  ]
 }

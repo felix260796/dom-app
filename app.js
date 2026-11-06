@@ -146,10 +146,10 @@ function buildPrompt(pkg, room, note, ctx = { others: 0, rendered: false, wishes
   const fieldLabel = (k) => (FIELD_LIB[k]?.[0] || '').replace(/\s*\(.*\)/, '');
   const prods = (pkg.products || []).filter((x) => x.name?.trim())
     .map((x) => `- ${x.area ? fieldLabel(x.area) + ': ' : ''}${x.name.trim()}`).join('\n');
-  const what = rt.outdoor ? `eines bestehenden Gebäudes von außen (${room})` : `eines bestehenden Raums (${room})`;
+  const what = `${rt.what || (rt.outdoor ? 'eines bestehenden Gebäudes von außen' : 'eines bestehenden Raums')} (${room})`;
   return `Du bist ein Werkzeug für fotorealistische Sanierungs-Visualisierungen.
 
-Bild 1 ist ein Foto ${what}. Bearbeite GENAU DIESES FOTO (Bild 1) so, dass es ${rt.outdoor ? 'dasselbe Gebäude' : 'denselben Raum'} nach einer kompletten Sanierung in der Ausstattungslinie "${pkg.name}" zeigt. Gib genau ein Bild aus: die sanierte Version von Bild 1.
+Bild 1 ist ein Foto ${what}. Bearbeite GENAU DIESES FOTO (Bild 1) so, dass es ${rt.same || (rt.outdoor ? 'dasselbe Gebäude' : 'denselben Raum')} nach einer kompletten Sanierung in der Ausstattungslinie "${pkg.name}" zeigt. Gib genau ein Bild aus: die sanierte Version von Bild 1.
 
 UNBEDINGT BEIBEHALTEN:
 - exakt dieselbe Kameraposition, Perspektive, Brennweite und Bildausschnitt wie Bild 1
@@ -171,6 +171,9 @@ async function nearestAspect(dataUrl) {
 
 /** Rendert Ansicht i eines Projekts im Paket pkg. rendered = fertige Ansicht als Material-Vorlage (optional). */
 async function renderWithGemini(pkg, project, i, rendered) {
+  // Garten: Wärmepumpe an markierter Stelle einsetzen (garten.js), sonst Garten ohne Wärmepumpen-Angaben
+  if (window.Garten?.zustaendig(project)) return Garten.render(pkg, project, i, rendered);
+  pkg = window.Garten?.pkgFuer(pkg, project) || pkg;
   const { apiKey, model } = state.settings;
   if (!apiKey) throw new Error('Kein API-Schlüssel hinterlegt (Einstellungen).');
   const target = project.photos[i];
@@ -460,6 +463,7 @@ async function viewProjekt() {
       <label>Zusatzhinweis für die KI (optional)</label><textarea id="note" placeholder="z. B. Badewanne raus, dafür große Dusche">${esc(p.note)}</textarea>
     </div>
     ${voiceCard(p)}
+    <div id="garten-card"></div>
     <div class="card">
       <h2>3. Pakete visualisieren</h2>
       <p class="muted">Moodboards für: <b>${esc(roomType(p.roomType).name)}</b></p>
@@ -530,6 +534,7 @@ async function viewProjekt() {
   };
   bindResultButtons(p);
   window.Angebot?.projektKarte(p);
+  window.Garten?.projektKarte(p, persist);
 }
 
 // ---------- Vorher-Nachher-Schieberegler ----------
