@@ -6,7 +6,7 @@ function viewPakete() {
   if (state.editPkg) return viewPaketEdit(state.editPkg);
   header('Moodboards', 'Ausstattung je Raumtyp und Paket');
   const rt = state.boardRoom;
-  const pkgs = packagesFor(rt);
+  const pkgs = packagesFor(rt, null);
   main().innerHTML = `
     <div class="rtscroll" role="tablist">${ROOM_TYPES.map((r) => `<button class="rtchip ${r.id === rt ? 'on' : ''}" data-rt="${r.id}" role="tab">${roomIcon(r.id)}<span>${esc(r.name)}</span></button>`).join('')}</div>
     <p class="hint">So soll der Raumtyp „${esc(roomType(rt).name)}“ nach der Sanierung aussehen. Text, Referenzbilder und echte Produkte gehen an die KI und in die Mappen.</p>
@@ -70,15 +70,23 @@ function productRow(x, i, fields) {
   </div>`;
 }
 
-function viewPaketEdit(id) {
-  const rt = state.boardRoom;
+/** Bearbeitungs-Kontext: allgemeine Moodboards (Reiter „Moodboards“) oder das Moodboard eines Projekts. */
+const globalBoardCtx = () => ({
+  rt: state.boardRoom, list: packagesFor(state.boardRoom, null), save: saveBoards, saveSoon: saveBoardsDebounced,
+  sub: roomType(state.boardRoom).name, backLabel: 'Moodboards',
+  back: () => { saveBoards(); state.editPkg = null; viewPakete(); window.scrollTo(0, 0); },
+});
+
+function viewPaketEdit(id, ctx = globalBoardCtx()) {
+  const rt = ctx.rt;
   const FIELDS = fieldsFor(rt);
-  const p = packagesFor(rt).find((x) => x.id === id);
-  if (!p) { state.editPkg = null; return viewPakete(); }
+  const p = ctx.list.find((x) => x.id === id);
+  if (!p) return ctx.back();
+  const saveBoards = ctx.save, saveBoardsDebounced = ctx.saveSoon; // gleiche Namen wie bisher, Ziel je nach Kontext
   const sum = p.products.reduce((n, x) => n + (x.price === '' || x.price == null || isNaN(+x.price) ? 0 : +x.price), 0);
-  const back = () => { saveBoards(); state.editPkg = null; viewPakete(); window.scrollTo(0, 0); };
-  header(p.name, roomType(rt).name, { label: 'Moodboards', fn: back });
+  header(p.name, ctx.sub, { label: ctx.backLabel, fn: ctx.back });
   main().innerHTML = `
+    ${ctx.banner || ''}
     <div class="card">
       <h2>Allgemein</h2>
       <div class="row"><div style="flex:3"><label>Name des Pakets</label><input type="text" id="pname" value="${esc(p.name)}"></div>
@@ -103,7 +111,7 @@ function viewPaketEdit(id) {
       <p class="muted">Je genauer, desto besser trifft die KI dein Paket. Leere Felder werden ignoriert.</p>
       ${FIELDS.map(([k, label, ph]) => `<label>${esc(label)}</label><textarea data-field="${k}" placeholder="${esc(ph)}" rows="2">${esc(p.fields[k] || '')}</textarea>`).join('')}
     </div>`;
-  const rerender = async () => { await saveBoards(); const y = window.scrollY; viewPaketEdit(id); window.scrollTo(0, y); };
+  const rerender = async () => { await saveBoards(); const y = window.scrollY; viewPaketEdit(id, ctx); window.scrollTo(0, y); };
   $('#pname').oninput = (e) => { p.name = e.target.value; $('#title').textContent = p.name; saveBoardsDebounced(); };
   $('#pcolor').oninput = (e) => { p.color = e.target.value; saveBoardsDebounced(); };
   $$('[data-field]').forEach((t) => (t.oninput = () => { p.fields[t.dataset.field] = t.value; saveBoardsDebounced(); }));
