@@ -387,3 +387,5 @@ span.x { background: none; }
   .tiles { grid-template-columns: 1fr 1fr; }
   .rtgrid { grid-template-columns: 1fr 1fr; }
 }
+
+.masse-row input { text-align: center; }

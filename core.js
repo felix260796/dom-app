@@ -149,22 +149,31 @@ function aufmassText(p) {
   }).filter(Boolean).join('\n');
 }
 
+/** Schnell eingegebene Raummaße im Schritt Fotos (Länge × Breite × Höhe in m). */
+function raumMasse(p) {
+  const l = amZahl(p.masse?.l), b = amZahl(p.masse?.b), h = amZahl(p.masse?.h);
+  if (!l && !b) return '';
+  return `- Raum: ${[l, b].filter(Boolean).map(amDez).join(' × ')} m${l && b ? ` (${amDez(l * b)} m² Boden)` : ''}${h ? `, Raumhöhe ${amDez(h)} m` : ''} (vor Ort gemessen)`;
+}
+/** Alle bekannten Maße: vor Ort eingegeben und aus dem Aufmaß. */
+function masseText(p) { return [raumMasse(p), aufmassText(p)].filter(Boolean).join('\n'); }
+
 /** Schritt 1: Die KI schaut sich die Fotos an und beschreibt den Bestand (was wo steht, wie groß, was fehlt).
  *  Ergebnis wird im Raum gespeichert (p.bestand) und kann in der App korrigiert werden. */
 const _bestandJobs = new Map();
-function bestandSig(p) { return quickHash(p.photos.join('|') + '|' + p.roomType + '|' + aufmassText(p)); }
+function bestandSig(p) { return quickHash(p.photos.join('|') + '|' + p.roomType + '|' + masseText(p)); }
 async function roomBestand(p) {
   const sig = bestandSig(p);
-  if (p.bestand?.text?.trim() && (p.bestand.sig === sig || p.bestand.manual && p.bestand.photos === p.photos.length)) return p.bestand.text;
+  if (p.bestand?.text?.trim() && (p.bestand.sig === sig || p.bestand.manual && p.bestand.photos === p.photos.length && p.bestand.masse === masseText(p))) return p.bestand.text;
   const key = p.id + sig;
   if (!_bestandJobs.has(key)) _bestandJobs.set(key, (async () => {
     const rt = roomType(p.roomType);
-    const masse = aufmassText(p);
-    const parts = [{ text: `Du bist erfahrener Bausachverständiger. ${p.photos.length > 1 ? `Die ${p.photos.length} Fotos zeigen DENSELBEN ${rt.outdoor ? 'Bereich' : 'Raum'} aus verschiedenen Blickwinkeln` : 'Das Foto zeigt einen ' + (rt.outdoor ? 'Außenbereich' : 'Raum')} (Raumtyp: ${rt.name}${p.room && p.room !== rt.name ? `, „${p.room}“` : ''}) VOR der Sanierung.${masse ? `\n\nGemessene Maße laut Aufmaß (diese sind verbindlich):\n${masse}` : ''}
+    const masse = masseText(p);
+    const parts = [{ text: `Du bist erfahrener Bausachverständiger. ${p.photos.length > 1 ? `Die ${p.photos.length} Fotos zeigen DENSELBEN ${rt.outdoor ? 'Bereich' : 'Raum'} aus verschiedenen Blickwinkeln` : 'Das Foto zeigt einen ' + (rt.outdoor ? 'Außenbereich' : 'Raum')} (Raumtyp: ${rt.name}${p.room && p.room !== rt.name ? `, „${p.room}“` : ''}) VOR der Sanierung.${masse ? `\n\nGemessene Maße (diese sind verbindlich):\n${masse}` : ''}
 
 Beschreibe nüchtern den BESTAND, damit eine Bild-KI bei der Sanierung den Raum nicht verändert und nichts dazuerfindet. Antworte auf Deutsch, knapp, genau in diesem Format:
 
-RAUM: Größe (sehr klein / klein / mittel / groß), Maße Länge × Breite × Höhe in m (${masse ? 'laut Aufmaß' : 'geschätzt, Tür ≈ 2 m hoch und ≈ 0,8 m breit als Maßstab'}), Form (z. B. schmaler Schlauch, quadratisch, L-Form), Dachschräge ja/nein
+RAUM: Größe (sehr klein / klein / mittel / groß), Maße Länge × Breite × Höhe in m (${masse ? 'gemessen, siehe oben' : 'geschätzt, Tür ≈ 2 m hoch und ≈ 0,8 m breit als Maßstab'}), Form (z. B. schmaler Schlauch, quadratisch, L-Form), Dachschräge ja/nein
 FENSTER UND TÜREN: Anzahl, Lage, ungefähre Größe
 VORHANDEN: je Gegenstand eine Zeile „- Gegenstand – Lage im Raum – ungefähre Größe“ (z. B. „- Badewanne – an der Stirnwand unter dem Fenster – ca. 170 × 75 cm“). Alle Sanitärobjekte, Möbel, Heizkörper, Geräte, Leuchten.
 NICHT VORHANDEN: was in einem Raum dieses Typs üblich wäre, hier aber fehlt (z. B. WC, Dusche, Badewanne, zweites Waschbecken, Heizkörper, Küchenzeile)
@@ -175,7 +184,7 @@ ${p.photos.length > 1 ? 'JE FOTO: „Foto 1: Blickrichtung, welche Wände und Ge
 Nur was wirklich zu sehen oder gemessen ist. Nichts erfinden. Wenn etwas unsicher ist, schreibe „unklar“.` }];
     p.photos.forEach((ph, i) => { parts.push({ text: `Foto ${i + 1}:` }, { inline_data: { mime_type: mimeOf(ph), data: b64(ph) } }); });
     const text = (await geminiText(parts, false, { temperature: 0.2 }, ANALYSE_MODEL)).trim();
-    p.bestand = { sig, text, photos: p.photos.length, t: Date.now() };
+    p.bestand = { sig, text, photos: p.photos.length, masse: masseText(p), t: Date.now() };
     await saveProject(p);
     return text;
   })().finally(() => setTimeout(() => _bestandJobs.delete(key), 1000)));
@@ -252,7 +261,8 @@ ${rt.keep.map((k) => '- ' + k).join('\n')}
 ${rt.outdoor ? '' : `- Jeder Einrichtungs- und Sanitärgegenstand bleibt an seiner Stelle und in seiner Größe und wird nur erneuert. NICHTS hinzufügen, was im Foto nicht vorhanden ist: keine zusätzliche Toilette, Dusche oder Wanne, kein zweites Waschbecken, keine zusätzlichen Möbel oder Einbauten, außer es steht ausdrücklich unter UMSETZUNG.
 - Maßstab realistisch: Fliesen, Armaturen und Möbel im richtigen Größenverhältnis zum echten ${raum} (eine Tür ist etwa 2 m hoch).
 `}- Licht aus derselben Richtung wie im Foto (Fenster bleiben die Lichtquelle).`;
-  const bestand = ctx.bestand ? `BESTAND (so sieht der ${raum} heute aus, das ist verbindlich):\n${ctx.bestand}` : '';
+  const masse = masseText(project);
+  const bestand = (masse ? `GEMESSENE RAUMMASSE (verbindlich, danach richten sich Größe und Anzahl der Objekte):\n${masse}\n\n` : '') + (ctx.bestand ? `BESTAND (so sieht der ${raum} heute aus, das ist verbindlich):\n${ctx.bestand}` : '');
   const schluss = `Gilt eine Angabe für diesen ${rt.outdoor ? 'Bildausschnitt' : raum} nicht oder passt sie nicht hinein, lass sie weg.
 Ergebnis: fotorealistisch wie professionelle Architektur-/Interior-Fotografie, helles, natürliches Tageslicht, aufgeräumt, keine Personen, kein Text, keine Wasserzeichen, kein Baustellenzustand. Vorher und Nachher müssen sich exakt übereinanderlegen lassen.`;
   return { intro, regeln, bestand, umsetzung, schluss };

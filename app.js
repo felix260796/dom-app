@@ -178,6 +178,9 @@ async function viewProjekt() {
           ${full ? '' : `<button class="ph-add" id="cam">${icon('camera')}<span>Kamera</span></button><button class="ph-add" id="gal">${icon('image')}<span>Fotos</span></button>`}
         </div>
         <p class="hint">${p.photos.length ? 'Jedes Foto wird eine eigene Nachher-Ansicht. Die KI nutzt alle Fotos, um den Raum zu verstehen.' : 'Am besten quer und aus den Ecken fotografieren, bis zu 4 Blickwinkel.'}</p>
+        ${rt.outdoor ? '' : `<div id="masseBox"><label>Raummaße in Metern (damit die KI weiß, wie groß der Raum ist)</label>
+        <div class="row masse-row">${[['l', 'Länge'], ['b', 'Breite'], ['h', 'Höhe']].map(([k, l]) => `<input type="text" inputmode="decimal" data-mass="${k}" placeholder="${l}" aria-label="${l} in m" value="${esc(p.masse?.[k] || '')}">`).join('')}</div>
+        ${aufmassText(p) && !raumMasse(p) ? '<p class="hint">Maße aus dem Aufmaß werden verwendet.</p>' : ''}</div>`}
       </div>
     </section>
 
@@ -245,7 +248,8 @@ async function viewProjekt() {
     rerender();
   };
   $('#note').oninput = (e) => { p.note = e.target.value; persist(); };
-  if ($('#bestand')) $('#bestand').oninput = (e) => { Object.assign(p.bestand, { text: e.target.value, manual: true, photos: p.photos.length }); persist(); };
+  $$('[data-mass]').forEach((inp) => (inp.oninput = () => { p.masse = { ...(p.masse || {}), [inp.dataset.mass]: inp.value.trim() }; persist(); }));
+  if ($('#bestand')) $('#bestand').oninput = (e) => { Object.assign(p.bestand, { text: e.target.value, manual: true, photos: p.photos.length, masse: masseText(p) }); persist(); };
   $('#more').ontoggle = (e) => { uiOpen.more = e.target.open; };
   const updGoInfo = () => {
     const n = p.photos.length * p.selected.length;
@@ -262,6 +266,12 @@ async function viewProjekt() {
   $('#go').onclick = async () => {
     if (!state.settings.apiKey) return toast('Bitte zuerst in den Einstellungen den API-Schlüssel eintragen.', 4000);
     const done = packagesFor(p.roomType).filter((x) => p.selected.includes(x.id) && firstResult(p, x.id));
+    if (!rt.outdoor && !raumMasse(p) && !aufmassText(p) && !p.masseSkip) {
+      if (confirm('Noch keine Raummaße eingetragen. Mit Länge, Breite und Höhe hält sich die KI viel besser an die echte Raumgröße.\n\nOK = Maße jetzt eingeben\nAbbrechen = ohne Maße weiter')) {
+        $('#masseBox')?.scrollIntoView({ behavior: 'smooth', block: 'center' }); setTimeout(() => $('[data-mass="l"]')?.focus(), 300); return;
+      }
+      p.masseSkip = true; persist();
+    }
     if (done.length && !confirm(`${done.map((x) => x.name).join(', ')} ${done.length === 1 ? 'ist' : 'sind'} schon fertig und ${done.length === 1 ? 'wird' : 'werden'} neu erstellt. Weiter?`)) return;
     setTimeout(() => $('#results')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 150);
     runAll(p);
