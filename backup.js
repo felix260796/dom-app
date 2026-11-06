@@ -92,6 +92,20 @@ window.Backup = (() => {
   /** Karte für die Einstellungen. */
   function einstellungenKarte(el) {
     if (!el) return;
+    if (window.Sync?.active()) {
+      // Mit Cloud-Abgleich nur noch als Notfall-Export, zugeklappt
+      el.innerHTML = `
+        <details class="card">
+          <summary class="muted" style="cursor:pointer">Notfall-Export (Datei)</summary>
+          <p class="muted" style="margin-top:10px">Deine Daten werden automatisch über den Cloud-Abgleich gesichert. Hier kannst du zusätzlich eine Datei erstellen, z. B. für OneDrive, oder eine Datei zurückholen.</p>
+          <button class="btn secondary block" id="bkCreate">Datei erstellen</button>
+          <label style="display:flex;align-items:center;gap:8px;margin-top:8px"><input type="checkbox" id="bkKey" checked> API-Schlüssel mitsichern</label>
+          <button class="btn secondary block" id="bkRestore" style="margin-top:10px">Datei wiederherstellen</button>
+        </details>`;
+      $('#bkCreate', el).onclick = () => create({ withKey: $('#bkKey', el).checked });
+      $('#bkRestore', el).onclick = restore;
+      return;
+    }
     el.innerHTML = `
       <div class="card">
         <h2>Datensicherung</h2>
