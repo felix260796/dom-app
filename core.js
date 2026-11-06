@@ -1,4 +1,11 @@
 'use strict';
+// Gescrollt wird im Inhaltsbereich <main>, nicht im Fenster (siehe style.css). Damit der übrige Code
+// unverändert bleibt, gehen window.scrollTo und window.scrollY an diesen Bereich.
+(() => {
+  const m = () => document.getElementById('main');
+  window.scrollTo = (x, y) => { const el = m(); if (!el) return; if (x && typeof x === 'object') el.scrollTo(x); else el.scrollTo(x || 0, y || 0); };
+  try { Object.defineProperty(window, 'scrollY', { configurable: true, get: () => m()?.scrollTop || 0 }); } catch {}
+})();
 /* DOM – Kern der App: Helfer, Speicher (IndexedDB), KI-Aufrufe (Gemini), Bildfunktionen.
  * Alle Daten liegen lokal auf dem Gerät. Sicherung: backup.js · Cloud-Abgleich: sync.js
  * Oberfläche: app.js (Projekte, Räume), projekt.js, moodboards.js · PDFs: pdf.js, baumappe.js */
