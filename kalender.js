@@ -177,6 +177,10 @@ window.Kalender = (() => {
     const isNeu = !vorlage.id;
     const t = { id: uid(), kind: 'termin', titel: '', art: 'kunde', datum: heute(), von: '09:00', bis: '10:00', ganztag: false, wer: wer() ? [wer()] : team().map((p) => p.id), kundeId: '', objektId: '', projektId: '', partnerId: '', ort: '', notiz: '', created: Date.now(), ...vorlage };
     if (!Array.isArray(t.wer)) t.wer = [];
+    t.erinnerung ??= state.settings.erinnerungTage ?? 1;
+    const alt = isNeu ? null : JSON.stringify([t.datum, t.von, t.bis, t.ganztag, t.ort, t.titel]);
+    let mailen = null; // null = automatisch (neu: ja, geändert: ja, wenn schon eine Bestätigung rausging)
+    if (isNeu && t.kundeId && !t.objektId) { const k = Kunden.byId(t.kundeId); if (k?.objekte.length === 1) t.objektId = k.objekte[0].id; }
     if (isNeu && t.kundeId && !t.ort) { const k = Kunden.byId(t.kundeId), o = k && Kunden.objekt(k, t.objektId); t.ort = o ? Kunden.einzeilig(o.adresse) : ''; }
     const render = () => {
       const k = Kunden.byId(t.kundeId), p = window.Partner?.byId(t.partnerId);
@@ -197,6 +201,7 @@ window.Kalender = (() => {
           <label>Ort</label><div class="adr"><input type="text" id="tOrt" value="${esc(t.ort)}" autocomplete="off" placeholder="Anschrift oder z. B. Büro"></div>
           <label>Notiz</label><textarea id="tNotiz" placeholder="z. B. Fliesenmuster mitbringen">${esc(t.notiz)}</textarea>
         </div>
+        <div class="card kform tmail" id="tMail"></div>
         <button class="btn big block" id="tSave">${icon('check')} Speichern</button>
         <button class="btn secondary block" id="tIcs" style="margin-top:10px">${icon('calendar')} In den iPhone-Kalender übernehmen</button>
         ${isNeu ? '' : `<button class="link-danger" id="tDel">${icon('trash')} Termin löschen</button>`}`;
@@ -226,18 +231,76 @@ window.Kalender = (() => {
         const pid = await window.Partner.waehlen(); if (pid) { t.partnerId = pid; render(); }
       };
       Kunden.adressVorschlaege($('#tOrt'));
+      // ---- E-Mail an die Beteiligten ----
+      const mailBox = () => {
+        const el = $('#tMail'); if (!el) return;
+        const an = empfaenger(t);
+        const fehlt = beteiligte(t).filter((x) => !x.email);
+        const bereit = state.settings.mailAktiv && window.Sync?.active();
+        const geaendert = !isNeu && alt !== JSON.stringify([t.datum, t.von, t.bis, t.ganztag, t.ort, t.titel]);
+        const an_ = mailen ?? (isNeu || (geaendert && !!t.mailGesendet));
+        el.innerHTML = `<div class="hv-h" style="margin-top:0">${icon('mail')}<span>E-Mail an die Beteiligten</span></div>
+          ${bereit ? `
+          <label class="chk" style="margin-top:10px"><input type="checkbox" id="tMailAn" ${an_ ? 'checked' : ''}> ${isNeu ? 'Terminbestätigung senden' : t.mailGesendet ? 'Änderung senden' : 'Terminbestätigung senden'}</label>
+          <label style="margin-top:0">Erinnerung</label>
+          <select id="tErin">${[[0, 'keine'], [1, '1 Tag vorher'], [2, '2 Tage vorher'], [3, '3 Tage vorher'], [7, '1 Woche vorher']].map(([v, n]) => `<option value="${v}" ${+t.erinnerung === v ? 'selected' : ''}>${n}</option>`).join('')}</select>
+          ${k?.email ? `<label class="chk" style="margin-top:10px"><input type="checkbox" id="tMailK" ${t.mailKunde ? 'checked' : ''}> Kunde auch (${esc(k.email)})</label>` : ''}
+          <p class="hint" style="margin-bottom:0">${an.length ? `An: ${esc(an.map((x) => x.name || x.email).join(', '))}` : 'Noch niemand mit E-Mail-Adresse.'}${fehlt.length ? ` · ohne E-Mail: ${esc(fehlt.map((x) => x.name).join(', '))}` : ''}</p>`
+          : `<p class="hint" style="margin:8px 0 0">Bestätigung und Erinnerung per E-Mail sind noch nicht eingerichtet. Unter Einstellungen → Team steht, wie es geht.</p>`}`;
+        if ($('#tMailAn')) $('#tMailAn').onchange = (e) => { mailen = e.target.checked; };
+        if ($('#tErin')) $('#tErin').onchange = (e) => { t.erinnerung = +e.target.value; };
+        if ($('#tMailK')) $('#tMailK').onchange = (e) => { t.mailKunde = e.target.checked; mailBox(); };
+      };
+      mailBox();
+      $$('[data-tw]').forEach((b) => b.addEventListener('click', mailBox));
       $('#tSave').onclick = async () => {
         if (!t.titel.trim()) t.titel = zuKunde(t) ? `${art(t.art)[1].replace('termine', 'termin')} ${Kunden.name(Kunden.byId(t.kundeId)) || ''}`.trim() : art(t.art)[1].replace('termine', 'termin');
         t.updated = Date.now();
+        const bereit = state.settings.mailAktiv && window.Sync?.active();
+        const sendJetzt = bereit && ($('#tMailAn')?.checked ?? false);
+        t.mailAn = bereit ? empfaenger(t) : t.mailAn || [];
+        t.kontext = kontext(t);
         await kvSet('termin:' + t.id, t); alle.set(t.id, t); punkt();
         tag = t.datum; monat = new Date(ausIso(t.datum).getFullYear(), ausIso(t.datum).getMonth(), 1);
-        toast('Termin gespeichert'); zurueck();
+        if (sendJetzt && t.mailAn.length) {
+          $('#tSave').disabled = true;
+          try {
+            window.Sync.run?.(); // damit die Erinnerung den neuen Stand in der Cloud findet
+            const r = await window.Sync.funktion('termin-mail', { aktion: t.mailGesendet ? 'aenderung' : 'bestaetigung', termin: t });
+            t.mailGesendet = Date.now(); await kvSet('termin:' + t.id, t);
+            toast(`Termin gespeichert, E-Mail an ${r.gesendet} ${r.gesendet === 1 ? 'Person' : 'Personen'} verschickt`, 3500);
+          } catch (e) { toast('Termin gespeichert, aber die E-Mail ging nicht raus: ' + e.message, 6000); }
+        } else toast('Termin gespeichert');
+        zurueck();
       };
       $('#tIcs').onclick = () => ics(t);
-      if ($('#tDel')) $('#tDel').onclick = async () => { if (!confirm('Termin löschen?')) return; await kvDel('termin:' + t.id); alle.delete(t.id); punkt(); zurueck(); };
+      if ($('#tDel')) $('#tDel').onclick = async () => {
+        if (!confirm('Termin löschen?')) return;
+        if (t.mailGesendet && t.mailAn?.length && window.Sync?.active() && confirm('Absage per E-Mail an die Beteiligten senden?')) {
+          try { await window.Sync.funktion('termin-mail', { aktion: 'absage', termin: t }); toast('Absage verschickt'); } catch (e) { toast('Absage ging nicht raus: ' + e.message, 5000); }
+        }
+        await kvDel('termin:' + t.id); alle.delete(t.id); punkt(); zurueck();
+      };
     };
     render(); window.scrollTo(0, 0);
     if (isNeu) setTimeout(() => $('#tTitel')?.focus(), 50);
+  }
+
+  /** Wer dabei ist: Team-Personen des Termins, Subunternehmer, auf Wunsch der Kunde (mit E-Mail oder ohne). */
+  function beteiligte(t) {
+    const out = team().filter((p) => !t.wer?.length || t.wer.includes(p.id)).map((p) => ({ name: p.name, email: (p.email || '').trim() }));
+    const p = window.Partner?.byId(t.partnerId);
+    if (p) out.push({ name: [p.inhaber, p.firma].filter(Boolean).join(', ') || 'Subunternehmer', email: p.email.trim() });
+    const k = Kunden.byId(t.kundeId);
+    if (k && t.mailKunde) out.push({ name: Kunden.name(k), email: k.email.trim() });
+    return out;
+  }
+  const empfaenger = (t) => beteiligte(t).filter((x) => /.+@.+\..+/.test(x.email));
+  /** Angaben für den Text der E-Mail (die Cloud kennt Kunden und Subunternehmer nicht einzeln). */
+  function kontext(t) {
+    const k = Kunden.byId(t.kundeId), o = k && Kunden.objekt(k, t.objektId), p = window.Partner?.byId(t.partnerId);
+    return { firma: state.settings.company || 'DOM Projektmanagement', kunde: k ? Kunden.name(k) : '', kundeTel: k?.telefon || '', objekt: o ? Kunden.objLabel(o) : '',
+      partner: p ? [p.firma, p.inhaber, p.telefon].filter(Boolean).join(' · ') : '', wer: team().filter((x) => t.wer?.includes(x.id)).map((x) => x.name).join(', ') };
   }
 
   /** .ics-Datei: das iPhone bietet „Zum Kalender hinzufügen“ an (mit Erinnerung). */

@@ -618,3 +618,6 @@ input.bad { border-color: var(--danger) !important; background: var(--danger-sof
 
 .wstatus { margin-top: 12px; }
 .wstatus button { background: var(--card); }
+
+.tmail { margin-top: 12px; }
+.tmail select { margin-bottom: 4px; }
