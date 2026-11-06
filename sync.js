@@ -216,6 +216,7 @@ window.Sync = (() => {
   function updateCard() { if (cardEl?.isConnected) einstellungenKarte(cardEl); }
   function einstellungenKarte(el) {
     cardEl = el; if (!el) return;
+    if (el.dataset.active !== String(active())) { el.dataset.active = String(active()); window.Backup?.einstellungenKarte(document.getElementById('backup-settings')); }
     if (active()) {
       const last = status.last ? new Date(status.last).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' }) : '–';
       el.innerHTML = `
