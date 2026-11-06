@@ -154,7 +154,7 @@ async function extractWishes(p) {
   const txt = await geminiText([{ text: `Du unterstützt eine Sanierungsfirma. Unten steht das Transkript bzw. die Notizen eines Vor-Ort-Gesprächs mit dem Kunden zum Raum "${p.room}".
 
 Ziehe die konkreten Wünsche und Entscheidungen des Kunden heraus, kurz und als Stichpunkte auf Deutsch:
-- "bild": alles, was man auf einem Foto des sanierten Raums sehen würde (Aufteilung, Dusche/Wanne, Möbel, Farben, Materialien, Fliesen, Licht, was raus soll, was bleiben soll). Formuliere so, dass eine Bild-KI es umsetzen kann.
+- "bild": alles, was man auf einem Foto des sanierten Raums sehen würde (Aufteilung, Dusche/Wanne, Möbel, Farben, Materialien, Fliesen, Licht, was raus soll, was bleiben soll, was NEU dazukommen soll, z. B. „WC kommt neu dazu“). Schreibe ausdrücklich, wenn etwas neu eingebaut oder entfernt werden soll. Formuliere so, dass eine Bild-KI es umsetzen kann.
 - "sonstiges": alles andere, was für Angebot und Planung wichtig ist (Budget, Termine, Maße, Technik, Elektro, Heizung, Barrierefreiheit, offene Fragen).
 Nimm nur auf, was im Gespräch wirklich gesagt wurde. Spätere Aussagen haben Vorrang vor früheren.
 
