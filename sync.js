@@ -135,7 +135,7 @@ window.Sync = (() => {
     return [...byId.values()].sort((a, b) => (b.created || 0) - (a.created || 0));
   }
   // Gelöschte Räume (project:) und Projekte (wohnung:) werden über die Liste „projectDeleted“ auf allen Geräten entfernt
-  const delId = (k) => (/^(project|wohnung|kunde|bild):/.test(k) ? k.slice(k.indexOf(':') + 1) : '');
+  const delId = (k) => (/^(project|wohnung|kunde|bild|termin|partner|pdok):/.test(k) ? k.slice(k.indexOf(':') + 1) : '');
   const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
   const isObj = (x) => x !== null && typeof x === 'object' && !Array.isArray(x);
   const hasIds = (a) => Array.isArray(a) && a.length > 0 && a.every((x) => isObj(x) && x.id != null);
@@ -222,7 +222,7 @@ window.Sync = (() => {
       }
     }
     // Auf anderem Gerät gelöschte Projekte auch hier entfernen
-    for (const id of tomb) for (const pre of ['project:', 'wohnung:', 'kunde:', 'bild:']) if ((await kvGet(pre + id)) !== undefined) { await rawDel(pre + id); changed.add(pre + id); }
+    for (const id of tomb) for (const pre of ['project:', 'wohnung:', 'kunde:', 'bild:', 'termin:', 'partner:', 'pdok:']) if ((await kvGet(pre + id)) !== undefined) { await rawDel(pre + id); changed.add(pre + id); }
     saveMeta();
     // 2) Hochladen, was lokal geändert wurde
     const uploaded = [];
@@ -286,15 +286,25 @@ window.Sync = (() => {
     if (changed.has('preisliste') || changed.has('angebotVorlagen')) toast('Preisliste/Vorlagen vom anderen Gerät übernommen. Wirksam nach Neustart der App.', 5000);
     if (changed.has('projectIndex')) await window.Projekt?.migrate();
     if ([...changed].some((k) => k.startsWith('kunde:'))) await window.Kunden?.laden();
-    if (changed.has('projectIndex')) { await window.Kunden?.migrate(); await window.Kunden?.nummern(); }
+    if ([...changed].some((k) => k.startsWith('partner:'))) await window.Partner?.laden();
+    if ([...changed].some((k) => k.startsWith('termin:'))) { await window.Kalender?.laden(); window.Kalender?.punkt(); }
+    if (changed.has('projectIndex')) await window.Kunden?.migrate();
+    if (changed.has('projectIndex') || [...changed].some((k) => k.startsWith('kunde:'))) await window.Kunden?.nummern();
     for (const k of changed) if (k.startsWith('project:') && state.project?.id !== k.slice(8)) window.Projekt?.forget(k.slice(8));
     const typing = /INPUT|TEXTAREA|SELECT/.test(document.activeElement?.tagName || '');
     if (!typing && document.getElementById('new') && state.tab === 'projekt') viewProjektListe();
     if (!typing && document.getElementById('kNew') && state.tab === 'kunden') window.Kunden?.listeView();
     // Offene Kundenkarte bzw. offenes Objekt mit dem neuen Stand neu zeichnen, damit nicht mit altem Stand weitergearbeitet wird
-    else if (!typing && state.tab === 'kunden' && state.kunde && changed.has('kunde:' + state.kunde.id)) {
+    // (nur wenn Kundenkarte bzw. Objektseite wirklich zu sehen ist, nicht unter Kalender, Bildern oder einem Projekt)
+    else if (!typing && state.tab === 'kunden' && state.kunde && !state.kalender && !state.wohnung && (document.getElementById('kAct') || document.getElementById('oAct')) && changed.has('kunde:' + state.kunde.id)) {
       const k = window.Kunden?.byId(state.kunde.id), y = window.scrollY;
       if (k) { const o = state.objekt && window.Kunden.objekt(k, state.objekt); await (o ? window.Kunden.objektView(k, o) : window.Kunden.detail(k)); window.scrollTo(0, y); }
+    }
+    // Subunternehmer: Liste bzw. offene Karte neu zeichnen (die Karte hält sonst den alten Stand und würde ihn zurückschreiben)
+    if (!typing && !state.kalender && state.tab === 'partner' && [...changed].some((k) => k.startsWith('partner:'))) {
+      const y = window.scrollY;
+      if (state.partner && document.getElementById('pAct')) { const p = window.Partner?.byId(state.partner.id); if (p) { window.Partner.detail(p); window.scrollTo(0, y); } }
+      else if (document.getElementById('pNew')) window.Partner?.listeView();
     }
     if (state.project && changed.has('project:' + state.project.id)) toast('Dieses Projekt wurde auf einem anderen Gerät geändert. Zum Aktualisieren Projekt neu öffnen.', 5000);
     else toast(`${changed.size} Änderung(en) vom anderen Gerät übernommen`);

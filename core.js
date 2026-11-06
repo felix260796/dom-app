@@ -60,10 +60,10 @@ async function resize(src, maxSide = 1600, type = 'image/jpeg', quality = 0.86) 
 }
 const b64 = (dataUrl) => dataUrl.split(',')[1];
 const mimeOf = (dataUrl) => dataUrl.slice(5, dataUrl.indexOf(';'));
-function pickFiles({ multiple = false, camera = false } = {}) {
+function pickFiles({ multiple = false, camera = false, accept = 'image/*' } = {}) {
   return new Promise((res) => {
     const inp = document.createElement('input');
-    inp.type = 'file'; inp.accept = 'image/*'; inp.multiple = multiple;
+    inp.type = 'file'; inp.accept = accept; inp.multiple = multiple;
     if (camera) inp.setAttribute('capture', 'environment');
     inp.onchange = () => res([...inp.files]);
     inp.click();
