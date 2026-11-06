@@ -119,7 +119,7 @@ async function saveProject(proj) {
   if (p.wohnungId) return window.Projekt?.raumGespeichert(p);
   const idx = (await projectIndex()).filter((x) => x.id !== p.id);
   idx.unshift({ id: p.id, customer: p.customer, room: p.room, created: p.created, updated: Date.now(), thumb: p.thumb || '' });
-  await kvSet('projectIndex', idx.slice(0, 100));
+  await kvSet('projectIndex', idx);
 }
 async function deleteProject(id) {
   await kvDel('project:' + id);
@@ -241,6 +241,7 @@ function normalizeProject(p) {
   p.results ??= {};
   if (!p.roomType) p.roomType = roomTypeIdFromName(p.room);
   p.room ||= roomType(p.roomType).name;
+  if (!Array.isArray(p.selected)) p.selected = packagesFor(p.roomType).map((x) => x.id);
   p.pdfProducts ??= true;
   p.evening ??= {};
   p.withEvening ??= false;

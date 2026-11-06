@@ -63,7 +63,7 @@ window.Mappe = (() => {
     c.logo = async (x, y, w, h) => { if (S.logo) await addFit(doc, S.logo, x, y, w, h, c.logoFmt); };
     c.pill = (t, x, y, bg, fg = [255, 255, 255], size = 7) => {
       c.font(size, 'bold', fg);
-      const tw = doc.getTextWidth(clean(t).toUpperCase()) + 0.6 * clean(t).length * 0.35, h = size * 0.62;
+      const tw = doc.getTextWidth(clean(t).toUpperCase()) + clean(t).length * 0.35, h = size * 0.62;
       c.fill(bg, x, y, tw + 6, h, h / 2);
       doc.text(clean(t).toUpperCase(), x + 3, y + h * 0.7, { charSpace: 0.35 });
       return tw + 6;

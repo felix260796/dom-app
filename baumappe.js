@@ -258,12 +258,16 @@ window.Baumappe = (() => {
     let y = 42;
     c.caps('Ausstattung', M, y); y += 6;
     for (const [k, label] of fieldsFor(r.roomType).filter(([k]) => !['beschreibung', 'sonstiges'].includes(k) && pkg.fields[k]?.trim())) {
-      const tl = c.lines(pkg.fields[k].trim(), colW - 40);
-      if (y + tl.length * 3.9 > H - 18) break;
-      c.font(7, 'bold', GREY); c.text(label.replace(/\s*\(.*\)/, '').toUpperCase(), M, y, { charSpace: 0.2 });
-      c.font(8.5, 'normal', INK); c.text(tl, M + 40, y);
-      y += Math.max(1, tl.length) * 3.9 + 2.2;
-      c.line(LIGHT, M, y - 1.6, M + colW, y - 1.6, 0.15);
+      const tl = c.lines(pkg.fields[k].trim(), colW - 42);
+      c.font(7, 'bold', GREY);
+      const lab = c.lines(label.replace(/\s*\(.*\)/, '').toUpperCase(), 36);
+      const nz = Math.max(tl.length, lab.length);
+      if (y + nz * 3.9 > H - 18) break;
+      c.text(lab, M, y, { lineHeightFactor: 1.5 });
+      c.font(8.5, 'normal', INK); c.text(tl, M + 42, y, { lineHeightFactor: 1.3 });
+      const unten = y + (nz - 1) * 3.9 + 2;
+      c.line(LIGHT, M, unten, M + colW, unten, 0.15);
+      y = unten + 4.8;
     }
     // rechts: Produkte (ohne Preise) und Hinweise
     const x0 = M + colW + 12, w = W - M - x0;
@@ -281,7 +285,7 @@ window.Baumappe = (() => {
       const meta = [x.delivery ? 'Lieferzeit ' + x.delivery : ''].filter(Boolean).join(' · ');
       if (meta) { c.font(7.2, 'normal', GREY); c.text(meta, x0 + 28, yr); yr += 3.5; }
       if (safeUrl(x.url)) { c.font(7.5, 'bold', BRASS); c.doc.textWithLink('Produktlink ›', x0 + 28, yr, { url: safeUrl(x.url) }); yr += 3.6; }
-      yr += 2.4; c.line(LIGHT, x0, yr - 1.8, W - M, yr - 1.8, 0.15);
+      c.line(LIGHT, x0, yr - 1.9, W - M, yr - 1.9, 0.15); yr += 3;
     }
     const b = bau(r), am = aufmass(r);
     const notes = [['Ausführung', b.hinweis], ['Kundenwünsche', r.wishes], ['Hinweis', r.note], ['Sonstiges aus dem Gespräch', r.otherNotes], ['Notiz Aufmaß', am?.raum.notiz]].filter(([, v]) => v?.trim());
@@ -446,7 +450,7 @@ window.Baumappe = (() => {
       if (F.hoehe < H - 0.01) { c.font(6.5, 'bold', BRASS); doc.text(m(F.hoehe), x + ww + 1.5, y0 - F.hoehe * s + 1); }
     });
     c.font(7, 'normal', GREY);
-    c.text('Hellblau: Duschbereich raumhoch, abgedichtet. Messinglinie: Oberkante Fliese. Raster mittig auf die Wand gesetzt, Schnittfliesen an beiden Rändern gleich.', c.M, c.H - 15);
+    c.text((F.dusche && F.hoehe < H ? 'Hellblau: Duschbereich raumhoch, abgedichtet. ' : '') + 'Messinglinie: Oberkante Fliese. Raster mittig auf die Wand gesetzt, Schnittfliesen an beiden Rändern gleich.', c.M, c.H - 15);
   }
 
   async function seiteListen(c, r, pk, kicker, { material, leistung }) {
@@ -472,11 +476,11 @@ window.Baumappe = (() => {
         const need = (g !== grp ? 7 : 0) + tl.length * 3.7 + 2.6;
         if (y + need > c.H - 16) return rows.indexOf(row);
         if (g !== grp) { grp = g; y += 1.5; c.font(7.5, 'bold', NAVY); c.text(String(g || 'Allgemein').toUpperCase(), x0, y, { charSpace: 0.3 }); y += 4.5; }
-        c.font(8.2, 'normal', INK); c.text(tl, x0, y);
+        c.font(8.2, 'normal', INK); c.text(tl, x0, y, { lineHeightFactor: 1.27 });
         c.font(8.2, 'bold', INK); c.text(render.qty(row), x0 + colW, y, { align: 'right' });
-        y += tl.length * 3.7 + 1.2;
-        const h = render.hint?.(row); if (h) { c.font(6.8, 'normal', GREY); c.text(c.lines(h, colW - 32)[0], x0, y); y += 3.2; }
-        c.line(LIGHT, x0, y - 1, x0 + colW, y - 1, 0.12); y += 1.4;
+        let unten = y + (tl.length - 1) * 3.7;
+        const h = render.hint?.(row); if (h) { unten += 3.2; c.font(6.8, 'normal', GREY); c.text(c.lines(h, colW - 32)[0], x0, unten); }
+        c.line(LIGHT, x0, unten + 1.8, x0 + colW, unten + 1.8, 0.12); y = unten + 6;
       }
       return -1;
     };

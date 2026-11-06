@@ -27,7 +27,7 @@ window.Projekt = (() => {
     const list = await raeume(w);
     const idx = (await projectIndex()).filter((x) => x.id !== w.id);
     idx.unshift({ id: w.id, kind: 'wohnung', customer: w.customer, address: w.address, room: list.length ? summary(list) : 'noch kein Raum', rooms: list.length, created: w.created, updated: w.updated, thumb: list.find((r) => r?.thumb)?.thumb || '' });
-    await kvSet('projectIndex', idx.slice(0, 100));
+    await kvSet('projectIndex', idx);
   }
   const neuesProjekt = () => ({ id: uid(), kind: 'wohnung', created: Date.now(), customer: '', address: '', rooms: [], mappe: {}, pdfProducts: true, pdfPrices: false, pdfEvening: true });
 
@@ -39,8 +39,19 @@ window.Projekt = (() => {
     let changed = false;
     const out = [];
     for (const x of idx) {
-      if (x.kind === 'wohnung') { out.push(x); continue; }
-      const p = await kvGet('project:' + x.id);
+      if (x.kind === 'wohnung') {
+        // Einträge aus der ersten Wohnungs-Version: Raumnamen und Vorschaubild nachtragen
+        if (typeof x.rooms !== 'number') {
+          const w = await kvGet(key(x.id));
+          if (w) {
+            const list = await raeume(w);
+            Object.assign(x, { address: w.address || '', room: list.length ? summary(list) : 'noch kein Raum', rooms: list.length, thumb: x.thumb || list.find((r) => r?.thumb)?.thumb || '' });
+            changed = true;
+          }
+        }
+        out.push(x); continue;
+      }
+      const p = normalizeProject(await kvGet('project:' + x.id));
       if (!p) { changed = true; continue; } // Eintrag ohne Daten
       if (p.wohnungId) { changed = true; continue; } // gehört schon zu einem Projekt (z. B. vom anderen Gerät umgestellt)
       const wid = 'p' + p.id;
@@ -200,7 +211,7 @@ window.Projekt = (() => {
       };
     }
   }
-  function raumAngebot(r, w) { r.customer = w.customer; r.address = w.address; state.project = r; window.Angebot?.ansicht(r); }
+  function raumAngebot(r, w) { r.customer = w.customer; r.address = w.address; state.project = r; state.angebotAusProjekt = true; window.Angebot?.ansicht(r); }
 
   async function runAll(w) {
     if (!state.settings.apiKey) { toast('Bitte zuerst in den Einstellungen den API-Schlüssel eintragen.', 4000); return; }

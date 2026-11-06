@@ -427,7 +427,7 @@ Gib Länge (längere Seite) und Breite der Grundfläche, Raumhöhe, Anzahl und G
     el.innerHTML = `<div class="card">
       <h2>4. Aufmaß & Angebot</h2>
       <p class="muted">${raeume.length ? `${raeume.length} Raum/Räume, ${fmtNum(flaeche)} m² Bodenfläche${n ? `, Angebot mit ${n} Positionen` : ''}.` : 'Maße aufnehmen, daraus entstehen Angebot und Bauzeitenplan pro Paket.'}</p>
-      <button class="btn block" id="toAngebot">📐 Aufmaß & Angebot öffnen</button></div>`;
+      <button class="btn block" id="toAngebot">Aufmaß & Angebot öffnen</button></div>`;
     $('#toAngebot').onclick = () => ansicht(p);
   }
 
@@ -436,12 +436,12 @@ Gib Länge (längere Seite) und Breite der Grundfläche, Raumhöhe, Anzahl und G
   async function ansicht(p, scrollTop = true) {
     await preisliste(); await vorlagen();
     init(p);
-    setTitle((p.customer || 'Projekt') + ' · Angebot');
+    const zurueck = () => { if (state.angebotAusProjekt && state.wohnung) { state.angebotAusProjekt = false; state.project = null; return Projekt.view(); } viewProjekt(); };
+    header('Angebot', [p.customer, p.room].filter(Boolean).join(' · '), { label: state.angebotAusProjekt ? 'Projekt' : p.room || 'Raum', fn: zurueck });
     main().innerHTML = `
-      <button class="btn secondary small" id="aBack" style="margin-bottom:12px">← Zurück zum Projekt</button>
-      <div class="seg">${[['aufmass', '📐 Aufmaß'], ['angebot', '💶 Angebot'], ['material', '🧾 Material'], ['bauzeit', '📅 Bauzeit']].map(([k, l]) => `<button data-atab="${k}" class="${tab === k ? 'on' : ''}">${l}</button>`).join('')}</div>
+      <div class="seg">${[['aufmass', 'Aufmaß'], ['angebot', 'Angebot'], ['material', 'Material'], ['bauzeit', 'Bauzeit']].map(([k, l]) => `<button data-atab="${k}" class="${tab === k ? 'on' : ''}">${l}</button>`).join('')}</div>
       <div id="aBody"></div>`;
-    $('#aBack').onclick = () => viewProjekt();
+    
     $$('[data-atab]').forEach((b) => (b.onclick = () => { tab = b.dataset.atab; ansicht(p); }));
     ({ aufmass: aufmassView, angebot: angebotView, material: materialView, bauzeit: bauzeitView })[tab](p);
     if (scrollTop) window.scrollTo(0, 0);
@@ -459,8 +459,8 @@ Gib Länge (längere Seite) und Breite der Grundfläche, Raumhöhe, Anzahl und G
         return `<div class="card" data-raum="${ri}">
         <div class="row" style="align-items:flex-end"><div style="flex:2"><label>Raum</label><input type="text" data-rf="name" value="${esc(r.name)}"></div>
           <div style="flex:2"><label>Raumtyp</label><select data-rf="typ">${typen.map((t) => `<option ${t === r.typ ? 'selected' : ''}>${esc(t)}</option>`).join('')}</select></div></div>
-        ${p.photos.length ? `<button class="btn small secondary block" data-schaetzen style="margin-top:10px">📷 Maße grob aus den Fotos schätzen (KI)</button>` : ''}
-        ${r.schaetzung ? `<p class="muted" style="color:#9a6a12">⚠️ Geschätzt aus Fotos${r.schaetzung.genau ? `, ca. ±${Math.round(r.schaetzung.genau)} %` : ''}. Bitte mit dem Meterstab prüfen und korrigieren.${r.schaetzung.text ? `<br><i>${esc(r.schaetzung.text)}</i>` : ''}</p>` : ''}
+        ${p.photos.length ? `<button class="btn small secondary block" data-schaetzen style="margin-top:10px">Maße grob aus den Fotos schätzen (KI)</button>` : ''}
+        ${r.schaetzung ? `<p class="muted" style="color:#9a6a12">Geschätzt aus Fotos${r.schaetzung.genau ? `, ca. ±${Math.round(r.schaetzung.genau)} %` : ''}. Bitte mit dem Meterstab prüfen und korrigieren.${r.schaetzung.text ? `<br><i>${esc(r.schaetzung.text)}</i>` : ''}</p>` : ''}
         <h3>Grundfläche</h3>
         ${r.teile.map((t, ti) => `<div class="mrow"><span class="muted">${ti ? 'Teilfl. ' + (ti + 1) : 'Länge × Breite'}</span>${numIn(`data-teil="${ti}" data-k="l"`, t.l, 'Länge')}<span>×</span>${numIn(`data-teil="${ti}" data-k="b"`, t.b, 'Breite')}${ti ? `<button class="x" data-delteil="${ti}" aria-label="Entfernen">✕</button>` : '<span class="x"></span>'}</div>`).join('')}
         <button class="btn small secondary" data-addteil>＋ Teilfläche (L-Form, Nische)</button>
@@ -473,7 +473,7 @@ Gib Länge (längere Seite) und Breite der Grundfläche, Raumhöhe, Anzahl und G
           <label>Wandlänge im Duschbereich (raumhoch gefliest, abgedichtet)</label>${numIn('data-rf="duschwand"', r.duschwand, 'z. B. 1,80')}` : ''}
         <label>Notiz zum Raum</label><textarea data-rf="notiz" rows="2" placeholder="z. B. Wand zum Flur feucht, Steigleitung in der Ecke">${esc(r.notiz)}</textarea>
         <div class="row" style="margin-top:8px;align-items:center">${r.skizze ? `<img src="${r.skizze}" alt="Skizze" style="max-width:90px;border-radius:8px;flex:none">` : ''}
-          <button class="btn small secondary" data-skizze>${r.skizze ? '↻ Skizze/Plan ersetzen' : '📎 Foto von Plan / Skizze'}</button></div>
+          <button class="btn small secondary" data-skizze>${r.skizze ? '↻ Skizze/Plan ersetzen' : 'Foto von Plan / Skizze'}</button></div>
         <div class="sum">Boden/Decke <b>${fmtNum(m.boden, 2)} m²</b> · Umfang <b>${fmtNum(m.umfang, 2)} m</b> · Wand netto <b>${fmtNum(m.wand, 2)} m²</b> · Öffnungen ${fmtNum(m.oeffnungen, 2)} m²</div>
         ${p.aufmass.raeume.length > 1 ? '<button class="btn small danger" data-delraum style="margin-top:8px">Raum entfernen</button>' : ''}
       </div>`;
@@ -505,7 +505,7 @@ Gib Länge (längere Seite) und Breite der Grundfläche, Raumhöhe, Anzahl und G
         if (masse(r).boden && !confirm('Eingetragene Maße durch die KI-Schätzung ersetzen?')) return;
         sb.disabled = true; sb.textContent = 'KI schätzt die Maße …';
         try { uebernimmSchaetzung(r, await masseAusFotos(p)); toast('Maße geschätzt. Bitte nachmessen.'); rerender(); }
-        catch (e) { toast('❌ ' + e.message, 6000); sb.disabled = false; sb.textContent = '📷 Maße grob aus den Fotos schätzen (KI)'; }
+        catch (e) { toast('' + e.message, 6000); sb.disabled = false; sb.textContent = 'Maße grob aus den Fotos schätzen (KI)'; }
       };
       $('[data-addteil]', card).onclick = () => { r.teile.push({ l: '', b: '' }); rerender(); };
       $$('[data-delteil]', card).forEach((b) => (b.onclick = () => { r.teile.splice(+b.dataset.delteil, 1); rerender(); }));
@@ -538,7 +538,7 @@ Gib Länge (längere Seite) und Breite der Grundfläche, Raumhöhe, Anzahl und G
         <label>Betreff</label><input type="text" id="aTitel" value="${esc(A.titel)}" placeholder="${esc(titelDefault(p, pk))}">
         <label>Anrede</label><input type="text" id="aAnrede" value="${esc(A.anrede)}" placeholder="${esc(anredeDefault(p))}">
         ${p.otherNotes?.trim() ? `<h3>Notizen aus dem Gespräch</h3><p class="muted" style="white-space:pre-line">${esc(p.otherNotes.trim())}</p>` : ''}
-        ${A.fehler?.length ? `<p class="muted" style="color:var(--danger)">⚠️ ${A.fehler.map(esc).join(' · ')}</p>` : ''}
+        ${A.fehler?.length ? `<p class="muted" style="color:var(--danger)">${A.fehler.map(esc).join(' · ')}</p>` : ''}
       </div>
       <div class="card"><h2>Positionen</h2>
         <p class="muted">Mengen kommen aus dem Aufmaß und passen sich an, solange du hier nichts änderst. Nach eigenen Änderungen übernimmt „Neu berechnen“ das Aufmaß wieder.</p>
@@ -564,8 +564,8 @@ Gib Länge (längere Seite) und Breite der Grundfläche, Raumhöhe, Anzahl und G
       <div class="card">
         <label class="check"><input type="checkbox" id="aMitBz" ${A.mitBauzeit ? 'checked' : ''}>Bauzeitenplan anhängen</label>
         <label class="check"><input type="checkbox" id="aMitBild" ${A.mitBild ? 'checked' : ''} ${firstResult(p, A.paket) ? '' : 'disabled'}>Visualisierung „${esc(pk.name)}“ anhängen${firstResult(p, A.paket) ? '' : ' (noch nicht erstellt)'}</label>
-        <button class="btn block" id="aPdf" ${S.zeilen.length ? '' : 'disabled'}>📄 Angebot als PDF</button>
-        <button class="btn secondary block" id="aExcel" style="margin-top:10px" ${S.zeilen.length ? '' : 'disabled'}>📋 Positionen fürs Excel-Tool kopieren</button>
+        <button class="btn block" id="aPdf" ${S.zeilen.length ? '' : 'disabled'}>Angebot als PDF</button>
+        <button class="btn secondary block" id="aExcel" style="margin-top:10px" ${S.zeilen.length ? '' : 'disabled'}>Positionen fürs Excel-Tool kopieren</button>
         <p class="muted">Kopiert Nr, Raum, Menge und Bemerkung. In Excel im Blatt „Eingabe“ ab Zelle B12 einfügen.</p>
       </div>`;
 
@@ -604,7 +604,7 @@ Gib Länge (längere Seite) und Breite der Grundfläche, Raumhöhe, Anzahl und G
     $('#aBody').innerHTML = `
       <div class="card"><h2>Material- und Mengenliste</h2>
         <p class="muted">Aus Aufmaß und Angebot (Paket „${esc(pk.name)}“), inklusive Verschnitt und Gebinden. Sanitär- und Elektro-Mengen sind Richtwerte für das Gespräch mit dem Fachbetrieb. Paket wechseln im Tab „Angebot“.</p>
-        <div class="row"><button class="btn" id="mShare">📤 Liste teilen</button><button class="btn secondary" id="mCopy">📋 Kopieren</button></div>
+        <div class="row"><button class="btn" id="mShare">Liste teilen</button><button class="btn secondary" id="mCopy">Kopieren</button></div>
       </div>
       ${raeume.map((rn) => `<div class="card"><h2>${esc(rn)}</h2>${[...new Set(liste.filter((x) => x.raum === rn).map((x) => x.gruppe))].map((gr) => `<h3>${esc(gr)}</h3>
         ${liste.filter((x) => x.raum === rn && x.gruppe === gr).map((x) => `<div class="mat"><div><b>${esc(x.text)}</b>${x.hinweis ? `<span class="muted">${esc(x.hinweis)}</span>` : ''}</div><div class="mq">${fmtNum(x.menge, x.menge % 1 ? 1 : 0)} ${esc(x.einheit)}</div></div>`).join('')}`).join('')}</div>`).join('') || '<div class="card"><p class="muted">Noch kein Aufmaß eingetragen.</p></div>'}`;
@@ -820,13 +820,13 @@ Gib Länge (längere Seite) und Breite der Grundfläche, Raumhöhe, Anzahl und G
       <div class="tot"><span class="muted">Positionen</span><span>${PL.positionen.length}${PL.positionen.some((x) => x.status === 'geschätzt') ? ` (${PL.positionen.filter((x) => x.status === 'geschätzt').length} geschätzt)` : ''}</span></div>
       <div class="tot"><span class="muted">Aufschlag Lohn / Material / Wagnis</span><span>${pct(E.aufLohn)} / ${pct(E.aufMat)} / ${pct(E.wagnis)}</span></div>
       <div class="tot"><span class="muted">Firma</span><span style="text-align:right">${esc(E.firma)}<br>${esc(E.strasse)}, ${esc(E.ort)}</span></div>
-      ${/0000|Muster/.test(E.telefon + E.strasse) ? '<p class="muted">⚠️ Adresse und Telefon sind noch Platzhalter. Im Excel-Blatt „Einstellungen“ ändern und neu laden.</p>' : ''}
-      <button class="btn block" id="plImport" style="margin-top:10px">📊 Excel-Angebotstool laden</button>
+      ${/0000|Muster/.test(E.telefon + E.strasse) ? '<p class="muted">Adresse und Telefon sind noch Platzhalter. Im Excel-Blatt „Einstellungen“ ändern und neu laden.</p>' : ''}
+      <button class="btn block" id="plImport" style="margin-top:10px">Excel-Angebotstool laden</button>
       <div class="row" style="margin-top:10px"><button class="btn secondary" id="plVorl">Paket-Vorlagen</button><button class="btn danger" id="plReset">Standard</button></div>
     </div>`;
     $('#plImport').onclick = () => {
       const inp = document.createElement('input'); inp.type = 'file'; inp.accept = '.xlsx,.xlsm,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
-      inp.onchange = async () => { try { const r = await importExcel(inp.files[0]); toast(`✅ ${r.positionen.length} Positionen übernommen`); einstellungenKarte(); } catch (e) { toast('Import fehlgeschlagen: ' + e.message, 6000); } };
+      inp.onchange = async () => { try { const r = await importExcel(inp.files[0]); toast(`${r.positionen.length} Positionen übernommen`); einstellungenKarte(); } catch (e) { toast('Import fehlgeschlagen: ' + e.message, 6000); } };
       inp.click();
     };
     $('#plReset').onclick = async () => { if (!confirm('Preisliste auf die Standard-Schätzpreise zurücksetzen?')) return; await kvDel('preisliste'); PL = null; einstellungenKarte(); };

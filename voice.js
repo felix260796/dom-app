@@ -165,7 +165,7 @@ function bindVoice(p, persist) {
     voice.rec = rec; voice.started = Date.now();
     voice.timer = setInterval(() => {
       const s = Math.floor((Date.now() - voice.started) / 1000);
-      status(`🔴 Aufnahme läuft … ${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`);
+      status(`Aufnahme läuft … ${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`);
       if (s >= VOICE_MAX_MIN * 60) { toast(`Nach ${VOICE_MAX_MIN} Minuten automatisch gestoppt. Für mehr einfach neu starten.`, 5000); rec.stop(); }
     }, 1000);
     $('#vrec').textContent = '■ Aufnahme beenden'; $('#vrec').classList.add('rec'); $('#vfile').disabled = true;

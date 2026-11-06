@@ -75,7 +75,7 @@ window.Sync = (() => {
     const del = new Set(tomb || []);
     const byId = new Map();
     for (const x of [...(local || []), ...(remote || [])]) if (x?.id && !del.has(x.id)) { const o = byId.get(x.id); if (!o || (x.updated || 0) >= (o.updated || 0)) byId.set(x.id, x); }
-    return [...byId.values()].sort((a, b) => (b.created || 0) - (a.created || 0)).slice(0, 100);
+    return [...byId.values()].sort((a, b) => (b.created || 0) - (a.created || 0));
   }
   // Gelöschte Räume (project:) und Projekte (wohnung:) werden über die Liste „projectDeleted“ auf allen Geräten entfernt
   const delId = (k) => (/^(project|wohnung):/.test(k) ? k.slice(k.indexOf(':') + 1) : '');
@@ -147,10 +147,10 @@ window.Sync = (() => {
         const changed = await syncOnce();
         status = { ok: true, msg: '', last: Date.now() };
         if (changed.size) await applyChanged(changed);
-        else if (!quiet) toast('✅ Alles abgeglichen');
+        else if (!quiet) toast('Alles abgeglichen');
       } catch (e) {
         status = { ok: false, msg: /fetch|network|load failed/i.test(e.message) ? 'Cloud nicht erreichbar (offline oder Supabase-Projekt pausiert)' : e.message, last: status.last };
-        if (!quiet) toast('❌ Abgleich: ' + status.msg, 6000);
+        if (!quiet) toast('Abgleich: ' + status.msg, 6000);
       } finally {
         running = null;
         updateCard();
@@ -170,7 +170,7 @@ window.Sync = (() => {
     const typing = /INPUT|TEXTAREA|SELECT/.test(document.activeElement?.tagName || '');
     if (!typing && document.getElementById('new') && state.tab === 'projekt') viewProjektListe();
     if (state.project && changed.has('project:' + state.project.id)) toast('Dieses Projekt wurde auf einem anderen Gerät geändert. Zum Aktualisieren Projekt neu öffnen.', 5000);
-    else toast(`🔄 ${changed.size} Änderung(en) vom anderen Gerät übernommen`);
+    else toast(`${changed.size} Änderung(en) vom anderen Gerät übernommen`);
   }
 
   // ---------- Hooks aus app.js ----------
@@ -217,10 +217,10 @@ window.Sync = (() => {
       const last = status.last ? new Date(status.last).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' }) : '–';
       el.innerHTML = `
         <div class="card">
-          <h2>☁️ Cloud-Abgleich</h2>
+          <h2>Cloud-Abgleich</h2>
           <p class="muted">Verbunden als <b>${esc(cfg.email)}</b>. Projekte, Moodboards, Vorlagen und Einstellungen werden automatisch mit deinen anderen Geräten abgeglichen.</p>
-          <p class="muted">${status.ok === false ? `<span style="color:var(--danger)">⚠️ ${esc(status.msg)}</span>` : `Zuletzt abgeglichen: <b>${last}</b>`}${pending() ? ` · ${pending()} Änderung(en) warten` : ''}</p>
-          <div class="row"><button class="btn secondary" id="syNow">🔄 Jetzt abgleichen</button><button class="btn danger" id="syOff">Abmelden</button></div>
+          <p class="muted">${status.ok === false ? `<span style="color:var(--danger)">${esc(status.msg)}</span>` : `Zuletzt abgeglichen: <b>${last}</b>`}${pending() ? ` · ${pending()} Änderung(en) warten` : ''}</p>
+          <div class="row"><button class="btn secondary" id="syNow">Jetzt abgleichen</button><button class="btn danger" id="syOff">Abmelden</button></div>
         </div>`;
       $('#syNow', el).onclick = () => run({ quiet: false });
       $('#syOff', el).onclick = () => { if (confirm('Cloud-Abgleich auf diesem Gerät beenden? Die Daten bleiben auf dem Gerät und in der Cloud.')) { disconnect(); einstellungenKarte(el); } };
@@ -229,7 +229,7 @@ window.Sync = (() => {
     const old = lsGet(LS_CFG + ':last', {});
     el.innerHTML = `
       <div class="card">
-        <h2>☁️ Cloud-Abgleich</h2>
+        <h2>Cloud-Abgleich</h2>
         <p class="muted">Damit iPhone und iPad automatisch dieselben Projekte haben. Benötigt ein kostenloses Supabase-Konto (einmalig einrichten, <a href="https://github.com/felix260796/dom-app/blob/main/SUPABASE_EINRICHTEN.md" target="_blank" rel="noopener">Anleitung</a>). Auf jedem Gerät hier dieselben Daten eintragen.</p>
         <label>Projekt-URL</label><input type="url" id="syUrl" value="${esc(old.url || '')}" placeholder="https://xxxx.supabase.co" autocomplete="off">
         <label>Publishable bzw. anon key</label><input type="text" id="syKey" value="${esc(old.key || '')}" placeholder="sb_publishable_… oder eyJ…" autocomplete="off">
@@ -241,8 +241,8 @@ window.Sync = (() => {
       const v = { url: $('#syUrl', el).value, key: $('#syKey', el).value, email: $('#syMail', el).value, password: $('#syPw', el).value };
       lsSet(LS_CFG + ':last', { url: v.url, key: v.key, email: v.email });
       e.target.disabled = true; e.target.textContent = 'Verbinde …';
-      try { await connect(v); toast('✅ Cloud-Abgleich aktiv', 4000); }
-      catch (err) { toast('❌ ' + err.message, 7000); }
+      try { await connect(v); toast('Cloud-Abgleich aktiv', 4000); }
+      catch (err) { toast('' + err.message, 7000); }
       einstellungenKarte(el);
     };
   }

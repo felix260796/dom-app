@@ -32,6 +32,8 @@ const ICONS = {
   refresh: '<path d="M20 11a8 8 0 1 0-2.3 5.7"/><path d="M20 4v7h-7"/>',
   user: '<circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/>',
   map: '<path d="M12 21s-6-5.5-6-10.5a6 6 0 0 1 12 0C18 15.5 12 21 12 21z"/><circle cx="12" cy="10.5" r="2"/>',
+  download: '<path d="M12 4v11"/><path d="M7 10l5 5 5-5"/><path d="M5 20h14"/>',
+  upload: '<path d="M12 20V9"/><path d="M7 14l5-5 5 5"/><path d="M5 4h14"/>',
   share: '<path d="M12 3v13M7 8l5-5 5 5"/><path d="M5 13v6a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-6"/>',
   edit: '<path d="M4 20h4L19 9l-4-4L4 16z"/><path d="M14 6l4 4"/>',
   x: '<path d="M6 6l12 12M18 6L6 18"/>',
@@ -263,7 +265,7 @@ async function viewProjekt() {
     runAll(p);
   };
   $('#toMappe').onclick = () => w && Projekt.mappeView(w);
-  $('#toAngebot').onclick = () => window.Angebot?.ansicht(p);
+  $('#toAngebot').onclick = () => { state.angebotAusProjekt = false; window.Angebot?.ansicht(p); };
   $('#toMarks').onclick = () => window.Baumappe?.markierungen(p);
   $('#social').onclick = () => viewSocial(p).catch((e) => toast('Fehler: ' + e.message, 5000));
   $('#del').onclick = async () => {
@@ -339,5 +341,5 @@ function bindResultButtons(p) {
   try { await Projekt.migrate(); } catch (e) { console.error('Umstellung', e); }
   navigator.storage?.persist?.();
   switchTab('projekt');
-  if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js');
+  if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost')) navigator.serviceWorker.register('sw.js');
 })();

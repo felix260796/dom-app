@@ -52,7 +52,7 @@ window.Backup = (() => {
       setTimeout(() => URL.revokeObjectURL(a.href), 60000);
     }
     ls.set(LS_BACKUP, Date.now());
-    toast(`✅ Sicherung erstellt: ${projects} Projekt(e), ${fmtSize(blob.size)}`, 4000);
+    toast(`Sicherung erstellt: ${projects} Projekt(e), ${fmtSize(blob.size)}`, 4000);
     return true;
   }
 
@@ -62,9 +62,9 @@ window.Backup = (() => {
     const f = await new Promise((res) => { inp.onchange = () => res(inp.files[0]); inp.click(); });
     if (!f) return false;
     let data;
-    try { data = JSON.parse(await f.text()); } catch { toast('❌ Datei ist keine gültige Sicherung.', 4000); return false; }
+    try { data = JSON.parse(await f.text()); } catch { toast('Datei ist keine gültige Sicherung.', 4000); return false; }
     if (data?.boards && !data.entries) { toast('Das ist eine reine Moodboard-Datei. Bitte unter „Moodboards → Importieren“ einlesen.', 6000); return false; }
-    if (data?.type !== 'komplettsicherung' || !Array.isArray(data.entries)) { toast('❌ Datei ist keine DOM-Sicherung.', 4000); return false; }
+    if (data?.type !== 'komplettsicherung' || !Array.isArray(data.entries)) { toast('Datei ist keine DOM-Sicherung.', 4000); return false; }
     const when = new Date(data.created).toLocaleString('de-DE', { dateStyle: 'short', timeStyle: 'short' });
     if (!confirm(`Sicherung vom ${when} mit ${data.projects ?? '?'} Projekt(en) wiederherstellen?\n\nProjekte, die schon auf diesem Gerät sind, bleiben erhalten. Moodboards, Vorlagen und Einstellungen werden durch die aus der Sicherung ersetzt.`)) return false;
     const cur = (await kvGet('projectIndex')) || [];
@@ -73,14 +73,14 @@ window.Backup = (() => {
       if (k === 'projectIndex') {
         const ids = new Set(v.map((x) => x.id));
         const merged = [...v, ...cur.filter((x) => !ids.has(x.id))].sort((a, b) => (b.created || 0) - (a.created || 0));
-        await kvSet(k, merged.slice(0, 100));
+        await kvSet(k, merged);
       } else if (k === 'settings') {
         // Schlüssel nicht mit leerem Wert überschreiben, falls ohne Schlüssel gesichert wurde
         await kvSet(k, { ...v, apiKey: v.apiKey || curSettings.apiKey || '' });
       } else await kvSet(k, v);
     }
     ls.set(LS_BACKUP, Date.now());
-    toast('✅ Sicherung wiederhergestellt. App wird neu geladen …', 3000);
+    toast('Sicherung wiederhergestellt. App wird neu geladen …', 3000);
     setTimeout(() => location.reload(), 1200);
     return true;
   }
@@ -94,13 +94,12 @@ window.Backup = (() => {
     if (!el) return;
     el.innerHTML = `
       <div class="card">
-        <h2>💾 Datensicherung</h2>
-        <p class="muted">Alle Daten (Projekte mit Fotos und Visualisierungen, Moodboards, Angebots-Vorlagen, Einstellungen) liegen nur in dieser App auf diesem Gerät. Wird das App-Symbol gelöscht, sind sie weg. Sichere deshalb regelmäßig: Auf dem iPhone „In Dateien sichern“ wählen und als Ort <b>iCloud Drive</b> nehmen. Dann ist die Sicherung auch auf dem iPad und am PC verfügbar.</p>
+        <h2>Datensicherung</h2>
+        <p class="muted">Alles liegt nur auf diesem Gerät. Sichere regelmäßig: „In Dateien sichern“ wählen und <b>iCloud Drive</b> als Ort nehmen.</p>
         <p class="muted">Letzte Sicherung: <b>${esc(ago(lastBackup()))}</b>${needsBackup() ? ' · <span style="color:var(--danger)">seitdem geändert</span>' : ''}</p>
-        <button class="btn block" id="bkCreate">⬇️ Jetzt alles sichern</button>
+        <button class="btn block" id="bkCreate">Jetzt alles sichern</button>
         <label style="display:flex;align-items:center;gap:8px;margin-top:8px"><input type="checkbox" id="bkKey" checked> API-Schlüssel mitsichern</label>
-        <button class="btn secondary block" id="bkRestore" style="margin-top:10px">⬆️ Sicherung wiederherstellen</button>
-        <p class="muted" style="margin-top:10px">Neues Gerät oder App neu installiert? Einfach „Sicherung wiederherstellen“ tippen und die Datei aus iCloud Drive wählen.</p>
+        <button class="btn secondary block" id="bkRestore" style="margin-top:10px">Sicherung wiederherstellen</button>
       </div>`;
     $('#bkCreate', el).onclick = async () => { if (await create({ withKey: $('#bkKey', el).checked })) einstellungenKarte(el); };
     $('#bkRestore', el).onclick = restore;
@@ -111,12 +110,12 @@ window.Backup = (() => {
     if (!el) return;
     const idx = (await kvGet('projectIndex')) || [];
     if (!idx.length) {
-      el.innerHTML = `<div class="card backup-hint"><b>Neues Gerät oder App neu installiert?</b><p class="muted">${window.Sync?.active() ? 'Der Cloud-Abgleich holt deine Projekte gleich automatisch. Alternativ aus einer Sicherungsdatei zurückholen.' : 'Unter Einstellungen den Cloud-Abgleich verbinden oder Projekte aus einer Sicherungsdatei zurückholen.'}</p><button class="btn secondary block" id="bhRestore">⬆️ Sicherung wiederherstellen</button></div>`;
+      el.innerHTML = `<button class="notice" id="bhRestore">${icon('upload')}<span><b>Neues Gerät?</b> ${window.Sync?.active() ? 'Der Cloud-Abgleich holt deine Projekte gleich. Oder hier' : 'Hier'} eine Sicherung zurückholen.</span>${icon('chevron', 'pc-chev')}</button>`;
       $('#bhRestore', el).onclick = restore;
       return;
     }
     if (!needsBackup() || window.Sync?.active()) { el.innerHTML = ''; return; }
-    el.innerHTML = `<div class="card backup-hint warn"><b>💾 Nicht gesicherte Änderungen</b><p class="muted">Letzte Sicherung: ${esc(ago(lastBackup()))}. Sichere jetzt, damit keine Projekte verloren gehen (z. B. in iCloud Drive).</p><button class="btn block" id="bhCreate">Jetzt sichern</button></div>`;
+    el.innerHTML = `<button class="notice" id="bhCreate">${icon('download')}<span><b>Jetzt sichern</b> · letzte Sicherung: ${esc(ago(lastBackup()))}</span>${icon('chevron', 'pc-chev')}</button>`;
     $('#bhCreate', el).onclick = async () => { if (await create()) hinweis(el); };
   }
 

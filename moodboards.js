@@ -187,17 +187,17 @@ function viewEinstellungen() {
       // Alle verfügbaren Modelle laden und die Bild-Modelle zur Auswahl anbieten
       const r = await fetch('https://generativelanguage.googleapis.com/v1beta/models?pageSize=1000', { headers: { 'x-goog-api-key': S.apiKey } });
       const j = await r.json().catch(() => ({}));
-      if (!r.ok) { toast(`❌ ${j.error?.message || r.status}`, 6000); return; }
+      if (!r.ok) { toast(`${j.error?.message || r.status}`, 6000); return; }
       const imgModels = (j.models || [])
         .filter((m) => /image/i.test(m.name) && !/imagen/i.test(m.name) && (m.supportedGenerationMethods || []).includes('generateContent'))
         .map((m) => ({ id: m.name.replace(/^models\//, ''), label: m.displayName || m.name }));
-      if (!imgModels.length) { toast('✅ Schlüssel ok, aber kein Bild-Modell gefunden.', 6000); return; }
+      if (!imgModels.length) { toast('Schlüssel ok, aber kein Bild-Modell gefunden.', 6000); return; }
       const sel = $('#model');
       sel.innerHTML = imgModels.map((m) => `<option value="${esc(m.id)}" ${m.id === S.model ? 'selected' : ''}>${esc(m.label)}</option>`).join('');
       if (!imgModels.some((m) => m.id === S.model)) { S.model = imgModels[0].id; sel.value = S.model; await saveSettings(); }
       S.modelList = imgModels; await saveSettings();
-      toast(`✅ Verbunden. ${imgModels.length} Bild-Modell(e) gefunden, ausgewählt: ${sel.selectedOptions[0].textContent}`, 6000);
-    } catch (e) { toast('❌ ' + e.message, 6000); }
+      toast(`Verbunden. ${imgModels.length} Bild-Modell(e) gefunden, ausgewählt: ${sel.selectedOptions[0].textContent}`, 6000);
+    } catch (e) { toast('' + e.message, 6000); }
   };
 }
 
