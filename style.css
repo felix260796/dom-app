@@ -604,3 +604,17 @@ input.bad { border-color: var(--danger) !important; background: var(--danger-sof
 .drow-b .d-t span { font-size: 12.5px; color: var(--muted); }
 .drow .d-ico { width: 36px; height: 36px; }
 #pArt { margin-bottom: 4px; }
+
+/* Ansprechpartner am Objekt */
+.akon { position: relative; display: flex; flex-direction: column; gap: 6px; padding: 8px 46px 8px 8px; border-radius: 12px; background: var(--soft); margin-bottom: 8px; }
+.akon [data-akf="name"] { font-weight: 600; }
+.akon [data-akdel] { position: absolute; top: 8px; right: 4px; }
+
+.kal-wer { margin-bottom: 12px; }
+.kal-wer button { background: var(--card); }
+.twer .qchip { display: inline-flex; align-items: center; gap: 6px; }
+.twer .qchip svg.i { width: 16px; height: 16px; }
+.twer .qchip.on { background: var(--navy); border-color: var(--navy); color: #fff; }
+
+.wstatus { margin-top: 12px; }
+.wstatus button { background: var(--card); }

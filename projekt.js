@@ -7,6 +7,8 @@
  * Baut auf core.js/app.js auf (state, kvGet/kvSet/kvDel, saveProject, packagesFor, header, icon, …). */
 window.Projekt = (() => {
   const PKG_IDS = Object.keys(PKG_META); // basic, standard, premium
+  // Projektstatus: '' = läuft (Standard, auch für alte Projekte), 'geplant' = vorgesehen, 'fertig' = abgeschlossen
+  const STATUS = [['geplant', 'Vorgesehen', '#5b7a99'], ['', 'Läuft', '#b8862f'], ['fertig', 'Abgeschlossen', '#237a4b']];
   const rooms = new Map(); // geladene Räume (dasselbe Objekt für Ansicht und laufende KI-Aufträge)
   let running = null; // Projekt-ID, während „Alle Räume visualisieren“ läuft
 
@@ -180,8 +182,9 @@ window.Projekt = (() => {
         <label class="ic-field">${icon('edit')}<input type="text" id="wTitel" value="${esc(w.titel || '')}" placeholder="Projektname, z. B. Badumbau" autocomplete="off" aria-label="Projektname"></label>`
         : `<button class="kline" id="wKundeWahl">${icon('user')}<span class="kl-t"><b>${esc(w.customer || 'Kunde zuordnen')}</b><small>Kunde auswählen oder neu anlegen</small></span>${icon('chevron', 'pc-chev')}</button>`}
       </div>
+      <div class="seg2 full wstatus" id="wStatus">${STATUS.map(([id, n, c]) => `<button data-st="${id}" class="${(w.status || '') === id ? 'on' : ''}" style="--c:${c}">${n}</button>`).join('')}</div>
       ${k ? `<div class="docs" style="margin-top:12px"><button class="doc" id="wBilder"><span class="d-ico brass">${icon('camera')}</span>
-        <span class="d-t"><b>Bilder & Dokumentation</b><span>${nFotos ? `${nFotos} ${nFotos === 1 ? 'Bild' : 'Bilder'} in diesem Projekt, alle Bilder des Objekts mit einem Tipp` : 'Bestand, Baufortschritt, Abnahme, eigene Ordner'}</span></span>${icon('chevron', 'pc-chev')}</button></div>` : ''}
+        <span class="d-t"><b>Bilder & Dokumentation</b><span>${nFotos ? `${nFotos} ${nFotos === 1 ? 'Bild' : 'Bilder'} in diesem Projekt` : 'Bestand, Baufortschritt, Abnahme, eigene Ordner'}</span></span>${icon('chevron', 'pc-chev')}</button></div>` : ''}
       ${window.Gespraech?.karte(w, list) || ''}
 
       <div class="sec-h"><h2>Räume</h2>${list.length ? `<span class="count">${list.length}</span>` : ''}</div>
@@ -225,13 +228,13 @@ window.Projekt = (() => {
       </div>
       ${anyResult ? '' : '<p class="hint center">Kunden- und Baumappe gibt es, sobald ein Raum visualisiert ist.</p>'}
       <div id="wTermine"></div>
-      <button class="btn secondary block" id="wFertig" style="margin-top:18px">${icon(w.status === 'fertig' ? 'refresh' : 'check')} ${w.status === 'fertig' ? 'Projekt wieder öffnen' : 'Projekt abschließen'}</button>
       <button class="link-danger" id="wDel">${icon('trash')} Projekt löschen</button>` : ''}`;
     if (k && $('#wTermine')) window.Kalender?.abschnitt($('#wTermine'), { kundeId: k.id, objektId: w.objektId, projektId: w.id, zurueck: () => view() });
-    if ($('#wFertig')) $('#wFertig').onclick = async () => {
-      w.status = w.status === 'fertig' ? '' : 'fertig'; await save(w);
-      toast(w.status === 'fertig' ? 'Abgeschlossen. Du findest es unter „Laufende Projekte“ ganz unten.' : 'Wieder bei den laufenden Projekten.', 3500); view();
-    };
+    $$('[data-st]').forEach((b) => (b.onclick = async () => {
+      w.status = b.dataset.st; $$('[data-st]').forEach((x) => x.classList.toggle('on', x === b));
+      if (!w.isNew) await save(w);
+      toast(`Status: ${STATUS.find((s) => s[0] === w.status)[1]}`);
+    }));
 
     if ($('#wKunde')) $('#wKunde').onclick = () => Kunden.oeffnen(k.id);
     if ($('#wTitel')) $('#wTitel').oninput = debounce(async (e) => { w.titel = e.target.value.trim(); if (!w.isNew) await save(w); }, 500);
@@ -414,7 +417,7 @@ window.Projekt = (() => {
   }
 
   const forget = (id) => rooms.delete(id);
-  return { forget, neu, neuFuer, kundeUebernehmen, oeffnen, view, mappeView, moodboardView, migrate, raum, raeume, raumGespeichert, raumEntfernt, save, wahl, PKG_IDS, _intern: { titel, addRoom } };
+  return { STATUS, forget, neu, neuFuer, kundeUebernehmen, oeffnen, view, mappeView, moodboardView, migrate, raum, raeume, raumGespeichert, raumEntfernt, save, wahl, PKG_IDS, _intern: { titel, addRoom } };
 })();
 // Ältere Aufrufe (PR „Wohnungen“) laufen weiter
 window.Wohnung = { neu: () => Projekt.neu(), oeffnen: (id) => Projekt.oeffnen(id), view: () => Projekt.view(), raumGespeichert: (p) => Projekt.raumGespeichert(p), raumEntfernt: (p) => Projekt.raumEntfernt(p) };

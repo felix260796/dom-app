@@ -2,7 +2,9 @@
 /* DOM – Kalender: Termine mit Kunden (Objekt, Ort), Baustelle, Büro, Privat, dazu automatisch die Geburtstage
  * von Kunden und Subunternehmern. Arten lassen sich ein- und ausblenden (merkt sich das Gerät).
  * Speicher: 'termin:<id>' { id, kind:'termin', datum:'JJJJ-MM-TT', von:'HH:MM', bis:'HH:MM', ganztag,
- *   titel, art, kundeId, objektId, projektId, partnerId, ort, notiz, created, updated }
+ *   titel, art, wer:[personId], kundeId, objektId, projektId, partnerId, ort, notiz, created, updated }
+ * Personen (Felix, Daniel …) stehen in den Einstellungen unter „Team“ (state.settings.team); oben im Kalender
+ * lässt sich einer oder alle anzeigen. Termine ohne Person gelten für alle.
  * Immer erreichbar über das Kalender-Symbol oben unter dem DOM-Schriftzug, dazu die Kachel im Reiter Kunden
  * und „Termine“ in Kundenkarte, Objekt und Projekt. */
 window.Kalender = (() => {
@@ -39,11 +41,20 @@ window.Kalender = (() => {
     return aus;
   };
   const merken = () => { try { localStorage.setItem('dom.kal.aus', JSON.stringify([...aus])); } catch {} };
+  // Personen
+  const STANDARD_TEAM = [{ id: 'felix', name: 'Felix Brenzinger', email: '' }, { id: 'daniel', name: 'Daniel Kovacic', email: '' }];
+  const team = () => (Array.isArray(state.settings.team) && state.settings.team.length ? state.settings.team : STANDARD_TEAM);
+  const vorname = (p) => String(p?.name || '').trim().split(/\s+/)[0] || 'Ohne Namen';
+  let werFilter;
+  const wer = () => { if (werFilter === undefined) { try { werFilter = localStorage.getItem('dom.kal.wer') || ''; } catch { werFilter = ''; } } return team().some((p) => p.id === werFilter) ? werFilter : ''; };
+  const werSetzen = (v) => { werFilter = v; try { localStorage.setItem('dom.kal.wer', v); } catch {} };
+  const werText = (t) => (Array.isArray(t.wer) && t.wer.length && t.wer.length < team().length ? t.wer.map((id) => vorname(team().find((p) => p.id === id))).join(' und ') : '');
 
   /** Alle Einträge zwischen von und bis (ISO, einschließlich), sortiert; Geburtstage jährlich. */
   function eintraege(von, bis, { filter = true } = {}) {
     const out = [];
-    for (const t of alle.values()) if (t.datum >= von && t.datum <= bis) out.push({ ...t, typ: 'termin' });
+    const w = filter ? wer() : '';
+    for (const t of alle.values()) if (t.datum >= von && t.datum <= bis && (!w || !t.wer?.length || t.wer.includes(w))) out.push({ ...t, typ: 'termin' });
     const geb = [];
     for (const k of Kunden.liste()) if (k.geburtstag) geb.push({ art: 'gebK', datum: k.geburtstag, titel: `Geburtstag ${Kunden.name(k) || 'Kunde'}`, kundeId: k.id });
     for (const g of window.Partner?.geburtstage() || []) geb.push({ art: 'gebP', ...g });
@@ -66,7 +77,7 @@ window.Kalender = (() => {
   };
   const zeile = (e) => `<button class="tz" data-e="${esc(e.id)}" style="--c:${art(e.art)[2]}">
       <span class="tz-z">${e.ganztag ? (e.typ === 'geb' ? icon('cake') : 'ganztags') : `${esc(e.von || '')}${e.bis ? `<small>${esc(e.bis)}</small>` : ''}`}</span>
-      <span class="tz-t"><b>${esc(e.titel || art(e.art)[1])}</b><span>${esc(e.typ === 'geb' ? e.sub || '' : [zuKunde(e), e.ort].filter(Boolean).join(' · ') || art(e.art)[1])}</span></span>
+      <span class="tz-t"><b>${esc(e.titel || art(e.art)[1])}</b><span>${esc(e.typ === 'geb' ? e.sub || '' : [werText(e), zuKunde(e), e.ort].filter(Boolean).join(' · ') || art(e.art)[1])}</span></span>
       ${icon('chevron', 'pc-chev')}</button>`;
   /** Klick auf einen Eintrag: Termin bearbeiten bzw. Kunde/Subunternehmer öffnen. */
   function bindZeilen(el, list, zurueck) {
@@ -127,7 +138,9 @@ window.Kalender = (() => {
     const amTag = (s) => list.filter((e) => e.datum === s);
     const naechste = eintraege(h, iso(new Date(Date.now() + 60 * 864e5))).filter((e) => e.datum !== tag).slice(0, 8);
     const h2 = ausgeblendet();
+    const tw = team(), w = wer();
     main().innerHTML = `
+      <div class="seg2 full kal-wer">${[{ id: '', name: tw.length === 2 ? 'Beide' : 'Alle' }, ...tw].map((p) => `<button data-wer="${p.id}" class="${w === p.id ? 'on' : ''}">${esc(p.id ? p.name : p.name)}</button>`).join('')}</div>
       <div class="card kal">
         <div class="kal-nav"><button class="icon-btn" id="kPrev" aria-label="Voriger Monat">${icon('back')}</button>
           <b>${esc(monat.toLocaleDateString('de-DE', { month: 'long', year: 'numeric' }))}</b>
@@ -150,6 +163,7 @@ window.Kalender = (() => {
     $('#kNext').onclick = () => { monat = new Date(monat.getFullYear(), monat.getMonth() + 1, 1); view(); };
     $('#kHeute').onclick = () => { monat = null; tag = null; view(); };
     $$('[data-d]').forEach((b) => (b.onclick = () => { tag = b.dataset.d; const d = ausIso(tag); if (d.getMonth() !== monat.getMonth()) monat = new Date(d.getFullYear(), d.getMonth(), 1); view(); }));
+    $$('[data-wer]').forEach((b) => (b.onclick = () => { werSetzen(b.dataset.wer); view(); }));
     $$('[data-art]').forEach((b) => (b.onclick = () => { const s = ausgeblendet(); s.has(b.dataset.art) ? s.delete(b.dataset.art) : s.add(b.dataset.art); merken(); view(); }));
     $('#kNeu').onclick = () => bearbeiten({ art: 'kunde', datum: tag }, neu);
     // Wischen: Monat vor/zurück
@@ -161,7 +175,8 @@ window.Kalender = (() => {
   // ---------- Termin bearbeiten ----------
   function bearbeiten(vorlage, zurueck) {
     const isNeu = !vorlage.id;
-    const t = { id: uid(), kind: 'termin', titel: '', art: 'kunde', datum: heute(), von: '09:00', bis: '10:00', ganztag: false, kundeId: '', objektId: '', projektId: '', partnerId: '', ort: '', notiz: '', created: Date.now(), ...vorlage };
+    const t = { id: uid(), kind: 'termin', titel: '', art: 'kunde', datum: heute(), von: '09:00', bis: '10:00', ganztag: false, wer: wer() ? [wer()] : team().map((p) => p.id), kundeId: '', objektId: '', projektId: '', partnerId: '', ort: '', notiz: '', created: Date.now(), ...vorlage };
+    if (!Array.isArray(t.wer)) t.wer = [];
     if (isNeu && t.kundeId && !t.ort) { const k = Kunden.byId(t.kundeId), o = k && Kunden.objekt(k, t.objektId); t.ort = o ? Kunden.einzeilig(o.adresse) : ''; }
     const render = () => {
       const k = Kunden.byId(t.kundeId), p = window.Partner?.byId(t.partnerId);
@@ -170,6 +185,7 @@ window.Kalender = (() => {
         <div class="card kform">
           <label style="margin-top:0">Was?</label><input type="text" id="tTitel" value="${esc(t.titel)}" autocomplete="off" placeholder="z. B. Aufmaß Bad, Besprechung Fliesen">
           <div class="chips tart">${ARTEN.filter((a) => !a[0].startsWith('geb')).map(([id, n, c]) => `<button type="button" class="qchip ${t.art === id ? 'on' : ''}" data-ta="${id}" style="--c:${c}"><i></i>${esc(n.replace('termine', 'termin'))}</button>`).join('')}</div>
+          <label>Wer?</label><div class="chips twer">${team().map((p) => `<button type="button" class="qchip ${t.wer.includes(p.id) ? 'on' : ''}" data-tw="${p.id}">${icon('user')}${esc(p.name)}</button>`).join('')}</div>
           <div class="row"><div><label>Datum</label>${Kontakt.datumInput('tDatum', t.datum)}</div>
             <div class="tg"><label class="chk"><input type="checkbox" id="tGanz" ${t.ganztag ? 'checked' : ''}> ganztags</label></div></div>
           <div class="row" id="tZeit" ${t.ganztag ? 'hidden' : ''}><div><label>von</label><input type="time" id="tVon" value="${esc(t.von)}"></div><div><label>bis</label><input type="time" id="tBis" value="${esc(t.bis)}"></div></div>
@@ -192,6 +208,10 @@ window.Kalender = (() => {
       };
       Kontakt.datumFeld($('#tDatum'), (v) => { if (v) { t.datum = v; $('#subtitle').textContent = tagLang(v); } });
       $('#tGanz').onchange = (e) => { t.ganztag = e.target.checked; $('#tZeit').hidden = t.ganztag; };
+      $$('[data-tw]').forEach((b) => (b.onclick = () => {
+        const id = b.dataset.tw; t.wer = t.wer.includes(id) ? t.wer.filter((x) => x !== id) : [...t.wer, id];
+        b.classList.toggle('on', t.wer.includes(id));
+      }));
       $$('[data-ta]').forEach((b) => (b.onclick = () => { t.art = b.dataset.ta; $$('[data-ta]').forEach((x) => x.classList.toggle('on', x === b)); }));
       $('#tKunde').onclick = async (e) => {
         if (e.target.closest('[data-kx]')) { t.kundeId = ''; t.objektId = ''; return render(); }
@@ -240,5 +260,5 @@ window.Kalender = (() => {
   /** Punkt am Kalender-Symbol, wenn heute etwas ansteht. */
   function punkt() { const d = $('#calDot'); if (d) d.hidden = !eintraege(heute(), heute()).length; }
 
-  return { laden, view, kachel, abschnitt, bearbeiten, eintraege, punkt, ARTEN };
+  return { laden, view, kachel, abschnitt, bearbeiten, eintraege, punkt, team, ARTEN };
 })();

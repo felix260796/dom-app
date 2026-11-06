@@ -3,7 +3,7 @@
  * Eigene, benennbare Ordner (Vorgabe: Bestand, Baufortschritt, Abnahme, Sonstiges; z. B. „Baufortschritt (10.11.2026)“).
  * Jedes Bild gehört zum Objekt und optional zu einem Projekt („Badumbau“). Im Objekt sieht man alle Bilder,
  * im Projekt dieselben Ordner, vorgefiltert auf das Projekt. Dazu die Fotos und Visualisierungen aus den Räumen.
- * Speicher: 'bilder:<kundeId>:<objektId>' { ordner:[{ id, name }], bilder:[{ id, t, ordner, projektId, text, thumb }] }
+ * Speicher: 'bilder:<kundeId>:<objektId>' { ordner:[{ id, name, projektId }] (eigene Ordner gehören zu einem Projekt), bilder:[{ id, t, ordner, projektId, text, thumb }] }
  * und jedes Bild einzeln als 'bild:<id>' (verkleinert), damit der Cloud-Abgleich nur Neues überträgt.
  * Ältere Einträge (nur eine Liste mit „phase“) werden beim Lesen umgestellt. */
 window.Bilder = (() => {
@@ -14,6 +14,7 @@ window.Bilder = (() => {
     if (Array.isArray(d)) d = { bilder: d };
     d = d || {};
     d.ordner = Array.isArray(d.ordner) && d.ordner.length ? d.ordner : STANDARD.map(([id, name]) => ({ id, name }));
+    for (const o of d.ordner) o.projektId ??= '';
     d.bilder = (d.bilder || []).map((b) => ({ ...b, ordner: b.ordner || b.phase || 'sonst', projektId: b.projektId || '' }));
     for (const b of d.bilder) if (!d.ordner.some((o) => o.id === b.ordner)) d.ordner.push({ id: b.ordner, name: (STANDARD.find((s) => s[0] === b.ordner) || [, 'Sonstiges'])[1] });
     return d;
@@ -46,81 +47,91 @@ window.Bilder = (() => {
     return out;
   }
 
-  // ---------- Übersicht: Ordner ----------
-  /** ctx = { kundeId, objektId, projektId?, titel, zurueck: { label, fn } } */
-  let filter = null; // Projekt-Filter in der Übersicht: null = alle, '' = ohne Projekt, sonst Projekt-ID
+  // ---------- Übersicht ----------
+  // Im Projekt: direkt die Ordner dieses Projekts (Bestand, Baufortschritt, … und eigene).
+  // Im Objekt: zuerst die Projekte (Badumbau, Wohnzimmer …), darin die Ordner. Ohne Projekte gleich die Ordner.
+  /** ctx = { kundeId, objektId, projektId?, titel, zurueck: { label, fn } }; projektId '__ohne' = Bilder ohne Projekt */
+  const OHNE = '__ohne';
+  const passt = (b, pid) => !pid || (pid === OHNE ? !b.projektId : b.projektId === pid);
+  const ordnerFuer = (d, pid) => d.ordner.filter((o) => !o.projektId || !pid || o.projektId === pid || d.bilder.some((b) => b.ordner === o.id && passt(b, pid)));
+  const deckel = (l) => `<span class="f-cov">${l.slice(0, 4).map((b) => `<img src="${b.thumb}" alt="">`).join('') || `<span class="f-empty">${icon('image')}</span>`}</span>`;
   async function view(ctx) {
     state.project = null;
     const { kundeId: kid, objektId: oid } = ctx;
-    if (ctx._neu !== false) { filter = ctx.projektId || null; ctx._neu = false; }
     const d = await laden(kid, oid);
     const pr = await projekte(kid, oid);
-    const rb = await raumBilder(kid, oid, filter || '');
+    if (!ctx.projektId && pr.length) return projekteView(ctx, d, pr);
+    const pid = ctx.projektId || '';
+    const rb = await raumBilder(kid, oid, pid === OHNE ? '__keins' : pid);
     header('Bilder & Dokumentation', ctx.titel || '', ctx.zurueck);
-    const passt = (b) => filter === null || b.projektId === filter;
-    const imOrdner = (o) => d.bilder.filter((b) => b.ordner === o.id && passt(b)).sort((a, b) => b.t - a.t);
+    const imOrdner = (o) => d.bilder.filter((b) => b.ordner === o.id && passt(b, pid)).sort((a, b) => b.t - a.t);
+    const ord = ordnerFuer(d, pid);
     main().innerHTML = `
-      ${pr.length ? `<div class="chips gfilter">
-        <button class="qchip ${filter === null ? 'on' : ''}" data-f="*">Alle Bilder ${d.bilder.length}</button>
-        ${pr.map((p) => `<button class="qchip ${filter === p.id ? 'on' : ''}" data-f="${p.id}">${esc(p.name)} ${d.bilder.filter((b) => b.projektId === p.id).length}</button>`).join('')}
-        ${d.bilder.some((b) => !b.projektId) ? `<button class="qchip ${filter === '' ? 'on' : ''}" data-f="">Ohne Projekt ${d.bilder.filter((b) => !b.projektId).length}</button>` : ''}
-      </div>` : ''}
-      <div class="sec-h"><h2>Ordner</h2><span class="count">${d.ordner.length}</span></div>
-      <div class="fgrid">${d.ordner.map((o) => { const l = imOrdner(o); return `
-        <button class="fold" data-o="${o.id}">
-          <span class="f-cov">${l.slice(0, 4).map((b) => `<img src="${b.thumb}" alt="">`).join('') || `<span class="f-empty">${icon('image')}</span>`}</span>
+      <div class="sec-h"><h2>Ordner</h2><span class="count">${ord.length}</span></div>
+      <div class="fgrid">${ord.map((o) => { const l = imOrdner(o); return `
+        <button class="fold" data-o="${o.id}">${deckel(l)}
           <b>${esc(o.name)}</b><span>${l.length} ${l.length === 1 ? 'Bild' : 'Bilder'}${l.length ? ' · ' + tag(l[0].t) : ''}</span>
         </button>`; }).join('')}
         <button class="fold add" id="fNeu"><span class="f-cov"><span class="f-empty">${icon('plus')}</span></span><b>Neuer Ordner</b><span>z. B. Baufortschritt (10.11.2026)</span></button>
       </div>
       ${rb.length ? `<details class="more card" style="margin-top:16px"><summary>${icon('sparkle')}<span>Aus den Räumen<small>${rb.length} Fotos und Visualisierungen</small></span>${icon('chevron', 'more-chev')}</summary>
         <div class="ggrid" style="margin-top:8px">${rb.map((x, i) => `<button class="gb" data-rb="${i}"><img src="${x.data}" alt="" loading="lazy"></button>`).join('')}</div></details>` : ''}`;
-    $$('[data-f]').forEach((b) => (b.onclick = () => { filter = b.dataset.f === '*' ? null : b.dataset.f; view(ctx); }));
     $$('[data-o]').forEach((b) => (b.onclick = () => { ordnerView(ctx, b.dataset.o); window.scrollTo(0, 0); }));
     $('#fNeu').onclick = async () => {
       const heute = new Date().toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' });
-      const v = await sheet('Neuer Ordner', [['Bestand', 'bestand'], ['Baufortschritt', 'bau'], ['Abnahme', 'abnahme'], ['Mängel', 'maengel']].map(([n]) => ({ label: `${n} (${heute})`, sub: 'Vorschlag mit heutigem Datum', icon: icon('image'), value: `${n} (${heute})` })), { text: 'Eigener Name, z. B. Estrich (12.11.2026)' });
+      const v = await sheet('Neuer Ordner', ['Bestand', 'Baufortschritt', 'Abnahme', 'Mängel'].map((n) => ({ label: `${n} (${heute})`, sub: 'Vorschlag mit heutigem Datum', icon: icon('image'), value: `${n} (${heute})` })), { text: 'Eigener Name, z. B. Estrich (12.11.2026)' });
       if (!v) return;
       const nm = typeof v === 'string' ? v : v.text;
       const dd = await laden(kid, oid);
-      const o = { id: uid(), name: nm };
+      const o = { id: uid(), name: nm, projektId: pid && pid !== OHNE ? pid : '' }; // eigene Ordner gehören zum Projekt
       dd.ordner.push(o); await speichern(kid, oid, dd);
       ordnerView(ctx, o.id); window.scrollTo(0, 0);
     };
     $$('[data-rb]').forEach((b) => (b.onclick = () => gross(ctx, rb.map((x) => ({ data: x.data, label: x.label })), +b.dataset.rb, () => view(ctx))));
   }
 
+  /** Objekt-Ebene: ein Ordner je Projekt. */
+  function projekteView(ctx, d, pr) {
+    header('Bilder & Dokumentation', ctx.titel || '', ctx.zurueck);
+    const kacheln = [...pr.map((p) => ({ id: p.id, name: p.name, nr: p.nr })), ...(d.bilder.some((b) => !b.projektId) ? [{ id: OHNE, name: 'Ohne Projekt', nr: '' }] : [])];
+    main().innerHTML = `
+      <div class="sec-h"><h2>Projekte</h2><span class="count">${kacheln.length}</span></div>
+      <p class="hint" style="margin-top:-4px">Die Bilder liegen beim jeweiligen Projekt, darin die Ordner Bestand, Baufortschritt, Abnahme und deine eigenen.</p>
+      <div class="fgrid">${kacheln.map((p) => { const l = d.bilder.filter((b) => passt(b, p.id)).sort((a, b) => b.t - a.t); return `
+        <button class="fold" data-pp="${p.id}">${deckel(l)}
+          <b>${esc(p.name)}</b><span>${l.length} ${l.length === 1 ? 'Bild' : 'Bilder'}${p.nr ? ' · ' + esc(p.nr) : ''}</span>
+        </button>`; }).join('')}</div>`;
+    $$('[data-pp]').forEach((b) => (b.onclick = () => {
+      const p = kacheln.find((x) => x.id === b.dataset.pp);
+      view({ ...ctx, projektId: p.id, titel: [p.name, ctx.titel].filter(Boolean).join(' · '), zurueck: { label: 'Projekte', fn: () => { view(ctx); window.scrollTo(0, 0); } } });
+      window.scrollTo(0, 0);
+    }));
+  }
+
   // ---------- Ein Ordner ----------
   async function ordnerView(ctx, ordnerId) {
     const { kundeId: kid, objektId: oid } = ctx;
+    const pid = ctx.projektId || '';
     const d = await laden(kid, oid);
     const o = d.ordner.find((x) => x.id === ordnerId);
     if (!o) return view(ctx);
     const pr = await projekte(kid, oid);
-    const pname = (id) => pr.find((p) => p.id === id)?.name || 'Ohne Projekt';
-    let ziel = ctx.ziel ?? (filter && filter !== '' ? filter : ctx.projektId || pr.length === 1 ? (ctx.projektId || pr[0].id) : '');
-    const list = d.bilder.filter((b) => b.ordner === o.id && (filter === null || b.projektId === filter)).sort((a, b) => b.t - a.t);
-    // nach Projekt gruppiert
-    const gruppen = [...new Set(list.map((b) => b.projektId))].map((pid) => ({ pid, list: list.filter((b) => b.projektId === pid) }));
-    const zurueck = () => { view({ ...ctx, _neu: false }); window.scrollTo(0, 0); };
+    const list = d.bilder.filter((b) => b.ordner === o.id && passt(b, pid)).sort((a, b) => b.t - a.t);
+    const zurueck = () => { view(ctx); window.scrollTo(0, 0); };
     header(o.name, ctx.titel || '', { label: 'Ordner', fn: zurueck });
     main().innerHTML = `
       <div class="card gadd">
-        ${pr.length ? `<label style="margin-top:0">Neue Bilder gehören zum Projekt</label>
-          <select id="gZiel"><option value="">Kein bestimmtes Projekt</option>${pr.map((p) => `<option value="${p.id}" ${p.id === ziel ? 'selected' : ''}>${esc(p.name)}${p.nr ? ' · ' + esc(p.nr) : ''}</option>`).join('')}</select>` : ''}
-        <div class="row" style="margin-top:${pr.length ? 12 : 0}px">
+        <div class="row">
           <button class="btn big" id="gCam" style="flex:1">${icon('camera')} Foto machen</button>
           <button class="btn big secondary" id="gGal" style="flex:1">${icon('image')} Aus Fotos</button>
         </div>
         <p class="hint" style="margin-bottom:0">Viele Bilder auf einmal: mit der iPhone-Kamera fotografieren, dann hier „Aus Fotos“ und alle markieren. Bilder werden verkleinert gespeichert.</p>
       </div>
-      ${gruppen.map((g) => `${pr.length ? `<div class="o-h">${icon('home')}<span>${esc(pname(g.pid))} · ${g.list.length} ${g.list.length === 1 ? 'Bild' : 'Bilder'}</span></div>` : ''}
-        <div class="ggrid">${g.list.map((b) => `<button class="gb" data-b="${b.id}"><img src="${b.thumb}" alt="" loading="lazy">${b.text ? '<i class="gb-t"></i>' : ''}</button>`).join('')}</div>`).join('')}
+      <div class="ggrid">${list.map((b) => `<button class="gb" data-b="${b.id}"><img src="${b.thumb}" alt="" loading="lazy">${b.text ? '<i class="gb-t"></i>' : ''}</button>`).join('')}</div>
       ${!list.length ? `<div class="empty-state">${icon('camera')}<b>Noch keine Bilder</b><span>Fotos machen oder aus der Mediathek wählen.</span></div>` : ''}
       <div class="row" style="margin-top:18px"><button class="btn secondary small" id="fRen">${icon('edit')} Umbenennen</button>
         ${d.bilder.some((b) => b.ordner === o.id) ? '' : `<button class="btn danger small" id="fDel">${icon('trash')} Ordner löschen</button>`}</div>`;
-    const again = () => { const y = window.scrollY; ordnerView({ ...ctx, ziel }, o.id).then(() => window.scrollTo(0, y)); };
-    if ($('#gZiel')) $('#gZiel').onchange = (e) => { ziel = e.target.value; };
+    const again = () => { const y = window.scrollY; ordnerView(ctx, o.id).then(() => window.scrollTo(0, y)); };
     const add = async (camera) => {
       const files = await pickFiles({ camera, multiple: !camera });
       if (!files.length) return;
@@ -131,7 +142,7 @@ window.Bilder = (() => {
           const data = await resize(await fileToDataUrl(f), 1600, 'image/jpeg', 0.8);
           const id = uid();
           await kvSet('bild:' + id, data);
-          dd.bilder.push({ id, t: f.lastModified && !camera ? f.lastModified : Date.now(), ordner: o.id, projektId: ziel || '', text: '', thumb: await resize(data, 320, 'image/jpeg', 0.7) });
+          dd.bilder.push({ id, t: f.lastModified && !camera ? f.lastModified : Date.now(), ordner: o.id, projektId: pid && pid !== OHNE ? pid : '', text: '', thumb: await resize(data, 320, 'image/jpeg', 0.7) });
           n++;
           if (files.length > 3) toast(`Speichere ${n} von ${files.length} …`, 4000);
         } catch (e) { console.error(e); }
@@ -142,8 +153,7 @@ window.Bilder = (() => {
     };
     $('#gCam').onclick = () => add(true);
     $('#gGal').onclick = () => add(false);
-    const order = gruppen.flatMap((g) => g.list);
-    $$('[data-b]').forEach((b) => (b.onclick = () => gross(ctx, order.map((x) => ({ own: x })), order.findIndex((x) => x.id === b.dataset.b), again, { ordner: d.ordner, pr })));
+    $$('[data-b]').forEach((b) => (b.onclick = () => gross(ctx, list.map((x) => ({ own: x })), list.findIndex((x) => x.id === b.dataset.b), again, { ordner: d.ordner, pr })));
     $('#fRen').onclick = async () => {
       const v = await sheet('Ordner umbenennen', [], { text: 'Name des Ordners', value: o.name });
       if (!v?.text) return;

@@ -3,7 +3,7 @@
  * Speicher: 'kunde:<id>' { id, kind:'kunde', anrede, vorname, name, telefon, email, geburtstag (JJJJ-MM-TT),
  *   privat (Privatanschrift, eine Zeile mit Kommas), weitere:[{ art:'tel'|'mail', label, wert }],
  *   hv:{ firma, ansprech, telefon, email, anschrift } (nur bei Anrede „Hausverwaltung“: Eigentümer, vertreten durch …),
- *   objekte:[{ id, name, adresse, notiz, ansprech, ansprechTel, schluessel }], notiz, nr, created, updated }
+ *   objekte:[{ id, name, adresse, notiz, schluessel, kontakte:[{ id, name, telefon, email }] }], notiz, nr, created, updated }
  * Ein Projekt ('wohnung:<id>') gehört zu einem Kunden (kundeId) und einem seiner Objekte (objektId).
  * Nummern: Kundennummer fortlaufend ab 1001, Projektnummer = Kundennummer-laufende Nummer (1001-01, 1001-02).
  * So sieht man an jeder Projektnummer sofort, zu welchem Kunden sie gehört.
@@ -23,7 +23,15 @@ window.Kunden = (() => {
     k.hv = k.hv && typeof k.hv === 'object' ? k.hv : {};
     for (const f of ['firma', 'ansprech', 'telefon', 'email', 'anschrift']) k.hv[f] = String(k.hv[f] ?? '');
     k.objekte = Array.isArray(k.objekte) ? k.objekte.filter(Boolean) : [];
-    for (const o of k.objekte) { o.id ??= uid(); for (const f of ['name', 'adresse', 'notiz', 'ansprech', 'ansprechTel', 'schluessel']) o[f] = String(o[f] ?? ''); }
+    for (const o of k.objekte) {
+      o.id ??= uid();
+      for (const f of ['name', 'adresse', 'notiz', 'schluessel']) o[f] = String(o[f] ?? '');
+      // Ansprechpartner vor Ort: Liste (früher ein Name + Telefon)
+      if (!Array.isArray(o.kontakte)) o.kontakte = [];
+      if ((o.ansprech || o.ansprechTel) && !o.kontakte.length) o.kontakte.push({ id: 'a-' + o.id, name: String(o.ansprech || ''), telefon: String(o.ansprechTel || ''), email: '' });
+      delete o.ansprech; delete o.ansprechTel;
+      for (const x of o.kontakte) { x.id ||= uid(); for (const f of ['name', 'telefon', 'email']) x[f] = String(x[f] ?? ''); }
+    }
     return k;
   };
   const neu = (f = {}) => norm({ id: uid(), kind: 'kunde', created: Date.now(), ...f });
@@ -236,7 +244,7 @@ window.Kunden = (() => {
   function treffer(k, idx, q) {
     if (!q) return true;
     const proj = idx.filter((x) => x.kundeId === k.id).map((x) => `${x.address || ''} ${x.room || ''} ${x.titel || ''} ${x.nr || ''}`).join(' ');
-    const hay = `${k.nr} ${name(k)} ${k.vorname} ${k.name} ${k.telefon} ${k.email} ${k.privat} ${k.notiz} ${k.weitere.map((x) => x.wert).join(' ')} ${Object.values(k.hv).join(' ')} ${k.objekte.map((o) => `${o.name} ${o.adresse} ${o.notiz} ${o.ansprech}`).join(' ')} ${proj}`.toLowerCase();
+    const hay = `${k.nr} ${name(k)} ${k.vorname} ${k.name} ${k.telefon} ${k.email} ${k.privat} ${k.notiz} ${k.weitere.map((x) => x.wert).join(' ')} ${Object.values(k.hv).join(' ')} ${k.objekte.map((o) => `${o.name} ${o.adresse} ${o.notiz} ${o.kontakte.map((x) => `${x.name} ${x.telefon} ${x.email}`).join(' ')}`).join(' ')} ${proj}`.toLowerCase();
     return q.split(/\s+/).filter(Boolean).every((w) => hay.includes(w));
   }
   async function start() {
@@ -476,8 +484,10 @@ window.Kunden = (() => {
       <div class="card kform">
         <label style="margin-top:0">Bezeichnung</label><input type="text" id="oName" value="${esc(o.name)}" autocomplete="off" placeholder="z. B. Miethaus 1, Elternhaus">
         <label>Anschrift</label><div class="adr"><input type="text" id="oAdr" value="${esc(o.adresse)}" autocomplete="off" placeholder="Straße Nr., der Ort wird ergänzt"></div>
-        <div class="row"><div style="flex:3"><label>Ansprechpartner vor Ort</label><input type="text" id="oAnsp" value="${esc(o.ansprech)}" autocomplete="off" placeholder="z. B. Mieter Herr Kaya"></div>
-          <div style="flex:2"><label>Telefon</label><input type="tel" id="oAnspTel" value="${esc(o.ansprechTel)}" autocomplete="off" placeholder="0171 …"></div></div>
+        ${k.privat.trim() || k.telefon.trim() || k.email.trim() ? `<button type="button" class="link-add" id="oVomKunden">${icon('user')} Daten vom Kunden übernehmen</button>` : ''}
+        <label>Ansprechpartner vor Ort</label>
+        <div id="oKontakte"></div>
+        <button type="button" class="link-add" id="oKAdd" style="padding-top:4px">${icon('plus')} Weiteren Ansprechpartner hinzufügen</button>
         <label>Schlüssel</label><input type="text" id="oSchl" value="${esc(o.schluessel)}" autocomplete="off" placeholder="z. B. beim Hausmeister, Schlüsselsafe 1234">
         <label>Notiz</label><textarea id="oNotiz" placeholder="z. B. Parken im Hof, Wasser-Haupthahn im Keller links">${esc(o.notiz)}</textarea>
       </div>
@@ -491,15 +501,49 @@ window.Kunden = (() => {
       ${idx.length ? '' : `<button class="link-danger" id="oDel">${icon('trash')} Objekt entfernen</button>`}`;
     window.Kalender?.abschnitt($('#oTermine'), { kundeId: k.id, objektId: o.id });
     const aktionen = () => {
-      const A = Kontakt.aktionen({ tels: [{ label: o.ansprech, wert: o.ansprechTel }], adresse: o.adresse });
+      const A = Kontakt.aktionen({ tels: o.kontakte.map((x) => ({ label: x.name, wert: x.telefon })), mails: o.kontakte.map((x) => ({ label: x.name, wert: x.email })), adresse: o.adresse });
       $('#oAct').innerHTML = A.html ? `<div style="margin-top:12px">${A.html}</div>` : '';
       A.binden($('#oAct'));
     };
     aktionen();
     const persist = debounce(async () => { await speichern(k); weitergeben(k); }, 400);
-    for (const [id, f] of [['oName', 'name'], ['oAdr', 'adresse'], ['oNotiz', 'notiz'], ['oAnsp', 'ansprech'], ['oAnspTel', 'ansprechTel'], ['oSchl', 'schluessel']]) {
-      $('#' + id).oninput = (e) => { o[f] = e.target.value; persist(); $('#title').textContent = objLabel(o); if (f === 'adresse' || f === 'ansprechTel') aktionen(); };
+    for (const [id, f] of [['oName', 'name'], ['oAdr', 'adresse'], ['oNotiz', 'notiz'], ['oSchl', 'schluessel']]) {
+      $('#' + id).oninput = (e) => { o[f] = e.target.value; persist(); $('#title').textContent = objLabel(o); if (f === 'adresse') aktionen(); };
     }
+    // Ansprechpartner: Name über die ganze Breite, darunter Telefon und E-Mail. Ohne Eintrag steht ein leeres Feld da.
+    const kontakte = () => {
+      const list = o.kontakte.length ? o.kontakte : [{ id: '_neu', name: '', telefon: '', email: '' }];
+      $('#oKontakte').innerHTML = list.map((x) => `<div class="akon" data-ak="${x.id}">
+        <input type="text" data-akf="name" value="${esc(x.name)}" autocomplete="off" placeholder="Name, z. B. Mieter Herr Kaya">
+        <input type="tel" data-akf="telefon" value="${esc(x.telefon)}" autocomplete="off" placeholder="Telefon">
+        <input type="email" data-akf="email" value="${esc(x.email)}" autocomplete="off" inputmode="email" placeholder="E-Mail">
+        ${x.id === '_neu' ? '' : `<button type="button" class="icon-btn" data-akdel aria-label="Entfernen">${icon('x')}</button>`}</div>`).join('');
+      $$('[data-ak]').forEach((row) => {
+        $$('[data-akf]', row).forEach((inp) => (inp.oninput = () => {
+          let x = o.kontakte.find((y) => y.id === row.dataset.ak);
+          if (!x) { x = { id: uid(), name: '', telefon: '', email: '' }; o.kontakte.push(x); row.dataset.ak = x.id; }
+          x[inp.dataset.akf] = inp.value; persist(); aktionen();
+        }));
+        if ($('[data-akdel]', row)) $('[data-akdel]', row).onclick = () => { o.kontakte = o.kontakte.filter((y) => y.id !== row.dataset.ak); persist(); kontakte(); aktionen(); };
+      });
+    };
+    kontakte();
+    $('#oKAdd').onclick = () => {
+      if (!o.kontakte.length) o.kontakte.push({ id: uid(), name: '', telefon: '', email: '' }); // das leere Feld zählt als erster
+      o.kontakte.push({ id: uid(), name: '', telefon: '', email: '' }); persist(); kontakte();
+      $$('#oKontakte [data-akf="name"]').pop()?.focus();
+    };
+    if ($('#oVomKunden')) $('#oVomKunden').onclick = () => {
+      if (k.privat.trim()) { o.adresse = k.privat.trim(); $('#oAdr').value = o.adresse; }
+      if (name(k) && !o.kontakte.some((x) => x.name.trim() === name(k))) {
+        const leer = o.kontakte.find((x) => !x.name.trim() && !x.telefon.trim() && !x.email.trim());
+        const x = leer || { id: uid() };
+        Object.assign(x, { name: name(k), telefon: k.telefon, email: k.email });
+        if (!leer) o.kontakte.unshift(x);
+      }
+      persist(); kontakte(); aktionen(); $('#title').textContent = objLabel(o);
+      toast('Anschrift und Kontakt vom Kunden übernommen');
+    };
     adressVorschlaege($('#oAdr'));
     if (neuAngelegt) setTimeout(() => $('#oName')?.focus(), 50);
     $('#oBilder').onclick = () => {

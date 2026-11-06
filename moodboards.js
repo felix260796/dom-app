@@ -154,6 +154,7 @@ const EINST = [
   ['firma', 'Firma & Logo', 'home', 'navy'],
   ['ki', 'KI-Bildbearbeitung', 'sparkle', 'navy'],
   ['preise', 'Preisliste & Angebot', 'euro', 'grey'],
+  ['team', 'Team', 'users', 'navy'],
   ['cloud', 'Cloud-Abgleich', 'refresh', 'brass'],
   ['sicherung', 'Datensicherung', 'download', 'grey'],
 ];
@@ -166,6 +167,7 @@ function einstellungInfo(k) {
   if (k === 'firma') return [S.company, S.logo ? 'mit Logo' : 'ohne Logo'].filter(Boolean).join(' · ');
   if (k === 'ki') return S.apiKey ? `Eingerichtet · ${(S.modelList || []).find((m) => m.id === S.model)?.label || S.model}` : 'Noch nicht eingerichtet';
   if (k === 'preise') return 'Excel-Angebotstool, Aufschläge, Paket-Vorlagen';
+  if (k === 'team') return (window.Kalender?.team() || []).map((p) => p.name).join(', ') || 'Personen für den Kalender';
   if (k === 'cloud') return window.Sync?.active() ? 'Verbunden, gleicht automatisch ab' : 'Nicht verbunden';
   if (k === 'sicherung') return window.Sync?.active() ? 'Notfall-Export als Datei' : 'Sicherung als Datei, z. B. in OneDrive';
   return '';
@@ -185,6 +187,26 @@ function einstellungSeite(k) {
   const [, titel] = EINST.find((x) => x[0] === k) || [];
   header(titel || 'Einstellungen', '', { label: 'Einstellungen', fn: () => { viewEinstellungen(); window.scrollTo(0, 0); } });
   const save = debounce(saveSettings, 300);
+  if (k === 'team') {
+    // Personen für den Kalender (Termine je Person, oben im Kalender umschaltbar)
+    if (!Array.isArray(S.team) || !S.team.length) S.team = JSON.parse(JSON.stringify(Kalender.team()));
+    const render = () => {
+      main().innerHTML = `<p class="hint" style="margin-top:0">Im Kalender kannst du oben zwischen den Personen umschalten. Die E-Mail-Adressen werden für Terminbestätigungen gebraucht.</p>
+        ${S.team.map((p, i) => `<div class="card kform" data-tp="${i}">
+          <label style="margin-top:0">Name</label><input type="text" data-tf="name" value="${esc(p.name)}" autocomplete="off" placeholder="Vor- und Nachname">
+          <label>E-Mail</label><input type="email" data-tf="email" value="${esc(p.email || '')}" autocomplete="off" inputmode="email" placeholder="name@firma.de">
+          ${S.team.length > 1 ? `<button class="link-danger" data-tdel style="margin-top:10px">${icon('trash')} Entfernen</button>` : ''}</div>`).join('')}
+        <button class="add-room" id="tpAdd">${icon('plus')} Person hinzufügen</button>`;
+      $$('[data-tp]').forEach((c) => {
+        const p = S.team[+c.dataset.tp];
+        $$('[data-tf]', c).forEach((inp) => (inp.oninput = () => { p[inp.dataset.tf] = inp.value.trim(); save(); }));
+        if ($('[data-tdel]', c)) $('[data-tdel]', c).onclick = async () => { if (!confirm(`${p.name || 'Person'} entfernen?`)) return; S.team.splice(+c.dataset.tp, 1); await saveSettings(); render(); };
+      });
+      $('#tpAdd').onclick = async () => { S.team.push({ id: uid(), name: '', email: '' }); await saveSettings(); render(); $$('[data-tf="name"]').pop()?.focus(); };
+    };
+    render();
+    return;
+  }
   if (k === 'firma') {
     main().innerHTML = `
     <div class="card">
