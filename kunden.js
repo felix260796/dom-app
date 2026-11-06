@@ -226,6 +226,59 @@ window.Kunden = (() => {
     window.Backup?.hinweis($('#backupHint'));
   }
 
+  // ---------- Adress-Vorschläge (OpenStreetMap über Photon, kostenlos, ohne Schlüssel) ----------
+  // Beim Tippen von „Silberburgstraße 66“ erscheinen passende Anschriften mit PLZ und Ort.
+  // Gesucht wird in Deutschland, Treffer rund um Stuttgart zuerst. Ohne Internet passiert einfach nichts.
+  const cacheAdr = new Map();
+  async function sucheAdresse(q) {
+    if (cacheAdr.has(q)) return cacheAdr.get(q);
+    const url = `https://photon.komoot.io/api/?q=${encodeURIComponent(q)}&lang=de&limit=6&lat=48.78&lon=9.18&bbox=5.8,47.2,15.1,55.1`;
+    const r = await fetch(url);
+    if (!r.ok) throw new Error('Adresssuche ' + r.status);
+    const j = await r.json();
+    const seen = new Set(), out = [];
+    for (const f of j.features || []) {
+      const p = f.properties || {};
+      if (p.countrycode && p.countrycode !== 'DE') continue;
+      const strasse = p.street || (p.type === 'street' ? p.name : '');
+      if (!strasse || !p.postcode || !(p.city || p.town || p.village || p.locality)) continue;
+      const ort = p.city || p.town || p.village || p.locality;
+      const nr = p.housenumber || (q.match(/\b(\d+\s?[a-zA-Z]?)\b/) || [])[1] || '';
+      const zeile = `${strasse}${nr ? ' ' + nr : ''}, ${p.postcode} ${ort}`;
+      if (seen.has(zeile)) continue; seen.add(zeile);
+      out.push({ zeile, zusatz: p.district && p.district !== ort ? p.district : '' });
+    }
+    cacheAdr.set(q, out);
+    return out;
+  }
+  function adressVorschlaege(inp) {
+    const box = document.createElement('div');
+    box.className = 'adr-list'; box.hidden = true;
+    inp.after(box);
+    let nr = 0;
+    const zu = () => { box.hidden = true; box.innerHTML = ''; };
+    const los = debounce(async () => {
+      const q = inp.value.trim();
+      // erst suchen, wenn Straße und Hausnummer da sind und noch keine PLZ eingetragen ist
+      if (q.length < 5 || !/\d/.test(q) || /\b\d{5}\b/.test(q)) return zu();
+      const mein = ++nr;
+      let list = [];
+      try { list = await sucheAdresse(q); } catch { return zu(); }
+      if (mein !== nr || document.activeElement !== inp) return;
+      if (!list.length) return zu();
+      box.innerHTML = list.map((x, i) => `<button type="button" data-a="${i}">${icon('map')}<span><b>${esc(x.zeile)}</b>${x.zusatz ? `<small>${esc(x.zusatz)}</small>` : ''}</span></button>`).join('');
+      box.hidden = false;
+      $$('[data-a]', box).forEach((b) => b.addEventListener('pointerdown', (e) => {
+        e.preventDefault(); // Fokus bleibt, damit die Liste nicht vorher verschwindet
+        inp.value = list[+b.dataset.a].zeile;
+        inp.dispatchEvent(new Event('input', { bubbles: true }));
+        nr++; zu();
+      }));
+    }, 350);
+    inp.addEventListener('input', (e) => { if (e.isTrusted) los(); });
+    inp.addEventListener('blur', () => setTimeout(zu, 150));
+  }
+
   // ---------- Ansicht: Kundenkarte ----------
   const telLink = (t) => 'tel:' + String(t).replace(/[^\d+]/g, '');
   const mapLink = (a) => 'https://maps.apple.com/?q=' + encodeURIComponent(einzeilig(a));
@@ -253,9 +306,9 @@ window.Kunden = (() => {
           <div style="flex:2"><label>Vorname</label><input type="text" id="kVorname" value="${esc(k.vorname)}" autocomplete="off" placeholder="z. B. Max"></div></div>
         <label>Nachname bzw. Firma</label><input type="text" id="kName" value="${esc(k.name)}" autocomplete="off" placeholder="z. B. Müller">
         <div class="row"><div><label>Telefon</label><input type="tel" id="kTel" value="${esc(k.telefon)}" autocomplete="off" placeholder="0711 …"></div>
-          <div><label>E-Mail</label><input type="email" id="kMail" value="${esc(k.email)}" autocomplete="off" inputmode="email" placeholder="name@…"></div></div>
-        <label>Geburtstag${a !== null ? ` <span class="muted" id="kAlter">(${a} Jahre)</span>` : ''}</label><input type="date" id="kGeb" value="${esc(k.geburtstag)}">
-        <label>Privatanschrift</label><input type="text" id="kPrivat" value="${esc(k.privat)}" autocomplete="off" placeholder="Straße Nr., PLZ Ort">
+          <div><label>Geburtstag${a !== null ? ` <span class="muted" id="kAlter">(${a} Jahre)</span>` : ''}</label><input type="date" id="kGeb" value="${esc(k.geburtstag)}"></div></div>
+        <label>E-Mail</label><input type="email" id="kMail" value="${esc(k.email)}" autocomplete="off" inputmode="email" placeholder="name@beispiel.de">
+        <label>Privatanschrift</label><div class="adr"><input type="text" id="kPrivat" value="${esc(k.privat)}" autocomplete="off" placeholder="Straße Nr., der Ort wird ergänzt"></div>
         <label>Notiz</label><textarea id="kNotiz" placeholder="z. B. erreichbar ab 17 Uhr, Schlüssel beim Nachbarn">${esc(k.notiz)}</textarea>
       </div>
 
@@ -266,7 +319,7 @@ window.Kunden = (() => {
           <span class="o-ico">${icon('home')}</span>
           <div class="o-f">
             <input type="text" data-of="name" value="${esc(o.name)}" placeholder="Bezeichnung (optional)" autocomplete="off">
-            <input type="text" data-of="adresse" value="${esc(o.adresse)}" placeholder="Straße Nr., PLZ Ort" autocomplete="off">
+            <div class="adr"><input type="text" data-of="adresse" value="${esc(o.adresse)}" placeholder="Straße Nr., der Ort wird ergänzt" autocomplete="off"></div>
           </div>
           <div class="o-a">
             <button class="icon-btn obild" data-obild="${o.id}" aria-label="Bilder">${icon('camera')}${nBilder[o.id] ? `<i>${nBilder[o.id]}</i>` : ''}</button>
@@ -309,6 +362,7 @@ window.Kunden = (() => {
       };
     }
     if (k.isNew) setTimeout(() => $('#kName')?.focus(), 50);
+    $$('.adr input').forEach(adressVorschlaege);
     $$('[data-obj]').forEach((card) => {
       const o = objekt(k, card.dataset.obj);
       $$('[data-of]', card).forEach((inp) => (inp.oninput = () => { o[inp.dataset.of] = inp.value; persist(); titel(); }));
