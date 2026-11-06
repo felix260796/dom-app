@@ -107,3 +107,12 @@ span.x { background: none; }
 [hidden] { display: none !important; }
 .backup-hint.warn { border: 1px solid #f5c26b; background: #fff8eb; }
 .backup-hint p { margin: 4px 0 10px; }
+
+/* Garten: Meterstab und Aufstellort im Foto markieren */
+.gm-wrap { position: relative; border-radius: 10px; overflow: hidden; cursor: crosshair; touch-action: manipulation; }
+.gm-wrap img { display: block; width: 100%; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; }
+.gm-svg { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+.gm-svg line { stroke: #ffd400; stroke-width: 3; vector-effect: non-scaling-stroke; }
+.gm-dot { position: absolute; width: 16px; height: 16px; margin: -8px 0 0 -8px; border-radius: 50%; border: 2px solid #fff; box-shadow: 0 0 0 1px rgba(0,0,0,.4); pointer-events: none; }
+.gm-dot.gelb { background: #ffd400; }
+.gm-dot.rot { background: #ff2020; width: 22px; height: 22px; margin: -11px 0 0 -11px; }
