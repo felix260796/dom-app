@@ -1,4 +1,4 @@
-// DOM – Terminmails (Supabase Edge Function „termin-mail“)
+// DOM – Terminmails (Supabase Edge Function „termin-mail“), Stand 6.11.2026: eigene Mail je Empfänger (Team, Kunde, Subunternehmer)
 // 1. Die App ruft sie beim Speichern eines Termins auf: Bestätigung (bzw. Änderung/Absage) an alle Beteiligten,
 //    mit Kalendereinladung (.ics) im Anhang.
 // 2. Ein Zeitplan (Supabase Cron, z. B. alle 15 Minuten) ruft sie mit { aktion: "erinnerungen" } auf:
@@ -22,10 +22,13 @@ const TZ = "Europe/Berlin";
 const cors = { "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Headers": "authorization, apikey, content-type, x-cron-secret", "Access-Control-Allow-Methods": "POST, OPTIONS" };
 const antwort = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { ...cors, "Content-Type": "application/json" } });
 
-type Person = { name?: string; email?: string };
+type Rolle = "team" | "kunde" | "partner";
+type Person = { name?: string; email?: string; rolle?: Rolle };
+type Texte = Partial<Record<Rolle, { bestaetigung?: string; erinnerung?: string }>>;
 type Termin = {
   id: string; titel?: string; art?: string; datum: string; von?: string; bis?: string; ganztag?: boolean;
-  ort?: string; notiz?: string; erinnerung?: number; mailAn?: Person[]; kontext?: { kunde?: string; kundeTel?: string; objekt?: string; partner?: string; firma?: string; wer?: string };
+  ort?: string; notiz?: string; erinnerung?: number; mailAn?: Person[];
+  kontext?: { kunde?: string; kundeTel?: string; objekt?: string; projekt?: string; partner?: string; firma?: string; kontakt?: string; wer?: string; werKontakt?: string; texte?: Texte };
 };
 
 // ---------- Zeit (deutsche Ortszeit, inkl. Sommerzeit) ----------
@@ -44,34 +47,86 @@ const wannText = (t: Termin) => `${tagText(t.datum)}${t.ganztag ? " (ganztags)" 
 
 // ---------- Inhalt ----------
 const esc = (s: unknown) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]!));
-function ics(t: Termin, methode: "REQUEST" | "CANCEL", seq: number) {
+// Jeder Empfänger bekommt seine eigene Mail:
+//   team     alle Angaben (Kunde mit Telefon, Objekt, Projekt, Subunternehmer, wer dabei ist, Notiz)
+//   kunde    nur Anlass, Zeit, Ort und wer von uns kommt, kein Hinweis auf den Subunternehmer, keine interne Notiz
+//   partner  Anlass, Zeit, Adresse, Projekt, Kundenname und dass der Termin mit uns ist, ohne Kundentelefon und Notiz
+const STANDARD: Record<Rolle, { bestaetigung: string; erinnerung: string }> = {
+  team: { bestaetigung: "Neuer Termin im Kalender, hier alle Angaben.", erinnerung: "Erinnerung an den folgenden Termin." },
+  kunde: { bestaetigung: "vielen Dank für Ihr Vertrauen. Hiermit bestätigen wir unseren Termin bei Ihnen.", erinnerung: "wir möchten Sie an unseren Termin bei Ihnen erinnern. Wir freuen uns auf Sie." },
+  partner: { bestaetigung: "hiermit bestätigen wir den folgenden Termin mit uns.", erinnerung: "kurze Erinnerung an unseren gemeinsamen Termin." },
+};
+const rolleVon = (p: Person): Rolle => (p.rolle === "kunde" || p.rolle === "partner" ? p.rolle : "team");
+const firmaVon = (t: Termin) => t.kontext?.firma || "DOM Projektmanagement";
+
+function ics(t: Termin, methode: "REQUEST" | "CANCEL", seq: number, rolle: Rolle = "team") {
   const tx = (s: unknown) => String(s ?? "").replace(/[\\;,]/g, (c) => "\\" + c).replace(/\n/g, "\\n");
   const d = t.datum.replace(/-/g, "");
   const stamp = new Date().toISOString().replace(/[-:]/g, "").slice(0, 15) + "Z";
   const utc = (x: Date) => x.toISOString().replace(/[-:]/g, "").slice(0, 15) + "Z";
   const naechster = new Date(Date.UTC(+t.datum.slice(0, 4), +t.datum.slice(5, 7) - 1, +t.datum.slice(8, 10) + 1)).toISOString().slice(0, 10).replace(/-/g, "");
   const start = zeitpunkt(t.datum, t.von), ende = t.bis ? zeitpunkt(t.datum, t.bis) : new Date(start.getTime() + 3600e3);
+  const k = t.kontext || {};
+  const info = rolle === "team" ? [k.kunde, k.kundeTel, k.partner && `Subunternehmer: ${k.partner}`, t.notiz]
+    : rolle === "kunde" ? [firmaVon(t), k.wer && `Von uns: ${k.wer}`]
+    : [`Termin mit ${firmaVon(t)}`, k.projekt, k.kunde && `Kunde: ${k.kunde}`];
+  const titel = rolle === "kunde" ? `${t.titel || "Termin"} (${firmaVon(t)})` : rolle === "partner" ? `${t.titel || "Termin"} mit ${firmaVon(t)}` : t.titel;
   return ["BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//DOM Projektmanagement//Termine//DE", `METHOD:${methode}`, "BEGIN:VEVENT", `UID:${t.id}@dom-app`, `SEQUENCE:${seq}`, `DTSTAMP:${stamp}`,
     ...(t.ganztag ? [`DTSTART;VALUE=DATE:${d}`, `DTEND;VALUE=DATE:${naechster}`] : [`DTSTART:${utc(start)}`, `DTEND:${utc(ende)}`]),
-    `SUMMARY:${tx(t.titel)}`, ...(t.ort ? [`LOCATION:${tx(t.ort)}`] : []), `DESCRIPTION:${tx([t.kontext?.kunde, t.notiz].filter(Boolean).join("\n"))}`,
+    `SUMMARY:${tx(titel)}`, ...(t.ort ? [`LOCATION:${tx(t.ort)}`] : []), `DESCRIPTION:${tx(info.filter(Boolean).join("\n"))}`,
     ...(methode === "CANCEL" ? ["STATUS:CANCELLED"] : []), "END:VEVENT", "END:VCALENDAR"].join("\r\n");
 }
-function mailHtml(t: Termin, kopf: string, text: string) {
-  const k = t.kontext || {};
+
+type Art = "bestaetigung" | "aenderung" | "absage" | "erinnerung";
+const KOPF: Record<Art, string> = { bestaetigung: "Terminbestätigung", aenderung: "Termin geändert", absage: "Termin abgesagt", erinnerung: "Terminerinnerung" };
+function satz(t: Termin, rolle: Rolle, art: Art, wann = "") {
+  const eigen = t.kontext?.texte?.[rolle];
+  if (art === "absage") return rolle === "kunde" ? "leider müssen wir den folgenden Termin absagen. Wir melden uns für einen neuen Termin bei Ihnen." : "der folgende Termin findet leider nicht statt.";
+  if (art === "aenderung") return rolle === "kunde" ? "unser Termin bei Ihnen hat sich geändert. Hier der neue Stand." : "der Termin hat sich geändert, hier der neue Stand.";
+  const text = (art === "erinnerung" ? eigen?.erinnerung : eigen?.bestaetigung)?.trim() || STANDARD[rolle][art];
+  return art === "erinnerung" && wann ? `${text} Der Termin ist ${wann}.` : text;
+}
+function mailHtml(t: Termin, p: Person, art: Art, wann = "") {
+  const k = t.kontext || {}, rolle = rolleVon(p), firma = firmaVon(t);
   const zeile = (l: string, v?: string, html?: string) => (v ? `<tr><td style="padding:6px 14px 6px 0;color:#6b7380;vertical-align:top">${l}</td><td style="padding:6px 0;font-weight:600">${html ?? esc(v)}</td></tr>` : "");
   const karte = t.ort ? `<a href="https://maps.apple.com/?q=${encodeURIComponent(t.ort)}" style="color:#2b4a6f">${esc(t.ort)}</a>` : "";
+  const anlass = zeile("Anlass", t.titel || "Termin"), zeit = zeile("Wann", wannText(t));
+  const zeilen = rolle === "team"
+    ? anlass + zeit + zeile("Wo", t.ort, karte) + zeile("Kunde", [k.kunde, k.kundeTel].filter(Boolean).join(" · ")) + zeile("Objekt", k.objekt) + zeile("Projekt", k.projekt) + zeile("Subunternehmer", k.partner) + zeile("Dabei", k.wer) + zeile("Notiz", t.notiz)
+    : rolle === "kunde"
+      ? anlass + zeit + zeile("Wo", t.ort, karte) + zeile("Von uns kommt", k.wer)
+      : anlass + zeit + zeile("Adresse", t.ort, karte) + zeile("Projekt", k.projekt) + zeile("Kunde", k.kunde) + zeile("Termin mit", [firma, k.werKontakt || k.wer].filter(Boolean).join(" · "));
+  const vor = String(p.name || "").trim();
+  const anrede = rolle === "team" ? "Hallo," : rolle === "kunde" ? `Guten Tag${vor ? " " + vor : ""},` : `Hallo${vor ? " " + vor.split(",")[0] : ""},`;
+  const gruss = rolle === "team" ? "" : `<p style="margin:18px 0 0">Viele Grüße<br>${esc(firma)}${k.kontakt ? `<br><span style="font-size:13px;color:#6b7380">${esc(k.kontakt)}</span>` : ""}</p>`;
   return `<!doctype html><html><body style="margin:0;background:#f3f1ec;font-family:-apple-system,Segoe UI,Helvetica,Arial,sans-serif;color:#1b2533">
   <div style="max-width:560px;margin:0 auto;padding:24px 16px">
-    <div style="background:#1e3550;color:#fff;border-radius:16px 16px 0 0;padding:18px 20px"><div style="font-size:13px;opacity:.75">${esc(k.firma || "DOM Projektmanagement")}</div><div style="font-size:21px;font-weight:700;margin-top:4px">${esc(kopf)}</div></div>
+    <div style="background:#1e3550;color:#fff;border-radius:16px 16px 0 0;padding:18px 20px"><div style="font-size:13px;opacity:.75">${esc(firma)}</div><div style="font-size:21px;font-weight:700;margin-top:4px">${esc(KOPF[art])}</div></div>
     <div style="background:#fff;border-radius:0 0 16px 16px;padding:18px 20px">
-      <p style="margin:0 0 14px">${esc(text)}</p>
-      <table style="border-collapse:collapse;font-size:15px">
-        ${zeile("Anlass", t.titel || "Termin")}${zeile("Wann", wannText(t))}${zeile("Wo", t.ort, karte)}
-        ${zeile("Kunde", [k.kunde, k.kundeTel].filter(Boolean).join(" · "))}${zeile("Objekt", k.objekt)}${zeile("Subunternehmer", k.partner)}${zeile("Dabei", k.wer)}${zeile("Notiz", t.notiz)}
-      </table>
-      <p style="margin:18px 0 0;font-size:13px;color:#6b7380">Im Anhang ist der Termin zum Übernehmen in den Kalender.</p>
+      <p style="margin:0 0 4px">${esc(anrede)}</p>
+      <p style="margin:0 0 14px">${esc(satz(t, rolle, art, wann))}</p>
+      <table style="border-collapse:collapse;font-size:15px">${zeilen}</table>
+      ${gruss}
+      <p style="margin:18px 0 0;font-size:13px;color:#6b7380">${art === "absage" ? "Im Anhang ist die Absage, damit der Termin aus dem Kalender verschwindet." : "Im Anhang ist der Termin zum Übernehmen in den Kalender."}</p>
     </div>
   </div></body></html>`;
+}
+function betreff(t: Termin, p: Person, art: Art, wann = "") {
+  const rolle = rolleVon(p), was = t.titel || "Termin", firma = firmaVon(t);
+  const vorne = { bestaetigung: "Terminbestätigung", aenderung: "Termin geändert", absage: "Abgesagt", erinnerung: "Erinnerung" }[art];
+  const mit = rolle === "partner" ? ` mit ${firma}` : rolle === "kunde" ? ` – ${firma}` : "";
+  return `${vorne}: ${was}${mit}${art === "erinnerung" && wann ? ` ${wann}` : ""}, ${wannText(t)}`;
+}
+/** Eine Mail je Empfänger, passend zu seiner Rolle. */
+async function anAlle(t: Termin, an: Person[], art: Art, wann = "") {
+  const methode = art === "absage" ? "CANCEL" : "REQUEST";
+  const seq = art === "bestaetigung" || art === "erinnerung" ? 0 : Math.floor(Date.now() / 1000);
+  let n = 0;
+  const gueltig = an.filter((p) => /.+@.+\..+/.test(p.email || ""));
+  for (const p of gueltig) {
+    n += await senden([p], betreff(t, p, art, wann), mailHtml(t, p, art, wann), { name: art === "absage" ? "Absage.ics" : "Termin.ics", text: ics(t, methode, seq, rolleVon(p)), methode });
+  }
+  return n;
 }
 
 // ---------- Versand ----------
@@ -133,7 +188,7 @@ async function erinnerungen() {
     const schluessel = `${t.id}|${t.datum}|${t.ganztag ? "" : t.von}|${tage}`; // neue Zeit → neue Erinnerung
     if (st[schluessel] || jetzt < ab || jetzt > start) continue;
     const wann = tage === 1 ? "morgen" : tage === 7 ? "in einer Woche" : `in ${tage} Tagen`;
-    await senden(t.mailAn, `Erinnerung: ${t.titel || "Termin"} ${wann}, ${wannText(t)}`, mailHtml(t, "Terminerinnerung", `Kurze Erinnerung an unseren Termin ${wann}.`), { name: "Termin.ics", text: ics(t, "REQUEST", 0), methode: "REQUEST" });
+    await anAlle(t, t.mailAn, "erinnerung", wann);
     st[schluessel] = jetzt; n++; geaendert = true;
   }
   // alte Einträge (älter als 60 Tage) aufräumen
@@ -166,16 +221,8 @@ Deno.serve(async (req) => {
     const t: Termin = body.termin;
     if (!t?.id || !t.datum) return antwort({ fehler: "Termin fehlt" }, 400);
     const an = (t.mailAn || []).concat(body.zusaetzlich || []);
-    let n = 0;
-    if (body.aktion === "absage") {
-      n = await senden(an, `Abgesagt: ${t.titel || "Termin"}, ${wannText(t)}`, mailHtml(t, "Termin abgesagt", "Dieser Termin findet leider nicht statt."), { name: "Absage.ics", text: ics(t, "CANCEL", Math.floor(Date.now() / 1000)), methode: "CANCEL" });
-    } else {
-      const neu = body.aktion !== "aenderung";
-      n = await senden(an, `${neu ? "Terminbestätigung" : "Termin geändert"}: ${t.titel || "Termin"}, ${wannText(t)}`,
-        mailHtml(t, neu ? "Terminbestätigung" : "Termin geändert", neu ? "Hiermit bestätigen wir den folgenden Termin." : "Der Termin hat sich geändert, hier der neue Stand."),
-        { name: "Termin.ics", text: ics(t, "REQUEST", neu ? 0 : Math.floor(Date.now() / 1000)), methode: "REQUEST" });
-    }
-    return antwort({ ok: true, gesendet: n });
+    const art: Art = body.aktion === "absage" ? "absage" : body.aktion === "aenderung" ? "aenderung" : "bestaetigung";
+    return antwort({ ok: true, gesendet: await anAlle(t, an, art) });
   } catch (e) {
     console.error(e);
     return antwort({ fehler: String((e as Error)?.message || e) }, 500);

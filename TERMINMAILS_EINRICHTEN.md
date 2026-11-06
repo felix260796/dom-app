@@ -58,3 +58,13 @@ Die Angaben findest du beim Anbieter unter „SMTP-Server“ bzw. „Postausgang
 4. Beim Subunternehmer die E-Mail in seiner Karte eintragen. Dann bekommt er die Mails ebenfalls, sobald er beim Termin ausgewählt ist.
 
 Klappt etwas nicht, zeigt die App die Fehlermeldung an. Schick sie mir einfach.
+
+---
+
+## Funktion aktualisieren (wenn sich der Mail-Inhalt ändert)
+1. https://supabase.com/dashboard/project/flqjnhetnqdcgskjsgkv/functions öffnen und **termin-mail** anklicken.
+2. Oben auf **Code** gehen.
+3. Im Editor alles markieren (Strg+A) und löschen.
+4. Den neuen Inhalt von https://raw.githubusercontent.com/felix260796/dom-app/main/supabase/functions/termin-mail/index.ts kopieren und einfügen.
+5. Unten rechts auf **Deploy** klicken. Die Secrets und der Cron-Job bleiben, wie sie sind.
+6. Unter **Settings** kurz prüfen, dass „Verify JWT“ weiterhin aus ist.

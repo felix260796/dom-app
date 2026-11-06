@@ -399,7 +399,6 @@ window.Kunden = (() => {
       <div class="sec-h"><h2>Alle Projekte</h2>${idx.length ? `<span class="count">${idx.length}</span>` : ''}</div>
       <div class="plist">${idx.map((x) => pcard(x, objLabel(objekt(k, x.objektId)) || 'Ohne Objekt')).join('')}</div>
       <button class="btn big block" id="kProj" style="margin-top:12px">${icon('plus')} Neues Projekt für ${esc(name(k) || 'diesen Kunden')}</button>
-      <div id="kTermine"></div>
       ${idx.length || k.isNew ? '' : `<button class="link-danger" id="kDel">${icon('trash')} Kunde löschen</button>`}`;
 
     const actions = () => {
@@ -439,7 +438,6 @@ window.Kunden = (() => {
     });
     $$('[data-hv]').forEach((inp) => (inp.oninput = () => { k.hv[inp.dataset.hv] = inp.value; persist(); actions(); }));
     Kontakt.weitereBinden($('#kWeitere'), k.weitere, () => { persist(); actions(); });
-    window.Kalender?.abschnitt($('#kTermine'), { kundeId: k.id });
     if (k.isNew) setTimeout(() => $('#kName')?.focus(), 50);
     $$('.adr input').forEach(adressVorschlaege);
     $$('[data-obj]').forEach((b) => (b.onclick = () => { objektView(k, objekt(k, b.dataset.obj)); window.scrollTo(0, 0); }));

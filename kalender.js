@@ -263,6 +263,7 @@ window.Kalender = (() => {
         const bereit = state.settings.mailAktiv && window.Sync?.active();
         const sendJetzt = bereit && ($('#tMailAn')?.checked ?? false);
         t.mailAn = bereit ? empfaenger(t) : t.mailAn || [];
+        try { window.__projIdx = await projectIndex(); } catch {}
         t.kontext = kontext(t);
         await kvSet('termin:' + t.id, t); alle.set(t.id, t); punkt();
         tag = t.datum; monat = new Date(ausIso(t.datum).getFullYear(), ausIso(t.datum).getMonth(), 1);
@@ -291,20 +292,39 @@ window.Kalender = (() => {
   }
 
   /** Wer dabei ist: Team-Personen des Termins, Subunternehmer, auf Wunsch der Kunde (mit E-Mail oder ohne). */
+  // Jede Person bekommt ihre eigene Mail (rolle): team = alle Angaben, kunde = Zeit, Ort, Anlass (ohne Subunternehmer),
+  // partner = Adresse, Projekt, Kunde und dass der Termin mit uns ist.
   function beteiligte(t) {
-    const out = team().filter((p) => !t.wer?.length || t.wer.includes(p.id)).map((p) => ({ name: p.name, email: (p.email || '').trim() }));
+    const out = team().filter((p) => !t.wer?.length || t.wer.includes(p.id)).map((p) => ({ name: p.name, email: (p.email || '').trim(), rolle: 'team' }));
     const p = window.Partner?.byId(t.partnerId);
-    if (p) out.push({ name: [p.inhaber, p.firma].filter(Boolean).join(', ') || 'Subunternehmer', email: p.email.trim() });
+    if (p) out.push({ name: [p.inhaber, p.firma].filter(Boolean).join(', ') || 'Subunternehmer', email: p.email.trim(), rolle: 'partner' });
     const k = Kunden.byId(t.kundeId);
-    if (k && t.mailKunde) out.push({ name: Kunden.name(k), email: k.email.trim() });
+    if (k && t.mailKunde) out.push({ name: Kunden.name(k), email: k.email.trim(), rolle: 'kunde' });
     return out;
   }
   const empfaenger = (t) => beteiligte(t).filter((x) => /.+@.+\..+/.test(x.email));
   /** Angaben für den Text der E-Mail (die Cloud kennt Kunden und Subunternehmer nicht einzeln). */
   function kontext(t) {
     const k = Kunden.byId(t.kundeId), o = k && Kunden.objekt(k, t.objektId), p = window.Partner?.byId(t.partnerId);
-    return { firma: state.settings.company || 'DOM Projektmanagement', kunde: k ? Kunden.name(k) : '', kundeTel: k?.telefon || '', objekt: o ? Kunden.objLabel(o) : '',
-      partner: p ? [p.firma, p.inhaber, p.telefon].filter(Boolean).join(' · ') : '', wer: team().filter((x) => t.wer?.includes(x.id)).map((x) => x.name).join(', ') };
+    const w = t.projektId && (state.wohnung?.id === t.projektId ? state.wohnung : null);
+    const pi = t.projektId ? (window.__projIdx || []).find((x) => x.id === t.projektId) : null;
+    const pr = w || pi;
+    const dabei = team().filter((x) => !t.wer?.length || t.wer.includes(x.id));
+    return { firma: state.settings.company || 'DOM Projektmanagement', kontakt: state.settings.contact || '', kunde: k ? Kunden.name(k) : '', kundeTel: k?.telefon || '', objekt: o ? Kunden.objLabel(o) : '',
+      projekt: pr ? [pr.titel, pr.nr && `Nr. ${pr.nr}`].filter(Boolean).join(' · ') : '',
+      partner: p ? [p.firma, p.inhaber, p.telefon].filter(Boolean).join(' · ') : '', wer: dabei.map((x) => x.name).join(', '),
+      werKontakt: dabei.map((x) => [x.name, x.email].filter(Boolean).join(', ')).join(' · '), texte: Kalender.mailTexte() };
+  }
+
+  // Einleitungssätze der Mails, je Empfänger und Art; in Einstellungen → E-Mail-Automatisierung änderbar
+  const MAILTEXTE = {
+    team: { bestaetigung: 'Neuer Termin im Kalender, hier alle Angaben.', erinnerung: 'Erinnerung an den folgenden Termin.' },
+    kunde: { bestaetigung: 'vielen Dank für Ihr Vertrauen. Hiermit bestätigen wir unseren Termin bei Ihnen.', erinnerung: 'wir möchten Sie an unseren Termin bei Ihnen erinnern. Wir freuen uns auf Sie.' },
+    partner: { bestaetigung: 'hiermit bestätigen wir den folgenden Termin mit uns.', erinnerung: 'kurze Erinnerung an unseren gemeinsamen Termin.' },
+  };
+  function mailTexte() {
+    const s = state.settings.mailTexte || {};
+    return Object.fromEntries(Object.entries(MAILTEXTE).map(([r, v]) => [r, { bestaetigung: s[r]?.bestaetigung?.trim() || v.bestaetigung, erinnerung: s[r]?.erinnerung?.trim() || v.erinnerung }]));
   }
 
   /** .ics-Datei: das iPhone bietet „Zum Kalender hinzufügen“ an (mit Erinnerung). */
@@ -327,5 +347,5 @@ window.Kalender = (() => {
   /** Punkt am Kalender-Symbol, wenn heute etwas ansteht. */
   function punkt() { const d = $('#calDot'); if (d) d.hidden = !eintraege(heute(), heute()).length; }
 
-  return { laden, view, kachel, abschnitt, bearbeiten, eintraege, punkt, team, ARTEN };
+  return { laden, view, kachel, abschnitt, bearbeiten, eintraege, punkt, team, ARTEN, MAILTEXTE, mailTexte };
 })();
