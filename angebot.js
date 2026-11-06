@@ -23,6 +23,14 @@ const Angebot = (() => {
     if (PL) return PL;
     PL = await kvGet('preisliste');
     if (!PL) { PL = await (await fetch('data/preisliste.json')).json(); PL.stand = 'Standard (Schätzpreise)'; }
+    else {
+      // Eigene (Excel-)Preisliste: neue Standard-Positionen (z. B. Wärmepumpe WP-…, HZ-…) ergänzen, wenn sie fehlen
+      try {
+        const std = await (await fetch('data/preisliste.json')).json();
+        const have = new Set(PL.positionen.map((x) => x.nr));
+        for (const x of std.positionen) if (/^(WP|HZ)-/.test(x.nr) && !have.has(x.nr)) PL.positionen.push({ ...x, status: x.status || 'geschätzt' });
+      } catch {}
+    }
     return PL;
   }
   const pos = (nr) => PL.positionen.find((x) => x.nr === nr);
@@ -83,7 +91,7 @@ const Angebot = (() => {
   // ---------- Aufmaß ----------
   const BRUESTUNG = 0.9; // Standard-Brüstungshöhe Fenster
   const neuerRaum = (name = 'Badezimmer') => ({ id: uid(), name, typ: name, teile: [{ l: '', b: '' }], h: '2,50', oeff: [{ art: 'Tür', n: 1, b: '0,885', h: '2,01' }, { art: 'Fenster', n: 1, b: '1,0', h: '1,2' }], dusche: /bad/i.test(name), duschwand: /bad/i.test(name) ? '1,8' : '', umfang: '', notiz: '', skizze: '' });
-  const gruppe = (typ) => (/bad|wc|dusch/i.test(typ) ? 'nass' : /k(ü|ue)che/i.test(typ) ? 'kueche' : /fassade|au(ß|ss)en/i.test(typ) ? 'aussen' : 'wohn');
+  const gruppe = (typ) => (/bad|wc|dusch/i.test(typ) ? 'nass' : /k(ü|ue)che/i.test(typ) ? 'kueche' : /garten/i.test(typ) ? 'garten' : /heiz|technik/i.test(typ) ? 'technik' : /fassade|au(ß|ss)en/i.test(typ) ? 'aussen' : 'wohn');
 
   /** Flächen und Längen eines Raums. Zusatzflächen werden als an der kürzeren Seite angesetzt gerechnet. */
   function masse(r) {
@@ -102,11 +110,13 @@ const Angebot = (() => {
       tueren: oeff.filter((o) => o.art === 'Tür').reduce((s, o) => s + o.n, 0),
       fenster: oeff.filter((o) => o.art === 'Fenster').reduce((s, o) => s + o.n, 0),
       tuerbreite, sockel: Math.max(0, umfang - tuerbreite), duschwand, dusche: r.dusche ? 1 : 0,
+      // Garten mit Wärmepumpe (garten.js überträgt die Werte ins Aufmaß)
+      wp: r.wp ? 1 : 0, fundament: r.wp ? Math.max(num(r.fl), 0) * Math.max(num(r.fb), 0) : 0, leitung: r.wp ? num(r.leitung) : 0,
     };
   }
 
   // Mengenformeln: Zahlen, Variablen aus masse(), + - * / ( ), Funktionen wandbis(x), aufrunden(x), max(a; b), min(a; b)
-  const VARS = ['boden', 'decke', 'umfang', 'hoehe', 'wand', 'oeffnungen', 'tueren', 'fenster', 'tuerbreite', 'sockel', 'duschwand', 'dusche'];
+  const VARS = ['boden', 'decke', 'umfang', 'hoehe', 'wand', 'oeffnungen', 'tueren', 'fenster', 'tuerbreite', 'sockel', 'duschwand', 'dusche', 'wp', 'fundament', 'leitung'];
   const FUNCS = ['wandbis', 'aufrunden', 'max', 'min'];
   function rechne(formel, m) {
     const src = String(formel ?? '').trim().replace(/(\d),(\d)/g, '$1.$2').replace(/;/g, ',');
@@ -124,6 +134,8 @@ const Angebot = (() => {
   const FL_HALB = 'wandbis(1.2) + duschwand*(hoehe-1.2)'; // halbhoch, Dusche raumhoch
   const DEFAULT_VORLAGEN = {
     basic: {
+      garten: [['AL-01', '1'], ['GA-03', 'boden*0.1', 'Bodenaushub'], ['GA-04', 'boden*0.3', 'Terrasse / Wege'], ['GA-05', 'umfang*0.3'], ['GA-06', 'boden*0.5'], ['WP-01', 'fundament', 'Fundament Wärmepumpe'], ['WP-02', 'wp'], ['WP-03', 'leitung'], ['WP-04', 'wp']],
+      technik: [['AL-01', '1'], ['HZ-01', '1'], ['MA-02', 'wand + decke'], ['MA-03', 'wand + decke'], ['RE-01', 'boden']],
       aussen: [['AL-01', '1'], ['GA-08', 'wand + 10', 'Fassadenfläche + Überstand'], ['MA-01', 'umfang*2', 'Abdecken Fenster/Boden'], ['MA-02', 'wand'], ['MA-03', 'wand', 'Fassadenfarbe 2×'], ['RE-01', 'umfang*2']],
       nass: [['AL-01', '1'], ['RB-01', FL_HALB, 'Bestandsfliesen'], ['RB-02', 'boden'], ['EN-03', `aufrunden((${FL_HALB} + boden)/8)`], ['ST-01', '4', 'für Leitungen'],
         ['AB-01', 'boden + duschwand*2', 'Boden + Duschbereich'], ['AB-02', 'umfang + 4'], ['AB-03', '4'], ['FL-01', FL_HALB, 'halbhoch, Dusche raumhoch'], ['FL-02', 'boden'],
@@ -134,6 +146,8 @@ const Angebot = (() => {
         ['MA-03', 'wand + decke'], ['BO-01', 'boden'], ['MT-03', 'boden*1.08', 'inkl. 8 % Verschnitt'], ['BO-08', 'sockel'], ['RE-01', 'boden']],
     },
     standard: {
+      garten: [['AL-01', '1'], ['GA-03', 'boden*0.15', 'Bodenaushub'], ['GA-04', 'boden*0.35', 'Terrasse / Wege'], ['GA-05', 'umfang*0.4'], ['GA-06', 'boden*0.45'], ['GA-07', 'umfang*0.5'], ['WP-01', 'fundament', 'Fundament Wärmepumpe'], ['WP-02', 'wp'], ['WP-03', 'leitung'], ['WP-04', 'wp'], ['WP-05', 'wp']],
+      technik: [['AL-01', '1'], ['HZ-01', '1'], ['EN-02', '1'], ['MA-02', 'wand + decke'], ['MA-05', 'wand + decke'], ['MA-03', 'wand + decke'], ['RE-01', 'boden']],
       aussen: [['AL-01', '1'], ['GA-08', 'wand + 10', 'Fassadenfläche + Überstand'], ['MA-01', 'umfang*2', 'Abdecken Fenster/Boden'], ['PE-01', 'wand*0.15', 'Putzausbesserung ca. 15 %'], ['MA-02', 'wand'], ['MA-03', 'wand', 'Silikonharz-Fassadenfarbe 2×'], ['RE-01', 'umfang*2']],
       nass: [['AL-01', '1'], ['AL-03', '1'], ['RB-01', FL_HALB, 'Bestandsfliesen'], ['RB-02', 'boden'], ['EN-03', `aufrunden((${FL_HALB} + boden)/8)`], ['ST-01', '6', 'für Leitungen'], ['ST-03', '6'],
         ['PE-03', 'boden'], ['PE-05', 'dusche'], ['AB-01', 'boden + duschwand*2', 'Boden + Duschbereich'], ['AB-02', 'umfang + 4'], ['AB-03', '4'], ['FL-03', `${FL_HALB} + boden`, 'Großformat 60×120, Nassbereich raumhoch'],
@@ -145,6 +159,8 @@ const Angebot = (() => {
         ['PE-03', 'boden'], ['BO-02', 'boden'], ['MT-04', 'boden*1.08', 'inkl. 8 % Verschnitt'], ['BO-08', 'sockel'], ['MA-10', 'tueren'], ['RE-01', 'boden']],
     },
     premium: {
+      garten: [['AL-01', '1'], ['GA-01', 'umfang*0.3', 'Leitungen / Drainage'], ['GA-03', 'boden*0.2', 'Bodenaushub'], ['GA-04', 'boden*0.4', 'Terrasse / Wege'], ['GA-05', 'umfang*0.5'], ['GA-06', 'boden*0.4'], ['GA-07', 'umfang*0.6'], ['WP-01', 'fundament', 'Fundament Wärmepumpe'], ['WP-02', 'wp'], ['WP-03', 'leitung'], ['WP-04', 'wp'], ['WP-05', 'wp']],
+      technik: [['AL-01', '1'], ['HZ-01', '1'], ['EN-02', '1'], ['MA-02', 'wand + decke'], ['MA-06', 'wand + decke'], ['MA-03', 'wand + decke'], ['RE-01', 'boden']],
       aussen: [['AL-01', '1'], ['GA-08', 'wand + 10', 'Fassadenfläche + Überstand'], ['MA-01', 'umfang*2', 'Abdecken Fenster/Boden'], ['PE-01', 'wand', 'neuer Oberputz'], ['MA-02', 'wand'], ['MA-03', 'wand', 'Silikonharz-Fassadenfarbe 2×'], ['MA-03', 'umfang*0.5', 'Sockel / Faschen farbig abgesetzt'], ['RE-01', 'umfang*2']],
       nass: [['AL-01', '1'], ['AL-03', '1'], ['RB-01', 'wand', 'Bestandsfliesen'], ['RB-02', 'boden'], ['EN-03', 'aufrunden((wand + boden)/8)'], ['ST-01', '8', 'für Leitungen'], ['ST-03', '8'],
         ['TB-03', 'duschwand*hoehe', 'Vorwand Dusche / WC'], ['PE-03', 'boden'], ['PE-05', 'dusche'], ['AB-01', 'boden + duschwand*2', 'Boden + Duschbereich'], ['AB-02', 'umfang + 4'], ['AB-03', '6'],
@@ -165,14 +181,14 @@ const Angebot = (() => {
     return VORL;
   }
   const vorlageFuer = (pkgId, grp) => (VORL[pkgId] || VORL.standard)[grp] || [];
-  const GRUPPEN = { nass: 'Bad / WC', kueche: 'Küche', wohn: 'Wohnräume, Flur, Treppenhaus & Sonstige', aussen: 'Fassade / Außen' };
+  const GRUPPEN = { nass: 'Bad / WC', kueche: 'Küche', wohn: 'Wohnräume, Flur, Treppenhaus & Sonstige', aussen: 'Fassade / Außen', garten: 'Garten (inkl. Wärmepumpe)', technik: 'Heizraum / Technik' };
 
   /** Positionen eines Pakets aus dem Aufmaß aller Räume erzeugen. Allgemeine Positionen (AL) nur einmal. */
   function erzeuge(p, pkgId) {
     const out = [], fehler = [], einmal = new Set();
     for (const r of p.aufmass.raeume) {
       const m = masse(r);
-      if (!m.boden) continue;
+      if (!m.boden && !m.wp) continue;
       for (const v of vorlageFuer(pkgId, gruppe(r.typ))) {
         const it = pos(v.nr);
         if (!it) { fehler.push(`${v.nr} nicht in der Preisliste`); continue; }
@@ -210,6 +226,7 @@ const Angebot = (() => {
     { name: 'Bodenbeläge', gewerke: ['Bodenbeläge'], rate: { 'm²': 25, lfm: 40, Stück: 10 }, nr: { 'BO-05': 15, 'BO-06': 20 } },
     { name: 'Türen', gewerke: ['Türen'], rate: { Stück: 3 } },
     { name: 'Endmontage Sanitär & Elektro (Fachbetrieb)', fachbetrieb: 2 },
+    { name: 'Wärmepumpe: Fundament & Leitungsweg', gewerke: ['Wärmepumpe'], rate: { 'm²': 1, Stück: 2, lfm: 12, pauschal: 2 }, trocknung: { 'WP-01': 5 } },
     { name: 'Außenarbeiten', gewerke: ['Garten und Außen'], rate: { 'm²': 15, lfm: 20, 'm³': 15 } },
     { name: 'Endreinigung & Abnahme', gewerke: ['Reinigung'], rate: { 'm²': 80 }, min: 0.5 },
   ];
@@ -410,7 +427,7 @@ Gib Länge (längere Seite) und Breite der Grundfläche, Raumhöhe, Anzahl und G
     el.innerHTML = `<div class="card">
       <h2>4. Aufmaß & Angebot</h2>
       <p class="muted">${raeume.length ? `${raeume.length} Raum/Räume, ${fmtNum(flaeche)} m² Bodenfläche${n ? `, Angebot mit ${n} Positionen` : ''}.` : 'Maße aufnehmen, daraus entstehen Angebot und Bauzeitenplan pro Paket.'}</p>
-      <button class="btn block" id="toAngebot">📐 Aufmaß & Angebot öffnen</button></div>`;
+      <button class="btn block" id="toAngebot">Aufmaß & Angebot öffnen</button></div>`;
     $('#toAngebot').onclick = () => ansicht(p);
   }
 
@@ -419,12 +436,12 @@ Gib Länge (längere Seite) und Breite der Grundfläche, Raumhöhe, Anzahl und G
   async function ansicht(p, scrollTop = true) {
     await preisliste(); await vorlagen();
     init(p);
-    setTitle((p.customer || 'Projekt') + ' · Angebot');
+    const zurueck = () => { if (state.angebotAusProjekt && state.wohnung) { state.angebotAusProjekt = false; state.project = null; return Projekt.view(); } viewProjekt(); };
+    header('Angebot', [p.customer, p.room].filter(Boolean).join(' · '), { label: state.angebotAusProjekt ? 'Projekt' : p.room || 'Raum', fn: zurueck });
     main().innerHTML = `
-      <button class="btn secondary small" id="aBack" style="margin-bottom:12px">← Zurück zum Projekt</button>
-      <div class="seg">${[['aufmass', '📐 Aufmaß'], ['angebot', '💶 Angebot'], ['material', '🧾 Material'], ['bauzeit', '📅 Bauzeit']].map(([k, l]) => `<button data-atab="${k}" class="${tab === k ? 'on' : ''}">${l}</button>`).join('')}</div>
+      <div class="seg">${[['aufmass', 'Aufmaß'], ['angebot', 'Angebot'], ['material', 'Material'], ['bauzeit', 'Bauzeit']].map(([k, l]) => `<button data-atab="${k}" class="${tab === k ? 'on' : ''}">${l}</button>`).join('')}</div>
       <div id="aBody"></div>`;
-    $('#aBack').onclick = () => viewProjekt();
+    
     $$('[data-atab]').forEach((b) => (b.onclick = () => { tab = b.dataset.atab; ansicht(p); }));
     ({ aufmass: aufmassView, angebot: angebotView, material: materialView, bauzeit: bauzeitView })[tab](p);
     if (scrollTop) window.scrollTo(0, 0);
@@ -442,8 +459,8 @@ Gib Länge (längere Seite) und Breite der Grundfläche, Raumhöhe, Anzahl und G
         return `<div class="card" data-raum="${ri}">
         <div class="row" style="align-items:flex-end"><div style="flex:2"><label>Raum</label><input type="text" data-rf="name" value="${esc(r.name)}"></div>
           <div style="flex:2"><label>Raumtyp</label><select data-rf="typ">${typen.map((t) => `<option ${t === r.typ ? 'selected' : ''}>${esc(t)}</option>`).join('')}</select></div></div>
-        ${p.photos.length ? `<button class="btn small secondary block" data-schaetzen style="margin-top:10px">📷 Maße grob aus den Fotos schätzen (KI)</button>` : ''}
-        ${r.schaetzung ? `<p class="muted" style="color:#9a6a12">⚠️ Geschätzt aus Fotos${r.schaetzung.genau ? `, ca. ±${Math.round(r.schaetzung.genau)} %` : ''}. Bitte mit dem Meterstab prüfen und korrigieren.${r.schaetzung.text ? `<br><i>${esc(r.schaetzung.text)}</i>` : ''}</p>` : ''}
+        ${p.photos.length ? `<button class="btn small secondary block" data-schaetzen style="margin-top:10px">Maße grob aus den Fotos schätzen (KI)</button>` : ''}
+        ${r.schaetzung ? `<p class="muted" style="color:#9a6a12">Geschätzt aus Fotos${r.schaetzung.genau ? `, ca. ±${Math.round(r.schaetzung.genau)} %` : ''}. Bitte mit dem Meterstab prüfen und korrigieren.${r.schaetzung.text ? `<br><i>${esc(r.schaetzung.text)}</i>` : ''}</p>` : ''}
         <h3>Grundfläche</h3>
         ${r.teile.map((t, ti) => `<div class="mrow"><span class="muted">${ti ? 'Teilfl. ' + (ti + 1) : 'Länge × Breite'}</span>${numIn(`data-teil="${ti}" data-k="l"`, t.l, 'Länge')}<span>×</span>${numIn(`data-teil="${ti}" data-k="b"`, t.b, 'Breite')}${ti ? `<button class="x" data-delteil="${ti}" aria-label="Entfernen">✕</button>` : '<span class="x"></span>'}</div>`).join('')}
         <button class="btn small secondary" data-addteil>＋ Teilfläche (L-Form, Nische)</button>
@@ -456,7 +473,7 @@ Gib Länge (längere Seite) und Breite der Grundfläche, Raumhöhe, Anzahl und G
           <label>Wandlänge im Duschbereich (raumhoch gefliest, abgedichtet)</label>${numIn('data-rf="duschwand"', r.duschwand, 'z. B. 1,80')}` : ''}
         <label>Notiz zum Raum</label><textarea data-rf="notiz" rows="2" placeholder="z. B. Wand zum Flur feucht, Steigleitung in der Ecke">${esc(r.notiz)}</textarea>
         <div class="row" style="margin-top:8px;align-items:center">${r.skizze ? `<img src="${r.skizze}" alt="Skizze" style="max-width:90px;border-radius:8px;flex:none">` : ''}
-          <button class="btn small secondary" data-skizze>${r.skizze ? '↻ Skizze/Plan ersetzen' : '📎 Foto von Plan / Skizze'}</button></div>
+          <button class="btn small secondary" data-skizze>${r.skizze ? '↻ Skizze/Plan ersetzen' : 'Foto von Plan / Skizze'}</button></div>
         <div class="sum">Boden/Decke <b>${fmtNum(m.boden, 2)} m²</b> · Umfang <b>${fmtNum(m.umfang, 2)} m</b> · Wand netto <b>${fmtNum(m.wand, 2)} m²</b> · Öffnungen ${fmtNum(m.oeffnungen, 2)} m²</div>
         ${p.aufmass.raeume.length > 1 ? '<button class="btn small danger" data-delraum style="margin-top:8px">Raum entfernen</button>' : ''}
       </div>`;
@@ -488,7 +505,7 @@ Gib Länge (längere Seite) und Breite der Grundfläche, Raumhöhe, Anzahl und G
         if (masse(r).boden && !confirm('Eingetragene Maße durch die KI-Schätzung ersetzen?')) return;
         sb.disabled = true; sb.textContent = 'KI schätzt die Maße …';
         try { uebernimmSchaetzung(r, await masseAusFotos(p)); toast('Maße geschätzt. Bitte nachmessen.'); rerender(); }
-        catch (e) { toast('❌ ' + e.message, 6000); sb.disabled = false; sb.textContent = '📷 Maße grob aus den Fotos schätzen (KI)'; }
+        catch (e) { toast('' + e.message, 6000); sb.disabled = false; sb.textContent = 'Maße grob aus den Fotos schätzen (KI)'; }
       };
       $('[data-addteil]', card).onclick = () => { r.teile.push({ l: '', b: '' }); rerender(); };
       $$('[data-delteil]', card).forEach((b) => (b.onclick = () => { r.teile.splice(+b.dataset.delteil, 1); rerender(); }));
@@ -521,7 +538,7 @@ Gib Länge (längere Seite) und Breite der Grundfläche, Raumhöhe, Anzahl und G
         <label>Betreff</label><input type="text" id="aTitel" value="${esc(A.titel)}" placeholder="${esc(titelDefault(p, pk))}">
         <label>Anrede</label><input type="text" id="aAnrede" value="${esc(A.anrede)}" placeholder="${esc(anredeDefault(p))}">
         ${p.otherNotes?.trim() ? `<h3>Notizen aus dem Gespräch</h3><p class="muted" style="white-space:pre-line">${esc(p.otherNotes.trim())}</p>` : ''}
-        ${A.fehler?.length ? `<p class="muted" style="color:var(--danger)">⚠️ ${A.fehler.map(esc).join(' · ')}</p>` : ''}
+        ${A.fehler?.length ? `<p class="muted" style="color:var(--danger)">${A.fehler.map(esc).join(' · ')}</p>` : ''}
       </div>
       <div class="card"><h2>Positionen</h2>
         <p class="muted">Mengen kommen aus dem Aufmaß und passen sich an, solange du hier nichts änderst. Nach eigenen Änderungen übernimmt „Neu berechnen“ das Aufmaß wieder.</p>
@@ -547,8 +564,8 @@ Gib Länge (längere Seite) und Breite der Grundfläche, Raumhöhe, Anzahl und G
       <div class="card">
         <label class="check"><input type="checkbox" id="aMitBz" ${A.mitBauzeit ? 'checked' : ''}>Bauzeitenplan anhängen</label>
         <label class="check"><input type="checkbox" id="aMitBild" ${A.mitBild ? 'checked' : ''} ${firstResult(p, A.paket) ? '' : 'disabled'}>Visualisierung „${esc(pk.name)}“ anhängen${firstResult(p, A.paket) ? '' : ' (noch nicht erstellt)'}</label>
-        <button class="btn block" id="aPdf" ${S.zeilen.length ? '' : 'disabled'}>📄 Angebot als PDF</button>
-        <button class="btn secondary block" id="aExcel" style="margin-top:10px" ${S.zeilen.length ? '' : 'disabled'}>📋 Positionen fürs Excel-Tool kopieren</button>
+        <button class="btn block" id="aPdf" ${S.zeilen.length ? '' : 'disabled'}>Angebot als PDF</button>
+        <button class="btn secondary block" id="aExcel" style="margin-top:10px" ${S.zeilen.length ? '' : 'disabled'}>Positionen fürs Excel-Tool kopieren</button>
         <p class="muted">Kopiert Nr, Raum, Menge und Bemerkung. In Excel im Blatt „Eingabe“ ab Zelle B12 einfügen.</p>
       </div>`;
 
@@ -587,7 +604,7 @@ Gib Länge (längere Seite) und Breite der Grundfläche, Raumhöhe, Anzahl und G
     $('#aBody').innerHTML = `
       <div class="card"><h2>Material- und Mengenliste</h2>
         <p class="muted">Aus Aufmaß und Angebot (Paket „${esc(pk.name)}“), inklusive Verschnitt und Gebinden. Sanitär- und Elektro-Mengen sind Richtwerte für das Gespräch mit dem Fachbetrieb. Paket wechseln im Tab „Angebot“.</p>
-        <div class="row"><button class="btn" id="mShare">📤 Liste teilen</button><button class="btn secondary" id="mCopy">📋 Kopieren</button></div>
+        <div class="row"><button class="btn" id="mShare">Liste teilen</button><button class="btn secondary" id="mCopy">Kopieren</button></div>
       </div>
       ${raeume.map((rn) => `<div class="card"><h2>${esc(rn)}</h2>${[...new Set(liste.filter((x) => x.raum === rn).map((x) => x.gruppe))].map((gr) => `<h3>${esc(gr)}</h3>
         ${liste.filter((x) => x.raum === rn && x.gruppe === gr).map((x) => `<div class="mat"><div><b>${esc(x.text)}</b>${x.hinweis ? `<span class="muted">${esc(x.hinweis)}</span>` : ''}</div><div class="mq">${fmtNum(x.menge, x.menge % 1 ? 1 : 0)} ${esc(x.einheit)}</div></div>`).join('')}`).join('')}</div>`).join('') || '<div class="card"><p class="muted">Noch kein Aufmaß eingetragen.</p></div>'}`;
@@ -803,13 +820,13 @@ Gib Länge (längere Seite) und Breite der Grundfläche, Raumhöhe, Anzahl und G
       <div class="tot"><span class="muted">Positionen</span><span>${PL.positionen.length}${PL.positionen.some((x) => x.status === 'geschätzt') ? ` (${PL.positionen.filter((x) => x.status === 'geschätzt').length} geschätzt)` : ''}</span></div>
       <div class="tot"><span class="muted">Aufschlag Lohn / Material / Wagnis</span><span>${pct(E.aufLohn)} / ${pct(E.aufMat)} / ${pct(E.wagnis)}</span></div>
       <div class="tot"><span class="muted">Firma</span><span style="text-align:right">${esc(E.firma)}<br>${esc(E.strasse)}, ${esc(E.ort)}</span></div>
-      ${/0000|Muster/.test(E.telefon + E.strasse) ? '<p class="muted">⚠️ Adresse und Telefon sind noch Platzhalter. Im Excel-Blatt „Einstellungen“ ändern und neu laden.</p>' : ''}
-      <button class="btn block" id="plImport" style="margin-top:10px">📊 Excel-Angebotstool laden</button>
+      ${/0000|Muster/.test(E.telefon + E.strasse) ? '<p class="muted">Adresse und Telefon sind noch Platzhalter. Im Excel-Blatt „Einstellungen“ ändern und neu laden.</p>' : ''}
+      <button class="btn block" id="plImport" style="margin-top:10px">Excel-Angebotstool laden</button>
       <div class="row" style="margin-top:10px"><button class="btn secondary" id="plVorl">Paket-Vorlagen</button><button class="btn danger" id="plReset">Standard</button></div>
     </div>`;
     $('#plImport').onclick = () => {
       const inp = document.createElement('input'); inp.type = 'file'; inp.accept = '.xlsx,.xlsm,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
-      inp.onchange = async () => { try { const r = await importExcel(inp.files[0]); toast(`✅ ${r.positionen.length} Positionen übernommen`); einstellungenKarte(); } catch (e) { toast('Import fehlgeschlagen: ' + e.message, 6000); } };
+      inp.onchange = async () => { try { const r = await importExcel(inp.files[0]); toast(`${r.positionen.length} Positionen übernommen`); einstellungenKarte(); } catch (e) { toast('Import fehlgeschlagen: ' + e.message, 6000); } };
       inp.click();
     };
     $('#plReset').onclick = async () => { if (!confirm('Preisliste auf die Standard-Schätzpreise zurücksetzen?')) return; await kvDel('preisliste'); PL = null; einstellungenKarte(); };
@@ -851,6 +868,6 @@ Gib Länge (längere Seite) und Breite der Grundfläche, Raumhöhe, Anzahl und G
     $('#vReset').onclick = async () => { if (!confirm('Alle Paket-Vorlagen zurücksetzen?')) return; await kvDel('angebotVorlagen'); VORL = null; vorlagenView(pkgId, grp); };
   }
 
-  return { projektKarte, ansicht, einstellungenKarte, _intern: { materialliste, uebernimmSchaetzung, masse, rechne, erzeuge, summen, bauzeit, ep, lohnEp, preisliste, vorlagen, neuerRaum, baueAngebotPdf, importExcel } };
+  return { projektKarte, ansicht, einstellungenKarte, _intern: { gruppe, materialliste, uebernimmSchaetzung, masse, rechne, erzeuge, summen, bauzeit, ep, lohnEp, preisliste, vorlagen, neuerRaum, baueAngebotPdf, importExcel } };
 })();
 window.Angebot = Angebot;

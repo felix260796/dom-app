@@ -192,7 +192,7 @@ async function viewSocial(p) {
   const logo = S.logo ? await loadImg(S.logo).catch(() => null) : null;
   let assets = null, anim = 0, busy = false;
 
-  setTitle('Instagram & Video');
+  header('Instagram & Video', p.customer || '');
   window.scrollTo(0, 0);
   main().innerHTML = `
     <div class="card">
@@ -205,16 +205,16 @@ async function viewSocial(p) {
     <div class="card">
       <canvas id="soCanvas" class="social-canvas"></canvas>
       <div id="soProg" class="social-prog" hidden><div></div></div>
-      <button class="btn block" id="soVideo" style="margin-top:12px">🎬 Video erstellen (${Math.round(T_TOTAL)} Sek.)</button>
-      <button class="btn secondary block" id="soImg" style="margin-top:10px">🖼️ Bilder für Post / Karussell</button>
+      <button class="btn block" id="soVideo" style="margin-top:12px">Video erstellen (${Math.round(T_TOTAL)} Sek.)</button>
+      <button class="btn secondary block" id="soImg" style="margin-top:10px">Bilder für Post / Karussell</button>
       <p class="muted" style="margin-top:8px">Bilder: Vergleichsbild plus Vorher und Nachher einzeln, ideal als Karussell. Beim Teilen „Video sichern“ bzw. „Bilder sichern“ oder direkt Instagram wählen.</p>
     </div>
     <div class="card">
       <h2>Text-Vorschlag</h2>
       <textarea id="soCap" style="min-height:200px"></textarea>
-      <button class="btn secondary block" id="soCopy" style="margin-top:8px">📋 Text kopieren</button>
+      <button class="btn secondary block" id="soCopy" style="margin-top:8px">Text kopieren</button>
     </div>
-    <div class="card"><button class="btn secondary block" id="soBack">← Zurück zum Projekt</button></div>`;
+    <div class="card"><button class="btn secondary block" id="soBack">← ${esc(p.room || "Raum")}</button></div>`;
 
   const canvas = $('#soCanvas'), ctx = canvas.getContext('2d');
   const pkgOf = () => packagesFor(p.roomType).find((x) => x.id === sel.pkg);
@@ -231,7 +231,7 @@ async function viewSocial(p) {
     const f = SOCIAL_FORMATS[sel.fmt];
     canvas.width = f.w; canvas.height = f.h;
     $('#soCap').value = socialCaption(p, pkg, company);
-    const btn = $('#soVideo'); btn.onclick = startVideo; btn.textContent = `🎬 Video erstellen (${Math.round(T_TOTAL)} Sek.)`;
+    const btn = $('#soVideo'); btn.onclick = startVideo; btn.textContent = `Video erstellen (${Math.round(T_TOTAL)} Sek.)`;
   };
   // Vorschau in Endlosschleife
   const t0 = performance.now();
@@ -253,12 +253,12 @@ async function viewSocial(p) {
   const startVideo = async () => {
     if (busy || !assets) return;
     busy = true; const btn = $('#soVideo'), prog = $('#soProg');
-    btn.disabled = true; btn.textContent = '⏺ Video wird aufgenommen …'; prog.hidden = false;
+    btn.disabled = true; btn.textContent = 'Video wird aufgenommen …'; prog.hidden = false;
     try {
       const blob = await recordSocialVideo(canvas, assets, (k) => { prog.firstElementChild.style.width = `${Math.min(100, k * 100)}%`; });
       const ext = blob.type.includes('mp4') ? 'mp4' : 'webm';
       const file = new File([blob], `${base()}_${sel.fmt}.${ext}`, { type: blob.type });
-      btn.textContent = '📤 Video teilen / sichern';
+      btn.textContent = 'Video teilen / sichern';
       btn.disabled = false;
       // Teilen braucht auf dem iPhone einen frischen Tipp, daher zweiter Schritt
       btn.onclick = () => shareFiles([file]);
@@ -266,7 +266,7 @@ async function viewSocial(p) {
       else toast('Video fertig. Jetzt teilen oder sichern.');
     } catch (e) {
       toast('Video-Fehler: ' + e.message, 5000);
-      btn.disabled = false; btn.textContent = `🎬 Video erstellen (${Math.round(T_TOTAL)} Sek.)`;
+      btn.disabled = false; btn.textContent = `Video erstellen (${Math.round(T_TOTAL)} Sek.)`;
     }
     busy = false; prog.hidden = true;
   };

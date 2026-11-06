@@ -1,28 +1,40 @@
-# Sanierungs-Visualisierung (Web-App fürs iPhone)
+# DOM – Sanierungs-Visualisierung (Web-App fürs iPhone)
 
-Foto vom Raum machen → KI baut den Raum in den Paketen Basic / Standard / Premium um → Vorher-Nachher-PDF mit Logo für den Kunden.
+Kunde anlegen → Räume fotografieren → KI zeigt jeden Raum in Basic / Standard / Premium → schöne Mappen als PDF:
+**Kundenmappe** (Vorher-Nachher) und **Baumappe** für Subunternehmer (Markierungen, Produkte, Grundriss, Fliesenspiegel, ohne Preise).
 
-## Aufbau
-- Reine Web-App (HTML/JS), kein Server nötig. Läuft auf jedem kostenlosen Hosting (GitHub Pages, Netlify).
-- Moodboards, Projekte und Einstellungen liegen lokal auf dem Gerät (IndexedDB). Sicherung über „Moodboards → Exportieren“.
-- KI-Bildbearbeitung: Google Gemini API (Modell `gemini-2.5-flash-image`, optional `gemini-3-pro-image-preview`). Foto + Moodboard-Text + bis zu 6 Referenzbilder gehen an das Modell.
-- PDF: jsPDF, A4 quer. Deckblatt mit Ist-Zustand und Übersicht, danach eine Seite pro Paket (Vorher/Nachher + Ausstattungsliste).
+![App](docs/vorschau-app.jpg)
+![Mappen](docs/vorschau-mappen.jpg)
 
-## Aufmaß, Angebot, Bauzeitenplan (`angebot.js`)
-- Im Projekt unter „4. Aufmaß & Angebot“: Räume aufmessen (Länge × Breite, Teilflächen, Höhe, Türen/Fenster, Duschbereich). Daraus Boden-, Wand-, Deckenfläche, Umfang, Sockel.
-- Paket-Vorlagen (Einstellungen → Paket-Vorlagen): je Paket und Raumgruppe (Bad/WC, Küche, Wohnräume) Positionen der Preisliste mit Mengenformel, z. B. `wandbis(1.2) + duschwand*(hoehe-1.2)`.
-- Preise wie im Excel-Angebotstool: EP = (Lohn × (1 + Aufschlag) + Material × (1 + Materialaufschlag)) × (1 + Wagnis). Standardpreise in `data/preisliste.json` (Schätzwerte aus dem Angebotstool v3). Eigene Preise: Einstellungen → „Excel-Angebotstool laden“, sie bleiben nur auf dem Gerät.
-- Angebots-PDF (A4 hoch) im Layout des Musterangebots, optional mit Bauzeitenplan und Visualisierung. Positionen lassen sich fürs Excel-Blatt „Eingabe“ kopieren.
-- Bauzeitenplan: Richtwerte pro Gewerk (Menge je Arbeitstag) plus Trocknungszeiten, Mo bis Fr.
+## So ist die App aufgebaut
+- **Projekte** (Tab 1): ein Projekt = ein Kunde mit Adresse und beliebig vielen Räumen.
+  - Raum: 1 Fotos, 2 Pakete wählen und visualisieren (optional Abendstimmung), 3 Ergebnis mit Vorher-Nachher-Schieberegler, 4 Aufmaß & Angebot, Markierungen, Instagram.
+  - Unterlagen im Projekt: Kundenmappe, Baumappe, Angebot.
+- **Moodboards** (Tab 2): je Raumtyp drei Pakete mit Beschreibung, Referenzbildern und echten Produkten.
+- **Einstellungen** (Tab 3): Firma und Logo, Google-Schlüssel, Preisliste, Sicherung, Cloud-Abgleich.
+
+## Daten
+- Alles liegt lokal auf dem Gerät (IndexedDB `sanierung`, Store `kv`).
+  - `wohnung:<id>`: Projekt (Kunde, Adresse, Reihenfolge der Räume, Mappen-Auswahl).
+  - `project:<id>`: Raum (Fotos, Ergebnisse, Abendbilder, Aufmaß, Angebot, Baumappe `bau`), mit `wohnungId`.
+  - `projectIndex`: Projektliste. `boards`, `settings`, `preisliste`, `angebotVorlagen`, `projectDeleted` (Löschmarken für den Abgleich).
+- Alte Einzelprojekte werden beim Start automatisch in ein Projekt mit einem Raum umgestellt (`Projekt.migrate`, ID `p<RaumId>`, auf allen Geräten gleich). Nichts wird gelöscht.
 
 ## Dateien
-- `app.js`: gesamte Logik (Moodboards, KI-Aufruf `renderWithGemini`, Prompt `buildPrompt`, PDF `buildPdf`)
-- `backup.js`: Komplettsicherung aller Daten als eine Datei (z. B. iCloud Drive) und Wiederherstellung
-- `angebot.js`: Aufmaß, Angebot, Bauzeitenplan, Excel-Import (`vendor/xlsx.mini.min.js`, wird erst beim Import geladen)
-- `social.js`: Instagram-Video (Vorher-Nachher-Wisch-Effekt, MP4 per MediaRecorder) und Post-/Karussell-Bilder, alles lokal im Browser
-- `index.html`, `style.css`, `manifest.webmanifest`, `sw.js`, `icons/`, `vendor/jspdf.umd.min.js`
+- `core.js`: Grundfunktionen (Speicher, Bilder, KI-Aufruf `renderWithGemini`/`geminiImage`, Prompt `buildPrompt`, Abendstimmung, Schieberegler, KI-Aufträge)
+- `app.js`: Icons, Kopfzeile, Projektliste, Raum-Ansicht, Start
+- `projekt.js`: Projekte mit Räumen, Umstellung alter Daten, Auswahl für die Kundenmappe
+- `pdf.js`: gemeinsames PDF-Design (Deckblatt, Kopf-/Fußzeilen) und die Kundenmappe
+- `baumappe.js`: Markierungen im Bild und die Baumappe (Grundriss, Fliesenspiegel, Leistungen und Material)
+- `moodboards.js`: Moodboards und Einstellungen
+- `angebot.js`: Aufmaß, Angebot, Material, Bauzeitenplan, Excel-Import
+- `garten.js`: Garten/Heizraum, Wärmepumpe mit Meterstab-Maßstab einsetzen
+- `voice.js`: Sprachnotiz → Kundenwünsche
+- `social.js`: Instagram-Video und Post-Bilder
+- `backup.js`: Komplettsicherung, `sync.js`: Cloud-Abgleich über Supabase (`SUPABASE_EINRICHTEN.md`)
+- `rooms.js`: Raumtypen und Beispiel-Pakete, `sw.js`: Offline-Cache (bei Änderungen `VERSION` erhöhen)
 
 ## Aufs iPhone bringen
-1. App online stellen (HTTPS), z. B. GitHub Pages.
+1. Online über GitHub Pages: https://felix260796.github.io/dom-app/
 2. Auf dem iPhone in Safari öffnen → Teilen → „Zum Home-Bildschirm“.
-3. In der App unter Einstellungen den Gemini-API-Schlüssel eintragen (https://aistudio.google.com/apikey), Firmenname und Logo hinterlegen.
+3. In der App unter Einstellungen den Gemini-API-Schlüssel eintragen (https://aistudio.google.com/apikey).
