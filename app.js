@@ -189,6 +189,7 @@ async function viewProjekt() {
         <details class="more" id="more" ${uiOpen.more ? 'open' : ''}>
           <summary>${icon('mic')}<span>Hinweise & Kundenwünsche<small>${[p.note?.trim() && 'Hinweis', p.wishes?.trim() && 'Wünsche', p.transcript?.trim() && 'Gespräch'].filter(Boolean).join(' · ') || 'optional'}</small></span>${icon('chevron', 'more-chev')}</summary>
           <label>Hinweis für die KI</label><textarea id="note" placeholder="${esc(rt.id === 'garten' ? 'z. B. Terrasse vergrößern, Wärmepumpe links neben die Tür' : 'z. B. Badewanne raus, dafür große Dusche')}">${esc(p.note)}</textarea>
+          ${p.bestand?.text && !window.Garten?.zustaendig(p) ? `<label>So hat die KI den Raum erkannt</label><p class="hint" style="margin-top:0">Daran hält sich die Visualisierung. Stimmt etwas nicht (z. B. Maße, WC vorhanden ja/nein), hier korrigieren.</p><textarea id="bestand" style="min-height:140px">${esc(p.bestand.text)}</textarea>` : ''}
           ${voiceCard(p)}
         </details>
         <div id="garten-card"></div>
@@ -244,6 +245,7 @@ async function viewProjekt() {
     rerender();
   };
   $('#note').oninput = (e) => { p.note = e.target.value; persist(); };
+  if ($('#bestand')) $('#bestand').oninput = (e) => { Object.assign(p.bestand, { text: e.target.value, manual: true, photos: p.photos.length }); persist(); };
   $('#more').ontoggle = (e) => { uiOpen.more = e.target.open; };
   const updGoInfo = () => {
     const n = p.photos.length * p.selected.length;
@@ -323,7 +325,7 @@ function refreshResult(pkg) {
 }
 function bindResultButtons(p) {
   const pk = (id) => packagesFor(p.roomType).find((x) => x.id === id);
-  $$('[data-redo]').forEach((b) => (b.onclick = () => runView(p, pk(b.dataset.redo), +b.dataset.view)));
+  $$('[data-redo]').forEach((b) => (b.onclick = async () => { await window.voiceReady?.(p); runView(p, pk(b.dataset.redo), +b.dataset.view); }));
   $$('[data-mood]').forEach((b) => (b.onclick = () => {
     const pkg = pk(b.dataset.pkg), i = +b.dataset.view;
     moodSel[`${p.id}:${pkg.id}:${i}`] = b.dataset.mood;

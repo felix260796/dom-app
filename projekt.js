@@ -226,6 +226,7 @@ window.Projekt = (() => {
     for (const [i, r] of list.entries()) {
       const info = $('#wRunInfo'); if (info && state.wohnung === w && !state.project) info.textContent = `Raum ${i + 1} von ${list.length}: ${r.room} …`;
       const pkgs = packagesFor(r.roomType).filter((x) => r.selected.includes(x.id));
+      await window.voiceReady?.(r);
       await Promise.all(pkgs.map((pkg) => runPackage(r, pkg)));
       ok += pkgs.reduce((n, x) => n + (r.results[x.id] || []).filter(Boolean).length, 0);
     }
