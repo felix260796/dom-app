@@ -22,13 +22,13 @@ insert into storage.buckets (id, name, public)
 values ('dom', 'dom', false)
 on conflict (id) do nothing;
 
-create policy "dom_eigene_dateien" on storage.objects
+create policy "dom_team" on storage.objects
 for all to authenticated
-using (bucket_id = 'dom' and (storage.foldername(name))[1] = auth.uid()::text)
-with check (bucket_id = 'dom' and (storage.foldername(name))[1] = auth.uid()::text);
+using (bucket_id = 'dom' and (storage.foldername(name))[1] = 'team')
+with check (bucket_id = 'dom' and (storage.foldername(name))[1] = 'team');
 ```
 
-Es sollte „Success“ erscheinen. Damit gibt es einen privaten Speicher „dom“, und jeder Benutzer sieht nur seine eigenen Daten.
+Es sollte „Success“ erscheinen. Damit gibt es einen privaten Firmenspeicher „dom“. Alle angemeldeten Benutzer deines Supabase-Projekts sehen dieselben Projekte, sonst niemand.
 
 ## 4. Deinen App-Benutzer anlegen
 1. Links auf **Authentication** und dann auf **Users**.
@@ -50,6 +50,11 @@ Zuerst auf dem iPhone (dort liegen deine aktuellen Daten):
 3. Es erscheint „✅ Cloud-Abgleich aktiv“. Deine Daten werden hochgeladen.
 
 Dann auf dem iPad: App vom Homebildschirm öffnen und dieselben vier Angaben eintragen. Die Projekte vom iPhone erscheinen nach wenigen Sekunden.
+
+## Kollegen hinzufügen
+1. Supabase → **Authentication → Users → Add user → Create new user** mit der E-Mail des Kollegen und einem Passwort, „Auto Confirm User“ anhaken.
+2. Dem Kollegen Projekt-URL, Key, seine E-Mail und sein Passwort geben. Er trägt das in der App unter Einstellungen → Cloud-Abgleich ein.
+3. Zugang sperren: In Supabase unter Users den Benutzer löschen. Spätestens nach einer Stunde kommt er nicht mehr an die Daten.
 
 ## Gut zu wissen
 - Der Abgleich läuft automatisch: beim Öffnen der App, nach jeder Änderung und jede Minute, solange die App offen ist.

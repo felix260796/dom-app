@@ -12,8 +12,13 @@ window.Sync = (() => {
   const lsGet = (k, d) => { try { return JSON.parse(localStorage.getItem(k)) ?? d; } catch { return d; } };
   const lsSet = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} };
 
-  let cfg = lsGet(LS_CFG, null); // { url, key, email, uid, access, refresh, expires, initialized }
+  // Gemeinsamer Firmenspeicher: alle Benutzer des Supabase-Projekts teilen den Ordner „team“.
+  // (Bis 6.11.2026 hatte jeder Benutzer einen eigenen Ordner <uid>; der bleibt als Altbestand liegen.)
+  const SPACE = 'team';
+  let cfg = lsGet(LS_CFG, null); // { url, key, email, uid, access, refresh, expires, initialized, space }
   let meta = lsGet(LS_META, {}); // { [key]: { dirty, del, t, seen } }
+  // Umstellung auf den gemeinsamen Ordner: wie ein erstes Verbinden behandeln, damit alles Lokale hochgeladen bzw. zusammengeführt wird
+  if (cfg && cfg.space !== SPACE) { cfg.space = SPACE; cfg.initialized = false; meta = {}; lsSet(LS_CFG, cfg); lsSet(LS_META, meta); }
   let status = { ok: null, msg: '', last: 0 };
   let running = null, again = false;
   const saveCfg = () => lsSet(LS_CFG, cfg);
@@ -50,16 +55,16 @@ window.Sync = (() => {
   async function api(path, opt = {}, retry = true) {
     const r = await fetch(`${cfg.url}/storage/v1/${path}`, { cache: 'no-store', ...opt, headers: { apikey: cfg.key, Authorization: 'Bearer ' + (await token()), ...(opt.headers || {}) } });
     if ((r.status === 401 || r.status === 403) && retry) { cfg.access = ''; return api(path, opt, false); }
-    if (!r.ok) { const j = await r.json().catch(() => ({})); throw new Error(j.message || j.error || `Cloud-Fehler ${r.status}`); }
+    if (!r.ok) { const j = await r.json().catch(() => ({})); const m = j.message || j.error || `Cloud-Fehler ${r.status}`; throw new Error(/row-level security|unauthorized/i.test(m) ? 'Kein Zugriff auf den gemeinsamen Speicher. Bitte in Supabase den SQL-Block „Gemeinsamer Firmenspeicher“ aus der Anleitung ausführen.' : m); }
     return r;
   }
-  const objPath = (k) => `${cfg.uid}/${encodeURIComponent(k.replace(/:/g, '--'))}.json`;
+  const objPath = (k) => `${SPACE}/${encodeURIComponent(k.replace(/:/g, '--'))}.json`;
   const keyOf = (name) => name.replace(/\.json$/, '').replace(/--/g, ':');
 
   async function listRemote() {
     const out = [];
     for (let offset = 0; ; offset += 1000) {
-      const r = await api(`object/list/${BUCKET}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ prefix: cfg.uid, limit: 1000, offset, sortBy: { column: 'name', order: 'asc' } }) });
+      const r = await api(`object/list/${BUCKET}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ prefix: SPACE, limit: 1000, offset, sortBy: { column: 'name', order: 'asc' } }) });
       const items = (await r.json()).filter((x) => x.id && x.name.endsWith('.json'));
       out.push(...items);
       if (items.length < 1000) return out;
@@ -67,7 +72,7 @@ window.Sync = (() => {
   }
   const download = async (k) => (await api(`object/authenticated/${BUCKET}/${objPath(k)}?t=${Date.now()}`)).json();
   const upload = (k, payload) => api(`object/${BUCKET}/${objPath(k)}`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-upsert': 'true' }, body: JSON.stringify(payload) });
-  const remove = (k) => api(`object/${BUCKET}`, { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ prefixes: [`${cfg.uid}/${k.replace(/:/g, '--')}.json`] }) });
+  const remove = (k) => api(`object/${BUCKET}`, { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ prefixes: [`${SPACE}/${k.replace(/:/g, '--')}.json`] }) });
 
   // ---------- Zusammenführen ----------
   function mergeValue(k, local, remote, tomb) {
@@ -196,7 +201,7 @@ window.Sync = (() => {
 
   // ---------- Verbinden / Trennen ----------
   async function connect({ url, key, email, password }) {
-    cfg = { url: base(url), key: String(key).trim(), email: String(email).trim(), initialized: false };
+    cfg = { url: base(url), key: String(key).trim(), email: String(email).trim(), initialized: false, space: SPACE };
     if (!/^https?:\/\/.+/.test(cfg.url) || !cfg.key) throw new Error('Bitte Projekt-URL und Schlüssel eintragen.');
     try { await authCall('password', { email: cfg.email, password }); }
     catch (e) { cfg = null; localStorage.removeItem(LS_CFG); throw e; }
