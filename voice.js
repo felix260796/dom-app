@@ -439,6 +439,19 @@ window.Gespraech = {
     if (!$('#vrec')) return;
     const owner = { id: w.id, projekt: true }, g = w.gespraech || {};
     bindRecButtons(owner, [w.customer, w.address].filter(Boolean).join(' · ') || 'Projekt');
+    // Aufnahmen aus der älteren Version (je Raum gespeichert, Auswertung war fehlgeschlagen) fürs Projekt auswerten
+    (async () => {
+      if (pendingFor(w.id) || voice.rec) return;
+      for (const r of list) {
+        const blob = await audioLoad(r.id);
+        if (!blob || !$('#verr')) continue;
+        $('#verr').hidden = false;
+        $('#verr span').textContent = `Es gibt noch eine gespeicherte Aufnahme aus „${r.room}“, die nicht ausgewertet wurde.`;
+        const b = $('#vretry'); b.hidden = false; b.textContent = 'Jetzt auswerten';
+        b.onclick = () => voiceRun(w.id, async () => { await audioStore(w.id, blob); await auswertenAudio(owner, blob, true); await audioStore(r.id, null); });
+        return;
+      }
+    })();
     const zu = () => voiceRun(w.id, () => zuordnen(w), 'Wünsche den Räumen zugeordnet.');
     if ($('#vzu')) $('#vzu').onclick = zu;
     if ($('#vzu2')) $('#vzu2').onclick = zu;
