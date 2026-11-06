@@ -4,12 +4,12 @@
 // ---------- Ansicht: Moodboards ----------
 function viewPakete() {
   if (state.editPkg) return viewPaketEdit(state.editPkg);
-  header('Moodboards', 'Ausstattung je Raumtyp und Paket');
+  header('Standard-Moodboards', 'Gelten für alle Projekte', { label: 'Einstellungen', fn: () => { state.editPkg = null; viewEinstellungen(); window.scrollTo(0, 0); } });
   const rt = state.boardRoom;
   const pkgs = packagesFor(rt, null);
   main().innerHTML = `
     <div class="rtscroll" role="tablist">${ROOM_TYPES.map((r) => `<button class="rtchip ${r.id === rt ? 'on' : ''}" data-rt="${r.id}" role="tab">${roomIcon(r.id)}<span>${esc(r.name)}</span></button>`).join('')}</div>
-    <p class="hint">So soll der Raumtyp „${esc(roomType(rt).name)}“ nach der Sanierung aussehen. Text, Referenzbilder und echte Produkte gehen an die KI und in die Mappen.</p>
+    <p class="hint">So soll der Raumtyp „${esc(roomType(rt).name)}“ nach der Sanierung aussehen. Text, Referenzbilder und echte Produkte gehen an die KI und in die Mappen. Das gilt für alle Projekte. Wünscht ein Kunde etwas anderes, passt du es im Projekt an.</p>
     <div class="pkgs">${pkgs.map((p) => `
       <button class="pkgcard" data-edit="${p.id}" style="--c:${p.color}">
         <span class="pk-thumbs">${p.images.slice(0, 3).map((im) => `<img src="${im.data}" alt="">`).join('') || `<span class="pk-empty">${icon('palette')}</span>`}</span>
@@ -149,9 +149,14 @@ function viewPaketEdit(id, ctx = globalBoardCtx()) {
 
 // ---------- Ansicht: Einstellungen ----------
 function viewEinstellungen() {
-  header('Einstellungen', 'Firma, KI, Preise, Sicherung');
+  header('Einstellungen', 'Moodboards, Firma, KI, Preise, Sicherung');
   const S = state.settings;
+  const nBoards = ROOM_TYPES.filter((r) => state.boards?.[r.id]?.some((p) => p.images?.length || p.products?.length)).length;
   main().innerHTML = `
+    <div class="docs" style="margin-bottom:14px">
+      <button class="doc" id="toBoards"><span class="d-ico brass">${icon('palette')}</span>
+        <span class="d-t"><b>Standard-Moodboards</b><span>Basic, Standard und Premium je Raumtyp${nBoards ? ` · ${nBoards} Raumtyp${nBoards === 1 ? '' : 'en'} mit Bildern` : ''}</span></span>${icon('chevron', 'pc-chev')}</button>
+    </div>
     <div class="card">
       <h2>Firma</h2>
       <label>Firmenname</label><input type="text" id="company" value="${esc(S.company)}" placeholder="z. B. Muster Projektentwicklung GmbH">
@@ -177,6 +182,7 @@ function viewEinstellungen() {
     <div id="angebot-settings"></div>
     <div id="sync-settings"></div>
     <div id="backup-settings"></div>`;
+  $('#toBoards').onclick = () => { state.editPkg = null; viewPakete(); window.scrollTo(0, 0); };
   const save = debounce(saveSettings, 300);
   for (const id of ['company', 'contact', 'apiKey']) $('#' + id).oninput = (e) => { S[id] = e.target.value.trim(); save(); };
   $('#model').onchange = (e) => { S.model = e.target.value; save(); };

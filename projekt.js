@@ -26,7 +26,7 @@ window.Projekt = (() => {
     await kvSet(key(w.id), w);
     const list = await raeume(w);
     const idx = (await projectIndex()).filter((x) => x.id !== w.id);
-    idx.unshift({ id: w.id, kind: 'wohnung', customer: w.customer, address: w.address, room: list.length ? summary(list) : 'noch kein Raum', rooms: list.length, created: w.created, updated: w.updated, thumb: list.find((r) => r?.thumb)?.thumb || '' });
+    idx.unshift({ id: w.id, kind: 'wohnung', kundeId: w.kundeId || '', objektId: w.objektId || '', customer: w.customer, address: w.address, room: list.length ? summary(list) : 'noch kein Raum', rooms: list.length, created: w.created, updated: w.updated, thumb: list.find((r) => r?.thumb)?.thumb || '' });
     await kvSet('projectIndex', idx);
   }
   const neuesProjekt = () => ({ id: uid(), kind: 'wohnung', created: Date.now(), customer: '', address: '', rooms: [], mappe: {}, pdfProducts: true, pdfPrices: false, pdfEvening: true });
@@ -72,10 +72,34 @@ window.Projekt = (() => {
   }
 
   // ---------- Aufrufe aus app.js ----------
-  function neu() {
+  /** „Neues Projekt“ im Reiter Projekte: zuerst Kunde und Objekt wählen. */
+  async function neu() {
+    const k = await Kunden.waehlen();
+    if (k) Kunden.projektAnlegen(k);
+  }
+  /** Neues Projekt für Kunde k am Objekt oid. Gespeichert wird es mit dem ersten Raum. */
+  function neuFuer(k, oid) {
     const w = neuesProjekt();
-    w.isNew = true; // erst speichern, wenn etwas eingetragen wurde
-    state.project = null; state.wohnung = w; view();
+    w.isNew = true;
+    w.kundeId = k.id; w.objektId = oid || '';
+    w.customer = Kunden.name(k); w.address = Kunden.einzeilig(Kunden.objekt(k, oid)?.adresse || '');
+    state.project = null; state.wohnung = w; view(); window.scrollTo(0, 0);
+  }
+  /** Name und Objektanschrift vom Kunden ins Projekt und in seine Räume übernehmen. */
+  async function kundeUebernehmen(wid) {
+    const w = state.wohnung?.id === wid ? state.wohnung : await kvGet(key(wid));
+    const k = w && Kunden.byId(w.kundeId);
+    if (!k) return;
+    const customer = Kunden.name(k), o = Kunden.objekt(k, w.objektId);
+    const address = o ? Kunden.einzeilig(o.adresse) : w.address || '';
+    if (w.customer === customer && w.address === address) return;
+    Object.assign(w, { customer, address });
+    if (w.isNew) return;
+    await save(w);
+    for (const id of w.rooms) {
+      const r = await raum(id);
+      if (r) { Object.assign(r, { customer, address, kundeId: k.id }); const { status, ...data } = r; await kvSet('project:' + id, data); }
+    }
   }
   async function oeffnen(id) {
     const w = await kvGet(key(id));
@@ -98,7 +122,7 @@ window.Projekt = (() => {
     await save(w);
   }
   function raumOeffnen(r, w) {
-    r.customer = w.customer; r.address = w.address; // Kunde und Adresse kommen immer vom Projekt
+    r.customer = w.customer; r.address = w.address; r.kundeId = w.kundeId; // Kunde und Adresse kommen immer vom Projekt
     state.project = r; viewProjekt(); window.scrollTo(0, 0);
   }
   /** Titel für einen neuen Raum: Raumtyp, bei Dopplung durchnummeriert (Bad, Bad 2, …). */
@@ -111,7 +135,7 @@ window.Projekt = (() => {
   }
   async function addRoom(w, rt, extra = {}) {
     const list = await raeume(w);
-    const r = { id: uid(), created: Date.now(), wohnungId: w.id, customer: w.customer, address: w.address, roomType: rt, room: titel(list, rt), note: '', photos: [], thumb: '', results: {}, selected: packagesFor(rt).map((x) => x.id), pdfProducts: true, pdfPrices: false, ...extra };
+    const r = { id: uid(), created: Date.now(), wohnungId: w.id, kundeId: w.kundeId || '', customer: w.customer, address: w.address, roomType: rt, room: titel(list, rt), note: '', photos: [], thumb: '', results: {}, selected: packagesFor(rt).map((x) => x.id), pdfProducts: true, pdfPrices: false, ...extra };
     rooms.set(r.id, r);
     w.rooms.push(r.id);
     delete w.isNew;
@@ -130,11 +154,9 @@ window.Projekt = (() => {
     if (!w) return viewProjekt();
     const list = await raeume(w);
     if (state.wohnung !== w || state.project) return; // inzwischen woanders hin gewechselt
-    const leave = async () => {
-      if (w.isNew) { state.wohnung = null; return viewProjekt(); }
-      state.wohnung = null; viewProjekt();
-    };
-    header(w.customer || 'Neues Projekt', w.address || (w.isNew ? 'Kunde und Räume anlegen' : ''), { label: 'Projekte', fn: leave });
+    const leave = () => { state.wohnung = null; viewProjekt(); window.scrollTo(0, 0); };
+    const k = Kunden.byId(w.kundeId);
+    header(w.customer || 'Neues Projekt', w.address || (w.isNew ? 'Räume anlegen' : ''), { label: state.tab === 'kunden' && state.kunde ? 'Kunde' : 'Projekte', fn: leave });
     const anyResult = list.some(hasAnyResult);
     const withPhotos = list.filter((r) => r.photos.length);
     const nBilder = withPhotos.reduce((n, r) => n + viewCount(r) * r.selected.length, 0);
@@ -146,8 +168,12 @@ window.Projekt = (() => {
     };
     main().innerHTML = `
       <div class="card kunde">
-        <label class="ic-field">${icon('user')}<input type="text" id="wCustomer" value="${esc(w.customer)}" placeholder="Kunde, z. B. Familie Müller" autocomplete="off"></label>
-        <label class="ic-field">${icon('map')}<input type="text" id="wAddress" value="${esc(w.address)}" placeholder="Adresse, z. B. Hauptstr. 5, 2. OG" autocomplete="off"></label>
+        ${k ? `<button class="kline" id="wKunde"><span class="av sm">${esc(Kunden.initialen(k))}</span><span class="kl-t"><b>${esc(Kunden.name(k) || 'Ohne Namen')}</b><small>${esc([k.telefon, k.email].filter(Boolean).join(' · ') || 'Kundenkarte öffnen')}</small></span>${icon('chevron', 'pc-chev')}</button>
+        <label class="ic-field">${icon('map')}<select id="wObjekt" aria-label="Objekt">
+          ${w.objektId && Kunden.objekt(k, w.objektId) ? '' : `<option value="" selected>${esc(w.address || 'Objekt wählen …')}</option>`}
+          ${k.objekte.map((o) => `<option value="${o.id}" ${o.id === w.objektId ? 'selected' : ''}>${esc(Kunden.objektText(o) || 'Objekt ohne Anschrift')}</option>`).join('')}
+          <option value="__neu">Anderes Objekt …</option></select></label>`
+        : `<button class="kline" id="wKundeWahl">${icon('user')}<span class="kl-t"><b>${esc(w.customer || 'Kunde zuordnen')}</b><small>Kunde auswählen oder neu anlegen</small></span>${icon('chevron', 'pc-chev')}</button>`}
       </div>
       ${window.Gespraech?.karte(w, list) || ''}
 
@@ -193,11 +219,20 @@ window.Projekt = (() => {
       ${anyResult ? '' : '<p class="hint center">Kunden- und Baumappe gibt es, sobald ein Raum visualisiert ist.</p>'}
       <button class="link-danger" id="wDel">${icon('trash')} Projekt löschen</button>` : ''}`;
 
-    const persist = debounce(async () => { delete w.isNew; await save(w); }, 400);
-    const sync = debounce(async () => { for (const r of list) { r.customer = w.customer; r.address = w.address; await kvSet('project:' + r.id, r); } }, 600);
-    $('#wCustomer').oninput = (e) => { w.customer = e.target.value; $('#title').textContent = w.customer || 'Neues Projekt'; persist(); sync(); };
-    $('#wAddress').oninput = (e) => { w.address = e.target.value; persist(); sync(); };
-    if (w.isNew) setTimeout(() => $('#wCustomer')?.focus(), 50);
+    if ($('#wKunde')) $('#wKunde').onclick = () => Kunden.oeffnen(k.id);
+    if ($('#wObjekt')) $('#wObjekt').onchange = async (e) => {
+      let oid = e.target.value;
+      if (oid === '__neu') { oid = await Kunden.objektWaehlen(k, 'Welches Objekt?'); if (oid === null) return view(); }
+      w.objektId = oid; w.address = Kunden.einzeilig(Kunden.objekt(k, oid)?.adresse || w.address);
+      w.customer = ''; // erzwingt die Übernahme in Projekt und Räume
+      await kundeUebernehmen(w.id); view();
+    };
+    if ($('#wKundeWahl')) $('#wKundeWahl').onclick = async () => {
+      const nk = await Kunden.waehlen('Zu welchem Kunden gehört das Projekt?'); if (!nk) return;
+      const oid = await Kunden.objektWaehlen(nk); if (oid === null) return;
+      w.kundeId = nk.id; w.objektId = oid; w.customer = '';
+      await kundeUebernehmen(w.id); view();
+    };
     window.Gespraech?.bind(w, list);
     $$('[data-room]').forEach((el) => (el.onclick = (e) => { if (e.target.closest('[data-up]')) return; raumOeffnen(rooms.get(el.dataset.room), w); }));
     $$('[data-up]').forEach((b) => (b.onclick = async () => { const i = +b.dataset.up; [w.rooms[i - 1], w.rooms[i]] = [w.rooms[i], w.rooms[i - 1]]; await save(w); view(); }));
@@ -218,11 +253,11 @@ window.Projekt = (() => {
         for (const id of w.rooms) { await kvDel('project:' + id); rooms.delete(id); }
         await kvDel(key(w.id));
         await kvSet('projectIndex', (await projectIndex()).filter((x) => x.id !== w.id));
-        state.wohnung = null; viewProjekt();
+        state.wohnung = null; viewProjekt(); window.scrollTo(0, 0);
       };
     }
   }
-  function raumAngebot(r, w) { r.customer = w.customer; r.address = w.address; state.project = r; state.angebotAusProjekt = true; window.Angebot?.ansicht(r); }
+  function raumAngebot(r, w) { r.customer = w.customer; r.address = w.address; r.kundeId = w.kundeId; state.project = r; state.angebotAusProjekt = true; window.Angebot?.ansicht(r); }
 
   async function runAll(w) {
     if (!state.settings.apiKey) { toast('Bitte zuerst in den Einstellungen den API-Schlüssel eintragen.', 4000); return; }
@@ -361,7 +396,7 @@ window.Projekt = (() => {
   }
 
   const forget = (id) => rooms.delete(id);
-  return { forget, neu, oeffnen, view, mappeView, moodboardView, migrate, raum, raeume, raumGespeichert, raumEntfernt, save, wahl, PKG_IDS, _intern: { titel, addRoom } };
+  return { forget, neu, neuFuer, kundeUebernehmen, oeffnen, view, mappeView, moodboardView, migrate, raum, raeume, raumGespeichert, raumEntfernt, save, wahl, PKG_IDS, _intern: { titel, addRoom } };
 })();
 // Ältere Aufrufe (PR „Wohnungen“) laufen weiter
 window.Wohnung = { neu: () => Projekt.neu(), oeffnen: (id) => Projekt.oeffnen(id), view: () => Projekt.view(), raumGespeichert: (p) => Projekt.raumGespeichert(p), raumEntfernt: (p) => Projekt.raumEntfernt(p) };

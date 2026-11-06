@@ -78,7 +78,7 @@ window.Sync = (() => {
     return [...byId.values()].sort((a, b) => (b.created || 0) - (a.created || 0));
   }
   // Gelöschte Räume (project:) und Projekte (wohnung:) werden über die Liste „projectDeleted“ auf allen Geräten entfernt
-  const delId = (k) => (/^(project|wohnung):/.test(k) ? k.slice(k.indexOf(':') + 1) : '');
+  const delId = (k) => (/^(project|wohnung|kunde):/.test(k) ? k.slice(k.indexOf(':') + 1) : '');
   const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 
   // ---------- Abgleich ----------
@@ -114,7 +114,7 @@ window.Sync = (() => {
       } else meta[k] = { ...m, seen }; // lokal neuer: wird gleich hochgeladen
     }
     // Auf anderem Gerät gelöschte Projekte auch hier entfernen
-    for (const id of tomb) for (const pre of ['project:', 'wohnung:']) if ((await kvGet(pre + id)) !== undefined) { await rawDel(pre + id); changed.add(pre + id); }
+    for (const id of tomb) for (const pre of ['project:', 'wohnung:', 'kunde:']) if ((await kvGet(pre + id)) !== undefined) { await rawDel(pre + id); changed.add(pre + id); }
     saveMeta();
     // 2) Hochladen, was lokal geändert wurde
     const uploaded = [];
@@ -166,9 +166,12 @@ window.Sync = (() => {
     if (changed.has('boards')) state.boards = (await kvGet('boards')) || state.boards;
     if (changed.has('preisliste') || changed.has('angebotVorlagen')) toast('Preisliste/Vorlagen vom anderen Gerät übernommen. Wirksam nach Neustart der App.', 5000);
     if (changed.has('projectIndex')) await window.Projekt?.migrate();
+    if ([...changed].some((k) => k.startsWith('kunde:'))) await window.Kunden?.laden();
+    if (changed.has('projectIndex')) await window.Kunden?.migrate();
     for (const k of changed) if (k.startsWith('project:') && state.project?.id !== k.slice(8)) window.Projekt?.forget(k.slice(8));
     const typing = /INPUT|TEXTAREA|SELECT/.test(document.activeElement?.tagName || '');
     if (!typing && document.getElementById('new') && state.tab === 'projekt') viewProjektListe();
+    if (!typing && document.getElementById('kNew') && state.tab === 'kunden') window.Kunden?.listeView();
     if (state.project && changed.has('project:' + state.project.id)) toast('Dieses Projekt wurde auf einem anderen Gerät geändert. Zum Aktualisieren Projekt neu öffnen.', 5000);
     else toast(`${changed.size} Änderung(en) vom anderen Gerät übernommen`);
   }

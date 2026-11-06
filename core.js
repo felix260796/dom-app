@@ -75,7 +75,7 @@ function pickFiles({ multiple = false, camera = false } = {}) {
 const MAX_REF_IMAGES = 6;
 
 // ---------- Zustand ----------
-const state = { tab: 'projekt', settings: null, boards: null, project: null, wohnung: null, editPkg: null, boardRoom: 'bad' };
+const state = { tab: 'kunden', settings: null, boards: null, project: null, wohnung: null, kunde: null, editPkg: null, boardRoom: 'bad' };
 
 async function loadAll() {
   state.settings = (await kvGet('settings')) || { apiKey: '', model: 'gemini-2.5-flash-image', company: 'DOM Projektmanagement GmbH', contact: 'DOM Projektmanagement GmbH', logo: null };

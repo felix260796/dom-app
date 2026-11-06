@@ -509,7 +509,7 @@ window.Baumappe = (() => {
       tag: 'Baumappe · für die Ausführung',
       title: 'Baumappe',
       sub: rs.map((r) => r.room || roomType(r.roomType).name).join(' · '),
-      meta: [['Bauherr', w.customer], ['Objekt', w.address], ['Stand', date], ['Bauleitung', c.F.ansprech ? `${c.F.ansprech}${c.F.tel ? ' · ' + c.F.tel : ''}` : c.F.tel]],
+      meta: [['Bauherr', [w.customer, window.Kunden?.byId(w.kundeId)?.telefon].filter(Boolean).join(' · ')], ['Objekt', Mappe.objektZeile(w)], ['Stand', date], ['Bauleitung', c.F.ansprech ? `${c.F.ansprech}${c.F.tel ? ' · ' + c.F.tel : ''}` : c.F.tel]],
       hero: firstResult(first, fpk),
       chips: [['Ohne Preise', NAVY.map((v) => v + 30)]],
     });

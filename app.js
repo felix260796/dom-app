@@ -31,6 +31,11 @@ const ICONS = {
   search: '<circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4"/>',
   refresh: '<path d="M20 11a8 8 0 1 0-2.3 5.7"/><path d="M20 4v7h-7"/>',
   user: '<circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/>',
+  users: '<circle cx="9" cy="8" r="3.5"/><path d="M2.5 20a6.5 6.5 0 0 1 13 0"/><path d="M15.5 4.6a3.5 3.5 0 0 1 0 6.8M18 14.2a6.5 6.5 0 0 1 3.5 5.8"/>',
+  phone: '<path d="M5 3.5h3.2l1.6 4.2-2.1 1.4a11 11 0 0 0 5.2 5.2l1.4-2.1 4.2 1.6V17a2.5 2.5 0 0 1-2.7 2.5A15.5 15.5 0 0 1 2.5 6.2 2.5 2.5 0 0 1 5 3.5z"/>',
+  mail: '<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3.5 6.5l8.5 6.5 8.5-6.5"/>',
+  cake: '<path d="M4 20h16v-7a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2z"/><path d="M4 15c1.3 1 2.7 1 4 0s2.7-1 4 0 2.7 1 4 0 2.7-1 4 0M12 11V8M12 5.5c-.8-.8-.8-1.7 0-2.5.8.8.8 1.7 0 2.5z"/>',
+  sliders: '<path d="M4 6h10M18 6h2M4 12h4M12 12h8M4 18h12M20 18h0"/><circle cx="16" cy="6" r="2"/><circle cx="10" cy="12" r="2"/><circle cx="18" cy="18" r="2"/>',
   map: '<path d="M12 21s-6-5.5-6-10.5a6 6 0 0 1 12 0C18 15.5 12 21 12 21z"/><circle cx="12" cy="10.5" r="2"/>',
   download: '<path d="M12 4v11"/><path d="M7 10l5 5 5-5"/><path d="M5 20h14"/>',
   upload: '<path d="M12 20V9"/><path d="M7 14l5-5 5 5"/><path d="M5 4h14"/>',
@@ -76,16 +81,25 @@ new MutationObserver(() => {
   tb.hidden = false; tb.onclick = () => src.click();
 }).observe(document.getElementById('main'), { childList: true });
 
-function switchTab(tab) {
+// Jeder Reiter merkt sich, wo man zuletzt war (Kunde, Projekt, Raum)
+const tabState = {};
+function switchTab(tab, restore) {
+  if (state.tab !== tab || restore) {
+    tabState[state.tab] = { project: state.project, wohnung: state.wohnung, kunde: state.kunde };
+    const s = restore || tabState[tab] || {};
+    state.project = s.project || null; state.wohnung = s.wohnung || null; state.kunde = s.kunde || null;
+  }
   state.tab = tab;
   $$('.tabbar button').forEach((b) => b.classList.toggle('active', b.dataset.tab === tab));
   window.scrollTo(0, 0);
-  ({ projekt: viewProjekt, pakete: viewPakete, einstellungen: viewEinstellungen })[tab]();
+  if (tab === 'einstellungen') state.editPkg = null;
+  ({ kunden: viewProjekt, projekt: viewProjekt, schnell: () => Schnell.view(), einstellungen: viewEinstellungen })[tab]();
 }
+/** Reiter wechseln und dort direkt etwas öffnen, z. B. openTab('kunden', { kunde }). */
+window.openTab = (tab, s) => switchTab(tab, s);
 $$('.tabbar button').forEach((b) => (b.onclick = () => {
-  if (b.dataset.tab === 'pakete') { state.editPkg = null; if (state.project?.roomType) state.boardRoom = state.project.roomType; }
-  // Erneutes Tippen auf „Projekte“ führt zurück zur Liste
-  if (b.dataset.tab === 'projekt' && state.tab === 'projekt') { state.project = null; state.wohnung = null; }
+  // Erneutes Tippen auf den aktiven Reiter führt zurück zur Liste
+  if (b.dataset.tab === state.tab) { state.project = null; state.wohnung = null; state.kunde = null; }
   switchTab(b.dataset.tab);
 }));
 
@@ -113,18 +127,19 @@ async function viewProjektListe() {
   header('Projekte', state.settings.company || '');
   const idx = await projectIndex();
   const q = listFilter.trim().toLowerCase();
-  const shown = q ? idx.filter((x) => `${x.customer} ${x.address || ''} ${x.room || ''}`.toLowerCase().includes(q)) : idx;
+  const hay = (x) => { const k = Kunden.byId(x.kundeId); return `${x.customer} ${x.address || ''} ${x.room || ''} ${k ? `${k.telefon} ${k.email} ${k.privat}` : ''}`.toLowerCase(); };
+  const shown = q ? idx.filter((x) => q.split(/\s+/).every((t) => hay(x).includes(t))) : idx;
   main().innerHTML = `
     <button class="cta" id="new">
       <span class="cta-ico">${icon('plus')}</span>
-      <span class="cta-t"><b>Neues Projekt</b><span>Kunde anlegen, Räume fotografieren, Mappe erstellen</span></span>
+      <span class="cta-t"><b>Neues Projekt</b><span>Kunde wählen, Räume fotografieren, Mappe erstellen</span></span>
       ${icon('chevron', 'cta-chev')}
     </button>
     ${state.settings.apiKey ? '' : `<button class="notice" id="toSet">${icon('gear')}<span><b>KI noch nicht eingerichtet.</b> Einmalig den Google-Schlüssel in den Einstellungen eintragen.</span>${icon('chevron')}</button>`}
     <div id="backupHint"></div>
     ${idx.length ? `
       <div class="sec-h"><h2>Deine Projekte</h2><span class="count">${idx.length}</span></div>
-      ${idx.length > 5 ? `<label class="search">${icon('search')}<input type="search" id="q" value="${esc(listFilter)}" placeholder="Kunde, Adresse oder Raum suchen"></label>` : ''}
+      <label class="search">${icon('search')}<input type="search" id="q" value="${esc(listFilter)}" placeholder="Kunde, Adresse oder Raum suchen" autocomplete="off"></label>
       <div class="plist">${shown.map((x) => `
         <button class="pcard" data-open="${x.id}" data-kind="${x.kind || ''}">
           ${x.thumb ? `<img src="${x.thumb}" alt="">` : `<span class="pc-ph">${icon('home')}</span>`}
@@ -150,11 +165,11 @@ async function viewProjektListe() {
 const uiOpen = { more: false };
 async function viewProjekt() {
   const p = normalizeProject(state.project);
-  if (!p) return state.wohnung ? Projekt.view() : viewProjektListe();
+  if (!p) return state.wohnung ? Projekt.view() : state.tab === 'kunden' ? Kunden.start() : viewProjektListe();
   const w = state.wohnung;
   const rt = roomType(p.roomType);
   const backToProject = () => { state.project = null; viewProjekt(); window.scrollTo(0, 0); };
-  header(p.room || rt.name, [w?.customer || p.customer, rt.name].filter(Boolean).join(' · '), { label: w ? 'Projekt' : 'Projekte', fn: backToProject });
+  header(p.room || rt.name, [w?.customer || p.customer, rt.name].filter(Boolean).join(' · '), { label: w ? 'Projekt' : state.tab === 'kunden' ? 'Kunde' : 'Projekte', fn: backToProject });
   const pkgs = roomPackages(p);
   const full = p.photos.length >= MAX_PHOTOS;
   const visible = pkgs.filter((x) => firstResult(p, x.id) || Object.keys(p.status || {}).some((k) => k.startsWith(x.id + ':') && (p.status[k].loading || p.status[k].error)));
@@ -416,8 +431,9 @@ function bindResultButtons(p) {
 (async () => {
   await loadAll();
   try { await Projekt.migrate(); } catch (e) { console.error('Umstellung', e); }
+  try { await Kunden.laden(); await Kunden.migrate(); } catch (e) { console.error('Kunden', e); }
   navigator.storage?.persist?.();
-  switchTab('projekt');
+  switchTab('kunden');
   if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost')) {
     // Neue Version sofort übernehmen: beim Öffnen und beim Zurückkehren in die App nachsehen, dann einmal neu laden
     const reg = await navigator.serviceWorker.register('sw.js', { updateViaCache: 'none' }).catch(() => null);
