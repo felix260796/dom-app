@@ -5,18 +5,6 @@
   const m = () => document.getElementById('main');
   window.scrollTo = (x, y) => { const el = m(); if (!el) return; if (x && typeof x === 'object') el.scrollTo(x); else el.scrollTo(x || 0, y || 0); };
   try { Object.defineProperty(window, 'scrollY', { configurable: true, get: () => m()?.scrollTop || 0 }); } catch {}
-  // iPhone-App vom Homebildschirm: Manche iOS-Versionen zeigen die App kürzer als den Bildschirm; der Bereich
-  // des Home-Balkens gehört dann gar nicht zur App. In dem Fall entfällt der Sicherheitsabstand unter der Leiste,
-  // sonst wäre die Leiste unnötig hoch. (Der Streifen darunter hat die Farbe aus manifest.webmanifest.)
-  if (navigator.standalone) {
-    const fit = () => {
-      const hoch = matchMedia('(orientation: portrait)').matches;
-      const h = hoch ? Math.max(screen.width, screen.height) : Math.min(screen.width, screen.height);
-      document.documentElement.classList.toggle('ios-kurz', h - innerHeight > 20);
-    };
-    addEventListener('resize', fit); addEventListener('orientationchange', () => setTimeout(fit, 300));
-    fit();
-  }
 })();
 /* DOM – Kern der App: Helfer, Speicher (IndexedDB), KI-Aufrufe (Gemini), Bildfunktionen.
  * Alle Daten liegen lokal auf dem Gerät. Sicherung: backup.js · Cloud-Abgleich: sync.js

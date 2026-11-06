@@ -17,6 +17,9 @@ window.Sync = (() => {
   // Gemeinsamer Firmenspeicher: alle Benutzer des Supabase-Projekts teilen den Ordner „team“.
   // (Bis 6.11.2026 hatte jeder Benutzer einen eigenen Ordner <uid>; der bleibt als Altbestand liegen.)
   const SPACE = 'team';
+  // Fest hinterlegt (öffentliche Werte, kein Geheimnis; geschützt wird alles über die Anmeldung)
+  const FEST = { url: 'https://flqjnhetnqdcgskjsgkv.supabase.co', key: '' };
+  const fest = () => !!FEST.key;
   let cfg = lsGet(LS_CFG, null); // { url, key, email, uid, access, refresh, expires, initialized, space }
   let meta = lsGet(LS_META, {}); // { [key]: { dirty, del, t, seen } }
   // Umstellung auf den gemeinsamen Ordner: wie ein erstes Verbinden behandeln, damit alles Lokale hochgeladen bzw. zusammengeführt wird
@@ -330,6 +333,7 @@ window.Sync = (() => {
 
   // ---------- Verbinden / Trennen ----------
   async function connect({ url, key, email, password }) {
+    if (fest()) { url = url || FEST.url; key = key || FEST.key; }
     cfg = { url: base(url), key: String(key).trim(), email: String(email).trim(), initialized: false, space: SPACE };
     if (!/^https?:\/\/.+/.test(cfg.url) || !cfg.key) throw new Error('Bitte Projekt-URL und Schlüssel eintragen.');
     try { await authCall('password', { email: cfg.email, password }); }
@@ -368,15 +372,16 @@ window.Sync = (() => {
     el.innerHTML = `
       <div class="card">
         <h2>Cloud-Abgleich</h2>
-        <p class="muted">Damit iPhone und iPad automatisch dieselben Projekte haben. Benötigt ein kostenloses Supabase-Konto (einmalig einrichten, <a href="https://github.com/felix260796/dom-app/blob/main/SUPABASE_EINRICHTEN.md" target="_blank" rel="noopener">Anleitung</a>). Auf jedem Gerät hier dieselben Daten eintragen.</p>
+        ${fest() ? `<p class="muted">Mit deinem Firmenkonto anmelden. Danach kommen alle Kunden, Projekte und Einstellungen (auch der KI-Schlüssel) automatisch auf dieses Gerät.</p>`
+          : `<p class="muted">Damit iPhone und iPad automatisch dieselben Projekte haben. Benötigt ein kostenloses Supabase-Konto (einmalig einrichten, <a href="https://github.com/felix260796/dom-app/blob/main/SUPABASE_EINRICHTEN.md" target="_blank" rel="noopener">Anleitung</a>). Auf jedem Gerät hier dieselben Daten eintragen.</p>
         <label>Projekt-URL</label><input type="url" id="syUrl" value="${esc(old.url || '')}" placeholder="https://xxxx.supabase.co" autocomplete="off">
-        <label>Publishable bzw. anon key</label><input type="text" id="syKey" value="${esc(old.key || '')}" placeholder="sb_publishable_… oder eyJ…" autocomplete="off">
+        <label>Publishable bzw. anon key</label><input type="text" id="syKey" value="${esc(old.key || '')}" placeholder="sb_publishable_… oder eyJ…" autocomplete="off">`}
         <label>E-Mail</label><input type="text" id="syMail" value="${esc(old.email || '')}" inputmode="email" autocomplete="username">
         <label>Passwort</label><input type="password" id="syPw" autocomplete="current-password">
         <button class="btn block" id="syGo" style="margin-top:12px">Verbinden</button>
       </div>`;
     $('#syGo', el).onclick = async (e) => {
-      const v = { url: $('#syUrl', el).value, key: $('#syKey', el).value, email: $('#syMail', el).value, password: $('#syPw', el).value };
+      const v = { url: $('#syUrl', el)?.value || '', key: $('#syKey', el)?.value || '', email: $('#syMail', el).value, password: $('#syPw', el).value };
       lsSet(LS_CFG + ':last', { url: v.url, key: v.key, email: v.email });
       e.target.disabled = true; e.target.textContent = 'Verbinde …';
       try { await connect(v); toast('Cloud-Abgleich aktiv', 4000); }
@@ -405,5 +410,5 @@ window.Sync = (() => {
     if (!r.ok) throw new Error(j.fehler || j.message || j.msg || `Fehler ${r.status}`);
     return j;
   }
-  return { changed, deleted, run, active, pending, einstellungenKarte, funktion, status: () => status };
+  return { changed, deleted, run, active, pending, einstellungenKarte, funktion, fest, status: () => status };
 })();
