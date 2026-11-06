@@ -301,6 +301,43 @@ async function renderWithGemini(pkg, project, i, rendered) {
   return geminiImage(parts, await nearestAspect(target));
 }
 
+// ---------- Ansichten: welche Fotos ein Nachher-Bild bekommen, plus Draufsicht ----------
+const DEFAULT_VIEWS = 2; // ohne Auswahl bekommen die ersten 2 Fotos ein Nachher-Bild, die übrigen helfen nur beim Verstehen
+/** Indizes der Fotos, die ein Nachher-Bild bekommen. */
+function renderIdx(p) {
+  const on = p.views?.on;
+  const idx = p.photos.map((_, i) => i).filter((i) => (Array.isArray(on) ? on.includes(i) : i < DEFAULT_VIEWS));
+  return idx.length || !p.photos.length ? idx : [0];
+}
+/** Draufsicht gewünscht? (Innenräume, standardmäßig an) */
+const wantsTop = (p) => !roomType(p.roomType).outdoor && !window.Garten?.zustaendig(p) && p.views?.top !== false && p.photos.length > 0;
+/** Anzahl Bilder je Paket */
+const viewCount = (p) => renderIdx(p).length + (wantsTop(p) ? 1 : 0);
+const topOf = (p, id) => p.top?.[id] || '';
+
+/** Draufsicht des sanierten Raums aus allen Fotos (3D von schräg oben, ohne Decke). ref = fertige Ansicht als Material-Vorlage. */
+async function renderTop(pkg, project, ref) {
+  pkg = window.Garten?.pkgFuer(pkg, project) || pkg;
+  let bestand = '', plan = '';
+  try { bestand = await roomBestand(project); } catch (e) { console.warn('Bestand nicht erkannt', e); }
+  if (bestand) try { plan = await roomPlan(pkg, project, bestand); } catch (e) { console.warn('Plan nicht erstellt', e); }
+  const t = buildPrompt(pkg, project, { bestand, plan });
+  const rt = roomType(project.roomType);
+  const img = (d) => ({ inline_data: { mime_type: mimeOf(d), data: b64(d) } });
+  const parts = [{ text: `Du bist ein Werkzeug für fotorealistische Sanierungs-Visualisierungen IM BESTAND. Die Fotos zeigen einen echten ${rt.name} (${project.room}) VOR der Sanierung aus verschiedenen Blickwinkeln.
+
+Erzeuge daraus EINE neue Ansicht: eine fotorealistische 3D-Draufsicht des fertig sanierten Raums in der Ausstattungslinie „${pkg.name}“, wie ein aufgeschnittenes Puppenhaus: Blick von schräg oben (ca. 60 Grad), Decke entfernt, alle Wände, Fenster und Türen sichtbar, der ganze Raum auf einen Blick. Gib genau ein Bild aus.` }];
+  project.photos.forEach((ph, k) => parts.push({ text: `Foto ${k + 1} des Raums (Bestand):` }, img(ph)));
+  if (ref) parts.push({ text: `Bereits fertig sanierte Ansicht DESSELBEN Raums in „${pkg.name}“. Verwende exakt dieselben Fliesen, Farben, Armaturen, Möbelausführungen und Leuchten:` }, img(ref));
+  for (const im of pkg.images.slice(0, MAX_REF_IMAGES)) parts.push({ text: `Moodboard-Vorlage: ${im.label?.trim() || 'Material/Stil'}. Nur Material, Farbe und Stil übernehmen, nicht den Raum:` }, img(im.data));
+  parts.push({ text: [`WICHTIG FÜR DIE DRAUFSICHT:
+- Grundriss, Raumform, Proportionen und Größe exakt wie der echte Raum (aus den Fotos${masseText(project) ? ' und den gemessenen Maßen' : ''}). Ein kleiner Raum bleibt klein.
+- Fenster, Türen, Dachschrägen, Vorsprünge und alle Einrichtungsgegenstände an derselben Stelle wie in den Fotos, in realistischer Größe.
+- NICHTS hinzufügen, was es im Raum nicht gibt, außer es steht ausdrücklich unter UMSETZUNG.
+- Was auf keinem Foto zu sehen ist, schlicht und passend zur Ausstattung ergänzen (Wandfläche, Boden), ohne neue Objekte.`, t.bestand, t.umsetzung, 'Ergebnis: fotorealistisch, helles natürliches Licht, sauber und aufgeräumt, keine Personen, kein Text, keine Maßangaben, keine Wasserzeichen.'].filter(Boolean).join('\n\n') });
+  return geminiImage(parts, '4:3');
+}
+
 /** Schickt Text + Bilder an das Gemini-Bildmodell und gibt das gelieferte Bild (max. 1600 px) zurück. */
 async function geminiImage(parts, aspectRatio) {
   const { apiKey, model } = state.settings;
@@ -364,7 +401,7 @@ function normalizeProject(p) {
   p.pdfEvening ??= true;
   return p;
 }
-const hasAnyResult = (p) => Object.values(p.results).some((arr) => arr.some(Boolean));
+const hasAnyResult = (p) => Object.values(p.results).some((arr) => arr.some(Boolean)) || Object.values(p.top || {}).some(Boolean);
 const firstResult = (p, id) => (p.results[id] || []).find(Boolean);
 const eveningOf = (p, id, i) => p.evening?.[id]?.[i] || '';
 const hasAnyEvening = (p) => Object.values(p.evening || {}).some((arr) => arr.some(Boolean));
@@ -459,8 +496,23 @@ async function runEvening(p, pkg, i) {
 /** Alle Ansichten eines Pakets: erst Ansicht 1, dann die übrigen mit Ansicht 1 als Vorlage. */
 async function runPackage(p, pkg) {
   p.results[pkg.id] = [];
-  await runView(p, pkg, 0);
-  await Promise.all(p.photos.slice(1).map((_, k) => runView(p, pkg, k + 1)));
+  if (p.top) delete p.top[pkg.id];
+  const idx = renderIdx(p);
+  if (idx.length) await runView(p, pkg, idx[0]);
+  await Promise.all([...idx.slice(1).map((i) => runView(p, pkg, i)), wantsTop(p) ? runTop(p, pkg) : null]);
+}
+/** Draufsicht eines Pakets erstellen. */
+async function runTop(p, pkg) {
+  p.status ??= {};
+  const key = `${pkg.id}:top`;
+  p.status[key] = { loading: true };
+  if (state.project === p) refreshResult(pkg);
+  try {
+    (p.top ??= {})[pkg.id] = await renderTop(pkg, p, firstResult(p, pkg.id));
+    p.status[key] = {};
+    await saveProject(p);
+  } catch (e) { p.status[key] = { error: e.message }; }
+  if (state.project === p) refreshResult(pkg);
 }
 async function runAll(p) {
   if (!state.settings.apiKey) { toast('Bitte zuerst in den Einstellungen den API-Schlüssel eintragen.', 4000); return; }
@@ -468,7 +520,7 @@ async function runAll(p) {
   if (!pkgs.length) { toast('Bitte mindestens ein Paket auswählen.'); return; }
   await window.voiceReady?.(p); // Gespräch erst fertig auswerten, damit die Wünsche ins Bild kommen
   await Promise.all(pkgs.map((pkg) => runPackage(p, pkg)));
-  const total = pkgs.length * p.photos.length;
-  const ok = pkgs.reduce((n, x) => n + (p.results[x.id] || []).filter(Boolean).length, 0);
+  const total = pkgs.length * viewCount(p);
+  const ok = pkgs.reduce((n, x) => n + (p.results[x.id] || []).filter(Boolean).length + (topOf(p, x.id) ? 1 : 0), 0);
   toast(ok === total ? 'Fertig! Jetzt kannst du das PDF erstellen.' : `${ok} von ${total} Bildern fertig. Fehlgeschlagene mit „Neu“ wiederholen.`, 4000);
 }
