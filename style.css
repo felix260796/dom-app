@@ -21,9 +21,9 @@ svg.i { width: 22px; height: 22px; flex: none; fill: none; stroke: currentColor;
   background: linear-gradient(180deg, var(--navy-ink) 0%, var(--navy) 100%);
   padding: calc(env(safe-area-inset-top) + 8px) 16px 14px; box-shadow: 0 2px 10px rgba(20, 38, 59, .18); }
 .brand-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; min-height: 34px; }
-.brand { display: flex; flex-direction: column; align-items: stretch; margin-left: auto; opacity: .96; }
-.brand img { height: 26px; width: auto; display: block; }
-.brand small { font-size: 7.4px; line-height: 1; letter-spacing: .14em; text-transform: uppercase; color: rgba(255,255,255,.9); text-align: right; margin-top: 3px; white-space: nowrap; }
+.brand { display: flex; flex-direction: column; align-items: flex-end; margin-left: auto; opacity: .96; }
+.brand img { height: 22px; width: auto; display: block; }
+.brand small { font-size: 6.3px; line-height: 1; font-weight: 600; letter-spacing: .02em; color: rgba(255,255,255,.82); margin-top: 3px; white-space: nowrap; }
 .topback { display: inline-flex; align-items: center; gap: 2px; border: 0; background: rgba(255,255,255,.12); color: #fff; font-size: 15px; font-weight: 600;
   padding: 6px 12px 6px 6px; border-radius: 999px; max-width: 62%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .topback svg.i { width: 20px; height: 20px; stroke-width: 2.2; }
@@ -36,7 +36,9 @@ main { padding: 16px 16px calc(100px + env(safe-area-inset-bottom)); max-width: 
 
 /* ---------- Tableiste ---------- */
 /* fest unten, immer gleich hoch (66 px + Sicherheitsabstand des iPhones), blau wie die Kopfzeile */
-html { overscroll-behavior-y: none; }
+html { overscroll-behavior-y: none; height: 100%; }
+/* Jede Seite etwas höher als der Bildschirm: Auf kurzen Seiten verrutscht sonst auf dem iPhone die feste Leiste unten. */
+body { min-height: calc(100% + 1px); }
 .tabbar { position: fixed; bottom: 0; left: 0; right: 0; z-index: 30; display: flex; justify-content: center; align-items: flex-start;
   height: calc(66px + env(safe-area-inset-bottom)); padding-bottom: env(safe-area-inset-bottom); box-sizing: border-box; overflow: hidden;
   background: linear-gradient(180deg, var(--navy) 0%, var(--navy-ink) 100%); box-shadow: 0 -2px 10px rgba(20, 38, 59, .18);
