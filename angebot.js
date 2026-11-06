@@ -512,7 +512,7 @@ Gib Länge (längere Seite) und Breite der Grundfläche, Raumhöhe, Anzahl und G
       $('[data-skizze]', card).onclick = async () => { const [f] = await pickFiles(); if (!f) return; r.skizze = await resize(await fileToDataUrl(f), 1400); rerender(); };
       const del = $('[data-delraum]', card); if (del) del.onclick = () => { if (!confirm(`Raum „${r.name}“ entfernen?`)) return; p.aufmass.raeume.splice(ri, 1); rerender(); };
     });
-    $('#addRaum').onclick = () => { p.aufmass.raeume.push(neuerRaum('Wohnzimmer')); rerender(); setTimeout(() => window.scrollTo(0, document.body.scrollHeight), 50); };
+    $('#addRaum').onclick = () => { p.aufmass.raeume.push(neuerRaum('Wohnzimmer')); rerender(); setTimeout(() => window.scrollTo(0, document.getElementById('main').scrollHeight), 50); };
     $('#zumAngebot').onclick = () => { tab = 'angebot'; ansicht(p); };
   }
 

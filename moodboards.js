@@ -178,7 +178,8 @@ function viewEinstellungen() {
   const warn = (k) => (k === 'ki' && !state.settings.apiKey) || (k === 'cloud' && !window.Sync?.active());
   main().innerHTML = `<div class="docs">${EINST.map(([k, t, ic, col]) => `
     <button class="doc" data-einst="${k}"><span class="d-ico ${col}">${icon(ic)}</span>
-      <span class="d-t"><b>${esc(t)}</b><span class="${warn(k) ? 'warn' : ''}">${esc(einstellungInfo(k))}</span></span>${icon('chevron', 'pc-chev')}</button>`).join('')}</div>`;
+      <span class="d-t"><b>${esc(t)}</b><span class="${warn(k) ? 'warn' : ''}">${esc(einstellungInfo(k))}</span></span>${icon('chevron', 'pc-chev')}</button>`).join('')}</div>
+    <p class="hint center" style="margin-top:18px">App-Version ${APP_VERSION}</p>`;
   $$('[data-einst]').forEach((b) => (b.onclick = () => { einstellungSeite(b.dataset.einst); window.scrollTo(0, 0); }));
 }
 function einstellungSeite(k) {
