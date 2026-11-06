@@ -104,6 +104,13 @@ function packagesFor(rt, w = state.wohnung) {
   for (const p of list) { p.images ??= []; p.products ??= []; p.fields ??= {}; }
   return list;
 }
+/** Moodboard eines Raums: eigenes Raum-Moodboard, sonst das des Projekts, sonst das allgemeine. */
+function roomPackages(r) {
+  const own = r?.boards;
+  if (!Array.isArray(own) || !own.length || r.boardsType !== r.roomType) return packagesFor(r.roomType);
+  for (const p of own) { p.images ??= []; p.products ??= []; p.fields ??= {}; }
+  return own;
+}
 /** Alte Bad-Pakete: Feld "licht" hieß dort "Spiegel & Licht" und heißt jetzt "spiegel". */
 function migrateBathPackage(p) {
   if (p.fields?.licht && !p.fields.spiegel) { p.fields.spiegel = p.fields.licht; delete p.fields.licht; }
@@ -428,7 +435,7 @@ function normalizeProject(p) {
   p.results ??= {};
   if (!p.roomType) p.roomType = roomTypeIdFromName(p.room);
   p.room ||= roomType(p.roomType).name;
-  if (!Array.isArray(p.selected)) p.selected = packagesFor(p.roomType).map((x) => x.id);
+  if (!Array.isArray(p.selected)) p.selected = roomPackages(p).map((x) => x.id);
   p.pdfProducts ??= true;
   p.evening ??= {};
   p.withEvening ??= false;
@@ -550,7 +557,7 @@ async function runTop(p, pkg) {
 }
 async function runAll(p) {
   if (!state.settings.apiKey) { toast('Bitte zuerst in den Einstellungen den API-Schlüssel eintragen.', 4000); return; }
-  const pkgs = packagesFor(p.roomType).filter((x) => p.selected.includes(x.id));
+  const pkgs = roomPackages(p).filter((x) => p.selected.includes(x.id));
   if (!pkgs.length) { toast('Bitte mindestens ein Paket auswählen.'); return; }
   await window.voiceReady?.(p); // Gespräch erst fertig auswerten, damit die Wünsche ins Bild kommen
   await Promise.all(pkgs.map((pkg) => runPackage(p, pkg)));

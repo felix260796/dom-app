@@ -1,5 +1,5 @@
 // Offline-Cache für die App-Dateien. Bei Änderungen VERSION erhöhen.
-const VERSION = 'v26';
+const VERSION = 'v28';
 const FILES = ['./', 'index.html', 'style.css', 'rooms.js', 'core.js', 'voice.js', 'moodboards.js', 'backup.js', 'sync.js', 'social.js', 'angebot.js', 'garten.js', 'pdf.js', 'baumappe.js', 'projekt.js', 'app.js',
   'data/preisliste.json', 'vendor/xlsx.mini.min.js', 'vendor/jspdf.umd.min.js', 'manifest.webmanifest',
   'icons/icon-180.png', 'icons/icon-192.png', 'icons/icon-512.png', 'assets/dom_logo.png', 'assets/dom_logo_weiss.png'];
@@ -12,6 +12,6 @@ self.addEventListener('fetch', (e) => {
   const url = new URL(e.request.url);
   if (e.request.method !== 'GET' || url.origin !== location.origin) return;
   // Netzwerk zuerst (damit Updates sofort ankommen), offline aus dem Cache
-  e.respondWith(fetch(e.request).then((r) => { if (r.ok) { const copy = r.clone(); caches.open(VERSION).then((c) => c.put(e.request, copy)); } return r; })
+  e.respondWith(fetch(e.request, { cache: 'no-cache' }).then((r) => { if (r.ok) { const copy = r.clone(); caches.open(VERSION).then((c) => c.put(e.request, copy)); } return r; })
     .catch(() => caches.match(e.request, { ignoreSearch: true }).then((r) => r || caches.match('index.html'))));
 });

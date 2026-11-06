@@ -155,7 +155,7 @@ async function viewProjekt() {
   const rt = roomType(p.roomType);
   const backToProject = () => { state.project = null; viewProjekt(); window.scrollTo(0, 0); };
   header(p.room || rt.name, [w?.customer || p.customer, rt.name].filter(Boolean).join(' · '), { label: w ? 'Projekt' : 'Projekte', fn: backToProject });
-  const pkgs = packagesFor(p.roomType);
+  const pkgs = roomPackages(p);
   const full = p.photos.length >= MAX_PHOTOS;
   const visible = pkgs.filter((x) => firstResult(p, x.id) || Object.keys(p.status || {}).some((k) => k.startsWith(x.id + ':') && (p.status[k].loading || p.status[k].error)));
   const nImg = viewCount(p) * p.selected.length;
@@ -190,6 +190,7 @@ async function viewProjekt() {
       <div class="step-h"><span class="num">2</span><h2>Pakete</h2></div>
       <div class="card">
         <div class="chips">${pkgs.map((x) => `<button class="chip ${p.selected.includes(x.id) ? 'on' : ''}" data-sel="${x.id}" style="--c:${x.color}">${icon('check', 'chip-ck')}${esc(x.name)}</button>`).join('')}</div>
+        <button class="btn secondary block small" id="raumBoard" style="margin:2px 0 10px">${icon('palette')} ${p.boards?.length && p.boardsType === p.roomType ? 'Moodboard dieses Raums (angepasst)' : 'Moodboard für diesen Raum anpassen'}</button>
         <label class="toggle"><input type="checkbox" id="withEvening" ${p.withEvening ? 'checked' : ''}><span class="tg"></span><span>${icon('moon')} Zusätzlich Abendstimmung</span></label>
         <details class="more" id="more" ${uiOpen.more ? 'open' : ''}>
           <summary>${icon('mic')}<span>Hinweise & Kundenwünsche<small>${[p.note?.trim() && 'Hinweis', p.wishes?.trim() && 'Wünsche', p.transcript?.trim() && 'Gespräch'].filter(Boolean).join(' · ') || 'optional'}</small></span>${icon('chevron', 'more-chev')}</summary>
@@ -246,8 +247,9 @@ async function viewProjekt() {
   $('#roomType').onchange = async (e) => {
     const old = roomType(p.roomType).name;
     p.roomType = e.target.value;
+    delete p.boards; delete p.boardsType;
     if (!p.room || p.room === old) p.room = roomType(p.roomType).name;
-    p.selected = packagesFor(p.roomType).map((x) => x.id);
+    p.selected = roomPackages(p).map((x) => x.id);
     rerender();
   };
   $('#note').oninput = (e) => { p.note = e.target.value; persist(); };
@@ -259,6 +261,7 @@ async function viewProjekt() {
     $('#go').disabled = !n;
     if (p.photos.length) $('#goInfo').textContent = n ? `${n} ${n === 1 ? 'Bild' : 'Bilder'}${p.withEvening ? ' + Abendstimmung' : ''} · ca. 10–30 Sekunden pro Bild` : 'Bitte mindestens ein Paket wählen.';
   };
+  $('#raumBoard').onclick = () => { viewRaumMoodboard(p); window.scrollTo(0, 0); };
   $('#withEvening').onchange = (e) => { p.withEvening = e.target.checked; persist(); updGoInfo(); };
   if ($('#withTop')) $('#withTop').onchange = (e) => { p.views = { ...(p.views || {}), top: e.target.checked }; persist(); updGoInfo(); };
   $$('[data-view]').forEach((b) => (b.onclick = () => {
@@ -276,7 +279,7 @@ async function viewProjekt() {
   bindVoice(p, persist);
   $('#go').onclick = async () => {
     if (!state.settings.apiKey) return toast('Bitte zuerst in den Einstellungen den API-Schlüssel eintragen.', 4000);
-    const done = packagesFor(p.roomType).filter((x) => p.selected.includes(x.id) && firstResult(p, x.id));
+    const done = roomPackages(p).filter((x) => p.selected.includes(x.id) && firstResult(p, x.id));
     if (!rt.outdoor && !raumMasse(p) && !aufmassText(p) && !p.masseSkip) {
       if (confirm('Noch keine Raummaße eingetragen. Mit Länge, Breite und Höhe hält sich die KI viel besser an die echte Raumgröße.\n\nOK = Maße jetzt eingeben\nAbbrechen = ohne Maße weiter')) {
         $('#masseBox')?.scrollIntoView({ behavior: 'smooth', block: 'center' }); setTimeout(() => $('[data-mass="l"]')?.focus(), 300); return;
@@ -299,6 +302,47 @@ async function viewProjekt() {
   };
   bindResultButtons(p);
   window.Garten?.projektKarte(p, persist);
+}
+
+// ---------- Moodboard nur für diesen Raum ----------
+const raumEigenes = (p) => (Array.isArray(p.boards) && p.boards.length && p.boardsType === p.roomType ? p.boards : null);
+/** Kopie anlegen, sobald im Raum etwas geändert wird (Vorlage: Projekt-Moodboard bzw. allgemeines). */
+function raumKopie(p) {
+  if (!raumEigenes(p)) { p.boards = JSON.parse(JSON.stringify(packagesFor(p.roomType))); p.boardsType = p.roomType; }
+  return p.boards;
+}
+function viewRaumMoodboard(p) {
+  const own = raumEigenes(p), pkgs = roomPackages(p), rn = p.room || roomType(p.roomType).name;
+  const kunde = state.wohnung?.customer || p.customer;
+  const back = () => { viewProjekt(); window.scrollTo(0, 0); };
+  header('Moodboard', [kunde, rn].filter(Boolean).join(' · '), { label: rn, fn: back });
+  main().innerHTML = `
+    <div class="card intro"><p>${own
+      ? `Dieses Moodboard gilt <b>nur für ${esc(rn)}</b>${kunde ? ` bei ${esc(kunde)}` : ''}. Visualisierung, Kundenmappe, Baumappe und Angebot dieses Raums nutzen es.`
+      : `Hier steht noch das Moodboard ${state.wohnung?.boards?.[p.roomType]?.length ? 'des Projekts' : 'aus deinen Standard-Moodboards'}. Tippe auf ein Paket und ändere Texte, Bilder oder Produkte. Die Änderung gilt <b>nur für ${esc(rn)}</b>.`}</p></div>
+    <div class="pkgs">${pkgs.map((x) => `
+      <button class="pkgcard" data-edit="${x.id}" style="--c:${x.color}">
+        <span class="pk-thumbs">${x.images.slice(0, 3).map((im) => `<img src="${im.data}" alt="">`).join('') || `<span class="pk-empty">${icon('palette')}</span>`}</span>
+        <span class="pk-t"><b><i></i>${esc(x.name)}</b><span>${esc(x.fields.beschreibung || '')}</span>
+          <small>${x.images.length} ${x.images.length === 1 ? 'Bild' : 'Bilder'} · ${x.products.length} ${x.products.length === 1 ? 'Produkt' : 'Produkte'}</small></span>
+        ${icon('chevron', 'pc-chev')}
+      </button>`).join('')}</div>
+    ${own ? `<p class="hint">Nach einer Änderung den Raum neu visualisieren, damit die Bilder zum Moodboard passen.</p>
+      <button class="link-danger" id="rbReset">${icon('refresh')} Anpassungen dieses Raums verwerfen</button>` : ''}`;
+  $$('[data-edit]').forEach((el) => (el.onclick = () => {
+    const list = raumKopie(p);
+    viewPaketEdit(el.dataset.edit, {
+      rt: p.roomType, list, save: () => saveProject(p), saveSoon: debounce(() => saveProject(p), 500),
+      sub: `${rn} · nur für diesen Raum`, backLabel: 'Moodboard',
+      banner: `<div class="notice" style="margin:0 0 12px">${icon('palette')}<span>Änderungen gelten nur für <b>${esc(rn)}</b>${kunde ? ` bei ${esc(kunde)}` : ''}. Andere Räume und deine Standard-Moodboards bleiben, wie sie sind.</span></div>`,
+      back: async () => { await saveProject(p); viewRaumMoodboard(p); window.scrollTo(0, 0); },
+    });
+    window.scrollTo(0, 0);
+  }));
+  if ($('#rbReset')) $('#rbReset').onclick = async () => {
+    if (!confirm(`Die Moodboard-Anpassungen für ${rn} verwerfen?`)) return;
+    delete p.boards; delete p.boardsType; await saveProject(p); viewRaumMoodboard(p);
+  };
 }
 
 // ---------- Ergebnis-Karten ----------
@@ -344,7 +388,7 @@ function refreshResult(pkg) {
   $('.empty-res')?.remove();
   if (!el) {
     // in Paket-Reihenfolge einfügen
-    const order = packagesFor(p.roomType).map((x) => x.id);
+    const order = roomPackages(p).map((x) => x.id);
     const next = $$('#results .result').find((r) => order.indexOf(r.id.slice(4)) > order.indexOf(pkg.id));
     if (next) next.insertAdjacentHTML('beforebegin', resultCard(pkg)); else $('#results').insertAdjacentHTML('beforeend', resultCard(pkg));
   } else el.outerHTML = resultCard(pkg);
@@ -354,7 +398,7 @@ function refreshResult(pkg) {
   for (const id of ['#social', '#toMarks']) if ($(id)) $(id).disabled = !any;
 }
 function bindResultButtons(p) {
-  const pk = (id) => packagesFor(p.roomType).find((x) => x.id === id);
+  const pk = (id) => roomPackages(p).find((x) => x.id === id);
   $$('[data-redo]').forEach((b) => (b.onclick = async () => { await window.voiceReady?.(p); runView(p, pk(b.dataset.redo), +b.dataset.view); }));
   $$('[data-mood]').forEach((b) => (b.onclick = () => {
     const pkg = pk(b.dataset.pkg), i = +b.dataset.view;
@@ -374,5 +418,16 @@ function bindResultButtons(p) {
   try { await Projekt.migrate(); } catch (e) { console.error('Umstellung', e); }
   navigator.storage?.persist?.();
   switchTab('projekt');
-  if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost')) navigator.serviceWorker.register('sw.js');
+  if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost')) {
+    // Neue Version sofort übernehmen: beim Öffnen und beim Zurückkehren in die App nachsehen, dann einmal neu laden
+    const reg = await navigator.serviceWorker.register('sw.js', { updateViaCache: 'none' }).catch(() => null);
+    const hadCtrl = !!navigator.serviceWorker.controller;
+    let reloaded = false;
+    navigator.serviceWorker.addEventListener('controllerchange', () => {
+      if (!hadCtrl || reloaded || voice.rec || voice.job) return; // nicht mitten in einer Aufnahme oder Auswertung
+      reloaded = true; location.reload();
+    });
+    document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') reg?.update().catch(() => {}); });
+    reg?.update().catch(() => {});
+  }
 })();

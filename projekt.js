@@ -11,7 +11,7 @@ window.Projekt = (() => {
   let running = null; // Projekt-ID, während „Alle Räume visualisieren“ läuft
 
   const key = (id) => 'wohnung:' + id;
-  const pkgOf = (r, id) => packagesFor(r.roomType).find((x) => x.id === id);
+  const pkgOf = (r, id) => roomPackages(r).find((x) => x.id === id);
   const done = (r, id) => !!firstResult(r, id);
   async function raum(id) {
     if (!rooms.has(id)) { const r = normalizeProject(await kvGet('project:' + id)); if (r) rooms.set(id, r); }
@@ -227,7 +227,7 @@ window.Projekt = (() => {
   async function runAll(w) {
     if (!state.settings.apiKey) { toast('Bitte zuerst in den Einstellungen den API-Schlüssel eintragen.', 4000); return; }
     const list = (await raeume(w)).filter((r) => r.photos.length && r.selected.length);
-    const total = list.reduce((n, r) => n + viewCount(r) * packagesFor(r.roomType).filter((x) => r.selected.includes(x.id)).length, 0);
+    const total = list.reduce((n, r) => n + viewCount(r) * roomPackages(r).filter((x) => r.selected.includes(x.id)).length, 0);
     if (!total) { toast('Keine Räume mit Fotos und ausgewählten Paketen.'); return; }
     const already = list.filter(hasAnyResult).length;
     if (!confirm(`${total} Bilder für ${list.length} Räume erstellen?${already ? `\n\n${already} ${already === 1 ? 'Raum hat' : 'Räume haben'} schon Bilder, die werden dabei neu gemacht.` : ''}`)) return;
@@ -236,7 +236,7 @@ window.Projekt = (() => {
     // Raum für Raum, damit Google nicht zu viele Anfragen gleichzeitig bekommt
     for (const [i, r] of list.entries()) {
       const info = $('#wRunInfo'); if (info && state.wohnung === w && !state.project) info.textContent = `Raum ${i + 1} von ${list.length}: ${r.room} …`;
-      const pkgs = packagesFor(r.roomType).filter((x) => r.selected.includes(x.id));
+      const pkgs = roomPackages(r).filter((x) => r.selected.includes(x.id));
       await window.voiceReady?.(r);
       await Promise.all(pkgs.map((pkg) => runPackage(r, pkg)));
       ok += pkgs.reduce((n, x) => n + (r.results[x.id] || []).filter(Boolean).length + (topOf(r, x.id) ? 1 : 0), 0);
@@ -306,7 +306,7 @@ window.Projekt = (() => {
     const nm = (id) => list.map((r) => pkgOf(r, id)?.name).find(Boolean) || PKG_META[id][0];
     const col = (id) => list.map((r) => pkgOf(r, id)?.color).find(Boolean) || PKG_META[id][1];
     const anyEve = list.some(hasAnyEvening);
-    const anyProducts = list.some((r) => packagesFor(r.roomType).some((x) => x.products.some((y) => y.name?.trim())));
+    const anyProducts = list.some((r) => roomPackages(r).some((x) => x.products.some((y) => y.name?.trim())));
     const picks = () => list.map((r) => ({ r, w: wahl(w, r) })).filter((x) => x.w);
     const seiten = () => picks().reduce((n, { r, w: v }) => n + (v === 'alle' ? PKG_IDS.filter((id) => done(r, id)).length : 1), 0);
     main().innerHTML = `

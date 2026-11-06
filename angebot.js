@@ -6,7 +6,7 @@
 const Angebot = (() => {
   // Pakete: Moodboards des Raumtyps im Projekt (IDs basic/standard/premium in allen Raumtypen gleich)
   const PAKETE_STD = () => Object.entries(PKG_META).map(([id, [name, color]]) => ({ id, name, color }));
-  const pakete = (p) => (p?.roomType && typeof packagesFor === 'function' ? packagesFor(p.roomType) : PAKETE_STD());
+  const pakete = (p) => (p?.roomType && typeof packagesFor === 'function' ? roomPackages(p) : PAKETE_STD());
 
   // ---------- Zahlen ----------
   const num = (v) => { const n = parseFloat(String(v ?? '').replace(/\s/g, '').replace(',', '.')); return Number.isFinite(n) ? n : 0; };
