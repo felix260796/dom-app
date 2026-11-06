@@ -22,6 +22,8 @@ const ICONS = {
   trash: '<path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/>',
   chevron: '<path d="M9 6l6 6-6 6"/>',
   back: '<path d="M15 5l-7 7 7 7"/>',
+  wrench: '<path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.4-3.4a6 6 0 0 1-7.9 7.9l-6.9 6.9a2.1 2.1 0 0 1-3-3l6.9-6.9a6 6 0 0 1 7.9-7.9z"/>',
+  list: '<path d="M9 6h11M9 12h11M9 18h11"/><circle cx="4.5" cy="6" r="1"/><circle cx="4.5" cy="12" r="1"/><circle cx="4.5" cy="18" r="1"/>',
   home: '<path d="M3 11l9-7 9 7"/><path d="M5 9.5V20h14V9.5"/><path d="M10 20v-5h4v5"/>',
   palette: '<path d="M12 3a9 9 0 1 0 0 18c1.2 0 1.7-.9 1.3-1.9-.5-1.2.3-2.3 1.6-2.3H17a4 4 0 0 0 4-4C21 7.3 17 3 12 3z"/><circle cx="7.5" cy="11" r="1"/><circle cx="10.5" cy="7.5" r="1"/><circle cx="15" cy="7.8" r="1"/>',
   gear: '<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/>',
@@ -128,7 +130,7 @@ function objektZeile(x) {
   const k = Kunden.byId(x.kundeId), o = k && Kunden.objekt(k, x.objektId);
   return [o && o.name.trim(), x.address || (o && Kunden.einzeilig(o.adresse))].filter(Boolean).join(' · ');
 }
-let listFilter = '', listStatus = '';
+let listFilter = '', listStatus = '', listKarte = false;
 async function viewProjektListe() {
   const ST = Projekt.STATUS;
   header({ '': 'Laufende Projekte', geplant: 'Vorgesehene Projekte', fertig: 'Abgeschlossene Projekte' }[listStatus], state.settings.company || '');
@@ -139,26 +141,29 @@ async function viewProjektListe() {
   const hay = (x) => { const k = Kunden.byId(x.kundeId); return `${x.nr || ''} ${x.titel || ''} ${x.customer} ${x.address || ''} ${x.room || ''} ${k ? `${k.nr} ${k.telefon} ${k.email} ${k.privat}` : ''}`.toLowerCase(); };
   const shown = q ? idx.filter((x) => q.split(/\s+/).every((t) => hay(x).includes(t))) : idx;
   main().innerHTML = `
-    <button class="cta" id="new">
+    <button class="cta slim" id="new">
       <span class="cta-ico">${icon('plus')}</span>
-      <span class="cta-t"><b>Neues Projekt</b><span>Kunde wählen, Räume fotografieren, Mappe erstellen</span></span>
+      <span class="cta-t"><b>Neues Projekt</b></span>
       ${icon('chevron', 'cta-chev')}
     </button>
     ${state.settings.apiKey ? '' : `<button class="notice" id="toSet">${icon('gear')}<span><b>KI noch nicht eingerichtet.</b> Einmalig den Google-Schlüssel in den Einstellungen eintragen.</span>${icon('chevron')}</button>`}
     <div id="backupHint"></div>
     ${alleP.length ? `<div class="seg2 full wstatus" style="margin-top:14px">${[ST[1], ST[0], ST[2]].map(([id, n, c]) => `<button data-ls="${id}" class="${listStatus === id ? 'on' : ''}" style="--c:${c}">${n} ${alleP.filter((x) => stOf(x) === id).length}</button>`).join('')}</div>` : ''}
     ${idx.length ? `
-      <label class="search">${icon('search')}<input type="search" id="q" value="${esc(listFilter)}" placeholder="Kunde, Adresse, Raum oder Nummer" autocomplete="off"></label>
-      <div class="plist">${shown.map((x) => `
+      <div class="lk-row"><label class="search">${icon('search')}<input type="search" id="q" value="${esc(listFilter)}" placeholder="Kunde, Adresse, Raum oder Nummer" autocomplete="off"></label>
+        <button class="lk-toggle ${listKarte ? 'on' : ''}" id="lkToggle">${icon(listKarte ? 'list' : 'map')}<span>${listKarte ? 'Liste' : 'Karte'}</span></button></div>
+      ${listKarte ? '<div class="pmap" id="pmap"></div><p class="hint pmap-info" id="pmapInfo">Karte wird geladen …</p>' : `<div class="plist">${shown.map((x) => `
         <button class="pcard" data-open="${x.id}" data-kind="${x.kind || ''}">
           ${x.thumb ? `<img src="${x.thumb}" alt="">` : `<span class="pc-ph">${icon('home')}</span>`}
           <span class="pc-t"><b>${esc(x.titel || x.room || 'Projekt')}</b>
             ${objektZeile(x) ? `<span class="muted">${esc(objektZeile(x))}</span>` : ''}
             <span class="pc-meta">${x.nr ? esc(x.nr) + ' · ' : ''}${x.titel && x.room ? esc(x.room) + ' · ' : ''}${fmtDay(x.updated || x.created)}</span></span>
           ${icon('chevron', 'pc-chev')}
-        </button>`).join('') || '<p class="empty">Nichts gefunden.</p>'}</div>` : `
+        </button>`).join('') || '<p class="empty">Nichts gefunden.</p>'}</div>`}` : `
       <div class="empty-state">${icon('home')}<b>${{ '': 'Keine laufenden Projekte', geplant: 'Nichts vorgesehen', fertig: 'Noch nichts abgeschlossen' }[listStatus]}</b><span>${alleP.length ? 'Den Status stellst du im Projekt direkt unter dem Kunden ein.' : 'Tippe auf „Neues Projekt“, gib den Kunden ein und füge die Räume hinzu.'}</span></div>`}`;
   $$('[data-ls]').forEach((b) => (b.onclick = () => { listStatus = b.dataset.ls; viewProjektListe(); }));
+  if ($('#lkToggle')) $('#lkToggle').onclick = () => { listKarte = !listKarte; viewProjektListe(); };
+  if (listKarte && $('#pmap')) window.Karte?.zeigen($('#pmap'), shown, $('#pmapInfo'), (id) => Projekt.oeffnen(id));
   $('#new').onclick = () => Projekt.neu();
   if ($('#toSet')) $('#toSet').onclick = () => { switchTab('einstellungen'); einstellungSeite('ki'); };
   if ($('#q')) $('#q').oninput = debounce((e) => { listFilter = e.target.value; viewProjektListe().then(() => { const i = $('#q'); if (i) { i.focus(); i.setSelectionRange(i.value.length, i.value.length); } }); }, 250);

@@ -258,9 +258,9 @@ window.Kunden = (() => {
     const all = liste();
     main().innerHTML = `
       <label class="search big">${icon('search')}<input type="search" id="kq" value="${esc(filter)}" placeholder="Name, Straße, Ort, Telefon oder Nummer" autocomplete="off"></label>
-      <button class="cta" id="kNew">
+      <button class="cta slim" id="kNew">
         <span class="cta-ico">${icon('plus')}</span>
-        <span class="cta-t"><b>Neuer Kunde</b><span>Kontaktdaten, Objekte und Projekte an einem Ort</span></span>
+        <span class="cta-t"><b>Neuer Kunde</b></span>
         ${icon('chevron', 'cta-chev')}
       </button>
       ${state.settings.apiKey ? '' : `<button class="notice" id="toSet">${icon('gear')}<span><b>KI noch nicht eingerichtet.</b> Einmalig den Google-Schlüssel in den Einstellungen eintragen.</span>${icon('chevron')}</button>`}
