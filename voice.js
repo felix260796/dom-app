@@ -90,22 +90,21 @@ ${p.transcript}` }], true);
 // ---------- Oberfläche ----------
 function voiceCard(p) {
   return `
-    <div class="card" id="voicecard">
-      <h2>🎙️ Gespräch vor Ort <span class="muted">(optional)</span></h2>
-      <p class="muted">Gespräch mit dem Kunden aufnehmen (Kunde vorher um Erlaubnis fragen). Die KI schreibt mit und übernimmt die Wünsche in die Visualisierung. Plaud oder Sprachmemos: Audio importieren oder fertiges Transkript unten einfügen.</p>
+    <div class="voice" id="voicecard">
+      <div class="voice-h"><b>Gespräch vor Ort</b><span>Die KI schreibt mit und übernimmt die Wünsche. Kunden vorher um Erlaubnis fragen.</span></div>
       <div class="row">
-        <button class="btn" id="vrec">${voice.rec ? '⏹ Aufnahme beenden' : '🎙️ Aufnahme starten'}</button>
-        <button class="btn secondary" id="vfile" ${voice.rec ? 'disabled' : ''}>📂 Audio importieren</button>
+        <button class="btn ${voice.rec ? 'rec' : ''}" id="vrec">${voice.rec ? '■ Aufnahme beenden' : '● Aufnahme starten'}</button>
+        <button class="btn secondary" id="vfile" ${voice.rec ? 'disabled' : ''}>Audio importieren</button>
       </div>
-      <p class="muted" id="vstatus">${voice.rec ? 'Aufnahme läuft …' : ''}</p>
-      <label>Kundenwünsche fürs Bild <span class="muted">(fließen in die Visualisierung ein)</span></label>
+      <p class="hint" id="vstatus">${voice.rec ? 'Aufnahme läuft …' : ''}</p>
+      <label>Kundenwünsche fürs Bild</label>
       <textarea id="wishes" placeholder="- z. B. Badewanne raus, bodengleiche Dusche&#10;- Waschtisch an die Fensterwand">${esc(p.wishes)}</textarea>
-      <label>Sonstiges fürs Angebot <span class="muted">(nicht im Bild)</span></label>
+      <label>Sonstiges fürs Angebot (nicht im Bild)</label>
       <textarea id="otherNotes" placeholder="- z. B. Budget ca. 25.000 €, Start im März">${esc(p.otherNotes)}</textarea>
-      <details ${p.transcript ? '' : 'open'} style="margin-top:10px">
-        <summary class="muted">Transkript / Gesprächsnotizen ${p.transcript ? `(${p.transcript.length} Zeichen)` : ''}</summary>
+      <details class="sub" ${p.transcript ? '' : ''}>
+        <summary>Transkript / Notizen aus Plaud ${p.transcript ? `(${p.transcript.length} Zeichen)` : ''}</summary>
         <textarea id="transcript" style="min-height:120px" placeholder="Hier erscheint das Transkript. Oder Text einfügen, z. B. die Zusammenfassung aus der Plaud-App.">${esc(p.transcript)}</textarea>
-        <button class="btn secondary small" id="vextract" style="margin-top:8px" ${p.transcript ? '' : 'disabled'}>✨ Wünsche aus Transkript ableiten</button>
+        <button class="btn secondary small" id="vextract" style="margin-top:8px" ${p.transcript ? '' : 'disabled'}>Wünsche aus Transkript ableiten</button>
       </details>
     </div>`;
 }
@@ -169,6 +168,6 @@ function bindVoice(p, persist) {
       status(`🔴 Aufnahme läuft … ${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`);
       if (s >= VOICE_MAX_MIN * 60) { toast(`Nach ${VOICE_MAX_MIN} Minuten automatisch gestoppt. Für mehr einfach neu starten.`, 5000); rec.stop(); }
     }, 1000);
-    $('#vrec').textContent = '⏹ Aufnahme beenden'; $('#vfile').disabled = true;
+    $('#vrec').textContent = '■ Aufnahme beenden'; $('#vrec').classList.add('rec'); $('#vfile').disabled = true;
   };
 }

@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <title>DOM Visualisierung</title>
+  <title>DOM</title>
   <meta name="theme-color" content="#1e3550">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="mobile-web-app-capable" content="yes">
@@ -17,27 +17,34 @@
 <body>
   <header class="topbar">
     <div class="brand-row">
-      <img class="brand" src="assets/dom_logo_weiss.png" alt="DOM Projektmanagement">
       <button class="topback" id="topback" hidden></button>
+      <img class="brand" src="assets/dom_logo_weiss.png" alt="DOM Projektmanagement">
     </div>
-    <h1 id="title">Projekt</h1>
+    <div class="titles">
+      <h1 id="title">Projekte</h1>
+      <p id="subtitle" hidden></p>
+    </div>
   </header>
   <main id="main"></main>
   <nav class="tabbar">
-    <button data-tab="projekt" class="active"><span class="ico">📷</span>Projekt</button>
-    <button data-tab="pakete"><span class="ico">🎨</span>Moodboards</button>
-    <button data-tab="einstellungen"><span class="ico">⚙️</span>Einstellungen</button>
+    <button data-tab="projekt" class="active"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 11l9-7 9 7"/><path d="M5 9.5V20h14V9.5"/><path d="M10 20v-5h4v5"/></svg><span>Projekte</span></button>
+    <button data-tab="pakete"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3a9 9 0 1 0 0 18c1.2 0 1.7-.9 1.3-1.9-.5-1.2.3-2.3 1.6-2.3H17a4 4 0 0 0 4-4C21 7.3 17 3 12 3z"/><circle cx="7.5" cy="11" r="1"/><circle cx="10.5" cy="7.5" r="1"/><circle cx="15" cy="7.8" r="1"/></svg><span>Moodboards</span></button>
+    <button data-tab="einstellungen"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h10M18 6h2M4 12h4M12 12h8M4 18h12M20 18h0"/><circle cx="16" cy="6" r="2"/><circle cx="10" cy="12" r="2"/><circle cx="18" cy="18" r="2"/></svg><span>Einstellungen</span></button>
   </nav>
   <div id="toast" class="toast" hidden></div>
   <script src="vendor/jspdf.umd.min.js"></script>
   <script src="rooms.js"></script>
+  <script src="core.js"></script>
   <script src="voice.js"></script>
-  <script src="app.js"></script>
+  <script src="moodboards.js"></script>
   <script src="backup.js"></script>
   <script src="sync.js"></script>
   <script src="social.js"></script>
   <script src="angebot.js"></script>
-  <script src="wohnung.js"></script>
   <script src="garten.js"></script>
+  <script src="pdf.js"></script>
+  <script src="baumappe.js"></script>
+  <script src="projekt.js"></script>
+  <script src="app.js"></script>
 </body>
 </html>

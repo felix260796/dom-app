@@ -77,6 +77,8 @@ window.Sync = (() => {
     for (const x of [...(local || []), ...(remote || [])]) if (x?.id && !del.has(x.id)) { const o = byId.get(x.id); if (!o || (x.updated || 0) >= (o.updated || 0)) byId.set(x.id, x); }
     return [...byId.values()].sort((a, b) => (b.created || 0) - (a.created || 0)).slice(0, 100);
   }
+  // Gelöschte Räume (project:) und Projekte (wohnung:) werden über die Liste „projectDeleted“ auf allen Geräten entfernt
+  const delId = (k) => (/^(project|wohnung):/.test(k) ? k.slice(k.indexOf(':') + 1) : '');
   const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 
   // ---------- Abgleich ----------
@@ -103,7 +105,7 @@ window.Sync = (() => {
         if (k === 'projectDeleted') tomb = v;
         meta[k] = { seen, dirty: !same(v, payload.v), t: Date.now() };
         if (!same(v, local)) { await rawPut(k, v); changed.add(k); }
-      } else if (k.startsWith('project:') && tomb.includes(k.slice(8))) {
+      } else if (delId(k) && tomb.includes(delId(k))) {
         meta[k] = { seen, dirty: false, del: true, t: Date.now() };
         if (local !== undefined) { await rawDel(k); changed.add(k); }
       } else if (!m.dirty || (payload.t || 0) >= (m.t || 0)) {
@@ -112,7 +114,7 @@ window.Sync = (() => {
       } else meta[k] = { ...m, seen }; // lokal neuer: wird gleich hochgeladen
     }
     // Auf anderem Gerät gelöschte Projekte auch hier entfernen
-    for (const id of tomb) if ((await kvGet('project:' + id)) !== undefined) { await rawDel('project:' + id); changed.add('project:' + id); }
+    for (const id of tomb) for (const pre of ['project:', 'wohnung:']) if ((await kvGet(pre + id)) !== undefined) { await rawDel(pre + id); changed.add(pre + id); }
     saveMeta();
     // 2) Hochladen, was lokal geändert wurde
     const uploaded = [];
@@ -163,6 +165,8 @@ window.Sync = (() => {
     if (changed.has('settings')) state.settings = (await kvGet('settings')) || state.settings;
     if (changed.has('boards')) state.boards = (await kvGet('boards')) || state.boards;
     if (changed.has('preisliste') || changed.has('angebotVorlagen')) toast('Preisliste/Vorlagen vom anderen Gerät übernommen. Wirksam nach Neustart der App.', 5000);
+    if (changed.has('projectIndex')) await window.Projekt?.migrate();
+    for (const k of changed) if (k.startsWith('project:') && state.project?.id !== k.slice(8)) window.Projekt?.forget(k.slice(8));
     const typing = /INPUT|TEXTAREA|SELECT/.test(document.activeElement?.tagName || '');
     if (!typing && document.getElementById('new') && state.tab === 'projekt') viewProjektListe();
     if (state.project && changed.has('project:' + state.project.id)) toast('Dieses Projekt wurde auf einem anderen Gerät geändert. Zum Aktualisieren Projekt neu öffnen.', 5000);
@@ -180,9 +184,9 @@ window.Sync = (() => {
     k = String(k);
     if (!active()) return;
     meta[k] = { ...(meta[k] || {}), dirty: true, del: true, t: Date.now() };
-    if (k.startsWith('project:')) {
+    if (delId(k)) {
       const tomb = (await kvGet('projectDeleted')) || [];
-      if (!tomb.includes(k.slice(8))) { tomb.push(k.slice(8)); await rawPut('projectDeleted', tomb); meta.projectDeleted = { ...(meta.projectDeleted || {}), dirty: true, t: Date.now() }; }
+      if (!tomb.includes(delId(k))) { tomb.push(delId(k)); await rawPut('projectDeleted', tomb); meta.projectDeleted = { ...(meta.projectDeleted || {}), dirty: true, t: Date.now() }; }
     }
     saveMeta(); runSoon();
   }

@@ -1,912 +1,79 @@
 'use strict';
-/* Sanierungs-Visualisierung – Web-App (PWA)
- * Alle Daten (Moodboards, Projekte, Einstellungen) liegen lokal auf dem Gerät (IndexedDB).
- * Komplettsicherung/Wiederherstellung als Datei: backup.js · Cloud-Abgleich (Supabase): sync.js
- * Bildbearbeitung über die Google Gemini API (Bild-Modell), direkt aus dem Browser. */
+/* DOM – Oberfläche: Kopfzeile, Navigation, Projektliste und Raum-Ansicht.
+ * Aufbau der App (bewusst flach):
+ *   Projekte (Liste)  →  Projekt (Kunde, Räume, Unterlagen)  →  Raum (Fotos, Pakete, Ergebnis)
+ * Ein Projekt hat einen oder mehrere Räume. Kundenmappe und Baumappe entstehen im Projekt.
+ * Kern-Funktionen (Speicher, KI, Bilder) stehen in core.js. */
 
-// ---------- Hilfsfunktionen ----------
-const $ = (s, el = document) => el.querySelector(s);
-const $$ = (s, el = document) => [...el.querySelectorAll(s)];
-const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
-const main = () => $('#main');
+// ---------- Symbole (einfache Linien-Icons) ----------
+const ICONS = {
+  plus: '<path d="M12 5v14M5 12h14"/>',
+  camera: '<path d="M3 8.5A2 2 0 0 1 5 6.5h2l1.6-2h6.8l1.6 2h2a2 2 0 0 1 2 2V18a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><circle cx="12" cy="13" r="3.6"/>',
+  image: '<rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="10" r="1.7"/><path d="M21 16l-5-5L6 20"/>',
+  sparkle: '<path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9z"/><path d="M19 15l.8 2.2L22 18l-2.2.8L19 21l-.8-2.2L16 18l2.2-.8z"/>',
+  file: '<path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5M9 13h6M9 17h4"/>',
+  book: '<path d="M4 5a2 2 0 0 1 2-2h13v15H6a2 2 0 0 0-2 2z"/><path d="M4 20a2 2 0 0 0 2 2h13v-4M8 7h7"/>',
+  clipboard: '<rect x="5" y="4" width="14" height="17" rx="2"/><path d="M9 4V3h6v1M9 10h6M9 14h6M9 18h3"/>',
+  ruler: '<path d="M3 17L17 3l4 4L7 21z"/><path d="M7 13l2 2M10 10l2 2M13 7l2 2"/>',
+  euro: '<path d="M17.5 6.5a6.5 6.5 0 1 0 0 11"/><path d="M4 10h9M4 14h9"/>',
+  pin: '<path d="M12 21s-7-6.2-7-11.2a7 7 0 0 1 14 0C19 14.8 12 21 12 21z"/><circle cx="12" cy="9.8" r="2.6"/>',
+  film: '<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M7 5v14M17 5v14M3 9.5h4M3 14.5h4M17 9.5h4M17 14.5h4"/>',
+  mic: '<rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/>',
+  trash: '<path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/>',
+  chevron: '<path d="M9 6l6 6-6 6"/>',
+  back: '<path d="M15 5l-7 7 7 7"/>',
+  home: '<path d="M3 11l9-7 9 7"/><path d="M5 9.5V20h14V9.5"/><path d="M10 20v-5h4v5"/>',
+  palette: '<path d="M12 3a9 9 0 1 0 0 18c1.2 0 1.7-.9 1.3-1.9-.5-1.2.3-2.3 1.6-2.3H17a4 4 0 0 0 4-4C21 7.3 17 3 12 3z"/><circle cx="7.5" cy="11" r="1"/><circle cx="10.5" cy="7.5" r="1"/><circle cx="15" cy="7.8" r="1"/>',
+  gear: '<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/>',
+  moon: '<path d="M20 13.5A8 8 0 1 1 10.5 4a6.5 6.5 0 0 0 9.5 9.5z"/>',
+  sun: '<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>',
+  check: '<path d="M5 12.5l4.5 4.5L19 7.5"/>',
+  search: '<circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4"/>',
+  refresh: '<path d="M20 11a8 8 0 1 0-2.3 5.7"/><path d="M20 4v7h-7"/>',
+  user: '<circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/>',
+  map: '<path d="M12 21s-6-5.5-6-10.5a6 6 0 0 1 12 0C18 15.5 12 21 12 21z"/><circle cx="12" cy="10.5" r="2"/>',
+  share: '<path d="M12 3v13M7 8l5-5 5 5"/><path d="M5 13v6a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-6"/>',
+  edit: '<path d="M4 20h4L19 9l-4-4L4 16z"/><path d="M14 6l4 4"/>',
+  x: '<path d="M6 6l12 12M18 6L6 18"/>',
+  up: '<path d="M6 15l6-6 6 6"/>',
+  // Raumtypen
+  'rt-bad': '<path d="M4 12h16v2.5A4.5 4.5 0 0 1 15.5 19h-7A4.5 4.5 0 0 1 4 14.5z"/><path d="M6.5 12V6.5a2.5 2.5 0 0 1 5 0"/><path d="M7.5 19l-1 2M16.5 19l1 2"/>',
+  'rt-gaeste-wc': '<path d="M7 3h5v8H7z"/><path d="M5 11h14a6 6 0 0 1-6 6h-1.5l.8 4H8.5l.7-4.4A6 6 0 0 1 5 11z"/>',
+  'rt-kueche': '<path d="M4 10h16"/><path d="M5.5 10v7a3 3 0 0 0 3 3h7a3 3 0 0 0 3-3v-7M2 10h2.5M19.5 10H22"/><path d="M9 6.5c0-1.2 1.2-1.2 1.2-2.5M13.5 6.5c0-1.2 1.2-1.2 1.2-2.5"/>',
+  'rt-wohnzimmer': '<path d="M5 11V8a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v3"/><path d="M3 12.5a2 2 0 0 1 4 0V15h10v-2.5a2 2 0 0 1 4 0V18H3z"/><path d="M5 18v2M19 18v2"/>',
+  'rt-schlafzimmer': '<path d="M3 19V6M21 19v-5.5A2.5 2.5 0 0 0 18.5 11H11v4M3 15h18"/><circle cx="7" cy="12" r="1.8"/>',
+  'rt-kinderzimmer': '<path d="M12 3.5l2.5 5.3 5.8.7-4.3 4 1.1 5.7L12 16.4l-5.1 2.8 1.1-5.7-4.3-4 5.8-.7z"/>',
+  'rt-flur': '<path d="M6 21V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v17M4 21h16"/><circle cx="14.5" cy="12" r=".9"/>',
+  'rt-treppenhaus': '<path d="M3 20h5v-4h4v-4h4V8h5"/>',
+  'rt-fassade': '<path d="M3 21V10l9-6 9 6v11z"/><path d="M9.5 21v-5h5v5M7 12h2.5M14.5 12H17"/>',
+  'rt-garten': '<path d="M12 22v-6.5"/><path d="M12 15.5a5 5 0 0 0 5-5 5 5 0 0 0-5-7.5 5 5 0 0 0-5 7.5 5 5 0 0 0 5 5z"/><path d="M8 22h8"/>',
+  'rt-heizraum': '<path d="M12 22a6.5 6.5 0 0 0 6.5-6.5c0-4.2-3.3-6.3-4.5-9.5-2 1.8-2.3 4-2.3 4s-1.3-1-1.3-3.2C7.2 9 5.5 12.2 5.5 15.5A6.5 6.5 0 0 0 12 22z"/>',
+  'rt-sonstiges': '<rect x="4" y="4" width="7" height="7" rx="1"/><rect x="13" y="4" width="7" height="7" rx="1"/><rect x="4" y="13" width="7" height="7" rx="1"/><rect x="13" y="13" width="7" height="7" rx="1"/>',
+};
+const icon = (n, cls = '') => `<svg class="i ${cls}" viewBox="0 0 24 24" aria-hidden="true">${ICONS[n] || ICONS['rt-sonstiges']}</svg>`;
+const roomIcon = (id, cls = '') => icon(ICONS['rt-' + id] ? 'rt-' + id : 'rt-sonstiges', cls);
+const fmtDay = (t) => new Date(t).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' });
 
-function toast(msg, ms = 2600) {
-  const t = $('#toast');
-  t.textContent = msg; t.hidden = false;
-  clearTimeout(toast._t); toast._t = setTimeout(() => (t.hidden = true), ms);
+// ---------- Kopfzeile & Navigation ----------
+/** Titel, Untertitel und Zurück-Knopf oben setzen. back = { label, fn } oder null. */
+function header(title, sub = '', back = null) {
+  $('#title').textContent = title;
+  const s = $('#subtitle'); s.textContent = sub || ''; s.hidden = !sub;
+  const tb = $('#topback');
+  if (back) { tb.innerHTML = `${icon('back')}<span>${esc(back.label)}</span>`; tb.hidden = false; tb.onclick = back.fn; }
+  else { tb.hidden = true; tb.onclick = null; }
 }
-function debounce(fn, ms = 400) { let t; return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), ms); }; }
+const setTitle = (t) => { $('#title').textContent = t; $('#subtitle').hidden = true; };
+// Ansichten aus angebot.js / social.js haben eigene Zurück-Knöpfe (#aBack, #soBack, #vBack). Sie werden oben gespiegelt.
+const LEGACY_BACK = '#aBack, #vBack, #soBack';
+new MutationObserver(() => {
+  const src = main().querySelector(LEGACY_BACK);
+  if (!src) return;
+  const tb = $('#topback');
+  tb.innerHTML = `${icon('back')}<span>${esc(src.textContent.replace(/^[←\s]+/, '').replace(/^Zurück zum /, '').trim() || 'Zurück')}</span>`;
+  tb.hidden = false; tb.onclick = () => src.click();
+}).observe(document.getElementById('main'), { childList: true });
 
-// ---------- Speicher (IndexedDB) ----------
-let _db;
-function db() {
-  return (_db ??= new Promise((res, rej) => {
-    const r = indexedDB.open('sanierung', 1);
-    r.onupgradeneeded = () => r.result.createObjectStore('kv');
-    r.onsuccess = () => res(r.result);
-    r.onerror = () => rej(r.error);
-  }));
-}
-async function kvGet(k) {
-  const d = await db();
-  return new Promise((res, rej) => { const q = d.transaction('kv').objectStore('kv').get(k); q.onsuccess = () => res(q.result); q.onerror = () => rej(q.error); });
-}
-async function kvSet(k, v) {
-  const d = await db();
-  return new Promise((res, rej) => { const tx = d.transaction('kv', 'readwrite'); tx.objectStore('kv').put(v, k); tx.oncomplete = () => { window.Backup?.markChange(); window.Sync?.changed(k); res(); }; tx.onerror = () => rej(tx.error); });
-}
-async function kvDel(k) {
-  const d = await db();
-  return new Promise((res, rej) => { const tx = d.transaction('kv', 'readwrite'); tx.objectStore('kv').delete(k); tx.oncomplete = () => { window.Backup?.markChange(); window.Sync?.deleted(k); res(); }; tx.onerror = () => rej(tx.error); });
-}
-
-// ---------- Bilder ----------
-function loadImg(src) {
-  return new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = () => rej(new Error('Bild konnte nicht geladen werden')); i.src = src; });
-}
-function fileToDataUrl(file) {
-  return new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(r.result); r.onerror = () => rej(r.error); r.readAsDataURL(file); });
-}
-/** Skaliert ein Bild auf maxSide und gibt eine JPEG- (oder PNG-) DataURL zurück. */
-async function resize(src, maxSide = 1600, type = 'image/jpeg', quality = 0.86) {
-  const img = await loadImg(src);
-  const s = Math.min(1, maxSide / Math.max(img.naturalWidth, img.naturalHeight));
-  const c = document.createElement('canvas');
-  c.width = Math.round(img.naturalWidth * s); c.height = Math.round(img.naturalHeight * s);
-  const g = c.getContext('2d');
-  if (type === 'image/jpeg') { g.fillStyle = '#fff'; g.fillRect(0, 0, c.width, c.height); }
-  g.drawImage(img, 0, 0, c.width, c.height);
-  return c.toDataURL(type, quality);
-}
-const b64 = (dataUrl) => dataUrl.split(',')[1];
-const mimeOf = (dataUrl) => dataUrl.slice(5, dataUrl.indexOf(';'));
-function pickFiles({ multiple = false, camera = false } = {}) {
-  return new Promise((res) => {
-    const inp = document.createElement('input');
-    inp.type = 'file'; inp.accept = 'image/*'; inp.multiple = multiple;
-    if (camera) inp.setAttribute('capture', 'environment');
-    inp.onchange = () => res([...inp.files]);
-    inp.click();
-  });
-}
-
-// ---------- Moodboards (Pakete) ----------
-// Raumtypen, Felder und Beispiel-Pakete stehen in rooms.js
-const MAX_REF_IMAGES = 6;
-
-// ---------- Zustand ----------
-const state = { tab: 'projekt', settings: null, boards: null, project: null, wohnung: null, editPkg: null, boardRoom: 'bad' };
-
-async function loadAll() {
-  state.settings = (await kvGet('settings')) || { apiKey: '', model: 'gemini-2.5-flash-image', company: 'DOM Projektmanagement GmbH', contact: 'DOM Projektmanagement GmbH', logo: null };
-  state.boards = (await kvGet('boards')) || null;
-  if (!state.boards) {
-    // Umstellung: bisherige (Bad-)Moodboards werden zu den Moodboards des Raumtyps "Badezimmer"
-    const old = await kvGet('packages');
-    state.boards = old ? { bad: old.map(migrateBathPackage) } : {};
-    await saveBoards();
-  }
-  // Beim ersten Start das DOM-Logo als Standard übernehmen
-  if (state.settings.logo === null) {
-    try { const b = await (await fetch('assets/dom_logo.png')).blob(); state.settings.logo = await fileToDataUrl(b); } catch { state.settings.logo = ''; }
-    await saveSettings();
-  }
-}
-const saveSettings = () => kvSet('settings', state.settings);
-const saveBoards = () => kvSet('boards', state.boards);
-const saveBoardsDebounced = debounce(saveBoards, 500);
-/** Moodboards (Pakete) eines Raumtyps; fehlende werden mit den Beispielen angelegt. */
-function packagesFor(rt) {
-  const list = (state.boards[rt] ??= defaultPackagesFor(rt));
-  for (const p of list) { p.images ??= []; p.products ??= []; p.fields ??= {}; }
-  return list;
-}
-/** Alte Bad-Pakete: Feld "licht" hieß dort "Spiegel & Licht" und heißt jetzt "spiegel". */
-function migrateBathPackage(p) {
-  if (p.fields?.licht && !p.fields.spiegel) { p.fields.spiegel = p.fields.licht; delete p.fields.licht; }
-  p.products ??= [];
-  return p;
-}
-const fmtPrice = (v) => (v === '' || v == null || isNaN(+v) ? '' : (+v).toLocaleString('de-DE', { style: 'currency', currency: 'EUR' }));
-const parsePrice = (s) => { const t = String(s).replace(/[^\d,.-]/g, ''); const n = parseFloat(t.includes(',') ? t.replace(/\./g, '').replace(',', '.') : t); return isNaN(n) ? '' : n; };
-const safeUrl = (u) => { const t = String(u || '').trim(); if (!t) return ''; const v = /^https?:\/\//i.test(t) ? t : 'https://' + t; try { return new URL(v).href; } catch { return ''; } };
-
-async function projectIndex() { return (await kvGet('projectIndex')) || []; }
-async function saveProject(proj) {
-  const { status, ...p } = proj;
-  await kvSet('project:' + p.id, p);
-  // Räume einer Wohnung stehen nicht einzeln in der Projektliste, sondern unter ihrer Wohnung (wohnung.js)
-  if (p.wohnungId) return window.Wohnung?.raumGespeichert(p);
-  const idx = (await projectIndex()).filter((x) => x.id !== p.id);
-  idx.unshift({ id: p.id, customer: p.customer, room: p.room, created: p.created, updated: Date.now(), thumb: p.thumb || '' });
-  await kvSet('projectIndex', idx.slice(0, 100));
-}
-async function deleteProject(id) {
-  await kvDel('project:' + id);
-  await kvSet('projectIndex', (await projectIndex()).filter((x) => x.id !== id));
-}
-
-// ---------- KI: Prompt & Gemini-Aufruf ----------
-const MAX_PHOTOS = 4;
-/** Baut die Anweisung. ctx: { others: Anzahl weiterer Raumfotos, rendered: true wenn eine fertige Ansicht als Vorlage dabei ist } */
-function buildPrompt(pkg, room, note, ctx = { others: 0, rendered: false, wishes: '' }) {
-  const rt = roomType(ctx.rt || roomTypeIdFromName(room));
-  const FIELDS = fieldsFor(rt.id);
-  const spec = FIELDS.filter(([k]) => k !== 'beschreibung' && pkg.fields[k]?.trim())
-    .map(([k, label]) => `- ${label.replace(/\s*\(.*\)/, '')}: ${pkg.fields[k].trim()}`).join('\n');
-  let n = 2;
-  const otherTxt = ctx.others ? `- Bild ${n}${ctx.others > 1 ? ` bis ${n + ctx.others - 1}` : ''}: weitere Fotos DESSELBEN Raums aus anderen Blickwinkeln (nur zum Verständnis von Grundriss, Fenstern, Anschlüssen und Größe, nicht ausgeben)\n` : '';
-  n += ctx.others;
-  const renderedTxt = ctx.rendered ? `- Bild ${n}: bereits fertig sanierte Ansicht DESSELBEN Raums in diesem Paket. Verwende EXAKT dieselben Fliesen, Farben, Möbel, Armaturen und Leuchten, damit alle Ansichten zusammenpassen\n` : '';
-  if (ctx.rendered) n += 1;
-  const refs = pkg.images.slice(0, MAX_REF_IMAGES)
-    .map((im, i) => `- Bild ${n + i}: ${im.label?.trim() || 'Referenz für Material/Stil'} (Moodboard-Vorlage, nicht als Raum übernehmen)`).join('\n');
-  const list = otherTxt + renderedTxt + (refs ? refs + '\n' : '');
-  const fieldLabel = (k) => (FIELD_LIB[k]?.[0] || '').replace(/\s*\(.*\)/, '');
-  const prods = (pkg.products || []).filter((x) => x.name?.trim())
-    .map((x) => `- ${x.area ? fieldLabel(x.area) + ': ' : ''}${x.name.trim()}`).join('\n');
-  const what = `${rt.what || (rt.outdoor ? 'eines bestehenden Gebäudes von außen' : 'eines bestehenden Raums')} (${room})`;
-  return `Du bist ein Werkzeug für fotorealistische Sanierungs-Visualisierungen.
-
-Bild 1 ist ein Foto ${what}. Bearbeite GENAU DIESES FOTO (Bild 1) so, dass es ${rt.same || (rt.outdoor ? 'dasselbe Gebäude' : 'denselben Raum')} nach einer kompletten Sanierung in der Ausstattungslinie "${pkg.name}" zeigt. Gib genau ein Bild aus: die sanierte Version von Bild 1.
-
-UNBEDINGT BEIBEHALTEN:
-- exakt dieselbe Kameraposition, Perspektive, Brennweite und Bildausschnitt wie Bild 1
-${rt.keep.map((k) => '- ' + k).join('\n')}
-
-ERNEUERN nach dieser Ausstattung:
-${spec || '- moderne, hochwertige Sanierung'}
-${prods ? `\nKONKRETE PRODUKTE (so originalgetreu wie möglich darstellen):\n${prods}\n` : ''}${list ? `\nWEITERE BILDER:\n${list}` : ''}${note?.trim() ? `\nZUSÄTZLICHER HINWEIS ZU DIESEM PROJEKT: ${note.trim()}\n` : ''}${ctx.wishes?.trim() ? `\nKUNDENWÜNSCHE AUS DEM GESPRÄCH VOR ORT (haben Vorrang vor der Ausstattung oben, wenn sie sich widersprechen; Perspektive und Raumgeometrie bleiben trotzdem gleich):\n${ctx.wishes.trim()}\n` : ''}
-Gilt eine Angabe für diesen ${rt.outdoor ? 'Bildausschnitt' : 'Raum'} nicht, lass sie weg.
-Ergebnis: fotorealistisch wie professionelle Architektur-/Interior-Fotografie, helles, freundliches Tageslicht, aufgeräumt, keine Personen, kein Text, keine Wasserzeichen, kein Baustellenzustand.`;
-}
-
-const ASPECTS = { '1:1': 1, '4:3': 4 / 3, '3:4': 3 / 4, '3:2': 3 / 2, '2:3': 2 / 3, '16:9': 16 / 9, '9:16': 9 / 16, '5:4': 5 / 4, '4:5': 4 / 5 };
-async function nearestAspect(dataUrl) {
-  const img = await loadImg(dataUrl);
-  const r = img.naturalWidth / img.naturalHeight;
-  return Object.entries(ASPECTS).sort((a, b) => Math.abs(Math.log(a[1] / r)) - Math.abs(Math.log(b[1] / r)))[0][0];
-}
-
-/** Rendert Ansicht i eines Projekts im Paket pkg. rendered = fertige Ansicht als Material-Vorlage (optional). */
-async function renderWithGemini(pkg, project, i, rendered) {
-  // Garten: Wärmepumpe an markierter Stelle einsetzen (garten.js), sonst Garten ohne Wärmepumpen-Angaben
-  if (window.Garten?.zustaendig(project)) return Garten.render(pkg, project, i, rendered);
-  pkg = window.Garten?.pkgFuer(pkg, project) || pkg;
-  const { apiKey, model } = state.settings;
-  if (!apiKey) throw new Error('Kein API-Schlüssel hinterlegt (Einstellungen).');
-  const target = project.photos[i];
-  const others = project.photos.filter((_, k) => k !== i);
-  const img = (d) => ({ inline_data: { mime_type: mimeOf(d), data: b64(d) } });
-  const parts = [{ text: buildPrompt(pkg, project.room, project.note, { others: others.length, rendered: !!rendered, wishes: project.wishes, rt: project.roomType }) }, img(target)];
-  for (const o of others) parts.push(img(o));
-  if (rendered) parts.push(img(rendered));
-  for (const im of pkg.images.slice(0, MAX_REF_IMAGES)) parts.push(img(im.data));
-  return geminiImage(parts, await nearestAspect(target));
-}
-
-/** Schickt Text + Bilder an das Gemini-Bildmodell und gibt das gelieferte Bild (max. 1600 px) zurück. */
-async function geminiImage(parts, aspectRatio) {
-  const { apiKey, model } = state.settings;
-  if (!apiKey) throw new Error('Kein API-Schlüssel hinterlegt (Einstellungen).');
-  const body = {
-    contents: [{ role: 'user', parts }],
-    generationConfig: { responseModalities: ['TEXT', 'IMAGE'], imageConfig: { aspectRatio } },
-  };
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model || 'gemini-2.5-flash-image')}:generateContent`;
-  const r = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey }, body: JSON.stringify(body) });
-  const j = await r.json().catch(() => ({}));
-  if (!r.ok) throw new Error(j.error?.message || `Fehler ${r.status}`);
-  const cand = j.candidates?.[0];
-  const imgPart = cand?.content?.parts?.find((p) => p.inlineData || p.inline_data);
-  if (!imgPart) {
-    const txt = cand?.content?.parts?.map((p) => p.text).filter(Boolean).join(' ');
-    throw new Error(txt || j.promptFeedback?.blockReason || cand?.finishReason || 'Die KI hat kein Bild geliefert. Bitte nochmal versuchen.');
-  }
-  const d = imgPart.inlineData || imgPart.inline_data;
-  return resize(`data:${d.mimeType || d.mime_type || 'image/png'};base64,${d.data}`, 1600);
-}
-
-// ---------- Lichtstimmung: Abend (warmes, gedimmtes Licht) ----------
-/** Anweisung, um eine fertige Tageslicht-Visualisierung in die Abendstimmung zu versetzen. */
-function eveningPrompt(pkg, rt) {
-  const light = rt.outdoor
-    ? `- Abenddämmerung (blaue Stunde): Himmel tiefblau bis dunkelorange, kein direktes Sonnenlicht mehr
-- Fenster leuchten von innen warmweiß, Außen- und Fassadenbeleuchtung, Wege- und Eingangslicht eingeschaltet (warmweiß, ca. 2700 K)`
-    : `- Abend nach Sonnenuntergang: durch die Fenster nur noch dunkelblaues Dämmerlicht, kein Sonnenlicht
-- alle vorhandenen Leuchten sind eingeschaltet und GEDIMMT: Einbauspots, Deckenleuchten, Wandleuchten, LED-Spiegel, indirekte Beleuchtung und beleuchtete Nischen leuchten sichtbar in warmweißem Licht (ca. 2700 K)
-- gemütliche, hochwertige Atmosphäre wie in einem Hotel: weiche Lichtkegel, sanfte Schatten, warme Reflexe auf den Oberflächen`;
-  return `Bild 1 ist eine fertige, fotorealistische Visualisierung (Ausstattungslinie "${pkg.name}") bei Tageslicht. Erzeuge GENAU DIESES BILD noch einmal, aber in Abendstimmung. Gib genau ein Bild aus.
-
-UNBEDINGT IDENTISCH LASSEN:
-- Kameraposition, Perspektive, Bildausschnitt
-- alle Materialien, Fliesen, Farben, Möbel, Armaturen, Leuchten und Gegenstände an derselben Stelle (nichts hinzufügen, nichts entfernen; nur Licht, das schon als Leuchte vorhanden ist, darf leuchten)
-
-NUR DIE LICHTSTIMMUNG ÄNDERN:
-${light}
-
-Ergebnis: fotorealistisch wie professionelle Architektur-/Interior-Fotografie am Abend, korrekt belichtet (nicht zu dunkel, Details gut erkennbar), keine Personen, kein Text, keine Wasserzeichen.`;
-}
-async function renderEvening(pkg, project, dayImg) {
-  const parts = [{ text: eveningPrompt(pkg, roomType(project.roomType)) }, { inline_data: { mime_type: mimeOf(dayImg), data: b64(dayImg) } }];
-  return geminiImage(parts, await nearestAspect(dayImg));
-}
-
-/** Ältere Projekte (ein Foto) auf das neue Format (mehrere Fotos) umstellen. */
-function normalizeProject(p) {
-  if (!p) return p;
-  if (!Array.isArray(p.photos)) p.photos = p.photo ? [p.photo] : [];
-  delete p.photo;
-  for (const k of Object.keys(p.results || {})) if (!Array.isArray(p.results[k])) p.results[k] = [p.results[k]];
-  p.results ??= {};
-  if (!p.roomType) p.roomType = roomTypeIdFromName(p.room);
-  p.room ||= roomType(p.roomType).name;
-  p.pdfProducts ??= true;
-  p.evening ??= {};
-  p.withEvening ??= false;
-  p.pdfEvening ??= true;
-  return p;
-}
-const hasAnyResult = (p) => Object.values(p.results).some((arr) => arr.some(Boolean));
-const firstResult = (p, id) => (p.results[id] || []).find(Boolean);
-const eveningOf = (p, id, i) => p.evening?.[id]?.[i] || '';
-const hasAnyEvening = (p) => Object.values(p.evening || {}).some((arr) => arr.some(Boolean));
-
-// ---------- PDF ----------
-const hexRgb = (h) => [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16));
-async function addFit(doc, dataUrl, x, y, w, h, fmt = 'JPEG') {
-  const img = await loadImg(dataUrl);
-  const s = Math.min(w / img.naturalWidth, h / img.naturalHeight);
-  const iw = img.naturalWidth * s, ih = img.naturalHeight * s;
-  doc.addImage(dataUrl, fmt, x + (w - iw) / 2, y + (h - ih) / 2, iw, ih, undefined, 'FAST');
-  return { x: x + (w - iw) / 2, y: y + (h - ih) / 2, w: iw, h: ih };
-}
-
-/** Neues PDF (A4 quer) mit gemeinsamen Helfern: Fußzeile, Seitenzähler, Logo-Format. Auch von wohnung.js genutzt. */
-function pdfStart() {
-  const { jsPDF } = window.jspdf;
-  const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
-  const S = state.settings;
-  const c = { doc, W: 297, H: 210, M: 14, S, page: 1, logoFmt: S.logo ? (mimeOf(S.logo) === 'image/png' ? 'PNG' : 'JPEG') : null };
-  c.footer = () => {
-    doc.setFontSize(8); doc.setTextColor(120);
-    doc.text(S.contact || S.company || '', c.M, c.H - 7);
-    doc.text(`KI-Visualisierung, unverbindliche Darstellung  ·  Seite ${c.page}`, c.W - c.M, c.H - 7, { align: 'right' });
-  };
-  c.newPage = () => { doc.addPage(); c.page++; };
-  c.logo = async (x, y, w, h) => { if (S.logo) await addFit(doc, S.logo, x, y, w, h, c.logoFmt); };
-  return c;
-}
-
-/** Vorher-/Nachher-Seiten eines Pakets p für ein Projekt (eine Seite pro Ansicht).
- * opt.room: Raumtitel für Wohnungs-PDFs (steht dann in der Überschrift). */
-async function pdfViewPages(c, project, p, opt = {}) {
-  const { doc, W, H, M } = c;
-  const FIELDS = fieldsFor(project.roomType);
-  const views = project.photos.map((ph, i) => [ph, project.results[p.id]?.[i], i]).filter(([, r]) => r);
-  for (const [vi, [photo, result]] of views.entries()) {
-    c.newPage();
-    const rgb = hexRgb(p.color);
-    await c.logo(M, 8, 40, 14);
-    doc.setFont('helvetica', 'bold'); doc.setFontSize(20); doc.setTextColor(...rgb);
-    doc.text(opt.room ? `${opt.room}  ·  ${p.name}` : `Paket ${p.name}`, W - M, 18, { align: 'right' });
-    doc.setFont('helvetica', 'normal'); doc.setFontSize(10); doc.setTextColor(90);
-    const sub = [views.length > 1 ? `Ansicht ${vi + 1} von ${views.length}` : '', p.fields.beschreibung || ''].filter(Boolean).join('  ·  ');
-    if (sub) doc.text(doc.splitTextToSize(sub, 170), W - M, 24, { align: 'right' });
-    doc.setFillColor(...rgb); doc.rect(M, 29, W - 2 * M, 1, 'F');
-    const bw = (W - 2 * M - 8) / 2, by = 40, bh = 108;
-    doc.setFontSize(10); doc.setFont('helvetica', 'bold'); doc.setTextColor(110);
-    doc.text('VORHER', M, by - 3); doc.setTextColor(...rgb); doc.text(`NACHHER – ${p.name.toUpperCase()}`, M + bw + 8, by - 3);
-    doc.setFont('helvetica', 'normal');
-    await addFit(doc, photo, M, by, bw, bh);
-    await addFit(doc, result, M + bw + 8, by, bw, bh);
-    // Ausstattungsliste in 3 Spalten
-    const items = FIELDS.filter(([k]) => !['beschreibung', 'sonstiges'].includes(k) && p.fields[k]?.trim());
-    doc.setFontSize(10); doc.setFont('helvetica', 'bold'); doc.setTextColor(30, 53, 80);
-    doc.text('Ausstattung', M, 156); doc.setFont('helvetica', 'normal');
-    const cols = 3, cw = (W - 2 * M - (cols - 1) * 6) / cols, perCol = Math.ceil(items.length / cols);
-    items.forEach(([k, label], n) => {
-      const col = Math.floor(n / perCol), r = n % perCol;
-      const x = M + col * (cw + 6), yy = 162 + r * 7.2;
-      if (yy > H - 12) return;
-      doc.setFontSize(7.5); doc.setTextColor(130); doc.text(label.replace(/\s*\(.*\)/, ''), x, yy);
-      doc.setFontSize(8); doc.setTextColor(40);
-      doc.text(doc.splitTextToSize(p.fields[k].trim(), cw)[0], x, yy + 3.3);
-    });
-    c.footer();
-  }
-  return views.length;
-}
-
-/** Produktseite eines Pakets anhängen (wenn Produkte gepflegt sind). */
-async function pdfProductPage(c, p, { prices, sub } = {}) {
-  if (!p.products.some((x) => x.name?.trim())) return;
-  c.newPage();
-  productPage(c.doc, p, { W: c.W, H: c.H, M: c.M, prices: !!prices, sub });
-  await c.logo(c.M, 8, 40, 14);
-  c.footer();
-}
-
-async function buildPdf(project) {
-  const c = pdfStart();
-  const { doc, W, M, S } = c;
-  const pkgs = packagesFor(project.roomType).filter((p) => firstResult(project, p.id));
-  const date = new Date(project.created).toLocaleDateString('de-DE');
-
-  // Deckblatt
-  if (S.logo) await c.logo(M, M, 60, 22);
-  else if (S.company) { doc.setFontSize(16); doc.setTextColor(30, 53, 80); doc.text(S.company, M, M + 10); }
-  doc.setTextColor(30, 53, 80);
-  doc.setFontSize(24); doc.setFont('helvetica', 'bold');
-  doc.text(pkgs.length > 1 ? 'Ihre Sanierung in\nAusstattungsvarianten' : 'Ihre Sanierung\nVisualisierung', M, 58);
-  doc.setFont('helvetica', 'normal'); doc.setFontSize(11); doc.setTextColor(70);
-  let y = 84;
-  for (const [k, v] of [['Kunde', project.customer], ['Objekt', project.address], ['Raum', project.room], ['Datum', date]]) {
-    if (!v) continue;
-    doc.setTextColor(130); doc.text(k, M, y); doc.setTextColor(40); doc.text(doc.splitTextToSize(String(v), 80), M + 22, y); y += 8;
-  }
-  doc.setFontSize(9); doc.setTextColor(130); doc.text('Ist-Zustand', 120, 26);
-  await addFit(doc, project.photos[0], 120, 28, W - M - 120, 100);
-  // Übersicht der Varianten
-  const tw = (W - 2 * M - (pkgs.length - 1) * 6) / Math.max(pkgs.length, 1);
-  for (const [i, p] of pkgs.entries()) {
-    const x = M + i * (tw + 6);
-    doc.setFillColor(...hexRgb(p.color)); doc.rect(x, 138, tw, 1.5, 'F');
-    doc.setFontSize(10); doc.setTextColor(...hexRgb(p.color)); doc.setFont('helvetica', 'bold');
-    doc.text(p.name, x, 145); doc.setFont('helvetica', 'normal');
-    await addFit(doc, firstResult(project, p.id), x, 147, tw, 48);
-  }
-  c.footer();
-
-  // Pro Paket und Ansicht eine Seite: Vorher / Nachher + Ausstattung
-  for (const p of pkgs) {
-    await pdfViewPages(c, project, p);
-    if (project.pdfProducts) await pdfProductPage(c, p, { prices: project.pdfPrices });
-  }
-  return doc;
-}
-
-/** PDF-Seite mit der Produktliste eines Pakets (klickbare Shop-Links, optional Preise). */
-function productPage(doc, p, { W, M, prices, sub }) {
-  const rgb = hexRgb(p.color);
-  const H = 210;
-  doc.setFont('helvetica', 'bold'); doc.setFontSize(20); doc.setTextColor(...rgb);
-  doc.text(`Paket ${p.name}`, W - M, 18, { align: 'right' });
-  doc.setFont('helvetica', 'normal'); doc.setFontSize(10); doc.setTextColor(90);
-  doc.text(sub ? `Ausgewählte Produkte  ·  ${sub}` : 'Ausgewählte Produkte', W - M, 24, { align: 'right' });
-  doc.setFillColor(...rgb); doc.rect(M, 29, W - 2 * M, 1, 'F');
-  const cols = prices
-    ? [['Bereich', 48], ['Produkt', 112], ['Preis', 30], ['Lieferzeit', 34], ['Link', 45]]
-    : [['Bereich', 55], ['Produkt', 145], ['Lieferzeit', 34], ['Link', 35]];
-  const xs = []; cols.reduce((x, [, w]) => (xs.push(x), x + w), M);
-  let y = 40;
-  // Die PDF-Standardschrift kennt kein € und keine Gedankenstriche
-  const pt = (t) => String(t || '').replace(/€/g, 'EUR').replace(/[–—]/g, '-').replace(/[„“”]/g, '"').replace(/[‚‘’]/g, "'");
-  const head = () => {
-    doc.setFontSize(8.5); doc.setFont('helvetica', 'bold'); doc.setTextColor(110);
-    cols.forEach(([t], i) => doc.text(t.toUpperCase(), xs[i], y));
-    doc.setFont('helvetica', 'normal'); y += 3;
-    doc.setDrawColor(220); doc.line(M, y, W - M, y); y += 6;
-  };
-  head();
-  let sum = 0, hasSum = false;
-  for (const x of p.products.filter((x) => x.name?.trim())) {
-    const area = (FIELD_LIB[x.area]?.[0] || x.area || '').replace(/\s*\(.*\)/, '');
-    const vals = { Bereich: area, Produkt: x.name.trim(), Preis: fmtPrice(x.price), Lieferzeit: x.delivery || '' };
-    const lines = cols.map(([t, w]) => (t === 'Link' ? [] : doc.splitTextToSize(pt(vals[t]), w - 4)));
-    const rowH = Math.max(1, ...lines.map((l) => l.length)) * 4.2 + 3;
-    if (y + rowH > H - 16) { doc.addPage(); y = 20; head(); }
-    doc.setFontSize(9.5); doc.setTextColor(40);
-    cols.forEach(([t], i) => {
-      if (t !== 'Link') { doc.text(lines[i], xs[i], y); return; }
-      const url = safeUrl(x.url);
-      if (url) { doc.setTextColor(37, 99, 235); doc.textWithLink('Zum Produkt', xs[i], y, { url }); doc.setTextColor(40); }
-    });
-    if (x.price !== '' && x.price != null && !isNaN(+x.price)) { sum += +x.price; hasSum = true; }
-    y += rowH; doc.setDrawColor(235); doc.line(M, y - 3.5, W - M, y - 3.5);
-  }
-  if (prices && hasSum) {
-    doc.setFont('helvetica', 'bold'); doc.setFontSize(10); doc.setTextColor(30, 53, 80);
-    doc.text('Summe Produkte', xs[1], y + 2); doc.text(pt(fmtPrice(sum)), xs[2], y + 2); doc.setFont('helvetica', 'normal');
-    doc.setFontSize(7.5); doc.setTextColor(130);
-    doc.text('Materialpreise laut Hersteller/Händler, unverbindlich, ohne Montage.', M, y + 9);
-  }
-}
-
-async function sharePdf(project) {
-  toast('PDF wird erstellt …', 8000);
-  const doc = await buildPdf(project);
-  await shareDoc(doc, `Visualisierung_${(project.customer || 'Projekt').replace(/[^\wäöüÄÖÜß-]+/g, '_')}.pdf`);
-}
-/** PDF teilen (iPhone: Teilen-Menü) oder herunterladen. */
-async function shareDoc(doc, name) {
-  const blob = doc.output('blob');
-  const file = new File([blob], name, { type: 'application/pdf' });
-  $('#toast').hidden = true;
-  if (navigator.canShare?.({ files: [file] })) {
-    try { await navigator.share({ files: [file], title: name }); return; } catch (e) { if (e.name === 'AbortError') return; }
-  }
-  const a = document.createElement('a');
-  a.href = URL.createObjectURL(blob); a.download = name; a.click();
-  setTimeout(() => URL.revokeObjectURL(a.href), 60000);
-}
-
-// ---------- Ansicht: Projekt ----------
-async function viewProjekt() {
-  const p = normalizeProject(state.project);
-  if (!p) return state.wohnung && window.Wohnung ? Wohnung.view() : viewProjektListe();
-  const isRoom = !!p.wohnungId; // Raum einer Wohnung
-  const titleOf = () => (isRoom ? `${p.room || 'Raum'} · ${p.customer || 'Wohnung'}` : p.customer || 'Neues Projekt');
-  setTitle(titleOf());
-  const pkgs = packagesFor(p.roomType);
-  const anyProducts = pkgs.some((x) => x.products.some((y) => y.name?.trim()));
-  const full = p.photos.length >= MAX_PHOTOS;
-  main().innerHTML = `
-    <div class="card">
-      <h2>1. Fotos</h2>
-      <p class="muted">1 bis ${MAX_PHOTOS} Fotos aus verschiedenen Blickwinkeln, am besten quer und aus den Ecken. Die KI nutzt alle Fotos, um den Raum besser zu verstehen, und erstellt <b>pro Foto eine Nachher-Ansicht</b> mit denselben Materialien.</p>
-      ${p.photos.length ? `<div class="thumbs">${p.photos.map((ph, i) => `
-        <div class="thumb"><img src="${ph}" alt="Ansicht ${i + 1}"><div style="padding:6px 8px;font-size:13px">Ansicht ${i + 1}</div><button class="del" data-delphoto="${i}">Entfernen</button></div>`).join('')}</div>` : ''}
-      <div class="row" style="margin-top:10px">
-        <button class="btn" id="cam" ${full ? 'disabled' : ''}>📷 Kamera</button>
-        <button class="btn secondary" id="gal" ${full ? 'disabled' : ''}>🖼️ Fotos</button>
-      </div>
-    </div>
-    <div class="card">
-      <h2>2. ${isRoom ? 'Raum' : 'Angaben'}</h2>
-      ${isRoom ? `<p class="muted">Teil der Wohnung <b>${esc(p.customer || 'ohne Namen')}</b>${p.address ? ' · ' + esc(p.address) : ''}</p>` : `
-      <label>Kunde</label><input type="text" id="customer" value="${esc(p.customer)}" placeholder="z. B. Familie Müller">
-      <label>Objekt / Adresse</label><input type="text" id="address" value="${esc(p.address)}" placeholder="z. B. Hauptstr. 5, 2. OG">`}
-      <label>Raumtyp</label><select id="roomType">${ROOM_TYPES.map((r) => `<option value="${r.id}" ${r.id === p.roomType ? 'selected' : ''}>${esc(r.name)}</option>`).join('')}</select>
-      <label>${isRoom ? 'Raumtitel (steht so im PDF)' : 'Bezeichnung im PDF'}</label><input type="text" id="room" value="${esc(p.room)}" placeholder="${isRoom ? 'z. B. Kinderzimmer 1, Bad OG' : 'z. B. Bad OG, Küche EG'}">
-      <label>Zusatzhinweis für die KI (optional)</label><textarea id="note" placeholder="z. B. Badewanne raus, dafür große Dusche">${esc(p.note)}</textarea>
-    </div>
-    ${voiceCard(p)}
-    <div id="garten-card"></div>
-    <div class="card">
-      <h2>3. Pakete visualisieren</h2>
-      <p class="muted">Moodboards für: <b>${esc(roomType(p.roomType).name)}</b></p>
-      ${pkgs.map((x) => `<label class="check"><input type="checkbox" data-sel="${x.id}" ${p.selected.includes(x.id) ? 'checked' : ''}><span class="swatch" style="background:${x.color};height:20px;width:8px"></span>${esc(x.name)}</label>`).join('')}
-      <label class="check"><input type="checkbox" id="withEvening" ${p.withEvening ? 'checked' : ''}>🌙 Zusätzlich Abendstimmung (warmes, gedimmtes Licht)</label>
-      <button class="btn block" id="go" ${p.photos.length ? '' : 'disabled'}>✨ Visualisierung erstellen</button>
-      <p class="muted">${p.photos.length > 1 ? `${p.photos.length} Ansichten × Pakete. ` : ''}Dauert ca. 10–30 Sekunden pro Bild. Die Abendstimmung kostet ein zusätzliches Bild pro Ansicht und lässt sich auch später einzeln erstellen.</p>
-    </div>
-    <div id="results">${pkgs.filter((x) => p.selected.includes(x.id) || firstResult(p, x.id)).map(resultCard).join('')}</div>
-    <div id="angebot-card"></div>
-    <div class="card">
-      ${anyProducts ? `<label class="check"><input type="checkbox" id="pdfProducts" ${p.pdfProducts ? 'checked' : ''}>Produktliste mit Shop-Links ins PDF</label>
-      <label class="check"><input type="checkbox" id="pdfPrices" ${p.pdfPrices ? 'checked' : ''} ${p.pdfProducts ? '' : 'disabled'}>Preise in der Produktliste zeigen</label>` : ''}
-      <label class="check" id="pdfEveningRow" ${hasAnyEvening(p) ? '' : 'hidden'}><input type="checkbox" id="pdfEvening" ${p.pdfEvening ? 'checked' : ''}>Abendstimmung ins PDF (eigene Seite: Tag und Abend nebeneinander)</label>
-      <button class="btn block" id="pdf" ${hasAnyResult(p) ? '' : 'disabled'}>📄 Vorher-Nachher-PDF erstellen</button>
-      <button class="btn secondary block" id="social" style="margin-top:10px" ${hasAnyResult(p) ? '' : 'disabled'}>🎬 Instagram-Video & Post</button>
-      <div class="row" style="margin-top:10px">
-        <button class="btn secondary" id="back">${isRoom ? '← Zur Wohnung' : '← Alle Projekte'}</button>
-        <button class="btn danger" id="del">${isRoom ? 'Raum löschen' : 'Projekt löschen'}</button>
-      </div>
-    </div>`;
-
-  const persist = debounce(() => saveProject(p), 400);
-  const addPhotos = async (camera) => {
-    const files = await pickFiles({ camera, multiple: !camera });
-    if (!files.length) return;
-    const free = MAX_PHOTOS - p.photos.length;
-    for (const f of files.slice(0, free)) p.photos.push(await resize(await fileToDataUrl(f), 1600));
-    if (files.length > free) toast(`Maximal ${MAX_PHOTOS} Fotos pro Projekt.`);
-    p.thumb = await resize(p.photos[0], 200);
-    await saveProject(p); viewProjekt();
-  };
-  $('#cam').onclick = () => addPhotos(true);
-  $('#gal').onclick = () => addPhotos(false);
-  $$('[data-delphoto]').forEach((b) => (b.onclick = async () => {
-    const i = +b.dataset.delphoto;
-    p.photos.splice(i, 1);
-    for (const k of Object.keys(p.results)) p.results[k].splice(i, 1);
-    for (const k of Object.keys(p.evening || {})) p.evening[k].splice(i, 1);
-    p.thumb = p.photos[0] ? await resize(p.photos[0], 200) : '';
-    await saveProject(p); viewProjekt();
-  }));
-  for (const id of ['customer', 'address', 'room', 'note']) if ($('#' + id)) $('#' + id).oninput = (e) => { p[id] = e.target.value; persist(); if (id === 'customer' || id === 'room') setTitle(titleOf()); };
-  $('#roomType').onchange = async (e) => {
-    const old = roomType(p.roomType).name;
-    p.roomType = e.target.value;
-    if (!p.room || p.room === old) p.room = roomType(p.roomType).name;
-    p.selected = packagesFor(p.roomType).map((x) => x.id);
-    await saveProject(p); viewProjekt();
-  };
-  if ($('#pdfProducts')) {
-    $('#pdfProducts').onchange = (e) => { p.pdfProducts = e.target.checked; $('#pdfPrices').disabled = !p.pdfProducts; persist(); };
-    $('#pdfPrices').onchange = (e) => { p.pdfPrices = e.target.checked; persist(); };
-  }
-  $('#withEvening').onchange = (e) => { p.withEvening = e.target.checked; persist(); };
-  $('#pdfEvening').onchange = (e) => { p.pdfEvening = e.target.checked; persist(); };
-  $$('[data-sel]').forEach((c) => (c.onchange = () => { p.selected = $$('[data-sel]').filter((x) => x.checked).map((x) => x.dataset.sel); persist(); }));
-  bindVoice(p, persist);
-  $('#go').onclick = () => runAll(p);
-  $('#pdf').onclick = () => sharePdf(p).catch((e) => toast('PDF-Fehler: ' + e.message, 5000));
-  $('#social').onclick = () => viewSocial(p).catch((e) => toast('Fehler: ' + e.message, 5000));
-  $('#back').onclick = () => { state.project = null; viewProjekt(); };
-  $('#del').onclick = async () => {
-    if (!confirm(isRoom ? `Raum „${p.room || 'Raum'}“ mit Fotos und Visualisierungen löschen?` : 'Projekt wirklich löschen?')) return;
-    await deleteProject(p.id);
-    if (isRoom) await window.Wohnung?.raumEntfernt(p);
-    state.project = null; viewProjekt();
-  };
-  bindResultButtons(p);
-  window.Angebot?.projektKarte(p);
-  window.Garten?.projektKarte(p, persist);
-}
-
-// ---------- Vorher-Nachher-Schieberegler ----------
-const moodSel = {}; // gewählte Lichtstimmung je Ansicht (nur für die Anzeige)
-/** Vorher-Foto und Nachher-Bild übereinander; mit dem Finger die Trennlinie verschieben. */
-function beforeAfter(before, after, alt) {
-  return `<div class="ba" style="--pos:50%">
-    <img class="ba-after" src="${after}" alt="${esc(alt)}" draggable="false">
-    <img class="ba-before" src="${before}" alt="Vorher" draggable="false">
-    <div class="ba-line"><span class="ba-knob">‹ ›</span></div>
-    <span class="ba-tag l">Vorher</span><span class="ba-tag r">Nachher</span>
-  </div>`;
-}
-(() => {
-  let cur = null;
-  const set = (e) => {
-    const r = cur.getBoundingClientRect();
-    cur.style.setProperty('--pos', Math.max(0, Math.min(100, ((e.clientX - r.left) / r.width) * 100)) + '%');
-  };
-  document.addEventListener('pointerdown', (e) => {
-    const el = e.target.closest?.('.ba'); if (!el) return;
-    cur = el; el.setPointerCapture?.(e.pointerId); set(e); e.preventDefault();
-  });
-  document.addEventListener('pointermove', (e) => { if (cur) set(e); });
-  const end = () => (cur = null);
-  document.addEventListener('pointerup', end);
-  document.addEventListener('pointercancel', end);
-})();
-
-function resultCard(pkg) {
-  const p = state.project;
-  const views = p.photos.map((_, i) => {
-    const key = `${pkg.id}:${i}`;
-    const st = p.status?.[key], res = p.results[pkg.id]?.[i];
-    const eve = eveningOf(p, pkg.id, i), est = p.status?.[key + ':abend'];
-    const mood = moodSel[`${p.id}:${key}`] === 'abend' && (eve || est?.loading || est?.error) ? 'abend' : 'tag';
-    let body;
-    if (st?.loading) body = `<div class="status"><div class="spinner"></div>KI arbeitet an „${esc(pkg.name)}“${p.photos.length > 1 ? `, Ansicht ${i + 1}` : ''} …</div>`;
-    else if (st?.error) body = `<div class="status err">${esc(st.error)}</div>`;
-    else if (res) {
-      const moodBar = `<div class="seg mood"><button data-mood="tag" data-pkg="${pkg.id}" data-view="${i}" class="${mood === 'tag' ? 'on' : ''}">☀️ Tageslicht</button><button data-mood="abend" data-pkg="${pkg.id}" data-view="${i}" class="${mood === 'abend' ? 'on' : ''}">🌙 Abendstimmung${eve || est?.loading ? '' : ' erstellen'}</button></div>`;
-      let pic;
-      if (mood === 'abend' && est?.loading) pic = `<div class="status"><div class="spinner"></div>KI setzt das Licht auf Abend …</div>`;
-      else if (mood === 'abend' && est?.error && !eve) pic = `<div class="status err">${esc(est.error)}</div>`;
-      else pic = beforeAfter(p.photos[i], mood === 'abend' ? eve : res, `Nachher ${pkg.name}`);
-      body = `<div style="width:100%">${moodBar}${pic}${mood === 'abend' && (eve || est?.error) && !est?.loading ? `<div style="padding:8px 10px;text-align:right"><button class="btn small secondary" data-redoeve="${pkg.id}" data-view="${i}">↻ Abend neu</button></div>` : ''}</div>`;
-    }
-    else body = '<div class="status">Noch nicht erstellt</div>';
-    const label = p.photos.length > 1 ? `<span class="muted">Ansicht ${i + 1}</span>` : '<span></span>';
-    return `<div style="border-top:1px solid var(--line)"><div class="head" style="font-weight:400;padding:6px 12px">${label}
-      ${res || st?.error ? `<button class="btn small secondary" data-redo="${pkg.id}" data-view="${i}">↻ Neu</button>` : ''}</div>
-      <div class="body">${body}</div></div>`;
-  }).join('');
-  return `<div class="result" id="res-${pkg.id}">
-    <div class="head"><span><span class="swatch" style="display:inline-block;background:${pkg.color};height:14px;width:6px;vertical-align:-1px"></span> ${esc(pkg.name)}</span>
-    ${p.photos.length > 1 && firstResult(p, pkg.id) ? `<button class="btn small secondary" data-redoall="${pkg.id}">↻ Alle neu</button>` : ''}</div>
-    ${views}
-  </div>`;
-}
-function refreshResult(pkg) {
-  const el = $('#res-' + pkg.id);
-  if (!el) { $('#results')?.insertAdjacentHTML('beforeend', resultCard(pkg)); }
-  else el.outerHTML = resultCard(pkg);
-  bindResultButtons(state.project);
-  const pdf = $('#pdf'); if (pdf) pdf.disabled = !hasAnyResult(state.project);
-  const soc = $('#social'); if (soc) soc.disabled = !hasAnyResult(state.project);
-  const er = $('#pdfEveningRow'); if (er) er.hidden = !hasAnyEvening(state.project);
-}
-function bindResultButtons(p) {
-  const pk = (id) => packagesFor(p.roomType).find((x) => x.id === id);
-  $$('[data-redo]').forEach((b) => (b.onclick = () => runView(p, pk(b.dataset.redo), +b.dataset.view)));
-  $$('[data-redoall]').forEach((b) => (b.onclick = () => runPackage(p, pk(b.dataset.redoall))));
-  $$('[data-mood]').forEach((b) => (b.onclick = () => {
-    const pkg = pk(b.dataset.pkg), i = +b.dataset.view;
-    moodSel[`${p.id}:${pkg.id}:${i}`] = b.dataset.mood;
-    if (b.dataset.mood === 'abend' && !eveningOf(p, pkg.id, i) && !p.status?.[`${pkg.id}:${i}:abend`]?.loading) runEvening(p, pkg, i);
-    else refreshResult(pkg);
-  }));
-  $$('[data-redoeve]').forEach((b) => (b.onclick = () => runEvening(p, pk(b.dataset.redoeve), +b.dataset.view)));
-}
-
-/** Eine Ansicht rendern. Für Ansicht 2+ dient die erste fertige Ansicht als Material-Vorlage. */
-async function runView(p, pkg, i) {
-  p.status ??= {};
-  const key = `${pkg.id}:${i}`;
-  p.status[key] = { loading: true };
-  if (state.project === p) refreshResult(pkg);
-  try {
-    const arr = (p.results[pkg.id] ??= []);
-    const ref = arr.find((r, k) => r && k !== i);
-    arr[i] = await renderWithGemini(pkg, p, i, ref);
-    if (p.evening?.[pkg.id]) p.evening[pkg.id][i] = ''; // alte Abendstimmung passt nicht mehr zum neuen Bild
-    p.status[key] = {};
-    await saveProject(p);
-  } catch (e) {
-    p.status[key] = { error: e.message };
-  }
-  if (state.project === p) refreshResult(pkg);
-  if (p.withEvening && p.results[pkg.id]?.[i] && !p.status[key].error) await runEvening(p, pkg, i);
-}
-/** Abendstimmung einer fertigen Ansicht erstellen (Vorlage: die Tageslicht-Visualisierung). */
-async function runEvening(p, pkg, i) {
-  const day = p.results[pkg.id]?.[i];
-  if (!day) return;
-  p.status ??= {};
-  const key = `${pkg.id}:${i}:abend`;
-  p.status[key] = { loading: true };
-  if (state.project === p) refreshResult(pkg);
-  try {
-    const img = await renderEvening(pkg, p, day);
-    if (p.results[pkg.id]?.[i] === day) { (p.evening[pkg.id] ??= [])[i] = img; await saveProject(p); }
-    p.status[key] = {};
-  } catch (e) {
-    p.status[key] = { error: e.message };
-  }
-  if (state.project === p) refreshResult(pkg);
-}
-/** Alle Ansichten eines Pakets: erst Ansicht 1, dann die übrigen mit Ansicht 1 als Vorlage. */
-async function runPackage(p, pkg) {
-  p.results[pkg.id] = [];
-  await runView(p, pkg, 0);
-  await Promise.all(p.photos.slice(1).map((_, k) => runView(p, pkg, k + 1)));
-}
-async function runAll(p) {
-  if (!state.settings.apiKey) { toast('Bitte zuerst in den Einstellungen den API-Schlüssel eintragen.', 4000); return; }
-  const pkgs = packagesFor(p.roomType).filter((x) => p.selected.includes(x.id));
-  if (!pkgs.length) { toast('Bitte mindestens ein Paket auswählen.'); return; }
-  await Promise.all(pkgs.map((pkg) => runPackage(p, pkg)));
-  const total = pkgs.length * p.photos.length;
-  const ok = pkgs.reduce((n, x) => n + (p.results[x.id] || []).filter(Boolean).length, 0);
-  toast(ok === total ? 'Fertig! Jetzt kannst du das PDF erstellen.' : `${ok} von ${total} Bildern fertig. Fehlgeschlagene mit „Neu“ wiederholen.`, 4000);
-}
-
-async function viewProjektListe() {
-  setTitle('Projekte');
-  const idx = await projectIndex();
-  main().innerHTML = `
-    <div class="card">
-      <h2>Neues Projekt</h2>
-      <p class="muted">Foto machen, Pakete auswählen, KI-Visualisierung und Vorher-Nachher-PDF für den Kunden.</p>
-      <button class="btn block" id="new">＋ Neues Projekt starten</button>
-      <button class="btn secondary block" id="newWohnung" style="margin-top:10px">🏠 Neue Wohnung (mehrere Räume)</button>
-      ${state.settings.apiKey ? '' : '<p class="muted" style="margin-top:10px">⚠️ Noch kein API-Schlüssel hinterlegt. Bitte zuerst unter <a href="#" id="toSet">Einstellungen</a> eintragen.</p>'}
-    </div>
-    <div id="backupHint"></div>
-    ${idx.length ? `<div class="card"><h2>Letzte Projekte</h2>${idx.map((x) => `
-      <div class="list-item" ${x.kind === 'wohnung' ? 'data-wohnung' : 'data-open'}="${x.id}">${x.thumb ? `<img src="${x.thumb}" alt="">` : '<div style="width:56px;height:56px;background:#eee;border-radius:8px"></div>'}
-      <div><div>${x.kind === 'wohnung' ? '🏠 ' : ''}<b>${esc(x.customer || 'Ohne Namen')}</b></div><div class="muted">${esc(x.room || '')} · ${new Date(x.created).toLocaleDateString('de-DE')}</div></div></div>`).join('')}</div>` : ''}`;
-  $('#new').onclick = () => {
-    state.project = { id: uid(), created: Date.now(), customer: '', address: '', roomType: ROOM_TYPES[0].id, room: ROOM_TYPES[0].name, note: '', photos: [], thumb: '', results: {}, selected: packagesFor(ROOM_TYPES[0].id).map((x) => x.id), pdfProducts: true, pdfPrices: false };
-    viewProjekt();
-  };
-  $('#newWohnung').onclick = () => window.Wohnung?.neu();
-  $$('[data-wohnung]').forEach((el) => (el.onclick = () => window.Wohnung?.oeffnen(el.dataset.wohnung)));
-  window.Backup?.hinweis($('#backupHint'));
-  $('#toSet') && ($('#toSet').onclick = (e) => { e.preventDefault(); switchTab('einstellungen'); });
-  $$('[data-open]').forEach((el) => (el.onclick = async () => { state.project = normalizeProject(await kvGet('project:' + el.dataset.open)); viewProjekt(); }));
-}
-
-// ---------- Ansicht: Moodboards ----------
-function viewPakete() {
-  if (state.editPkg) return viewPaketEdit(state.editPkg);
-  setTitle('Moodboards');
-  const rt = state.boardRoom;
-  const pkgs = packagesFor(rt);
-  main().innerHTML = `
-    <div class="card">
-      <h2>Deine Ausstattungspakete</h2>
-      <p class="muted">Jeder Raumtyp hat eigene Moodboards. Lege pro Paket fest, wie der Raum nach der Sanierung aussehen soll: per Text, mit Referenzbildern und mit echten Produkten (Shop-Link, Preis, Lieferzeit).</p>
-      <label>Raumtyp</label>
-      <select id="boardRoom">${ROOM_TYPES.map((r) => `<option value="${r.id}" ${r.id === rt ? 'selected' : ''}>${esc(r.name)}</option>`).join('')}</select>
-      <div class="pkg-list" style="margin-top:12px">${pkgs.map((p) => `
-        <div class="pkg" data-edit="${p.id}"><span class="swatch" style="background:${p.color}"></span>
-        <div style="flex:1"><div class="name">${esc(p.name)}</div><div class="muted">${esc(p.fields.beschreibung || '')}</div><div class="muted">${p.images.length} Bild(er) · ${p.products.length} Produkt(e)</div></div><span>›</span></div>`).join('')}</div>
-    </div>
-    <div class="card">
-      <h2>Sicherung</h2>
-      <p class="muted">Nur die Moodboards (alle Raumtypen) als Datei sichern oder auf ein anderes Gerät übertragen (z. B. vom PC aufs iPhone).</p>
-      <div class="row"><button class="btn secondary" id="exp">⬇️ Exportieren</button><button class="btn secondary" id="imp">⬆️ Importieren</button></div>
-      <button class="btn danger block" id="reset" style="margin-top:10px">${esc(roomType(rt).name)}: auf Beispiel-Pakete zurücksetzen</button>
-    </div>`;
-  $('#boardRoom').onchange = (e) => { state.boardRoom = e.target.value; viewPakete(); };
-  $$('[data-edit]').forEach((el) => (el.onclick = () => { state.editPkg = el.dataset.edit; viewPakete(); }));
-  $('#exp').onclick = () => {
-    const blob = new Blob([JSON.stringify({ version: 2, boards: state.boards })], { type: 'application/json' });
-    const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'moodboards.json'; a.click();
-  };
-  $('#imp').onclick = () => {
-    const inp = document.createElement('input'); inp.type = 'file'; inp.accept = '.json,application/json';
-    inp.onchange = async () => {
-      try {
-        const data = JSON.parse(await inp.files[0].text());
-        if (data.boards && typeof data.boards === 'object') state.boards = { ...state.boards, ...data.boards };
-        else if (Array.isArray(data.packages)) state.boards.bad = data.packages.map(migrateBathPackage); // alte Sicherung (nur Bad)
-        else throw new Error('Keine Moodboard-Datei');
-        await saveBoards(); toast('Moodboards importiert'); viewPakete();
-      } catch (e) { toast('Import fehlgeschlagen: ' + e.message, 4000); }
-    };
-    inp.click();
-  };
-  $('#reset').onclick = async () => {
-    if (!confirm(`Moodboards für „${roomType(rt).name}“ durch die Beispiel-Pakete ersetzen? Bilder und Produkte dieses Raumtyps gehen verloren.`)) return;
-    state.boards[rt] = defaultPackagesFor(rt); await saveBoards(); viewPakete();
-  };
-}
-
-function productRow(x, i, fields) {
-  const url = safeUrl(x.url);
-  return `<div class="product">
-    <div class="row">
-      <div style="flex:2"><label>Bereich</label><select data-prod="${i}" data-k="area"><option value="">–</option>${fields.filter(([k]) => k !== 'beschreibung').map(([k, l]) => `<option value="${k}" ${k === x.area ? 'selected' : ''}>${esc(l.replace(/\s*\(.*\)/, ''))}</option>`).join('')}</select></div>
-      <div style="flex:3"><label>Produkt (Hersteller, Serie, Farbe)</label><input type="text" data-prod="${i}" data-k="name" value="${esc(x.name)}" placeholder="z. B. Hansgrohe Talis E, Mattschwarz"></div>
-    </div>
-    <label>Shop-Link</label>
-    <div class="row" style="flex-wrap:nowrap"><input type="url" inputmode="url" data-prod="${i}" data-k="url" value="${esc(x.url)}" placeholder="https://…" style="flex:1">
-      <a class="btn small secondary" style="flex:none" data-prodlink="${i}" href="${esc(url || '#')}" target="_blank" rel="noopener" ${url ? '' : 'hidden'}>Öffnen ↗</a></div>
-    <div class="row">
-      <div><label>Preis (€, brutto)</label><input type="text" inputmode="decimal" data-prod="${i}" data-k="price" value="${x.price === '' || x.price == null ? '' : esc((+x.price).toFixed(2).replace('.', ','))}" placeholder="z. B. 249,90"></div>
-      <div><label>Lieferzeit</label><input type="text" data-prod="${i}" data-k="delivery" value="${esc(x.delivery)}" placeholder="z. B. 2–3 Wochen"></div>
-    </div>
-    <div class="row" style="margin-top:8px">
-      <button class="btn small secondary" data-prodimg="${i}">📷 Produktbild als Referenz</button>
-      <button class="btn small danger" data-delprod="${i}">Entfernen</button>
-    </div>
-  </div>`;
-}
-
-function viewPaketEdit(id) {
-  const rt = state.boardRoom;
-  const FIELDS = fieldsFor(rt);
-  const p = packagesFor(rt).find((x) => x.id === id);
-  if (!p) { state.editPkg = null; return viewPakete(); }
-  const sum = p.products.reduce((n, x) => n + (x.price === '' || x.price == null || isNaN(+x.price) ? 0 : +x.price), 0);
-  setTitle(`${p.name} · ${roomType(rt).name}`);
-  main().innerHTML = `
-    <button class="btn secondary small" id="back" style="margin-bottom:12px">← Zurück</button>
-    <div class="card">
-      <h2>Allgemein</h2>
-      <p class="muted">Raumtyp: <b>${esc(roomType(rt).name)}</b></p>
-      <div class="row"><div style="flex:3"><label>Name des Pakets</label><input type="text" id="pname" value="${esc(p.name)}"></div>
-      <div style="flex:1"><label>Farbe</label><input type="color" id="pcolor" value="${p.color}" style="width:100%;height:44px;border:0;background:none"></div></div>
-    </div>
-    <div class="card">
-      <h2>Referenzbilder</h2>
-      <p class="muted">Fotos von Fliesen, Armaturen, Farbmustern oder Beispielräumen. Beschrifte jedes Bild (z. B. „Wandfliese“, „Armatur Waschtisch“), damit die KI weiß, wofür es steht. Die ersten ${MAX_REF_IMAGES} Bilder werden verwendet.</p>
-      <div class="thumbs">${p.images.map((im, i) => `
-        <div class="thumb"><img src="${im.data}" alt=""><input type="text" data-label="${i}" value="${esc(im.label)}" placeholder="Wofür steht das Bild?"><button class="del" data-delimg="${i}">Entfernen</button></div>`).join('')}</div>
-      <button class="btn secondary block" id="addimg" style="margin-top:10px">＋ Bilder hinzufügen</button>
-    </div>
-    <div class="card">
-      <h2>Produkte</h2>
-      <p class="muted">Echte Produkte mit Shop-Link, Preis und Lieferzeit. Die KI bekommt die Produktnamen als Vorgabe, im PDF erscheint auf Wunsch eine Produktliste mit klickbaren Links. Tipp: Im Shop den Link kopieren und hier einfügen.</p>
-      <div id="prods">${p.products.map((x, i) => productRow(x, i, FIELDS)).join('')}</div>
-      ${p.products.length ? `<p class="muted" id="psum">Summe: <b>${fmtPrice(sum)}</b></p>` : ''}
-      <button class="btn secondary block" id="addprod" style="margin-top:10px">＋ Produkt hinzufügen</button>
-    </div>
-    <div class="card">
-      <h2>Ausstattung</h2>
-      <p class="muted">Je genauer, desto besser trifft die KI dein Paket. Leere Felder werden ignoriert.</p>
-      ${FIELDS.map(([k, label, ph]) => `<label>${esc(label)}</label><textarea data-field="${k}" placeholder="${esc(ph)}" rows="2">${esc(p.fields[k] || '')}</textarea>`).join('')}
-    </div>`;
-  const rerender = async () => { await saveBoards(); const y = window.scrollY; viewPaketEdit(id); window.scrollTo(0, y); };
-  $('#back').onclick = () => { saveBoards(); state.editPkg = null; viewPakete(); };
-  $('#pname').oninput = (e) => { p.name = e.target.value; setTitle(`${p.name} · ${roomType(rt).name}`); saveBoardsDebounced(); };
-  $('#pcolor').oninput = (e) => { p.color = e.target.value; saveBoardsDebounced(); };
-  $$('[data-field]').forEach((t) => (t.oninput = () => { p.fields[t.dataset.field] = t.value; saveBoardsDebounced(); }));
-  $$('[data-label]').forEach((t) => (t.oninput = () => { p.images[+t.dataset.label].label = t.value; saveBoardsDebounced(); }));
-  $$('[data-delimg]').forEach((b) => (b.onclick = async () => { p.images.splice(+b.dataset.delimg, 1); rerender(); }));
-  $('#addimg').onclick = async () => {
-    const files = await pickFiles({ multiple: true });
-    for (const f of files) p.images.push({ id: uid(), label: '', data: await resize(await fileToDataUrl(f), 1024) });
-    rerender();
-  };
-  // Produkte
-  $$('[data-prod]').forEach((el) => {
-    const x = p.products[+el.dataset.prod], k = el.dataset.k;
-    el.oninput = () => {
-      x[k] = k === 'price' ? parsePrice(el.value) : el.value;
-      if (k === 'price' && $('#psum')) $('#psum').innerHTML = `Summe: <b>${fmtPrice(p.products.reduce((n, y) => n + (y.price === '' || isNaN(+y.price) ? 0 : +y.price), 0))}</b>`;
-      saveBoardsDebounced();
-    };
-    if (k === 'url') el.addEventListener('input', () => {
-      const a = $(`[data-prodlink="${el.dataset.prod}"]`), u = safeUrl(el.value);
-      a.hidden = !u; a.href = u || '#';
-    });
-  });
-  $$('[data-delprod]').forEach((b) => (b.onclick = () => { if (!confirm('Produkt entfernen?')) return; p.products.splice(+b.dataset.delprod, 1); rerender(); }));
-  $$('[data-prodimg]').forEach((b) => (b.onclick = async () => {
-    const x = p.products[+b.dataset.prodimg];
-    const [f] = await pickFiles(); if (!f) return;
-    const area = (FIELD_LIB[x.area]?.[0] || '').replace(/\s*\(.*\)/, '');
-    p.images.push({ id: uid(), label: [area, x.name].filter(Boolean).join(': ') || 'Produkt', data: await resize(await fileToDataUrl(f), 1024) });
-    toast('Produktbild bei den Referenzbildern ergänzt');
-    rerender();
-  }));
-  $('#addprod').onclick = () => { p.products.push({ id: uid(), area: '', name: '', url: '', price: '', delivery: '' }); rerender(); };
-}
-
-// ---------- Ansicht: Einstellungen ----------
-function viewEinstellungen() {
-  setTitle('Einstellungen');
-  const S = state.settings;
-  main().innerHTML = `
-    <div class="card">
-      <h2>Firma</h2>
-      <label>Firmenname</label><input type="text" id="company" value="${esc(S.company)}" placeholder="z. B. Muster Projektentwicklung GmbH">
-      <label>Kontaktzeile für die PDF-Fußzeile</label><input type="text" id="contact" value="${esc(S.contact)}" placeholder="Firma · Straße · Tel. · www">
-      <label>Logo</label>
-      ${S.logo ? `<img class="logo-prev" src="${S.logo}" alt="Logo">` : ''}
-      <div class="row" style="margin-top:8px"><button class="btn secondary" id="logo">Logo wählen</button>${S.logo ? '<button class="btn danger" id="nologo">Entfernen</button>' : ''}</div>
-    </div>
-    <div class="card">
-      <h2>KI-Bildbearbeitung (Google Gemini)</h2>
-      <p class="muted">Schlüssel kostenlos erstellen unter <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">aistudio.google.com/apikey</a>. Abgerechnet wird pro Bild bei Google. Der Schlüssel bleibt nur auf diesem Gerät gespeichert.</p>
-      <label>API-Schlüssel</label><input type="password" id="apiKey" value="${esc(S.apiKey)}" placeholder="AIza…" autocomplete="off">
-      <label>Modell</label>
-      <select id="model">${S.modelList?.length ? S.modelList.map((m) => `<option value="${esc(m.id)}" ${m.id === S.model ? 'selected' : ''}>${esc(m.label)}</option>`).join('') : `
-        <option value="gemini-2.5-flash-image" ${S.model === 'gemini-2.5-flash-image' ? 'selected' : ''}>Gemini 2.5 Flash Image (schnell, günstig)</option>
-        <option value="gemini-3-pro-image-preview" ${S.model === 'gemini-3-pro-image-preview' ? 'selected' : ''}>Gemini 3 Pro Image (beste Qualität, teurer)</option>
-        ${['gemini-2.5-flash-image', 'gemini-3-pro-image-preview'].includes(S.model) ? '' : `<option selected value="${esc(S.model)}">${esc(S.model)}</option>`}`}
-      </select>
-      <p class="muted">Tipp: Nach dem Eintragen des Schlüssels auf „Verbindung testen“ tippen. Dann zeigt die Liste alle aktuell verfügbaren Bild-Modelle von Google. Für beste Qualität das „Pro“-Modell wählen.</p>
-      <label>Eigenes Modell (optional, überschreibt Auswahl)</label><input type="text" id="modelCustom" placeholder="Modell-ID">
-      <button class="btn secondary block" id="test" style="margin-top:12px">Verbindung testen & Modelle laden</button>
-    </div>
-    <div id="angebot-settings"></div>
-    <div id="sync-settings"></div>
-    <div id="backup-settings"></div>`;
-  const save = debounce(saveSettings, 300);
-  for (const id of ['company', 'contact', 'apiKey']) $('#' + id).oninput = (e) => { S[id] = e.target.value.trim(); save(); };
-  $('#model').onchange = (e) => { S.model = e.target.value; save(); };
-  $('#modelCustom').oninput = (e) => { if (e.target.value.trim()) { S.model = e.target.value.trim(); save(); } };
-  $('#logo').onclick = async () => {
-    const [f] = await pickFiles(); if (!f) return;
-    S.logo = await resize(await fileToDataUrl(f), 800, 'image/png'); await saveSettings(); viewEinstellungen();
-  };
-  $('#nologo') && ($('#nologo').onclick = async () => { S.logo = ''; await saveSettings(); viewEinstellungen(); });
-  window.Angebot?.einstellungenKarte();
-  window.Sync?.einstellungenKarte($('#sync-settings'));
-  window.Backup?.einstellungenKarte($('#backup-settings'));
-  $('#test').onclick = async () => {
-    if (!S.apiKey) { toast('Bitte zuerst den API-Schlüssel eintragen.'); return; }
-    try {
-      // Alle verfügbaren Modelle laden und die Bild-Modelle zur Auswahl anbieten
-      const r = await fetch('https://generativelanguage.googleapis.com/v1beta/models?pageSize=1000', { headers: { 'x-goog-api-key': S.apiKey } });
-      const j = await r.json().catch(() => ({}));
-      if (!r.ok) { toast(`❌ ${j.error?.message || r.status}`, 6000); return; }
-      const imgModels = (j.models || [])
-        .filter((m) => /image/i.test(m.name) && !/imagen/i.test(m.name) && (m.supportedGenerationMethods || []).includes('generateContent'))
-        .map((m) => ({ id: m.name.replace(/^models\//, ''), label: m.displayName || m.name }));
-      if (!imgModels.length) { toast('✅ Schlüssel ok, aber kein Bild-Modell gefunden.', 6000); return; }
-      const sel = $('#model');
-      sel.innerHTML = imgModels.map((m) => `<option value="${esc(m.id)}" ${m.id === S.model ? 'selected' : ''}>${esc(m.label)}</option>`).join('');
-      if (!imgModels.some((m) => m.id === S.model)) { S.model = imgModels[0].id; sel.value = S.model; await saveSettings(); }
-      S.modelList = imgModels; await saveSettings();
-      toast(`✅ Verbunden. ${imgModels.length} Bild-Modell(e) gefunden, ausgewählt: ${sel.selectedOptions[0].textContent}`, 6000);
-    } catch (e) { toast('❌ ' + e.message, 6000); }
-  };
-}
-
-// ---------- Navigation ----------
-function setTitle(t) { $('#title').textContent = t; }
-// Zurück-Knopf oben: spiegelt den Zurück-Knopf der jeweiligen Ansicht (falls vorhanden)
-const BACK_SEL = '#back, #aBack, #vBack, #soBack, #wBack';
-function syncTopBack() {
-  const tb = $('#topback'), src = main().querySelector(BACK_SEL);
-  if (!src) { tb.hidden = true; tb.onclick = null; return; }
-  tb.textContent = src.textContent.trim().startsWith('←') ? src.textContent.trim() : '← ' + src.textContent.trim();
-  tb.hidden = false;
-  tb.onclick = () => src.click();
-}
-new MutationObserver(syncTopBack).observe(document.getElementById('main'), { childList: true, subtree: true });
 function switchTab(tab) {
   state.tab = tab;
   $$('.tabbar button').forEach((b) => b.classList.toggle('active', b.dataset.tab === tab));
@@ -915,11 +82,261 @@ function switchTab(tab) {
 }
 $$('.tabbar button').forEach((b) => (b.onclick = () => {
   if (b.dataset.tab === 'pakete') { state.editPkg = null; if (state.project?.roomType) state.boardRoom = state.project.roomType; }
+  // Erneutes Tippen auf „Projekte“ führt zurück zur Liste
+  if (b.dataset.tab === 'projekt' && state.tab === 'projekt') { state.project = null; state.wohnung = null; }
   switchTab(b.dataset.tab);
 }));
 
+/** Auswahlfenster von unten. items: [{ label, sub?, icon?, color?, value }] → Promise<value|null>.
+ * text: Platzhalter für ein freies Textfeld (Ergebnis dann { text }). */
+function sheet(title, items, { text } = {}) {
+  return new Promise((res) => {
+    const el = document.createElement('div');
+    el.className = 'sheet-bg';
+    el.innerHTML = `<div class="sheet" role="dialog" aria-label="${esc(title)}"><div class="sheet-h"><b>${esc(title)}</b><button class="icon-btn" data-x aria-label="Schließen">${icon('x')}</button></div>
+      ${text ? `<div class="sheet-text"><input type="text" id="sheetText" placeholder="${esc(text)}"><button class="btn" id="sheetOk">OK</button></div>` : ''}
+      <div class="sheet-list">${items.map((it, i) => `<button class="sheet-item" data-i="${i}">${it.icon ? `<span class="si-ico" ${it.color ? `style="--c:${it.color}"` : ''}>${it.icon}</span>` : ''}<span class="si-t"><b>${esc(it.label)}</b>${it.sub ? `<span>${esc(it.sub)}</span>` : ''}</span></button>`).join('')}</div></div>`;
+    const close = (v) => { el.classList.remove('on'); setTimeout(() => el.remove(), 180); res(v); };
+    el.onclick = (e) => { if (e.target === el || e.target.closest('[data-x]')) close(null); };
+    $$('[data-i]', el).forEach((b) => (b.onclick = () => close(items[+b.dataset.i].value)));
+    if (text) { const ok = () => { const v = $('#sheetText', el).value.trim(); if (v) close({ text: v }); }; $('#sheetOk', el).onclick = ok; $('#sheetText', el).onkeydown = (e) => e.key === 'Enter' && ok(); }
+    document.body.appendChild(el);
+    requestAnimationFrame(() => el.classList.add('on'));
+  });
+}
+
+// ---------- Projektliste ----------
+let listFilter = '';
+async function viewProjektListe() {
+  header('Projekte', state.settings.company || '');
+  const idx = await projectIndex();
+  const q = listFilter.trim().toLowerCase();
+  const shown = q ? idx.filter((x) => `${x.customer} ${x.address || ''} ${x.room || ''}`.toLowerCase().includes(q)) : idx;
+  main().innerHTML = `
+    <button class="cta" id="new">
+      <span class="cta-ico">${icon('plus')}</span>
+      <span class="cta-t"><b>Neues Projekt</b><span>Kunde anlegen, Räume fotografieren, Mappe erstellen</span></span>
+      ${icon('chevron', 'cta-chev')}
+    </button>
+    ${state.settings.apiKey ? '' : `<button class="notice" id="toSet">${icon('gear')}<span><b>KI noch nicht eingerichtet.</b> Einmalig den Google-Schlüssel in den Einstellungen eintragen.</span>${icon('chevron')}</button>`}
+    <div id="backupHint"></div>
+    ${idx.length ? `
+      <div class="sec-h"><h2>Deine Projekte</h2><span class="count">${idx.length}</span></div>
+      ${idx.length > 5 ? `<label class="search">${icon('search')}<input type="search" id="q" value="${esc(listFilter)}" placeholder="Kunde, Adresse oder Raum suchen"></label>` : ''}
+      <div class="plist">${shown.map((x) => `
+        <button class="pcard" data-open="${x.id}" data-kind="${x.kind || ''}">
+          ${x.thumb ? `<img src="${x.thumb}" alt="">` : `<span class="pc-ph">${icon('home')}</span>`}
+          <span class="pc-t"><b>${esc(x.customer || 'Ohne Namen')}</b>
+            ${x.address ? `<span class="muted">${esc(x.address)}</span>` : ''}
+            <span class="pc-meta">${esc(x.room || '')}${x.room ? ' · ' : ''}${fmtDay(x.updated || x.created)}</span></span>
+          ${icon('chevron', 'pc-chev')}
+        </button>`).join('') || '<p class="empty">Nichts gefunden.</p>'}</div>` : `
+      <div class="empty-state">${icon('home')}<b>Noch keine Projekte</b><span>Tippe auf „Neues Projekt“, gib den Kunden ein und füge die Räume hinzu.</span></div>`}`;
+  $('#new').onclick = () => Projekt.neu();
+  if ($('#toSet')) $('#toSet').onclick = () => switchTab('einstellungen');
+  if ($('#q')) $('#q').oninput = debounce((e) => { listFilter = e.target.value; viewProjektListe().then(() => { const i = $('#q'); if (i) { i.focus(); i.setSelectionRange(i.value.length, i.value.length); } }); }, 250);
+  $$('[data-open]').forEach((el) => (el.onclick = async () => {
+    if (el.dataset.kind === 'wohnung') return Projekt.oeffnen(el.dataset.open);
+    // Altes Einzelprojekt (wird beim Start normalerweise umgestellt)
+    const p = normalizeProject(await kvGet('project:' + el.dataset.open));
+    if (p) { state.wohnung = null; state.project = p; viewProjekt(); }
+  }));
+  window.Backup?.hinweis($('#backupHint'));
+}
+
+// ---------- Raum ----------
+const uiOpen = { more: false };
+async function viewProjekt() {
+  const p = normalizeProject(state.project);
+  if (!p) return state.wohnung ? Projekt.view() : viewProjektListe();
+  const w = state.wohnung;
+  const rt = roomType(p.roomType);
+  const backToProject = () => { state.project = null; viewProjekt(); window.scrollTo(0, 0); };
+  header(p.room || rt.name, [w?.customer || p.customer, rt.name].filter(Boolean).join(' · '), { label: w ? 'Projekt' : 'Projekte', fn: backToProject });
+  const pkgs = packagesFor(p.roomType);
+  const full = p.photos.length >= MAX_PHOTOS;
+  const visible = pkgs.filter((x) => firstResult(p, x.id) || Object.keys(p.status || {}).some((k) => k.startsWith(x.id + ':') && (p.status[k].loading || p.status[k].error)));
+  const nImg = p.photos.length * p.selected.length;
+  const marks = window.Baumappe?.anzahl(p) || 0;
+  const am = p.aufmass?.raeume || [], qm = am.reduce((s, r) => s + (window.Angebot?._intern.masse(r).boden || 0), 0);
+  main().innerHTML = `
+    <div class="card room-head">
+      <span class="rh-ico">${roomIcon(rt.id)}</span>
+      <div class="rh-f">
+        <input type="text" id="room" class="title-in" value="${esc(p.room)}" placeholder="${esc(rt.name)}" aria-label="Raumtitel">
+        <select id="roomType" aria-label="Raumtyp">${ROOM_TYPES.map((r) => `<option value="${r.id}" ${r.id === p.roomType ? 'selected' : ''}>${esc(r.name)}</option>`).join('')}</select>
+      </div>
+    </div>
+
+    <section class="step">
+      <div class="step-h"><span class="num">1</span><h2>Fotos</h2><span class="step-x">${p.photos.length} von ${MAX_PHOTOS}</span></div>
+      <div class="card">
+        <div class="photos">${p.photos.map((ph, i) => `
+          <div class="ph"><img src="${ph}" alt="Ansicht ${i + 1}"><span class="ph-n">${i + 1}</span><button class="ph-x" data-delphoto="${i}" aria-label="Foto entfernen">${icon('x')}</button></div>`).join('')}
+          ${full ? '' : `<button class="ph-add" id="cam">${icon('camera')}<span>Kamera</span></button><button class="ph-add" id="gal">${icon('image')}<span>Fotos</span></button>`}
+        </div>
+        <p class="hint">${p.photos.length ? 'Jedes Foto wird eine eigene Nachher-Ansicht. Die KI nutzt alle Fotos, um den Raum zu verstehen.' : 'Am besten quer und aus den Ecken fotografieren, bis zu 4 Blickwinkel.'}</p>
+      </div>
+    </section>
+
+    <section class="step">
+      <div class="step-h"><span class="num">2</span><h2>Pakete</h2></div>
+      <div class="card">
+        <div class="chips">${pkgs.map((x) => `<button class="chip ${p.selected.includes(x.id) ? 'on' : ''}" data-sel="${x.id}" style="--c:${x.color}">${icon('check', 'chip-ck')}${esc(x.name)}</button>`).join('')}</div>
+        <label class="toggle"><input type="checkbox" id="withEvening" ${p.withEvening ? 'checked' : ''}><span class="tg"></span><span>${icon('moon')} Zusätzlich Abendstimmung</span></label>
+        <details class="more" id="more" ${uiOpen.more ? 'open' : ''}>
+          <summary>${icon('mic')}<span>Hinweise & Kundenwünsche<small>${[p.note?.trim() && 'Hinweis', p.wishes?.trim() && 'Wünsche', p.transcript?.trim() && 'Gespräch'].filter(Boolean).join(' · ') || 'optional'}</small></span>${icon('chevron', 'more-chev')}</summary>
+          <label>Hinweis für die KI</label><textarea id="note" placeholder="${esc(rt.id === 'garten' ? 'z. B. Terrasse vergrößern, Wärmepumpe links neben die Tür' : 'z. B. Badewanne raus, dafür große Dusche')}">${esc(p.note)}</textarea>
+          ${voiceCard(p)}
+        </details>
+        <div id="garten-card"></div>
+        <button class="btn big block" id="go" ${p.photos.length && p.selected.length ? '' : 'disabled'}>${icon('sparkle')} Visualisieren</button>
+        <p class="hint center" id="goInfo">${p.photos.length ? `${nImg} ${nImg === 1 ? 'Bild' : 'Bilder'}${p.withEvening ? ' + Abendstimmung' : ''} · ca. 10–30 Sekunden pro Bild` : 'Zuerst ein Foto machen.'}</p>
+      </div>
+    </section>
+
+    <section class="step">
+      <div class="step-h"><span class="num">3</span><h2>Ergebnis</h2></div>
+      <div id="results">${visible.length ? visible.map(resultCard).join('') : `<div class="card empty-res">${icon('sparkle')}<span>Hier erscheinen die Nachher-Bilder. Mit dem Regler vergleichst du Vorher und Nachher.</span></div>`}</div>
+      <button class="btn secondary block" id="toMappe" ${hasAnyResult(p) && w ? '' : 'hidden'}>${icon('book')} Zur Kundenmappe</button>
+    </section>
+
+    <section class="step">
+      <div class="step-h"><span class="num">4</span><h2>Weiter mit diesem Raum</h2></div>
+      <div class="tiles">
+        <button class="tile" id="toAngebot"><span class="t-ico">${icon('ruler')}</span><b>Aufmaß & Angebot</b><span>${qm ? `${qm.toLocaleString('de-DE', { maximumFractionDigits: 1 })} m²${p.angebot?.nr ? ' · Nr. ' + esc(p.angebot.nr) : ''}` : 'Maße, Preise, Bauzeit'}</span></button>
+        <button class="tile" id="toMarks" ${hasAnyResult(p) ? '' : 'disabled'}><span class="t-ico">${icon('pin')}</span><b>Markierungen</b><span>${marks ? `${marks} für die Baumappe` : 'Nummern für die Baumappe'}</span></button>
+        <button class="tile" id="social" ${hasAnyResult(p) ? '' : 'disabled'}><span class="t-ico">${icon('film')}</span><b>Instagram</b><span>Video & Post</span></button>
+      </div>
+    </section>
+    <button class="link-danger" id="del">${icon('trash')} Raum löschen</button>`;
+
+  const persist = debounce(() => saveProject(p), 400);
+  const rerender = async () => { await saveProject(p); const y = window.scrollY; await viewProjekt(); window.scrollTo(0, y); };
+  const addPhotos = async (camera) => {
+    const files = await pickFiles({ camera, multiple: !camera });
+    if (!files.length) return;
+    const free = MAX_PHOTOS - p.photos.length;
+    for (const f of files.slice(0, free)) p.photos.push(await resize(await fileToDataUrl(f), 1600));
+    if (files.length > free) toast(`Maximal ${MAX_PHOTOS} Fotos pro Raum.`);
+    p.thumb = await resize(p.photos[0], 240);
+    rerender();
+  };
+  if ($('#cam')) { $('#cam').onclick = () => addPhotos(true); $('#gal').onclick = () => addPhotos(false); }
+  $$('[data-delphoto]').forEach((b) => (b.onclick = async () => {
+    const i = +b.dataset.delphoto;
+    if (Object.values(p.results).some((a) => a[i]) && !confirm('Foto mit den zugehörigen Nachher-Bildern entfernen?')) return;
+    p.photos.splice(i, 1);
+    for (const k of Object.keys(p.results)) p.results[k].splice(i, 1);
+    for (const k of Object.keys(p.evening || {})) p.evening[k].splice(i, 1);
+    window.Baumappe?.fotoEntfernt(p, i);
+    p.thumb = p.photos[0] ? await resize(p.photos[0], 240) : '';
+    rerender();
+  }));
+  $('#room').oninput = (e) => { p.room = e.target.value; persist(); $('#title').textContent = p.room || rt.name; };
+  $('#roomType').onchange = async (e) => {
+    const old = roomType(p.roomType).name;
+    p.roomType = e.target.value;
+    if (!p.room || p.room === old) p.room = roomType(p.roomType).name;
+    p.selected = packagesFor(p.roomType).map((x) => x.id);
+    rerender();
+  };
+  $('#note').oninput = (e) => { p.note = e.target.value; persist(); };
+  $('#more').ontoggle = (e) => { uiOpen.more = e.target.open; };
+  const updGoInfo = () => {
+    const n = p.photos.length * p.selected.length;
+    $('#go').disabled = !n;
+    if (p.photos.length) $('#goInfo').textContent = n ? `${n} ${n === 1 ? 'Bild' : 'Bilder'}${p.withEvening ? ' + Abendstimmung' : ''} · ca. 10–30 Sekunden pro Bild` : 'Bitte mindestens ein Paket wählen.';
+  };
+  $('#withEvening').onchange = (e) => { p.withEvening = e.target.checked; persist(); updGoInfo(); };
+  $$('[data-sel]').forEach((c) => (c.onclick = () => {
+    c.classList.toggle('on');
+    p.selected = $$('[data-sel]').filter((x) => x.classList.contains('on')).map((x) => x.dataset.sel);
+    persist(); updGoInfo();
+  }));
+  bindVoice(p, persist);
+  $('#go').onclick = async () => {
+    if (!state.settings.apiKey) return toast('Bitte zuerst in den Einstellungen den API-Schlüssel eintragen.', 4000);
+    const done = packagesFor(p.roomType).filter((x) => p.selected.includes(x.id) && firstResult(p, x.id));
+    if (done.length && !confirm(`${done.map((x) => x.name).join(', ')} ${done.length === 1 ? 'ist' : 'sind'} schon fertig und ${done.length === 1 ? 'wird' : 'werden'} neu erstellt. Weiter?`)) return;
+    setTimeout(() => $('#results')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 150);
+    runAll(p);
+  };
+  $('#toMappe').onclick = () => w && Projekt.mappeView(w);
+  $('#toAngebot').onclick = () => window.Angebot?.ansicht(p);
+  $('#toMarks').onclick = () => window.Baumappe?.markierungen(p);
+  $('#social').onclick = () => viewSocial(p).catch((e) => toast('Fehler: ' + e.message, 5000));
+  $('#del').onclick = async () => {
+    if (!confirm(`Raum „${p.room || rt.name}“ mit Fotos und Visualisierungen löschen?`)) return;
+    await deleteProject(p.id);
+    if (p.wohnungId) await window.Projekt?.raumEntfernt(p);
+    backToProject();
+  };
+  bindResultButtons(p);
+  window.Garten?.projektKarte(p, persist);
+}
+
+// ---------- Ergebnis-Karten ----------
+function resultCard(pkg) {
+  const p = state.project;
+  const multi = p.photos.length > 1;
+  const views = p.photos.map((_, i) => {
+    const key = `${pkg.id}:${i}`;
+    const st = p.status?.[key], res = p.results[pkg.id]?.[i];
+    const eve = eveningOf(p, pkg.id, i), est = p.status?.[key + ':abend'];
+    const mood = moodSel[`${p.id}:${key}`] === 'abend' && (eve || est?.loading || est?.error) ? 'abend' : 'tag';
+    let body;
+    if (st?.loading) body = `<div class="status"><div class="spinner"></div>KI gestaltet „${esc(pkg.name)}“${multi ? `, Ansicht ${i + 1}` : ''} …</div>`;
+    else if (st?.error) body = `<div class="status err">${esc(st.error)}</div>`;
+    else if (res) {
+      if (mood === 'abend' && est?.loading) body = `<div class="status"><div class="spinner"></div>KI setzt das Licht auf Abend …</div>`;
+      else if (mood === 'abend' && est?.error && !eve) body = `<div class="status err">${esc(est.error)}</div>`;
+      else body = beforeAfter(p.photos[i], mood === 'abend' ? eve : res, `Nachher ${pkg.name}`);
+    } else body = '<div class="status">Noch nicht erstellt</div>';
+    const moodBar = res && !st?.loading ? `<div class="mood"><button data-mood="tag" data-pkg="${pkg.id}" data-view="${i}" class="${mood === 'tag' ? 'on' : ''}">${icon('sun')} Tag</button><button data-mood="abend" data-pkg="${pkg.id}" data-view="${i}" class="${mood === 'abend' ? 'on' : ''}">${icon('moon')} Abend${eve || est?.loading ? '' : ' +'}</button></div>` : '<span></span>';
+    const actions = [mood === 'abend' && (eve || est?.error) && !est?.loading ? `<button class="mini" data-redoeve="${pkg.id}" data-view="${i}">Abend neu</button>` : '',
+      (res || st?.error) && !st?.loading ? `<button class="mini" data-redo="${pkg.id}" data-view="${i}">${icon('refresh')} Neu</button>` : ''].join('');
+    return `<div class="rview">${multi ? `<div class="rv-n">Ansicht ${i + 1}</div>` : ''}<div class="rv-body">${body}</div><div class="rv-bar">${moodBar}<span class="rv-act">${actions}</span></div></div>`;
+  }).join('');
+  return `<div class="result" id="res-${pkg.id}" style="--c:${pkg.color}">
+    <div class="r-head"><span class="r-name"><i></i>${esc(pkg.name)}</span><span class="r-desc">${esc(pkg.fields?.beschreibung || '')}</span></div>
+    ${views}
+  </div>`;
+}
+function refreshResult(pkg) {
+  const p = state.project;
+  if (!$('#results')) return;
+  const el = $('#res-' + pkg.id);
+  $('.empty-res')?.remove();
+  if (!el) {
+    // in Paket-Reihenfolge einfügen
+    const order = packagesFor(p.roomType).map((x) => x.id);
+    const next = $$('#results .result').find((r) => order.indexOf(r.id.slice(4)) > order.indexOf(pkg.id));
+    if (next) next.insertAdjacentHTML('beforebegin', resultCard(pkg)); else $('#results').insertAdjacentHTML('beforeend', resultCard(pkg));
+  } else el.outerHTML = resultCard(pkg);
+  bindResultButtons(p);
+  const any = hasAnyResult(p);
+  if ($('#toMappe')) $('#toMappe').hidden = !any || !state.wohnung;
+  for (const id of ['#social', '#toMarks']) if ($(id)) $(id).disabled = !any;
+}
+function bindResultButtons(p) {
+  const pk = (id) => packagesFor(p.roomType).find((x) => x.id === id);
+  $$('[data-redo]').forEach((b) => (b.onclick = () => runView(p, pk(b.dataset.redo), +b.dataset.view)));
+  $$('[data-mood]').forEach((b) => (b.onclick = () => {
+    const pkg = pk(b.dataset.pkg), i = +b.dataset.view;
+    moodSel[`${p.id}:${pkg.id}:${i}`] = b.dataset.mood;
+    if (b.dataset.mood === 'abend' && !eveningOf(p, pkg.id, i) && !p.status?.[`${pkg.id}:${i}:abend`]?.loading) {
+      if (!state.settings.apiKey) return toast('Bitte zuerst in den Einstellungen den API-Schlüssel eintragen.', 4000);
+      runEvening(p, pkg, i);
+    } else refreshResult(pkg);
+  }));
+  $$('[data-redoeve]').forEach((b) => (b.onclick = () => runEvening(p, pk(b.dataset.redoeve), +b.dataset.view)));
+}
+
+// ---------- Start ----------
 (async () => {
   await loadAll();
+  try { await Projekt.migrate(); } catch (e) { console.error('Umstellung', e); }
   navigator.storage?.persist?.();
   switchTab('projekt');
   if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js');

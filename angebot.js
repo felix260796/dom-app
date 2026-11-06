@@ -23,6 +23,14 @@ const Angebot = (() => {
     if (PL) return PL;
     PL = await kvGet('preisliste');
     if (!PL) { PL = await (await fetch('data/preisliste.json')).json(); PL.stand = 'Standard (Schätzpreise)'; }
+    else {
+      // Eigene (Excel-)Preisliste: neue Standard-Positionen (z. B. Wärmepumpe WP-…, HZ-…) ergänzen, wenn sie fehlen
+      try {
+        const std = await (await fetch('data/preisliste.json')).json();
+        const have = new Set(PL.positionen.map((x) => x.nr));
+        for (const x of std.positionen) if (/^(WP|HZ)-/.test(x.nr) && !have.has(x.nr)) PL.positionen.push({ ...x, status: x.status || 'geschätzt' });
+      } catch {}
+    }
     return PL;
   }
   const pos = (nr) => PL.positionen.find((x) => x.nr === nr);
@@ -83,7 +91,7 @@ const Angebot = (() => {
   // ---------- Aufmaß ----------
   const BRUESTUNG = 0.9; // Standard-Brüstungshöhe Fenster
   const neuerRaum = (name = 'Badezimmer') => ({ id: uid(), name, typ: name, teile: [{ l: '', b: '' }], h: '2,50', oeff: [{ art: 'Tür', n: 1, b: '0,885', h: '2,01' }, { art: 'Fenster', n: 1, b: '1,0', h: '1,2' }], dusche: /bad/i.test(name), duschwand: /bad/i.test(name) ? '1,8' : '', umfang: '', notiz: '', skizze: '' });
-  const gruppe = (typ) => (/bad|wc|dusch/i.test(typ) ? 'nass' : /k(ü|ue)che/i.test(typ) ? 'kueche' : /fassade|au(ß|ss)en/i.test(typ) ? 'aussen' : 'wohn');
+  const gruppe = (typ) => (/bad|wc|dusch/i.test(typ) ? 'nass' : /k(ü|ue)che/i.test(typ) ? 'kueche' : /garten/i.test(typ) ? 'garten' : /heiz|technik/i.test(typ) ? 'technik' : /fassade|au(ß|ss)en/i.test(typ) ? 'aussen' : 'wohn');
 
   /** Flächen und Längen eines Raums. Zusatzflächen werden als an der kürzeren Seite angesetzt gerechnet. */
   function masse(r) {
@@ -102,11 +110,13 @@ const Angebot = (() => {
       tueren: oeff.filter((o) => o.art === 'Tür').reduce((s, o) => s + o.n, 0),
       fenster: oeff.filter((o) => o.art === 'Fenster').reduce((s, o) => s + o.n, 0),
       tuerbreite, sockel: Math.max(0, umfang - tuerbreite), duschwand, dusche: r.dusche ? 1 : 0,
+      // Garten mit Wärmepumpe (garten.js überträgt die Werte ins Aufmaß)
+      wp: r.wp ? 1 : 0, fundament: r.wp ? Math.max(num(r.fl), 0) * Math.max(num(r.fb), 0) : 0, leitung: r.wp ? num(r.leitung) : 0,
     };
   }
 
   // Mengenformeln: Zahlen, Variablen aus masse(), + - * / ( ), Funktionen wandbis(x), aufrunden(x), max(a; b), min(a; b)
-  const VARS = ['boden', 'decke', 'umfang', 'hoehe', 'wand', 'oeffnungen', 'tueren', 'fenster', 'tuerbreite', 'sockel', 'duschwand', 'dusche'];
+  const VARS = ['boden', 'decke', 'umfang', 'hoehe', 'wand', 'oeffnungen', 'tueren', 'fenster', 'tuerbreite', 'sockel', 'duschwand', 'dusche', 'wp', 'fundament', 'leitung'];
   const FUNCS = ['wandbis', 'aufrunden', 'max', 'min'];
   function rechne(formel, m) {
     const src = String(formel ?? '').trim().replace(/(\d),(\d)/g, '$1.$2').replace(/;/g, ',');
@@ -124,6 +134,8 @@ const Angebot = (() => {
   const FL_HALB = 'wandbis(1.2) + duschwand*(hoehe-1.2)'; // halbhoch, Dusche raumhoch
   const DEFAULT_VORLAGEN = {
     basic: {
+      garten: [['AL-01', '1'], ['GA-03', 'boden*0.1', 'Bodenaushub'], ['GA-04', 'boden*0.3', 'Terrasse / Wege'], ['GA-05', 'umfang*0.3'], ['GA-06', 'boden*0.5'], ['WP-01', 'fundament', 'Fundament Wärmepumpe'], ['WP-02', 'wp'], ['WP-03', 'leitung'], ['WP-04', 'wp']],
+      technik: [['AL-01', '1'], ['HZ-01', '1'], ['MA-02', 'wand + decke'], ['MA-03', 'wand + decke'], ['RE-01', 'boden']],
       aussen: [['AL-01', '1'], ['GA-08', 'wand + 10', 'Fassadenfläche + Überstand'], ['MA-01', 'umfang*2', 'Abdecken Fenster/Boden'], ['MA-02', 'wand'], ['MA-03', 'wand', 'Fassadenfarbe 2×'], ['RE-01', 'umfang*2']],
       nass: [['AL-01', '1'], ['RB-01', FL_HALB, 'Bestandsfliesen'], ['RB-02', 'boden'], ['EN-03', `aufrunden((${FL_HALB} + boden)/8)`], ['ST-01', '4', 'für Leitungen'],
         ['AB-01', 'boden + duschwand*2', 'Boden + Duschbereich'], ['AB-02', 'umfang + 4'], ['AB-03', '4'], ['FL-01', FL_HALB, 'halbhoch, Dusche raumhoch'], ['FL-02', 'boden'],
@@ -134,6 +146,8 @@ const Angebot = (() => {
         ['MA-03', 'wand + decke'], ['BO-01', 'boden'], ['MT-03', 'boden*1.08', 'inkl. 8 % Verschnitt'], ['BO-08', 'sockel'], ['RE-01', 'boden']],
     },
     standard: {
+      garten: [['AL-01', '1'], ['GA-03', 'boden*0.15', 'Bodenaushub'], ['GA-04', 'boden*0.35', 'Terrasse / Wege'], ['GA-05', 'umfang*0.4'], ['GA-06', 'boden*0.45'], ['GA-07', 'umfang*0.5'], ['WP-01', 'fundament', 'Fundament Wärmepumpe'], ['WP-02', 'wp'], ['WP-03', 'leitung'], ['WP-04', 'wp'], ['WP-05', 'wp']],
+      technik: [['AL-01', '1'], ['HZ-01', '1'], ['EN-02', '1'], ['MA-02', 'wand + decke'], ['MA-05', 'wand + decke'], ['MA-03', 'wand + decke'], ['RE-01', 'boden']],
       aussen: [['AL-01', '1'], ['GA-08', 'wand + 10', 'Fassadenfläche + Überstand'], ['MA-01', 'umfang*2', 'Abdecken Fenster/Boden'], ['PE-01', 'wand*0.15', 'Putzausbesserung ca. 15 %'], ['MA-02', 'wand'], ['MA-03', 'wand', 'Silikonharz-Fassadenfarbe 2×'], ['RE-01', 'umfang*2']],
       nass: [['AL-01', '1'], ['AL-03', '1'], ['RB-01', FL_HALB, 'Bestandsfliesen'], ['RB-02', 'boden'], ['EN-03', `aufrunden((${FL_HALB} + boden)/8)`], ['ST-01', '6', 'für Leitungen'], ['ST-03', '6'],
         ['PE-03', 'boden'], ['PE-05', 'dusche'], ['AB-01', 'boden + duschwand*2', 'Boden + Duschbereich'], ['AB-02', 'umfang + 4'], ['AB-03', '4'], ['FL-03', `${FL_HALB} + boden`, 'Großformat 60×120, Nassbereich raumhoch'],
@@ -145,6 +159,8 @@ const Angebot = (() => {
         ['PE-03', 'boden'], ['BO-02', 'boden'], ['MT-04', 'boden*1.08', 'inkl. 8 % Verschnitt'], ['BO-08', 'sockel'], ['MA-10', 'tueren'], ['RE-01', 'boden']],
     },
     premium: {
+      garten: [['AL-01', '1'], ['GA-01', 'umfang*0.3', 'Leitungen / Drainage'], ['GA-03', 'boden*0.2', 'Bodenaushub'], ['GA-04', 'boden*0.4', 'Terrasse / Wege'], ['GA-05', 'umfang*0.5'], ['GA-06', 'boden*0.4'], ['GA-07', 'umfang*0.6'], ['WP-01', 'fundament', 'Fundament Wärmepumpe'], ['WP-02', 'wp'], ['WP-03', 'leitung'], ['WP-04', 'wp'], ['WP-05', 'wp']],
+      technik: [['AL-01', '1'], ['HZ-01', '1'], ['EN-02', '1'], ['MA-02', 'wand + decke'], ['MA-06', 'wand + decke'], ['MA-03', 'wand + decke'], ['RE-01', 'boden']],
       aussen: [['AL-01', '1'], ['GA-08', 'wand + 10', 'Fassadenfläche + Überstand'], ['MA-01', 'umfang*2', 'Abdecken Fenster/Boden'], ['PE-01', 'wand', 'neuer Oberputz'], ['MA-02', 'wand'], ['MA-03', 'wand', 'Silikonharz-Fassadenfarbe 2×'], ['MA-03', 'umfang*0.5', 'Sockel / Faschen farbig abgesetzt'], ['RE-01', 'umfang*2']],
       nass: [['AL-01', '1'], ['AL-03', '1'], ['RB-01', 'wand', 'Bestandsfliesen'], ['RB-02', 'boden'], ['EN-03', 'aufrunden((wand + boden)/8)'], ['ST-01', '8', 'für Leitungen'], ['ST-03', '8'],
         ['TB-03', 'duschwand*hoehe', 'Vorwand Dusche / WC'], ['PE-03', 'boden'], ['PE-05', 'dusche'], ['AB-01', 'boden + duschwand*2', 'Boden + Duschbereich'], ['AB-02', 'umfang + 4'], ['AB-03', '6'],
@@ -165,14 +181,14 @@ const Angebot = (() => {
     return VORL;
   }
   const vorlageFuer = (pkgId, grp) => (VORL[pkgId] || VORL.standard)[grp] || [];
-  const GRUPPEN = { nass: 'Bad / WC', kueche: 'Küche', wohn: 'Wohnräume, Flur, Treppenhaus & Sonstige', aussen: 'Fassade / Außen' };
+  const GRUPPEN = { nass: 'Bad / WC', kueche: 'Küche', wohn: 'Wohnräume, Flur, Treppenhaus & Sonstige', aussen: 'Fassade / Außen', garten: 'Garten (inkl. Wärmepumpe)', technik: 'Heizraum / Technik' };
 
   /** Positionen eines Pakets aus dem Aufmaß aller Räume erzeugen. Allgemeine Positionen (AL) nur einmal. */
   function erzeuge(p, pkgId) {
     const out = [], fehler = [], einmal = new Set();
     for (const r of p.aufmass.raeume) {
       const m = masse(r);
-      if (!m.boden) continue;
+      if (!m.boden && !m.wp) continue;
       for (const v of vorlageFuer(pkgId, gruppe(r.typ))) {
         const it = pos(v.nr);
         if (!it) { fehler.push(`${v.nr} nicht in der Preisliste`); continue; }
@@ -210,6 +226,7 @@ const Angebot = (() => {
     { name: 'Bodenbeläge', gewerke: ['Bodenbeläge'], rate: { 'm²': 25, lfm: 40, Stück: 10 }, nr: { 'BO-05': 15, 'BO-06': 20 } },
     { name: 'Türen', gewerke: ['Türen'], rate: { Stück: 3 } },
     { name: 'Endmontage Sanitär & Elektro (Fachbetrieb)', fachbetrieb: 2 },
+    { name: 'Wärmepumpe: Fundament & Leitungsweg', gewerke: ['Wärmepumpe'], rate: { 'm²': 1, Stück: 2, lfm: 12, pauschal: 2 }, trocknung: { 'WP-01': 5 } },
     { name: 'Außenarbeiten', gewerke: ['Garten und Außen'], rate: { 'm²': 15, lfm: 20, 'm³': 15 } },
     { name: 'Endreinigung & Abnahme', gewerke: ['Reinigung'], rate: { 'm²': 80 }, min: 0.5 },
   ];
@@ -851,6 +868,6 @@ Gib Länge (längere Seite) und Breite der Grundfläche, Raumhöhe, Anzahl und G
     $('#vReset').onclick = async () => { if (!confirm('Alle Paket-Vorlagen zurücksetzen?')) return; await kvDel('angebotVorlagen'); VORL = null; vorlagenView(pkgId, grp); };
   }
 
-  return { projektKarte, ansicht, einstellungenKarte, _intern: { materialliste, uebernimmSchaetzung, masse, rechne, erzeuge, summen, bauzeit, ep, lohnEp, preisliste, vorlagen, neuerRaum, baueAngebotPdf, importExcel } };
+  return { projektKarte, ansicht, einstellungenKarte, _intern: { gruppe, materialliste, uebernimmSchaetzung, masse, rechne, erzeuge, summen, bauzeit, ep, lohnEp, preisliste, vorlagen, neuerRaum, baueAngebotPdf, importExcel } };
 })();
 window.Angebot = Angebot;
