@@ -83,7 +83,7 @@ window.Sync = (() => {
     return [...byId.values()].sort((a, b) => (b.created || 0) - (a.created || 0));
   }
   // Gelöschte Räume (project:) und Projekte (wohnung:) werden über die Liste „projectDeleted“ auf allen Geräten entfernt
-  const delId = (k) => (/^(project|wohnung|kunde|bild):/.test(k) ? k.slice(k.indexOf(':') + 1) : '');
+  const delId = (k) => (/^(project|wohnung|kunde|bild|termin|partner|pdok):/.test(k) ? k.slice(k.indexOf(':') + 1) : '');
   const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 
   // ---------- Abgleich ----------
@@ -119,7 +119,7 @@ window.Sync = (() => {
       } else meta[k] = { ...m, seen }; // lokal neuer: wird gleich hochgeladen
     }
     // Auf anderem Gerät gelöschte Projekte auch hier entfernen
-    for (const id of tomb) for (const pre of ['project:', 'wohnung:', 'kunde:', 'bild:']) if ((await kvGet(pre + id)) !== undefined) { await rawDel(pre + id); changed.add(pre + id); }
+    for (const id of tomb) for (const pre of ['project:', 'wohnung:', 'kunde:', 'bild:', 'termin:', 'partner:', 'pdok:']) if ((await kvGet(pre + id)) !== undefined) { await rawDel(pre + id); changed.add(pre + id); }
     saveMeta();
     // 2) Hochladen, was lokal geändert wurde
     const uploaded = [];
@@ -172,6 +172,8 @@ window.Sync = (() => {
     if (changed.has('preisliste') || changed.has('angebotVorlagen')) toast('Preisliste/Vorlagen vom anderen Gerät übernommen. Wirksam nach Neustart der App.', 5000);
     if (changed.has('projectIndex')) await window.Projekt?.migrate();
     if ([...changed].some((k) => k.startsWith('kunde:'))) await window.Kunden?.laden();
+    if ([...changed].some((k) => k.startsWith('partner:'))) await window.Partner?.laden();
+    if ([...changed].some((k) => k.startsWith('termin:'))) { await window.Kalender?.laden(); window.Kalender?.punkt(); }
     if (changed.has('projectIndex')) { await window.Kunden?.migrate(); await window.Kunden?.nummern(); }
     for (const k of changed) if (k.startsWith('project:') && state.project?.id !== k.slice(8)) window.Projekt?.forget(k.slice(8));
     const typing = /INPUT|TEXTAREA|SELECT/.test(document.activeElement?.tagName || '');

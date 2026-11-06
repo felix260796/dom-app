@@ -43,6 +43,7 @@ const ICONS = {
   edit: '<path d="M4 20h4L19 9l-4-4L4 16z"/><path d="M14 6l4 4"/>',
   x: '<path d="M6 6l12 12M18 6L6 18"/>',
   up: '<path d="M6 15l6-6 6 6"/>',
+  calendar: '<rect x="3.5" y="5" width="17" height="15.5" rx="2.5"/><path d="M3.5 10h17M8 3v4M16 3v4"/><path d="M7.5 13.5h2M11 13.5h2M14.5 13.5h2M7.5 17h2M11 17h2"/>',
   // Raumtypen
   'rt-bad': '<path d="M4 12h16v2.5A4.5 4.5 0 0 1 15.5 19h-7A4.5 4.5 0 0 1 4 14.5z"/><path d="M6.5 12V6.5a2.5 2.5 0 0 1 5 0"/><path d="M7.5 19l-1 2M16.5 19l1 2"/>',
   'rt-gaeste-wc': '<path d="M7 3h5v8H7z"/><path d="M5 11h14a6 6 0 0 1-6 6h-1.5l.8 4H8.5l.7-4.4A6 6 0 0 1 5 11z"/>',
@@ -85,21 +86,21 @@ new MutationObserver(() => {
 const tabState = {};
 function switchTab(tab, restore) {
   if (state.tab !== tab || restore) {
-    tabState[state.tab] = { project: state.project, wohnung: state.wohnung, kunde: state.kunde, objekt: state.objekt };
+    tabState[state.tab] = { project: state.project, wohnung: state.wohnung, kunde: state.kunde, objekt: state.objekt, partner: state.partner };
     const s = restore || tabState[tab] || {};
-    state.project = s.project || null; state.wohnung = s.wohnung || null; state.kunde = s.kunde || null; state.objekt = s.objekt || null;
+    state.project = s.project || null; state.wohnung = s.wohnung || null; state.kunde = s.kunde || null; state.objekt = s.objekt || null; state.partner = s.partner || null;
   }
-  state.tab = tab;
+  state.tab = tab; state.kalender = false;
   $$('.tabbar button').forEach((b) => b.classList.toggle('active', b.dataset.tab === tab));
   window.scrollTo(0, 0);
   if (tab === 'einstellungen') state.editPkg = null;
-  ({ kunden: viewProjekt, projekt: viewProjekt, schnell: () => Schnell.view(), einstellungen: viewEinstellungen })[tab]();
+  ({ kunden: viewProjekt, partner: () => Partner.start(), projekt: viewProjekt, schnell: () => Schnell.view(), einstellungen: viewEinstellungen })[tab]();
 }
 /** Reiter wechseln und dort direkt etwas öffnen, z. B. openTab('kunden', { kunde }). */
 window.openTab = (tab, s) => switchTab(tab, s);
 $$('.tabbar button').forEach((b) => (b.onclick = () => {
   // Erneutes Tippen auf den aktiven Reiter führt zurück zur Liste
-  if (b.dataset.tab === state.tab) { state.project = null; state.wohnung = null; state.kunde = null; }
+  if (b.dataset.tab === state.tab && !state.kalender) { state.project = null; state.wohnung = null; state.kunde = null; state.objekt = null; state.partner = null; }
   switchTab(b.dataset.tab);
 }));
 
@@ -122,12 +123,14 @@ function sheet(title, items, { text, value = '' } = {}) {
 }
 
 // ---------- Projektliste ----------
-let listFilter = '';
+let listFilter = '', listFertig = false;
 async function viewProjektListe() {
-  header('Projekte', state.settings.company || '');
-  const idx = await projectIndex();
+  header(listFertig ? 'Abgeschlossene Projekte' : 'Laufende Projekte', state.settings.company || '');
+  const alleP = await projectIndex();
+  const nFertig = alleP.filter((x) => x.status === 'fertig').length;
+  const idx = alleP.filter((x) => (x.status === 'fertig') === listFertig);
   const q = listFilter.trim().toLowerCase();
-  const hay = (x) => { const k = Kunden.byId(x.kundeId); return `${x.customer} ${x.address || ''} ${x.room || ''} ${k ? `${k.telefon} ${k.email} ${k.privat}` : ''}`.toLowerCase(); };
+  const hay = (x) => { const k = Kunden.byId(x.kundeId); return `${x.nr || ''} ${x.titel || ''} ${x.customer} ${x.address || ''} ${x.room || ''} ${k ? `${k.nr} ${k.telefon} ${k.email} ${k.privat}` : ''}`.toLowerCase(); };
   const shown = q ? idx.filter((x) => q.split(/\s+/).every((t) => hay(x).includes(t))) : idx;
   main().innerHTML = `
     <button class="cta" id="new">
@@ -138,17 +141,19 @@ async function viewProjektListe() {
     ${state.settings.apiKey ? '' : `<button class="notice" id="toSet">${icon('gear')}<span><b>KI noch nicht eingerichtet.</b> Einmalig den Google-Schlüssel in den Einstellungen eintragen.</span>${icon('chevron')}</button>`}
     <div id="backupHint"></div>
     ${idx.length ? `
-      <div class="sec-h"><h2>Deine Projekte</h2><span class="count">${idx.length}</span></div>
-      <label class="search">${icon('search')}<input type="search" id="q" value="${esc(listFilter)}" placeholder="Kunde, Adresse oder Raum suchen" autocomplete="off"></label>
+      <div class="sec-h"><h2>${listFertig ? 'Abgeschlossen' : 'In Arbeit'}</h2><span class="count">${idx.length}</span></div>
+      <label class="search">${icon('search')}<input type="search" id="q" value="${esc(listFilter)}" placeholder="Kunde, Adresse, Raum oder Nummer" autocomplete="off"></label>
       <div class="plist">${shown.map((x) => `
         <button class="pcard" data-open="${x.id}" data-kind="${x.kind || ''}">
           ${x.thumb ? `<img src="${x.thumb}" alt="">` : `<span class="pc-ph">${icon('home')}</span>`}
-          <span class="pc-t"><b>${esc(x.customer || 'Ohne Namen')}</b>
+          <span class="pc-t"><b>${esc(x.customer || 'Ohne Namen')}${x.titel ? ` · ${esc(x.titel)}` : ''}</b>
             ${x.address ? `<span class="muted">${esc(x.address)}</span>` : ''}
-            <span class="pc-meta">${esc(x.room || '')}${x.room ? ' · ' : ''}${fmtDay(x.updated || x.created)}</span></span>
+            <span class="pc-meta">${x.nr ? esc(x.nr) + ' · ' : ''}${esc(x.room || '')}${x.room ? ' · ' : ''}${fmtDay(x.updated || x.created)}</span></span>
           ${icon('chevron', 'pc-chev')}
         </button>`).join('') || '<p class="empty">Nichts gefunden.</p>'}</div>` : `
-      <div class="empty-state">${icon('home')}<b>Noch keine Projekte</b><span>Tippe auf „Neues Projekt“, gib den Kunden ein und füge die Räume hinzu.</span></div>`}`;
+      <div class="empty-state">${icon('home')}<b>${listFertig ? 'Noch nichts abgeschlossen' : 'Keine laufenden Projekte'}</b><span>${listFertig ? 'Im Projekt unten „Projekt abschließen“ tippen, dann erscheint es hier.' : 'Tippe auf „Neues Projekt“, gib den Kunden ein und füge die Räume hinzu.'}</span></div>`}
+    ${nFertig || listFertig ? `<button class="add-room" id="fertigT" style="margin-top:14px">${icon(listFertig ? 'back' : 'check')} ${listFertig ? 'Zurück zu den laufenden Projekten' : `Abgeschlossene Projekte (${nFertig})`}</button>` : ''}`;
+  if ($('#fertigT')) $('#fertigT').onclick = () => { listFertig = !listFertig; viewProjektListe(); window.scrollTo(0, 0); };
   $('#new').onclick = () => Projekt.neu();
   if ($('#toSet')) $('#toSet').onclick = () => { switchTab('einstellungen'); einstellungSeite('ki'); };
   if ($('#q')) $('#q').oninput = debounce((e) => { listFilter = e.target.value; viewProjektListe().then(() => { const i = $('#q'); if (i) { i.focus(); i.setSelectionRange(i.value.length, i.value.length); } }); }, 250);
@@ -427,11 +432,15 @@ function bindResultButtons(p) {
   $$('[data-redoeve]').forEach((b) => (b.onclick = () => runEvening(p, pk(b.dataset.redoeve), +b.dataset.view)));
 }
 
+// Kalender-Symbol oben: immer erreichbar
+$('#calBtn').onclick = () => { if (state.kalender) return; Kalender.view(); window.scrollTo(0, 0); };
+
 // ---------- Start ----------
 (async () => {
   await loadAll();
   try { await Projekt.migrate(); } catch (e) { console.error('Umstellung', e); }
   try { await Kunden.laden(); await Kunden.migrate(); await Kunden.nummern(); } catch (e) { console.error('Kunden', e); }
+  try { await Partner.laden(); await Kalender.laden(); Kalender.punkt(); } catch (e) { console.error('Kalender', e); }
   navigator.storage?.persist?.();
   switchTab('kunden');
   if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost')) {

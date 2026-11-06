@@ -27,7 +27,7 @@ window.Projekt = (() => {
     await kvSet(key(w.id), w);
     const list = await raeume(w);
     const idx = (await projectIndex()).filter((x) => x.id !== w.id);
-    idx.unshift({ id: w.id, kind: 'wohnung', nr: w.nr || '', titel: w.titel || '', kundeId: w.kundeId || '', objektId: w.objektId || '', customer: w.customer, address: w.address, room: list.length ? summary(list) : 'noch kein Raum', rooms: list.length, created: w.created, updated: w.updated, thumb: list.find((r) => r?.thumb)?.thumb || '' });
+    idx.unshift({ id: w.id, kind: 'wohnung', nr: w.nr || '', titel: w.titel || '', status: w.status || '', kundeId: w.kundeId || '', objektId: w.objektId || '', customer: w.customer, address: w.address, room: list.length ? summary(list) : 'noch kein Raum', rooms: list.length, created: w.created, updated: w.updated, thumb: list.find((r) => r?.thumb)?.thumb || '' });
     await kvSet('projectIndex', idx);
   }
   const neuesProjekt = () => ({ id: uid(), kind: 'wohnung', created: Date.now(), customer: '', address: '', rooms: [], mappe: {}, pdfProducts: true, pdfPrices: false, pdfEvening: true });
@@ -224,7 +224,14 @@ window.Projekt = (() => {
           <span class="d-t"><b>Angebot</b><span>${list.length > 1 ? 'Aufmaß, Positionen und Bauzeit je Raum' : 'Aufmaß, Positionen und Bauzeitenplan'}</span></span>${icon('chevron', 'pc-chev')}</button>
       </div>
       ${anyResult ? '' : '<p class="hint center">Kunden- und Baumappe gibt es, sobald ein Raum visualisiert ist.</p>'}
+      <div id="wTermine"></div>
+      <button class="btn secondary block" id="wFertig" style="margin-top:18px">${icon(w.status === 'fertig' ? 'refresh' : 'check')} ${w.status === 'fertig' ? 'Projekt wieder öffnen' : 'Projekt abschließen'}</button>
       <button class="link-danger" id="wDel">${icon('trash')} Projekt löschen</button>` : ''}`;
+    if (k && $('#wTermine')) window.Kalender?.abschnitt($('#wTermine'), { kundeId: k.id, objektId: w.objektId, projektId: w.id, zurueck: () => view() });
+    if ($('#wFertig')) $('#wFertig').onclick = async () => {
+      w.status = w.status === 'fertig' ? '' : 'fertig'; await save(w);
+      toast(w.status === 'fertig' ? 'Abgeschlossen. Du findest es unter „Laufende Projekte“ ganz unten.' : 'Wieder bei den laufenden Projekten.', 3500); view();
+    };
 
     if ($('#wKunde')) $('#wKunde').onclick = () => Kunden.oeffnen(k.id);
     if ($('#wTitel')) $('#wTitel').oninput = debounce(async (e) => { w.titel = e.target.value.trim(); if (!w.isNew) await save(w); }, 500);

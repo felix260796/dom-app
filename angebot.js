@@ -667,9 +667,9 @@ Gib Länge (längere Seite) und Breite der Grundfläche, Raumhöhe, Anzahl und G
     doc.setFontSize(10.5); doc.setTextColor(30);
     // Empfänger: Kunde mit Privatanschrift (aus der Kundenkarte), sonst die Objektanschrift
     const kd = window.Kunden?.zu(p);
-    const postAdr = kd?.privat.trim() ? kd.privat : p.address;
-    const adr = [kd ? Kunden.name(kd) || p.customer : p.customer, ...String(postAdr || '').split(/\s*,\s*|\n/)].map((x) => String(x || '').trim()).filter(Boolean);
-    const bauvorhaben = p.address && kd?.privat.trim() && Kunden.einzeilig(kd.privat).toLowerCase() !== Kunden.einzeilig(p.address).toLowerCase() ? Kunden.einzeilig(p.address) : '';
+    const post = window.Kunden?.postanschrift(kd); // bei Hausverwaltung: „WEG …, vertreten durch …“
+    const adr = (post || [kd ? Kunden.name(kd) || p.customer : p.customer, ...String(p.address || '').split(/\s*,\s*|\n/)]).map((x) => String(x || '').trim()).filter(Boolean);
+    const bauvorhaben = p.address && post && !adr.join(', ').toLowerCase().includes(Kunden.einzeilig(p.address).toLowerCase()) ? Kunden.einzeilig(p.address) : '';
     adr.forEach((l, i) => t(l, M, 55 + i * 5));
     doc.setFontSize(9);
     const meta = [['Angebot Nr.', A.nr], ...(kd?.nr ? [['Kunden-Nr.', kd.nr]] : []), ...(p.projektNr ? [['Projekt-Nr.', p.projektNr]] : []), ['Datum', fmtDate(heute)], ['Gültig bis', fmtDate(gueltig)], ['Ansprechpartner', A.anspr || ansprechpartner()[0]], ['Telefon', E.telefon], ['E-Mail', E.email]];
