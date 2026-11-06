@@ -109,21 +109,33 @@ window.Kunden = (() => {
     return `${k.nr}-${String(n).padStart(2, '0')}`;
   }
   /** Fehlende Nummern nachtragen: Kunden in der Reihenfolge, in der sie angelegt wurden, danach ihre Projekte. */
+  // Haben zwei Geräte gleichzeitig (ohne Abgleich dazwischen) dieselbe Nummer vergeben, bekommt der später angelegte die nächste freie.
+  const reihenfolge = (a, b) => (a.created || 0) - (b.created || 0) || a.id.localeCompare(b.id);
   async function nummern() {
-    for (const k of [...alle.values()].filter((k) => !k.nr).sort((a, b) => (a.created || 0) - (b.created || 0) || a.id.localeCompare(b.id))) {
+    const vergeben = new Set();
+    for (const k of [...alle.values()].sort(reihenfolge)) {
+      if (k.nr && !vergeben.has(k.nr)) { vergeben.add(k.nr); continue; }
+      if (k.nr) k.nr = '';
+    }
+    for (const k of [...alle.values()].filter((k) => !k.nr).sort(reihenfolge)) {
       k.nr = naechsteNr(); await speichern(k, true);
     }
     const idx = await projectIndex();
     let changed = false;
-    for (const x of [...idx].sort((a, b) => (a.created || 0) - (b.created || 0))) {
+    const pv = new Set();
+    for (const x of [...idx].sort(reihenfolge)) {
       if (x.kind !== 'wohnung' || !x.kundeId) continue;
       const k = byId(x.kundeId);
-      if (!k?.nr || String(x.nr || '').startsWith(k.nr + '-')) continue;
+      const doppelt = x.nr && pv.has(x.nr);
+      if (x.nr && !doppelt) pv.add(x.nr);
+      if (!k?.nr || (!doppelt && String(x.nr || '').startsWith(k.nr + '-'))) continue;
+      if (doppelt) x.nr = '';
       const w = await kvGet('wohnung:' + x.id);
       if (!w) continue;
+      if (doppelt) w.nr = '';
       w.nr = await projektNr(w, idx);
       await kvSet('wohnung:' + w.id, w);
-      x.nr = w.nr; changed = true;
+      x.nr = w.nr; pv.add(w.nr); changed = true;
     }
     if (changed) await kvSet('projectIndex', idx);
   }
