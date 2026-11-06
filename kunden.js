@@ -1,8 +1,10 @@
 'use strict';
 /* DOM – Kunden: Kundenkarte mit Kontaktdaten, Objekten (Anschriften) und Projekten.
  * Speicher: 'kunde:<id>' { id, kind:'kunde', anrede, vorname, name, telefon, email, geburtstag (JJJJ-MM-TT),
- *   privat (Privatanschrift, eine Zeile mit Kommas), objekte:[{ id, name, adresse }], notiz, created, updated }
+ *   privat (Privatanschrift, eine Zeile mit Kommas), objekte:[{ id, name, adresse, notiz }], notiz, nr, created, updated }
  * Ein Projekt ('wohnung:<id>') gehört zu einem Kunden (kundeId) und einem seiner Objekte (objektId).
+ * Nummern: Kundennummer fortlaufend ab 1001, Projektnummer = Kundennummer-laufende Nummer (1001-01, 1001-02).
+ * So sieht man an jeder Projektnummer sofort, zu welchem Kunden sie gehört.
  * w.customer und w.address bleiben als Anzeige-Kopie erhalten (Angebot, Mappen, Baumappe, Cloud-Abgleich).
  * Alle Kunden liegen beim Start im Speicher (sind klein), dadurch ist die Suche sofort da.
  * Baut auf core.js/app.js/projekt.js auf (state, kvGet/kvSet/kvDel, db, header, icon, sheet, …). */
@@ -13,9 +15,9 @@ window.Kunden = (() => {
 
   // ---------- Daten ----------
   const norm = (k) => {
-    for (const f of ['anrede', 'vorname', 'name', 'telefon', 'email', 'geburtstag', 'privat', 'notiz']) k[f] = String(k[f] ?? '');
+    for (const f of ['anrede', 'vorname', 'name', 'telefon', 'email', 'geburtstag', 'privat', 'notiz', 'nr']) k[f] = String(k[f] ?? '');
     k.objekte = Array.isArray(k.objekte) ? k.objekte.filter(Boolean) : [];
-    for (const o of k.objekte) { o.id ??= uid(); o.name = String(o.name ?? ''); o.adresse = String(o.adresse ?? ''); }
+    for (const o of k.objekte) { o.id ??= uid(); o.name = String(o.name ?? ''); o.adresse = String(o.adresse ?? ''); o.notiz = String(o.notiz ?? ''); }
     return k;
   };
   const neu = (f = {}) => norm({ id: uid(), kind: 'kunde', created: Date.now(), ...f });
@@ -77,7 +79,40 @@ window.Kunden = (() => {
     return { anrede, vorname: teile.slice(0, -1).join(' '), name: teile[teile.length - 1] };
   }
 
-  async function speichern(k) {
+  // ---------- Nummern ----------
+  const ERSTE = 1001;
+  const naechsteNr = () => String(Math.max(ERSTE - 1, ...[...alle.values()].map((k) => parseInt(k.nr, 10) || 0)) + 1);
+  /** Projektnummer für ein Projekt: bleibt, solange es beim selben Kunden ist, sonst die nächste freie. */
+  async function projektNr(w, idx) {
+    const k = byId(w.kundeId);
+    if (!k?.nr) return w.nr || '';
+    if (String(w.nr || '').startsWith(k.nr + '-')) return w.nr;
+    const n = Math.max(0, ...(idx || (await projectIndex())).filter((x) => x.id !== w.id && String(x.nr || '').startsWith(k.nr + '-')).map((x) => parseInt(x.nr.split('-')[1], 10) || 0)) + 1;
+    return `${k.nr}-${String(n).padStart(2, '0')}`;
+  }
+  /** Fehlende Nummern nachtragen: Kunden in der Reihenfolge, in der sie angelegt wurden, danach ihre Projekte. */
+  async function nummern() {
+    for (const k of [...alle.values()].filter((k) => !k.nr).sort((a, b) => (a.created || 0) - (b.created || 0) || a.id.localeCompare(b.id))) {
+      k.nr = naechsteNr(); await speichern(k, true);
+    }
+    const idx = await projectIndex();
+    let changed = false;
+    for (const x of [...idx].sort((a, b) => (a.created || 0) - (b.created || 0))) {
+      if (x.kind !== 'wohnung' || !x.kundeId) continue;
+      const k = byId(x.kundeId);
+      if (!k?.nr || String(x.nr || '').startsWith(k.nr + '-')) continue;
+      const w = await kvGet('wohnung:' + x.id);
+      if (!w) continue;
+      w.nr = await projektNr(w, idx);
+      await kvSet('wohnung:' + w.id, w);
+      x.nr = w.nr; changed = true;
+    }
+    if (changed) await kvSet('projectIndex', idx);
+  }
+
+  async function speichern(k, still) {
+    if (!k.nr) k.nr = naechsteNr();
+    if (still) { alle.set(k.id, k); return kvSet(key(k.id), k); }
     delete k.isNew;
     k.updated = Date.now();
     alle.set(k.id, k);
@@ -181,18 +216,21 @@ window.Kunden = (() => {
   let filter = '';
   function treffer(k, idx, q) {
     if (!q) return true;
-    const proj = idx.filter((x) => x.kundeId === k.id).map((x) => `${x.address || ''} ${x.room || ''}`).join(' ');
-    const hay = `${name(k)} ${k.vorname} ${k.name} ${k.telefon} ${k.email} ${k.privat} ${k.notiz} ${k.objekte.map((o) => `${o.name} ${o.adresse}`).join(' ')} ${proj}`.toLowerCase();
+    const proj = idx.filter((x) => x.kundeId === k.id).map((x) => `${x.address || ''} ${x.room || ''} ${x.titel || ''} ${x.nr || ''}`).join(' ');
+    const hay = `${k.nr} ${name(k)} ${k.vorname} ${k.name} ${k.telefon} ${k.email} ${k.privat} ${k.notiz} ${k.objekte.map((o) => `${o.name} ${o.adresse} ${o.notiz}`).join(' ')} ${proj}`.toLowerCase();
     return q.split(/\s+/).filter(Boolean).every((w) => hay.includes(w));
   }
-  async function start() { return state.kunde ? detail(state.kunde) : listeView(); }
+  async function start() {
+    const o = state.kunde && objekt(state.kunde, state.objekt);
+    return o ? objektView(state.kunde, o) : state.kunde ? detail(state.kunde) : listeView();
+  }
   async function listeView() {
-    state.kunde = null;
+    state.kunde = null; state.objekt = null;
     header('Kunden', state.settings.company || '');
     const idx = await projectIndex();
     const all = liste();
     main().innerHTML = `
-      <label class="search big">${icon('search')}<input type="search" id="kq" value="${esc(filter)}" placeholder="Name, Straße, Ort oder Telefon" autocomplete="off"></label>
+      <label class="search big">${icon('search')}<input type="search" id="kq" value="${esc(filter)}" placeholder="Name, Straße, Ort, Telefon oder Nummer" autocomplete="off"></label>
       <button class="cta" id="kNew">
         <span class="cta-ico">${icon('plus')}</span>
         <span class="cta-t"><b>Neuer Kunde</b><span>Kontaktdaten, Objekte und Projekte an einem Ort</span></span>
@@ -213,7 +251,7 @@ window.Kunden = (() => {
           <span class="av">${esc(initialen(k))}</span>
           <span class="pc-t"><b>${esc(name(k) || 'Ohne Namen')}</b>
             ${ort(k) ? `<span class="muted">${esc(ort(k))}</span>` : ''}
-            <span class="pc-meta">${n ? `${n} ${n === 1 ? 'Projekt' : 'Projekte'}` : 'noch kein Projekt'}${g !== null && g <= 14 ? ` · <span class="geb">${gebText(g)}</span>` : ''}</span></span>
+            <span class="pc-meta">${k.nr ? `Nr. ${esc(k.nr)} · ` : ''}${n ? `${n} ${n === 1 ? 'Projekt' : 'Projekte'}` : 'noch kein Projekt'}${g !== null && g <= 14 ? ` · <span class="geb">${gebText(g)}</span>` : ''}</span></span>
           ${icon('chevron', 'pc-chev')}
         </button>`;
       }).join('') || '<p class="empty">Kein Kunde gefunden.</p>';
@@ -284,18 +322,11 @@ window.Kunden = (() => {
   const mapLink = (a) => 'https://maps.apple.com/?q=' + encodeURIComponent(einzeilig(a));
   async function detail(k) {
     if (!k) return listeView();
-    state.kunde = k; state.wohnung = null; state.project = null;
+    state.kunde = k; state.objekt = null; state.wohnung = null; state.project = null;
     const idx = (await projectIndex()).filter((x) => x.kundeId === k.id);
     if (state.kunde !== k) return;
     const back = () => { state.kunde = null; listeView(); window.scrollTo(0, 0); };
-    header(name(k) || 'Neuer Kunde', ort(k) || (k.isNew ? 'Kontaktdaten eintragen' : ''), { label: 'Kunden', fn: back });
-    const objLabel = (o) => o.name.trim() || einzeilig(o.adresse) || 'Objekt ohne Anschrift';
-    const gruppen = [...k.objekte.map((o) => ({ o, list: idx.filter((x) => x.objektId === o.id) })),
-      { o: null, list: idx.filter((x) => !objekt(k, x.objektId)) }].filter((g) => g.list.length);
-    const pcard = (x) => `<button class="pcard" data-open="${x.id}">
-        ${x.thumb ? `<img src="${x.thumb}" alt="">` : `<span class="pc-ph">${icon('home')}</span>`}
-        <span class="pc-t"><b>${esc(x.room || 'Projekt')}</b><span class="pc-meta">${x.rooms ? `${x.rooms} ${x.rooms === 1 ? 'Raum' : 'Räume'} · ` : ''}${fmtDay(x.updated || x.created)}</span></span>
-        ${icon('chevron', 'pc-chev')}</button>`;
+    header(name(k) || 'Neuer Kunde', untertitel(k) || (k.isNew ? 'Kontaktdaten eintragen' : ''), { label: 'Kunden', fn: back });
     const a = alter(k);
     const nBilder = Object.fromEntries(await Promise.all(k.objekte.map(async (o) => [o.id, await Bilder.anzahl(k.id, o.id)])));
     if (state.kunde !== k) return;
@@ -313,29 +344,22 @@ window.Kunden = (() => {
       </div>
 
       <div class="sec-h"><h2>Objekte</h2>${k.objekte.length ? `<span class="count">${k.objekte.length}</span>` : ''}</div>
-      <p class="hint" style="margin-top:-4px">Anschriften, an denen saniert wird, z. B. Eigentumswohnung, Ferienhaus, vermietete Wohnung.</p>
-      <div class="olist">${k.objekte.map((o) => `
-        <div class="card obj" data-obj="${o.id}">
+      <p class="hint" style="margin-top:-4px">Häuser und Wohnungen des Kunden, z. B. Miethaus 1, Elternhaus. Antippen zeigt Anschrift, Notiz, Bilder und die Projekte dort.</p>
+      <div class="olist">${k.objekte.map((o) => { const n = idx.filter((x) => x.objektId === o.id).length; return `
+        <button class="pcard ocard" data-obj="${o.id}">
           <span class="o-ico">${icon('home')}</span>
-          <div class="o-f">
-            <input type="text" data-of="name" value="${esc(o.name)}" placeholder="Bezeichnung (optional)" autocomplete="off">
-            <div class="adr"><input type="text" data-of="adresse" value="${esc(o.adresse)}" placeholder="Straße Nr., der Ort wird ergänzt" autocomplete="off"></div>
-          </div>
-          <div class="o-a">
-            <button class="icon-btn obild" data-obild="${o.id}" aria-label="Bilder">${icon('camera')}${nBilder[o.id] ? `<i>${nBilder[o.id]}</i>` : ''}</button>
-            ${o.adresse.trim() ? `<a class="icon-btn" href="${esc(mapLink(o.adresse))}" target="_blank" rel="noopener" aria-label="In Karten öffnen">${icon('map')}</a>` : ''}
-            ${idx.some((x) => x.objektId === o.id) ? '' : `<button class="icon-btn" data-odel="${o.id}" aria-label="Objekt entfernen">${icon('trash')}</button>`}
-          </div>
-        </div>`).join('')}
+          <span class="pc-t"><b>${esc(objLabel(o))}</b>${o.name.trim() && o.adresse.trim() ? `<span class="muted">${esc(einzeilig(o.adresse))}</span>` : ''}
+            <span class="pc-meta">${n ? `${n} ${n === 1 ? 'Projekt' : 'Projekte'}` : 'noch kein Projekt'}${nBilder[o.id] ? ` · ${nBilder[o.id]} ${nBilder[o.id] === 1 ? 'Bild' : 'Bilder'}` : ''}${o.notiz.trim() ? ' · Notiz' : ''}</span></span>
+          ${icon('chevron', 'pc-chev')}
+        </button>`; }).join('')}
         <div class="row">
           <button class="add-room" id="oAdd">${icon('plus')} Objekt hinzufügen</button>
           ${k.privat.trim() && !k.objekte.some((o) => gleich(o.adresse, k.privat)) ? `<button class="add-room" id="oPrivat">${icon('user')} Privatanschrift übernehmen</button>` : ''}
         </div>
       </div>
 
-      <div class="sec-h"><h2>Projekte</h2>${idx.length ? `<span class="count">${idx.length}</span>` : ''}</div>
-      ${gruppen.map((g) => `${k.objekte.length > 1 || !g.o ? `<div class="o-h">${icon(g.o ? 'map' : 'file')}<span>${esc(g.o ? objLabel(g.o) : 'Ohne Objekt')}</span></div>` : ''}
-        <div class="plist">${g.list.map(pcard).join('')}</div>`).join('')}
+      <div class="sec-h"><h2>Alle Projekte</h2>${idx.length ? `<span class="count">${idx.length}</span>` : ''}</div>
+      <div class="plist">${idx.map((x) => pcard(x, objLabel(objekt(k, x.objektId)) || 'Ohne Objekt')).join('')}</div>
       <button class="btn big block" id="kProj" style="margin-top:12px">${icon('plus')} Neues Projekt für ${esc(name(k) || 'diesen Kunden')}</button>
       ${idx.length || k.isNew ? '' : `<button class="link-danger" id="kDel">${icon('trash')} Kunde löschen</button>`}`;
 
@@ -351,7 +375,7 @@ window.Kunden = (() => {
     };
     actions();
     const persist = debounce(async () => { await speichern(k); weitergeben(k); }, 400);
-    const titel = () => { $('#title').textContent = name(k) || 'Neuer Kunde'; const s = $('#subtitle'); s.textContent = ort(k); s.hidden = !ort(k); };
+    const titel = () => { $('#title').textContent = name(k) || 'Neuer Kunde'; const s = $('#subtitle'); s.textContent = untertitel(k); s.hidden = !untertitel(k); };
     const felder = { kAnrede: 'anrede', kVorname: 'vorname', kName: 'name', kTel: 'telefon', kMail: 'email', kGeb: 'geburtstag', kPrivat: 'privat', kNotiz: 'notiz' };
     for (const [id, f] of Object.entries(felder)) {
       const el = $('#' + id);
@@ -363,26 +387,13 @@ window.Kunden = (() => {
     }
     if (k.isNew) setTimeout(() => $('#kName')?.focus(), 50);
     $$('.adr input').forEach(adressVorschlaege);
-    $$('[data-obj]').forEach((card) => {
-      const o = objekt(k, card.dataset.obj);
-      $$('[data-of]', card).forEach((inp) => (inp.oninput = () => { o[inp.dataset.of] = inp.value; persist(); titel(); }));
-    });
-    $$('[data-obild]').forEach((b) => (b.onclick = () => {
-      const o = objekt(k, b.dataset.obild);
-      Bilder.view({ kundeId: k.id, objektId: o.id, titel: [name(k), objektText(o)].filter(Boolean).join(' · '), zurueck: { label: name(k) || 'Kunde', fn: () => { detail(k); window.scrollTo(0, 0); } } });
-      window.scrollTo(0, 0);
-    }));
-    $$('[data-odel]').forEach((b) => (b.onclick = async () => {
-      const o = objekt(k, b.dataset.odel);
-      if ((o.adresse.trim() || o.name.trim()) && !confirm(`Objekt „${objLabel(o)}“ entfernen?`)) return;
-      k.objekte = k.objekte.filter((x) => x !== o); await speichern(k); detail(k);
-    }));
-    const neuesObjekt = async (adresse = '', nm = '') => {
-      await objektNeu(k, adresse, nm); const y = window.scrollY; await detail(k); window.scrollTo(0, y);
-      if (!adresse) { const c = $$('[data-obj]').pop(); $('[data-of="name"]', c)?.focus(); }
+    $$('[data-obj]').forEach((b) => (b.onclick = () => { objektView(k, objekt(k, b.dataset.obj)); window.scrollTo(0, 0); }));
+    $('#oAdd').onclick = async () => {
+      if (k.isNew) await speichern(k);
+      const oid = await objektNeu(k, '', '');
+      await objektView(k, objekt(k, oid), true); window.scrollTo(0, 0);
     };
-    $('#oAdd').onclick = () => neuesObjekt();
-    if ($('#oPrivat')) $('#oPrivat').onclick = () => neuesObjekt(k.privat, 'Privat');
+    if ($('#oPrivat')) $('#oPrivat').onclick = async () => { await objektNeu(k, k.privat, 'Privat'); const y = window.scrollY; await detail(k); window.scrollTo(0, y); };
     $$('[data-open]').forEach((b) => (b.onclick = () => window.Projekt.oeffnen(b.dataset.open)));
     $('#kProj').onclick = async () => {
       if (!name(k)) { toast('Bitte zuerst den Namen eintragen.'); $('#kName').focus(); return; }
@@ -392,6 +403,63 @@ window.Kunden = (() => {
     if ($('#kDel')) $('#kDel').onclick = async () => {
       if (!confirm(`Kunde „${name(k) || 'ohne Namen'}“ löschen?`)) return;
       alle.delete(k.id); await kvDel(key(k.id)); back();
+    };
+  }
+
+  const objLabel = (o) => (o ? o.name.trim() || einzeilig(o.adresse) || 'Objekt ohne Anschrift' : '');
+  const untertitel = (k) => [k.nr && `Kunden-Nr. ${k.nr}`, ort(k)].filter(Boolean).join(' · ');
+  /** Projektkarte; zweite Zeile z. B. „1001-02 · Miethaus 1“. */
+  const pcard = (x, wo = '') => `<button class="pcard" data-open="${x.id}">
+      ${x.thumb ? `<img src="${x.thumb}" alt="">` : `<span class="pc-ph">${icon('home')}</span>`}
+      <span class="pc-t"><b>${esc(x.titel || x.room || 'Projekt')}</b>
+        <span class="muted">${esc([x.nr, wo, x.titel && x.room].filter(Boolean).join(' · '))}</span>
+        <span class="pc-meta">${x.rooms ? `${x.rooms} ${x.rooms === 1 ? 'Raum' : 'Räume'} · ` : ''}${fmtDay(x.updated || x.created)}</span></span>
+      ${icon('chevron', 'pc-chev')}</button>`;
+
+  // ---------- Ansicht: ein Objekt (Anschrift, Notiz, Bilder, Projekte dort) ----------
+  async function objektView(k, o, neuAngelegt = false) {
+    if (!o) return detail(k);
+    state.kunde = k; state.objekt = o.id; state.wohnung = null; state.project = null;
+    const idx = (await projectIndex()).filter((x) => x.kundeId === k.id && x.objektId === o.id);
+    const nB = await Bilder.anzahl(k.id, o.id);
+    if (state.kunde !== k || state.objekt !== o.id) return;
+    const zurueck = () => { detail(k); window.scrollTo(0, 0); };
+    header(objLabel(o), [name(k), k.nr && `Kunden-Nr. ${k.nr}`].filter(Boolean).join(' · '), { label: 'Kunde', fn: zurueck });
+    main().innerHTML = `
+      <div class="card kform">
+        <label style="margin-top:0">Bezeichnung</label><input type="text" id="oName" value="${esc(o.name)}" autocomplete="off" placeholder="z. B. Miethaus 1, Elternhaus">
+        <label>Anschrift</label><div class="adr"><input type="text" id="oAdr" value="${esc(o.adresse)}" autocomplete="off" placeholder="Straße Nr., der Ort wird ergänzt"></div>
+        <label>Notiz</label><textarea id="oNotiz" placeholder="z. B. Hausmeister Herr Kaya, Schlüssel im Büro, Parken im Hof">${esc(o.notiz)}</textarea>
+      </div>
+      <div class="kd-actions" id="oAct"></div>
+      <div class="docs" style="margin-top:12px"><button class="doc" id="oBilder"><span class="d-ico brass">${icon('camera')}</span>
+        <span class="d-t"><b>Bilder & Dokumentation</b><span>${nB ? `${nB} ${nB === 1 ? 'Bild' : 'Bilder'}, nach Ordnern und Projekten sortiert` : 'Bestand, Baufortschritt, Abnahme, eigene Ordner'}</span></span>${icon('chevron', 'pc-chev')}</button></div>
+      <div class="sec-h"><h2>Projekte in diesem Objekt</h2>${idx.length ? `<span class="count">${idx.length}</span>` : ''}</div>
+      ${idx.length ? `<div class="plist">${idx.map((x) => pcard(x)).join('')}</div>` : '<p class="hint" style="margin-top:-4px">Noch kein Projekt hier.</p>'}
+      <button class="btn big block" id="oProj" style="margin-top:12px">${icon('plus')} Neues Projekt in diesem Objekt</button>
+      ${idx.length ? '' : `<button class="link-danger" id="oDel">${icon('trash')} Objekt entfernen</button>`}`;
+    const aktionen = () => {
+      $('#oAct').innerHTML = o.adresse.trim() ? `<div class="kd-row" style="margin-top:12px"><a class="kd-a" href="${esc(mapLink(o.adresse))}" target="_blank" rel="noopener">${icon('map')}<span>In Karten öffnen</span></a></div>` : '';
+    };
+    aktionen();
+    const persist = debounce(async () => { await speichern(k); weitergeben(k); }, 400);
+    for (const [id, f] of [['oName', 'name'], ['oAdr', 'adresse'], ['oNotiz', 'notiz']]) {
+      $('#' + id).oninput = (e) => { o[f] = e.target.value; persist(); $('#title').textContent = objLabel(o); if (f === 'adresse') aktionen(); };
+    }
+    adressVorschlaege($('#oAdr'));
+    if (neuAngelegt) setTimeout(() => $('#oName')?.focus(), 50);
+    $('#oBilder').onclick = () => {
+      Bilder.view({ kundeId: k.id, objektId: o.id, titel: [name(k), objektText(o)].filter(Boolean).join(' · '), zurueck: { label: 'Objekt', fn: () => { objektView(k, o); window.scrollTo(0, 0); } } });
+      window.scrollTo(0, 0);
+    };
+    $$('[data-open]').forEach((b) => (b.onclick = () => window.Projekt.oeffnen(b.dataset.open)));
+    $('#oProj').onclick = async () => {
+      if (!name(k)) { toast('Bitte zuerst den Namen des Kunden eintragen.'); return zurueck(); }
+      window.Projekt.neuFuer(k, o.id);
+    };
+    if ($('#oDel')) $('#oDel').onclick = async () => {
+      if ((o.adresse.trim() || o.name.trim() || o.notiz.trim() || nB) && !confirm(`Objekt „${objLabel(o)}“ entfernen?${nB ? `\n\nDie ${nB} Bilder dort werden nicht mehr angezeigt.` : ''}`)) return;
+      k.objekte = k.objekte.filter((x) => x !== o); await speichern(k); zurueck();
     };
   }
 
@@ -408,5 +476,5 @@ window.Kunden = (() => {
     return byId(id);
   }
 
-  return { laden, migrate, byId, liste, name, briefAnrede, zeilen, einzeilig, objekt, objektText, ort, initialen, ausName, speichern, waehlen, objektWaehlen, projektAnlegen, start, listeView, detail, oeffnen, zu, bisGeburtstag };
+  return { laden, migrate, nummern, projektNr, byId, liste, name, briefAnrede, zeilen, einzeilig, objekt, objektText, ort, initialen, ausName, speichern, waehlen, objektWaehlen, projektAnlegen, start, listeView, detail, objektView, objLabel, oeffnen, zu, bisGeburtstag };
 })();

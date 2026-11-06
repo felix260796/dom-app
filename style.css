@@ -518,3 +518,20 @@ body.recording main { padding-bottom: 150px; }
 .adr-list span { display: flex; flex-direction: column; min-width: 0; }
 .adr-list small { color: var(--muted); font-size: 12.5px; }
 .o-f .adr input { border: 0; padding: 7px 0; box-shadow: none !important; border-top: 1px solid var(--line); }
+
+/* Objekte als Karten, eigene Foto-Ordner */
+.ocard .o-ico { margin-top: 0; }
+.fgrid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; }
+@media (min-width: 600px) { .fgrid { grid-template-columns: repeat(3, 1fr); } }
+.fold { display: flex; flex-direction: column; align-items: stretch; gap: 2px; border: 0; background: var(--card); border-radius: 16px; padding: 8px 8px 11px; text-align: left; box-shadow: var(--shadow); min-width: 0; }
+.fold b { font-size: 15px; margin: 7px 4px 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fold > span:last-child { font-size: 12.5px; color: var(--muted); margin: 0 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.f-cov { display: grid; grid-template-columns: 1fr 1fr; grid-template-rows: 1fr 1fr; gap: 2px; aspect-ratio: 4 / 3; border-radius: 11px; overflow: hidden; background: var(--brass-soft); }
+.f-cov img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.f-cov img:only-child { grid-column: 1 / 3; grid-row: 1 / 3; }
+.f-empty { grid-column: 1 / 3; grid-row: 1 / 3; display: flex; align-items: center; justify-content: center; color: var(--brass); }
+.fold.add .f-cov { background: transparent; border: 1.5px dashed var(--line); }
+.gv-sel { gap: 8px; }
+.gv-sel select { flex: 1; min-width: 0; background-color: rgba(255,255,255,.1); color: #fff; border-color: rgba(255,255,255,.2); }
+.gv-sel select option { color: #000; }
+.gv-bar input { background: rgba(255,255,255,.1); color: #fff; border-color: rgba(255,255,255,.2); }

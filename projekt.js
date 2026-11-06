@@ -23,10 +23,11 @@ window.Projekt = (() => {
 
   async function save(w) {
     w.updated = Date.now();
+    w.nr = await Kunden.projektNr(w);
     await kvSet(key(w.id), w);
     const list = await raeume(w);
     const idx = (await projectIndex()).filter((x) => x.id !== w.id);
-    idx.unshift({ id: w.id, kind: 'wohnung', kundeId: w.kundeId || '', objektId: w.objektId || '', customer: w.customer, address: w.address, room: list.length ? summary(list) : 'noch kein Raum', rooms: list.length, created: w.created, updated: w.updated, thumb: list.find((r) => r?.thumb)?.thumb || '' });
+    idx.unshift({ id: w.id, kind: 'wohnung', nr: w.nr || '', titel: w.titel || '', kundeId: w.kundeId || '', objektId: w.objektId || '', customer: w.customer, address: w.address, room: list.length ? summary(list) : 'noch kein Raum', rooms: list.length, created: w.created, updated: w.updated, thumb: list.find((r) => r?.thumb)?.thumb || '' });
     await kvSet('projectIndex', idx);
   }
   const neuesProjekt = () => ({ id: uid(), kind: 'wohnung', created: Date.now(), customer: '', address: '', rooms: [], mappe: {}, pdfProducts: true, pdfPrices: false, pdfEvening: true });
@@ -122,7 +123,7 @@ window.Projekt = (() => {
     await save(w);
   }
   function raumOeffnen(r, w) {
-    r.customer = w.customer; r.address = w.address; r.kundeId = w.kundeId; // Kunde und Adresse kommen immer vom Projekt
+    r.customer = w.customer; r.address = w.address; r.kundeId = w.kundeId; r.projektNr = w.nr || ''; // Kunde und Adresse kommen immer vom Projekt
     state.project = r; viewProjekt(); window.scrollTo(0, 0);
   }
   /** Titel für einen neuen Raum: Raumtyp, bei Dopplung durchnummeriert (Bad, Bad 2, …). */
@@ -156,9 +157,10 @@ window.Projekt = (() => {
     if (state.wohnung !== w || state.project) return; // inzwischen woanders hin gewechselt
     const leave = () => { state.wohnung = null; viewProjekt(); window.scrollTo(0, 0); };
     const k = Kunden.byId(w.kundeId);
-    const nFotos = k ? await Bilder.anzahl(w.kundeId, w.objektId) : 0;
+    const nFotos = k ? await Bilder.anzahl(w.kundeId, w.objektId, w.id) : 0;
     if (state.wohnung !== w || state.project) return;
-    header(w.customer || 'Neues Projekt', w.address || (w.isNew ? 'Räume anlegen' : ''), { label: state.tab === 'kunden' && state.kunde ? 'Kunde' : 'Projekte', fn: leave });
+    const zurueckLabel = state.tab === 'kunden' && state.kunde ? (state.objekt ? 'Objekt' : 'Kunde') : 'Projekte';
+    header(w.customer || 'Neues Projekt', [w.nr && `Projekt-Nr. ${w.nr}`, w.address || (w.isNew ? 'Räume anlegen' : '')].filter(Boolean).join(' · '), { label: zurueckLabel, fn: leave });
     const anyResult = list.some(hasAnyResult);
     const withPhotos = list.filter((r) => r.photos.length);
     const nBilder = withPhotos.reduce((n, r) => n + viewCount(r) * r.selected.length, 0);
@@ -174,11 +176,12 @@ window.Projekt = (() => {
         <label class="ic-field">${icon('map')}<select id="wObjekt" aria-label="Objekt">
           ${w.objektId && Kunden.objekt(k, w.objektId) ? '' : `<option value="" selected>${esc(w.address || 'Objekt wählen …')}</option>`}
           ${k.objekte.map((o) => `<option value="${o.id}" ${o.id === w.objektId ? 'selected' : ''}>${esc(Kunden.objektText(o) || 'Objekt ohne Anschrift')}</option>`).join('')}
-          <option value="__neu">Anderes Objekt …</option></select></label>`
+          <option value="__neu">Anderes Objekt …</option></select></label>
+        <label class="ic-field">${icon('edit')}<input type="text" id="wTitel" value="${esc(w.titel || '')}" placeholder="Projektname, z. B. Badumbau" autocomplete="off" aria-label="Projektname"></label>`
         : `<button class="kline" id="wKundeWahl">${icon('user')}<span class="kl-t"><b>${esc(w.customer || 'Kunde zuordnen')}</b><small>Kunde auswählen oder neu anlegen</small></span>${icon('chevron', 'pc-chev')}</button>`}
       </div>
       ${k ? `<div class="docs" style="margin-top:12px"><button class="doc" id="wBilder"><span class="d-ico brass">${icon('camera')}</span>
-        <span class="d-t"><b>Bilder & Dokumentation</b><span>${nFotos ? `${nFotos} ${nFotos === 1 ? 'Bild' : 'Bilder'} am Objekt` : 'Bestand, Baufortschritt, Abnahme'}</span></span>${icon('chevron', 'pc-chev')}</button></div>` : ''}
+        <span class="d-t"><b>Bilder & Dokumentation</b><span>${nFotos ? `${nFotos} ${nFotos === 1 ? 'Bild' : 'Bilder'} in diesem Projekt, alle Bilder des Objekts mit einem Tipp` : 'Bestand, Baufortschritt, Abnahme, eigene Ordner'}</span></span>${icon('chevron', 'pc-chev')}</button></div>` : ''}
       ${window.Gespraech?.karte(w, list) || ''}
 
       <div class="sec-h"><h2>Räume</h2>${list.length ? `<span class="count">${list.length}</span>` : ''}</div>
@@ -224,7 +227,10 @@ window.Projekt = (() => {
       <button class="link-danger" id="wDel">${icon('trash')} Projekt löschen</button>` : ''}`;
 
     if ($('#wKunde')) $('#wKunde').onclick = () => Kunden.oeffnen(k.id);
-    if ($('#wBilder')) $('#wBilder').onclick = () => { Bilder.view({ kundeId: k.id, objektId: w.objektId, titel: [w.customer, w.address].filter(Boolean).join(' · '), zurueck: { label: 'Projekt', fn: () => { view(); window.scrollTo(0, 0); } } }); window.scrollTo(0, 0); };
+    if ($('#wTitel')) $('#wTitel').oninput = debounce(async (e) => { w.titel = e.target.value.trim(); if (!w.isNew) await save(w); }, 500);
+    if ($('#wBilder')) $('#wBilder').onclick = async () => {
+      if (w.isNew) { delete w.isNew; await save(w); } // damit die Bilder dem Projekt zugeordnet werden können
+      Bilder.view({ kundeId: k.id, objektId: w.objektId, projektId: w.id, titel: [w.titel || w.customer, w.address].filter(Boolean).join(' · '), zurueck: { label: 'Projekt', fn: () => { view(); window.scrollTo(0, 0); } } }); window.scrollTo(0, 0); };
     if ($('#wObjekt')) $('#wObjekt').onchange = async (e) => {
       let oid = e.target.value;
       if (oid === '__neu') { oid = await Kunden.objektWaehlen(k, 'Welches Objekt?'); if (oid === null) return view(); }
@@ -262,7 +268,7 @@ window.Projekt = (() => {
       };
     }
   }
-  function raumAngebot(r, w) { r.customer = w.customer; r.address = w.address; r.kundeId = w.kundeId; state.project = r; state.angebotAusProjekt = true; window.Angebot?.ansicht(r); }
+  function raumAngebot(r, w) { r.customer = w.customer; r.address = w.address; r.kundeId = w.kundeId; r.projektNr = w.nr || ''; state.project = r; state.angebotAusProjekt = true; window.Angebot?.ansicht(r); }
 
   async function runAll(w) {
     if (!state.settings.apiKey) { toast('Bitte zuerst in den Einstellungen den API-Schlüssel eintragen.', 4000); return; }
