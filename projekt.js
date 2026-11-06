@@ -171,10 +171,10 @@ window.Projekt = (() => {
       ${list.length ? `
       <div class="sec-h"><h2>Unterlagen</h2></div>
       <div class="docs">
-        <button class="doc" id="dMappe" ${anyResult ? '' : 'disabled'}>
+        <button class="doc ${anyResult ? '' : 'wait'}" id="dMappe">
           <span class="d-ico navy">${icon('book')}</span>
           <span class="d-t"><b>Kundenmappe</b><span>Vorher-Nachher für den Kunden, alle Varianten oder deine Auswahl</span></span>${icon('chevron', 'pc-chev')}</button>
-        <button class="doc" id="dBau" ${anyResult ? '' : 'disabled'}>
+        <button class="doc ${anyResult ? '' : 'wait'}" id="dBau">
           <span class="d-ico brass">${icon('clipboard')}</span>
           <span class="d-t"><b>Baumappe</b><span>Für Subunternehmer: Markierungen, Produkte, Maße, Fliesenspiegel, ohne Preise</span></span>${icon('chevron', 'pc-chev')}</button>
         <button class="doc" id="dAngebot">
@@ -195,8 +195,9 @@ window.Projekt = (() => {
     if ($('#wAdd')) $('#wAdd').onclick = () => pickRoomType(w);
     if ($('#wRun')) $('#wRun').onclick = () => runAll(w);
     if ($('#dMappe')) {
-      $('#dMappe').onclick = () => mappeView(w);
-      $('#dBau').onclick = () => window.Baumappe?.view(w);
+      const erst = () => toast('Erst einen Raum visualisieren, dann gibt es Kunden- und Baumappe.', 4000);
+      $('#dMappe').onclick = () => (anyResult ? mappeView(w) : erst());
+      $('#dBau').onclick = () => (anyResult ? window.Baumappe?.view(w) : erst());
       $('#dAngebot').onclick = async () => {
         if (list.length === 1) return raumAngebot(list[0], w);
         const id = await sheet('Angebot für welchen Raum?', list.map((r) => ({ label: r.room || roomType(r.roomType).name, sub: r.angebot?.nr ? `Angebot Nr. ${r.angebot.nr}` : roomType(r.roomType).name, icon: roomIcon(r.roomType), value: r.id })));

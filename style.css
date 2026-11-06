@@ -167,7 +167,8 @@ details.sub > summary { font-size: 14px; font-weight: 600; color: var(--navy-2);
 .d-ico.navy { background: var(--navy); } .d-ico.brass { background: var(--brass); } .d-ico.grey { background: #7a8795; }
 .doc { padding: 13px 12px; }
 .d-t span { font-size: 13px; color: var(--muted); line-height: 1.35; }
-.doc:disabled { opacity: .5; }
+.doc:disabled, .doc.wait { opacity: .55; }
+#toDocs { margin-top: 4px; }
 
 /* ---------- Raum ---------- */
 .room-head { display: flex; gap: 13px; align-items: center; padding: 12px 14px; }

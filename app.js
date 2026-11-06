@@ -200,7 +200,7 @@ async function viewProjekt() {
     <section class="step">
       <div class="step-h"><span class="num">3</span><h2>Ergebnis</h2></div>
       <div id="results">${visible.length ? visible.map(resultCard).join('') : `<div class="card empty-res">${icon('sparkle')}<span>Hier erscheinen die Nachher-Bilder. Mit dem Regler vergleichst du Vorher und Nachher.</span></div>`}</div>
-      <button class="btn secondary block" id="toMappe" ${hasAnyResult(p) && w ? '' : 'hidden'}>${icon('book')} Zur Kundenmappe</button>
+      <div class="row" id="toDocs" ${hasAnyResult(p) && w ? '' : 'hidden'}><button class="btn secondary" id="toMappe">${icon('book')} Kundenmappe</button><button class="btn secondary" id="toBau">${icon('clipboard')} Baumappe</button></div>
     </section>
 
     <section class="step">
@@ -265,6 +265,7 @@ async function viewProjekt() {
     runAll(p);
   };
   $('#toMappe').onclick = () => w && Projekt.mappeView(w);
+  $('#toBau').onclick = () => { if (!w) return; state.project = null; state.wohnung = w; window.Baumappe?.view(w); };
   $('#toAngebot').onclick = () => { state.angebotAusProjekt = false; window.Angebot?.ansicht(p); };
   $('#toMarks').onclick = () => window.Baumappe?.markierungen(p);
   $('#social').onclick = () => viewSocial(p).catch((e) => toast('Fehler: ' + e.message, 5000));
@@ -318,7 +319,7 @@ function refreshResult(pkg) {
   } else el.outerHTML = resultCard(pkg);
   bindResultButtons(p);
   const any = hasAnyResult(p);
-  if ($('#toMappe')) $('#toMappe').hidden = !any || !state.wohnung;
+  if ($('#toDocs')) $('#toDocs').hidden = !any || !state.wohnung;
   for (const id of ['#social', '#toMarks']) if ($(id)) $(id).disabled = !any;
 }
 function bindResultButtons(p) {
