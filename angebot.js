@@ -637,7 +637,8 @@ Gib Länge (längere Seite) und Breite der Grundfläche, Raumhöhe, Anzahl und G
     return teile.length === 2 ? [a, `${teile[1]} · ${teile[0]}`] : [a];
   };
   const titelDefault = (p, pk) => `Sanierung ${[...new Set(p.aufmass.raeume.map((r) => r.name))].join(', ')}, Ausstattung ${pk?.name || ''}`;
-  const anredeDefault = (p) => (p.customer ? (/^(familie|herr|frau)\b/i.test(p.customer) ? `Sehr geehrte${/^herr/i.test(p.customer) ? 'r' : ''} ${p.customer},` : `Guten Tag ${p.customer},`) : 'Sehr geehrte Damen und Herren,');
+  const anredeDefault = (p) => { const k = window.Kunden?.zu(p); return k ? Kunden.briefAnrede(k) : anredeAlt(p); };
+  const anredeAlt = (p) => (p.customer ? (/^(familie|herr|frau)\b/i.test(p.customer) ? `Sehr geehrte${/^herr/i.test(p.customer) ? 'r' : ''} ${p.customer},` : `Guten Tag ${p.customer},`) : 'Sehr geehrte Damen und Herren,');
 
   // ---------- PDF ----------
   async function baueAngebotPdf(p) {
@@ -664,7 +665,11 @@ Gib Länge (längere Seite) und Breite der Grundfläche, Raumhöhe, Anzahl und G
     doc.setFontSize(7.5); doc.setTextColor(120); t([E.firma, E.strasse, E.ort].filter(Boolean).join(' · '), M, 47);
     doc.setDrawColor(200); doc.line(M, 48.5, M + 85, 48.5);
     doc.setFontSize(10.5); doc.setTextColor(30);
-    const adr = [p.customer, ...String(p.address || '').split(/\s*,\s*|\n/)].filter(Boolean);
+    // Empfänger: Kunde mit Privatanschrift (aus der Kundenkarte), sonst die Objektanschrift
+    const kd = window.Kunden?.zu(p);
+    const postAdr = kd?.privat.trim() ? kd.privat : p.address;
+    const adr = [kd ? Kunden.name(kd) || p.customer : p.customer, ...String(postAdr || '').split(/\s*,\s*|\n/)].map((x) => String(x || '').trim()).filter(Boolean);
+    const bauvorhaben = p.address && kd?.privat.trim() && Kunden.einzeilig(kd.privat).toLowerCase() !== Kunden.einzeilig(p.address).toLowerCase() ? Kunden.einzeilig(p.address) : '';
     adr.forEach((l, i) => t(l, M, 55 + i * 5));
     doc.setFontSize(9);
     const meta = [['Angebot Nr.', A.nr], ['Datum', fmtDate(heute)], ['Gültig bis', fmtDate(gueltig)], ['Ansprechpartner', A.anspr || ansprechpartner()[0]], ['Telefon', E.telefon], ['E-Mail', E.email]];
@@ -673,6 +678,7 @@ Gib Länge (längere Seite) und Breite der Grundfläche, Raumhöhe, Anzahl und G
     y = Math.max(92, my + 8);
     doc.setFont('helvetica', 'bold'); doc.setFontSize(13); doc.setTextColor(...NAVY);
     const titel = doc.splitTextToSize('Angebot: ' + (A.titel || titelDefault(p, pk)), R - M); t(titel, M, y); y += 6 * titel.length + 3;
+    if (bauvorhaben) { doc.setFont('helvetica', 'normal'); doc.setFontSize(9.5); doc.setTextColor(110); t('Bauvorhaben: ' + bauvorhaben, M, y - 1); y += 5; }
     doc.setFont('helvetica', 'normal'); doc.setFontSize(10); doc.setTextColor(30);
     t(A.anrede || anredeDefault(p), M, y); y += 5;
     t('vielen Dank für das angenehme Gespräch. Gerne bieten wir Ihnen folgende Leistungen an:', M, y); y += 9;

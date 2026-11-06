@@ -254,6 +254,11 @@ window.Mappe = (() => {
     if (note) { c.font(7.5, 'normal', GREY); c.text(c.lines(note, W - 2 * M), M, H - 20); }
   }
 
+  /** Objekt mit Bezeichnung aus der Kundenkarte, z. B. „Ferienhaus · Seeweg 3, Konstanz“. */
+  function objektZeile(w) {
+    const k = window.Kunden?.byId(w.kundeId), o = k && Kunden.objekt(k, w.objektId);
+    return o ? Kunden.objektText(o) : w.address;
+  }
   async function teilen(doc, name) {
     const blob = doc.output('blob');
     const file = new File([blob], name, { type: 'application/pdf' });
@@ -278,7 +283,7 @@ window.Mappe = (() => {
       tag: allPk.length > 1 && sel.every((x) => x.pkgs.length > 1) ? 'Visualisierung · Ausstattungsvarianten' : 'Visualisierung Ihrer Sanierung',
       title: one ? (first.r.room || roomType(first.r.roomType).name) : 'Ihre Sanierung',
       sub: one ? (first.pkgs.length > 1 ? `in ${first.pkgs.length} Ausstattungsvarianten` : `Paket ${heroPk.name}`) : sel.map((x) => x.r.room || roomType(x.r.roomType).name).join(' · '),
-      meta: [['Für', w.customer], ['Objekt', w.address], ['Datum', new Date().toLocaleDateString('de-DE', { day: '2-digit', month: 'long', year: 'numeric' })]],
+      meta: [['Für', w.customer], ['Objekt', objektZeile(w)], ['Datum', new Date().toLocaleDateString('de-DE', { day: '2-digit', month: 'long', year: 'numeric' })]],
       hero: firstResult(first.r, heroPk.id),
       chips: allPk.map((id) => { const p = sel.map((x) => x.pkgs.find((y) => y.id === id)).find(Boolean); return [p.name, hexRgb(p.color)]; }),
     });
@@ -377,7 +382,7 @@ window.Mappe = (() => {
       tag: one ? 'Präsentation Ihres neuen Raums' : 'Präsentation Ihrer neuen Räume',
       title: one ? (first.r.room || roomType(first.r.roomType).name) : 'Ihre Sanierung',
       sub: one ? (first.pkgs.length > 1 ? `in ${first.pkgs.length} Ausstattungsvarianten` : `Paket ${heroPk.name}`) : sel.map((x) => x.r.room || roomType(x.r.roomType).name).join(' · '),
-      meta: [['Für', w.customer], ['Objekt', w.address], ['Datum', new Date().toLocaleDateString('de-DE', { day: '2-digit', month: 'long', year: 'numeric' })]],
+      meta: [['Für', w.customer], ['Objekt', objektZeile(w)], ['Datum', new Date().toLocaleDateString('de-DE', { day: '2-digit', month: 'long', year: 'numeric' })]],
       hero: firstResult(first.r, heroPk.id),
       chips: allPk.map((id) => { const p = sel.map((x) => x.pkgs.find((y) => y.id === id)).find(Boolean); return [p.name, hexRgb(p.color)]; }),
     });
@@ -406,5 +411,5 @@ window.Mappe = (() => {
     await teilen(doc, `Praesentation_${fileSafe(w.customer)}${pk.length === 1 ? '_' + fileSafe(pk[0]) : ''}.pdf`);
   }
 
-  return { kunde, baueKunde, praesentation, baueVorstellung, start, cover, head: null, raumSeiten, produktSeite, ausstattung, schluss, teilen, crop, fileSafe, clean, hexRgb, C: { NAVY, BRASS, CREAM, INK, GREY, LIGHT, SOFT } };
+  return { objektZeile, kunde, baueKunde, praesentation, baueVorstellung, start, cover, head: null, raumSeiten, produktSeite, ausstattung, schluss, teilen, crop, fileSafe, clean, hexRgb, C: { NAVY, BRASS, CREAM, INK, GREY, LIGHT, SOFT } };
 })();
