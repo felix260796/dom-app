@@ -3,7 +3,7 @@
  * von Kunden und Subunternehmern. Arten lassen sich ein- und ausblenden (merkt sich das Gerät).
  * Speicher: 'termin:<id>' { id, kind:'termin', datum:'JJJJ-MM-TT', von:'HH:MM', bis:'HH:MM', ganztag,
  *   titel, art, wer:[personId], kundeId, objektId, projektId, partnerId, ort, notiz, created, updated }
- * Personen (Felix, Daniel …) stehen in den Einstellungen unter „Team“ (state.settings.team); oben im Kalender
+ * Personen (Felix, Deniel …) stehen in den Einstellungen unter „Team“ (state.settings.team); oben im Kalender
  * lässt sich einer oder alle anzeigen. Termine ohne Person gelten für alle.
  * Immer erreichbar über das Kalender-Symbol oben unter dem DOM-Schriftzug, dazu die Kachel im Reiter Kunden
  * und „Termine“ in Kundenkarte, Objekt und Projekt. */
@@ -28,6 +28,11 @@ window.Kalender = (() => {
   const alle = new Map();
   async function laden() {
     const d = await db();
+    // Schreibweise im Team korrigiert (6.11.2026): Deniel Kovacic
+    if (Array.isArray(state.settings.team) && state.settings.team.some((p) => p.name === 'Daniel Kovacic')) {
+      state.settings.team.forEach((p) => { if (p.name === 'Daniel Kovacic') p.name = 'Deniel Kovacic'; });
+      try { await saveSettings(); } catch {}
+    }
     const list = await new Promise((res, rej) => {
       const q = d.transaction('kv').objectStore('kv').getAll(IDBKeyRange.bound('termin:', 'termin:￿'));
       q.onsuccess = () => res(q.result); q.onerror = () => rej(q.error);
@@ -42,7 +47,7 @@ window.Kalender = (() => {
   };
   const merken = () => { try { localStorage.setItem('dom.kal.aus', JSON.stringify([...aus])); } catch {} };
   // Personen
-  const STANDARD_TEAM = [{ id: 'felix', name: 'Felix Brenzinger', email: '' }, { id: 'daniel', name: 'Daniel Kovacic', email: '' }];
+  const STANDARD_TEAM = [{ id: 'felix', name: 'Felix Brenzinger', email: '' }, { id: 'daniel', name: 'Deniel Kovacic', email: '' }];
   const team = () => (Array.isArray(state.settings.team) && state.settings.team.length ? state.settings.team : STANDARD_TEAM);
   const vorname = (p) => String(p?.name || '').trim().split(/\s+/)[0] || 'Ohne Namen';
   let werFilter;
@@ -150,10 +155,9 @@ window.Kalender = (() => {
           ${sichtbar.map((d) => { const s = iso(d), e = amTag(s); return `<button class="kal-d ${d.getMonth() !== monat.getMonth() ? 'aus' : ''} ${s === h ? 'heute' : ''} ${s === tag ? 'sel' : ''}" data-d="${s}">
             <span>${d.getDate()}</span><i>${[...new Set(e.map((x) => x.art))].slice(0, 3).map((a) => `<em style="--c:${art(a)[2]}"></em>`).join('')}</i></button>`; }).join('')}
         </div>
+        <div class="kal-f">${ARTEN.map(([id, n, c]) => `<button class="${h2.has(id) ? '' : 'on'}" data-art="${id}" style="--c:${c}" aria-pressed="${!h2.has(id)}"><i></i>${esc(n)}</button>`).join('')}</div>
       </div>
-      <div class="chips kal-f">${ARTEN.map(([id, n, c]) => `<button class="qchip ${h2.has(id) ? '' : 'on'}" data-art="${id}" style="--c:${c}"><i></i>${esc(n)}</button>`).join('')}</div>
-      <button class="cta" id="kNeu" style="margin-top:14px"><span class="cta-ico">${icon('plus')}</span><span class="cta-t"><b>Neuer Termin</b><span>am ${esc(tagLang(tag))}</span></span>${icon('chevron', 'cta-chev')}</button>
-      <div class="sec-h"><h2>${esc(tag === h ? 'Heute' : tagLang(tag))}</h2></div>
+      <div class="kal-tag-h"><h2>${esc(tag === h ? 'Heute' : tagLang(tag))}</h2><button class="kal-neu" id="kNeu">${icon('plus')} Termin</button></div>
       <div class="tlist" id="kTag">${eintraege(tag, tag).map(zeile).join('') || '<p class="hint" style="margin:0">Nichts eingetragen.</p>'}</div>
       ${naechste.length ? `<div class="sec-h"><h2>Demnächst</h2></div><div class="tlist" id="kNaechste">${naechste.map((e) => zeile({ ...e, titel: `${tagKurz(e.datum)} · ${e.titel}` })).join('')}</div>` : ''}`;
     const neu = () => { view(); };
@@ -259,6 +263,7 @@ window.Kalender = (() => {
         const bereit = state.settings.mailAktiv && window.Sync?.active();
         const sendJetzt = bereit && ($('#tMailAn')?.checked ?? false);
         t.mailAn = bereit ? empfaenger(t) : t.mailAn || [];
+        try { window.__projIdx = await projectIndex(); } catch {}
         t.kontext = kontext(t);
         await kvSet('termin:' + t.id, t); alle.set(t.id, t); punkt();
         tag = t.datum; monat = new Date(ausIso(t.datum).getFullYear(), ausIso(t.datum).getMonth(), 1);
@@ -287,20 +292,39 @@ window.Kalender = (() => {
   }
 
   /** Wer dabei ist: Team-Personen des Termins, Subunternehmer, auf Wunsch der Kunde (mit E-Mail oder ohne). */
+  // Jede Person bekommt ihre eigene Mail (rolle): team = alle Angaben, kunde = Zeit, Ort, Anlass (ohne Subunternehmer),
+  // partner = Adresse, Projekt, Kunde und dass der Termin mit uns ist.
   function beteiligte(t) {
-    const out = team().filter((p) => !t.wer?.length || t.wer.includes(p.id)).map((p) => ({ name: p.name, email: (p.email || '').trim() }));
+    const out = team().filter((p) => !t.wer?.length || t.wer.includes(p.id)).map((p) => ({ name: p.name, email: (p.email || '').trim(), rolle: 'team' }));
     const p = window.Partner?.byId(t.partnerId);
-    if (p) out.push({ name: [p.inhaber, p.firma].filter(Boolean).join(', ') || 'Subunternehmer', email: p.email.trim() });
+    if (p) out.push({ name: [p.inhaber, p.firma].filter(Boolean).join(', ') || 'Subunternehmer', email: p.email.trim(), rolle: 'partner' });
     const k = Kunden.byId(t.kundeId);
-    if (k && t.mailKunde) out.push({ name: Kunden.name(k), email: k.email.trim() });
+    if (k && t.mailKunde) out.push({ name: Kunden.name(k), email: k.email.trim(), rolle: 'kunde' });
     return out;
   }
   const empfaenger = (t) => beteiligte(t).filter((x) => /.+@.+\..+/.test(x.email));
   /** Angaben für den Text der E-Mail (die Cloud kennt Kunden und Subunternehmer nicht einzeln). */
   function kontext(t) {
     const k = Kunden.byId(t.kundeId), o = k && Kunden.objekt(k, t.objektId), p = window.Partner?.byId(t.partnerId);
-    return { firma: state.settings.company || 'DOM Projektmanagement', kunde: k ? Kunden.name(k) : '', kundeTel: k?.telefon || '', objekt: o ? Kunden.objLabel(o) : '',
-      partner: p ? [p.firma, p.inhaber, p.telefon].filter(Boolean).join(' · ') : '', wer: team().filter((x) => t.wer?.includes(x.id)).map((x) => x.name).join(', ') };
+    const w = t.projektId && (state.wohnung?.id === t.projektId ? state.wohnung : null);
+    const pi = t.projektId ? (window.__projIdx || []).find((x) => x.id === t.projektId) : null;
+    const pr = w || pi;
+    const dabei = team().filter((x) => !t.wer?.length || t.wer.includes(x.id));
+    return { firma: state.settings.company || 'DOM Projektmanagement', kontakt: state.settings.contact || '', kunde: k ? Kunden.name(k) : '', kundeTel: k?.telefon || '', objekt: o ? Kunden.objLabel(o) : '',
+      projekt: pr ? [pr.titel, pr.nr && `Nr. ${pr.nr}`].filter(Boolean).join(' · ') : '',
+      partner: p ? [p.firma, p.inhaber, p.telefon].filter(Boolean).join(' · ') : '', wer: dabei.map((x) => x.name).join(', '),
+      werKontakt: dabei.map((x) => [x.name, x.email].filter(Boolean).join(', ')).join(' · '), texte: Kalender.mailTexte() };
+  }
+
+  // Einleitungssätze der Mails, je Empfänger und Art; in Einstellungen → E-Mail-Automatisierung änderbar
+  const MAILTEXTE = {
+    team: { bestaetigung: 'Neuer Termin im Kalender, hier alle Angaben.', erinnerung: 'Erinnerung an den folgenden Termin.' },
+    kunde: { bestaetigung: 'vielen Dank für Ihr Vertrauen. Hiermit bestätigen wir unseren Termin bei Ihnen.', erinnerung: 'wir möchten Sie an unseren Termin bei Ihnen erinnern. Wir freuen uns auf Sie.' },
+    partner: { bestaetigung: 'hiermit bestätigen wir den folgenden Termin mit uns.', erinnerung: 'kurze Erinnerung an unseren gemeinsamen Termin.' },
+  };
+  function mailTexte() {
+    const s = state.settings.mailTexte || {};
+    return Object.fromEntries(Object.entries(MAILTEXTE).map(([r, v]) => [r, { bestaetigung: s[r]?.bestaetigung?.trim() || v.bestaetigung, erinnerung: s[r]?.erinnerung?.trim() || v.erinnerung }]));
   }
 
   /** .ics-Datei: das iPhone bietet „Zum Kalender hinzufügen“ an (mit Erinnerung). */
@@ -323,5 +347,5 @@ window.Kalender = (() => {
   /** Punkt am Kalender-Symbol, wenn heute etwas ansteht. */
   function punkt() { const d = $('#calDot'); if (d) d.hidden = !eintraege(heute(), heute()).length; }
 
-  return { laden, view, kachel, abschnitt, bearbeiten, eintraege, punkt, team, ARTEN };
+  return { laden, view, kachel, abschnitt, bearbeiten, eintraege, punkt, team, ARTEN, MAILTEXTE, mailTexte };
 })();

@@ -7,8 +7,13 @@
  * Baut auf core.js/app.js auf (state, kvGet/kvSet/kvDel, saveProject, packagesFor, header, icon, …). */
 window.Projekt = (() => {
   const PKG_IDS = Object.keys(PKG_META); // basic, standard, premium
-  // Projektstatus: '' = läuft (Standard, auch für alte Projekte), 'geplant' = vorgesehen, 'fertig' = abgeschlossen
-  const STATUS = [['geplant', 'Vorgesehen', '#5b7a99'], ['', 'Läuft', '#b8862f'], ['fertig', 'Abgeschlossen', '#237a4b']];
+  // Projektstatus in zwei Stufen. Zuerst das Angebot: 'angebot' = versendet, 'abgesagt'. Zugesagt heißt: es geht
+  // in die Ausführung mit 'geplant' = eingeplant, '' = läuft (Standard, auch für alte Projekte), 'fertig' = abgeschlossen.
+  const ANGEBOT = [['angebot', 'Angebot versendet', '#7a6a9e'], ['abgesagt', 'Abgesagt', '#9a8f86']];
+  const STATUS = [['geplant', 'Eingeplant', '#5b7a99'], ['', 'Läuft', '#b8862f'], ['fertig', 'Abgeschlossen', '#237a4b']];
+  const ALLE = [...ANGEBOT, ...STATUS];
+  const zugesagt = (st) => STATUS.some((s) => s[0] === (st || ''));
+  const statusName = (st) => (ALLE.find((s) => s[0] === (st || '')) || STATUS[1])[1];
   const rooms = new Map(); // geladene Räume (dasselbe Objekt für Ansicht und laufende KI-Aufträge)
   let running = null; // Projekt-ID, während „Alle Räume visualisieren“ läuft
 
@@ -83,7 +88,7 @@ window.Projekt = (() => {
   /** Neues Projekt für Kunde k am Objekt oid. Gespeichert wird es mit dem ersten Raum. */
   function neuFuer(k, oid) {
     const w = neuesProjekt();
-    w.isNew = true;
+    w.isNew = true; w.status = 'angebot';
     w.kundeId = k.id; w.objektId = oid || '';
     w.customer = Kunden.name(k); w.address = Kunden.einzeilig(Kunden.objekt(k, oid)?.adresse || '');
     state.project = null; state.wohnung = w; view(); window.scrollTo(0, 0);
@@ -182,7 +187,10 @@ window.Projekt = (() => {
         <label class="ic-field">${icon('edit')}<input type="text" id="wTitel" value="${esc(w.titel || '')}" placeholder="Projektname, z. B. Badumbau" autocomplete="off" aria-label="Projektname"></label>`
         : `<button class="kline" id="wKundeWahl">${icon('user')}<span class="kl-t"><b>${esc(w.customer || 'Kunde zuordnen')}</b><small>Kunde auswählen oder neu anlegen</small></span>${icon('chevron', 'pc-chev')}</button>`}
       </div>
-      <div class="seg2 full wstatus" id="wStatus">${STATUS.map(([id, n, c]) => `<button data-st="${id}" class="${(w.status || '') === id ? 'on' : ''}" style="--c:${c}">${n}</button>`).join('')}</div>
+      <div class="wstat-l">Angebot</div>
+      <div class="seg2 full wstatus" id="wStatus">${[['angebot', 'Versendet', ANGEBOT[0][2]], ['abgesagt', 'Abgesagt', ANGEBOT[1][2]], ['__zu', 'Zugesagt', '#237a4b']].map(([id, n, c]) => `<button data-st="${id}" class="${(id === '__zu' ? zugesagt(w.status) : (w.status || '') === id) ? 'on' : ''}" style="--c:${c}">${n}</button>`).join('')}</div>
+      ${zugesagt(w.status) ? `<div class="wstat-l">Ausführung</div>
+      <div class="seg2 full wstatus">${STATUS.map(([id, n, c]) => `<button data-st="${id}" class="${(w.status || '') === id ? 'on' : ''}" style="--c:${c}">${n}</button>`).join('')}</div>` : ''}
       ${k ? `<div class="docs" style="margin-top:12px"><button class="doc" id="wBilder"><span class="d-ico brass">${icon('camera')}</span>
         <span class="d-t"><b>Bilder & Dokumentation</b><span>${nFotos ? `${nFotos} ${nFotos === 1 ? 'Bild' : 'Bilder'} in diesem Projekt` : 'Bestand, Baufortschritt, Abnahme, eigene Ordner'}</span></span>${icon('chevron', 'pc-chev')}</button></div>` : ''}
       ${window.Gespraech?.karte(w, list) || ''}
@@ -231,9 +239,11 @@ window.Projekt = (() => {
       <button class="link-danger" id="wDel">${icon('trash')} Projekt löschen</button>` : ''}`;
     if (k && $('#wTermine')) window.Kalender?.abschnitt($('#wTermine'), { kundeId: k.id, objektId: w.objektId, projektId: w.id, zurueck: () => view() });
     $$('[data-st]').forEach((b) => (b.onclick = async () => {
-      w.status = b.dataset.st; $$('[data-st]').forEach((x) => x.classList.toggle('on', x === b));
+      const v = b.dataset.st;
+      if (v === '__zu') { if (zugesagt(w.status)) return; w.status = 'geplant'; } else w.status = v;
       if (!w.isNew) await save(w);
-      toast(`Status: ${STATUS.find((s) => s[0] === w.status)[1]}`);
+      toast(`Status: ${v === '__zu' ? 'Zugesagt, eingeplant' : statusName(w.status)}`);
+      const y = window.scrollY; await view(); window.scrollTo(0, y);
     }));
 
     if ($('#wKunde')) $('#wKunde').onclick = () => Kunden.oeffnen(k.id);
@@ -417,7 +427,7 @@ window.Projekt = (() => {
   }
 
   const forget = (id) => rooms.delete(id);
-  return { STATUS, forget, neu, neuFuer, kundeUebernehmen, oeffnen, view, mappeView, moodboardView, migrate, raum, raeume, raumGespeichert, raumEntfernt, save, wahl, PKG_IDS, _intern: { titel, addRoom } };
+  return { STATUS, ANGEBOT, ALLE, zugesagt, statusName, forget, neu, neuFuer, kundeUebernehmen, oeffnen, view, mappeView, moodboardView, migrate, raum, raeume, raumGespeichert, raumEntfernt, save, wahl, PKG_IDS, _intern: { titel, addRoom } };
 })();
 // Ältere Aufrufe (PR „Wohnungen“) laufen weiter
 window.Wohnung = { neu: () => Projekt.neu(), oeffnen: (id) => Projekt.oeffnen(id), view: () => Projekt.view(), raumGespeichert: (p) => Projekt.raumGespeichert(p), raumEntfernt: (p) => Projekt.raumEntfernt(p) };

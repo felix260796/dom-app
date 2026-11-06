@@ -5,6 +5,18 @@
   const m = () => document.getElementById('main');
   window.scrollTo = (x, y) => { const el = m(); if (!el) return; if (x && typeof x === 'object') el.scrollTo(x); else el.scrollTo(x || 0, y || 0); };
   try { Object.defineProperty(window, 'scrollY', { configurable: true, get: () => m()?.scrollTop || 0 }); } catch {}
+  // iPhone-App vom Homebildschirm: iOS meldet dort manchmal eine zu kleine Fensterhöhe, dann bleibt unter der
+  // Leiste ein Streifen frei. Die App füllt dort deshalb immer den ganzen Bildschirm.
+  if (navigator.standalone) {
+    const fit = () => {
+      const hoch = matchMedia('(orientation: portrait)').matches;
+      const h = hoch ? Math.max(screen.width, screen.height) : Math.min(screen.width, screen.height);
+      const b = document.body; if (!b) return;
+      if (h > innerHeight + 4) { b.style.height = h + 'px'; b.style.bottom = 'auto'; } else { b.style.height = ''; b.style.bottom = ''; }
+    };
+    addEventListener('resize', fit); addEventListener('orientationchange', () => setTimeout(fit, 300));
+    if (document.body) fit(); else addEventListener('DOMContentLoaded', fit);
+  }
 })();
 /* DOM – Kern der App: Helfer, Speicher (IndexedDB), KI-Aufrufe (Gemini), Bildfunktionen.
  * Alle Daten liegen lokal auf dem Gerät. Sicherung: backup.js · Cloud-Abgleich: sync.js

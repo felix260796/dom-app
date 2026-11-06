@@ -154,7 +154,7 @@ const EINST = [
   ['firma', 'Firma & Logo', 'home', 'navy'],
   ['ki', 'KI-Bildbearbeitung', 'sparkle', 'navy'],
   ['preise', 'Preisliste & Angebot', 'euro', 'grey'],
-  ['team', 'Team', 'users', 'navy'],
+  ['team', 'E-Mail-Automatisierung', 'mail', 'navy'],
   ['cloud', 'Cloud-Abgleich', 'refresh', 'brass'],
   ['sicherung', 'Datensicherung', 'download', 'grey'],
 ];
@@ -167,7 +167,7 @@ function einstellungInfo(k) {
   if (k === 'firma') return [S.company, S.logo ? 'mit Logo' : 'ohne Logo'].filter(Boolean).join(' · ');
   if (k === 'ki') return S.apiKey ? `Eingerichtet · ${(S.modelList || []).find((m) => m.id === S.model)?.label || S.model}` : 'Noch nicht eingerichtet';
   if (k === 'preise') return 'Excel-Angebotstool, Aufschläge, Paket-Vorlagen';
-  if (k === 'team') return (window.Kalender?.team() || []).map((p) => p.name).join(', ') || 'Personen für den Kalender';
+  if (k === 'team') return `${S.mailAktiv ? 'Terminmails an' : 'Terminmails aus'} · ${(window.Kalender?.team() || []).map((p) => p.name).join(', ')}`;
   if (k === 'cloud') return window.Sync?.active() ? 'Verbunden, gleicht automatisch ab' : 'Nicht verbunden';
   if (k === 'sicherung') return window.Sync?.active() ? 'Notfall-Export als Datei' : 'Sicherung als Datei, z. B. in OneDrive';
   return '';
@@ -182,6 +182,28 @@ function viewEinstellungen() {
     <p class="hint center" style="margin-top:18px">App-Version ${APP_VERSION}</p>`;
   $$('[data-einst]').forEach((b) => (b.onclick = () => { einstellungSeite(b.dataset.einst); window.scrollTo(0, 0); }));
 }
+/** Beispiel einer Terminmail für einen Empfänger (r = team | kunde | partner). Gleicher Aufbau wie in supabase/functions/termin-mail. */
+function mailVorschau(r, satz) {
+  const firma = state.settings.company || 'DOM Projektmanagement';
+  const z = (l, v) => (v ? `<tr><td style="padding:5px 12px 5px 0;color:#6b7380;vertical-align:top">${l}</td><td style="padding:5px 0;font-weight:600">${esc(v)}</td></tr>` : '');
+  const wer = (window.Kalender?.team() || []).map((p) => p.name).join(', ');
+  const zeilen = r === 'team'
+    ? z('Anlass', 'Aufmaß Bad') + z('Wann', 'Freitag, 13. November 2026, 14:00 Uhr bis 15:00 Uhr') + z('Wo', 'Musterstraße 1, 70173 Stuttgart') + z('Kunde', 'Familie Müller · 0711 123456') + z('Objekt', 'Haus') + z('Projekt', 'Badumbau · Nr. 1001-01') + z('Subunternehmer', 'Fliesen Kaya GmbH · Mehmet Kaya') + z('Dabei', wer) + z('Notiz', 'Fliesenmuster mitbringen')
+    : r === 'kunde'
+      ? z('Anlass', 'Aufmaß Bad') + z('Wann', 'Freitag, 13. November 2026, 14:00 Uhr bis 15:00 Uhr') + z('Wo', 'Musterstraße 1, 70173 Stuttgart') + z('Von uns kommt', wer)
+      : z('Anlass', 'Aufmaß Bad') + z('Wann', 'Freitag, 13. November 2026, 14:00 Uhr bis 15:00 Uhr') + z('Adresse', 'Musterstraße 1, 70173 Stuttgart') + z('Projekt', 'Badumbau · Nr. 1001-01') + z('Kunde', 'Familie Müller') + z('Termin mit', `${firma} (${wer})`);
+  const anrede = r === 'team' ? 'Hallo,' : r === 'kunde' ? 'Guten Tag Familie Müller,' : 'Hallo Herr Kaya,';
+  const html = `<div style="background:#1e3550;color:#fff;border-radius:14px 14px 0 0;padding:14px 16px"><div style="font-size:12px;opacity:.75">${esc(firma)}</div><div style="font-size:19px;font-weight:700;margin-top:3px">Terminbestätigung</div></div>
+    <div style="background:#fff;border-radius:0 0 14px 14px;padding:14px 16px;color:#1b2533"><p style="margin:0 0 4px">${esc(anrede)}</p><p style="margin:0 0 12px">${esc(satz)}</p><table style="border-collapse:collapse;font-size:14.5px">${zeilen}</table>
+    ${r === 'team' ? '' : `<p style="margin:14px 0 0">Viele Grüße<br>${esc(firma)}</p>`}</div>`;
+  const bg = document.createElement('div');
+  bg.className = 'sheet-bg';
+  bg.innerHTML = `<div class="sheet" style="background:#f3f1ec"><div class="sheet-h"><b>Beispiel: Mail an ${r === 'team' ? 'euch' : r === 'kunde' ? 'den Kunden' : 'den Subunternehmer'}</b></div><div style="padding:4px 4px 12px">${html}</div><button class="btn block" data-zu>Schließen</button></div>`;
+  document.body.appendChild(bg);
+  requestAnimationFrame(() => bg.classList.add('on'));
+  const zu = () => bg.remove();
+  bg.onclick = (e) => { if (e.target === bg || e.target.closest('[data-zu]')) zu(); };
+}
 function einstellungSeite(k) {
   if (k === 'moodboards') { state.editPkg = null; return viewPakete(); }
   const S = state.settings;
@@ -192,7 +214,14 @@ function einstellungSeite(k) {
     // Personen für den Kalender (Termine je Person, oben im Kalender umschaltbar)
     if (!Array.isArray(S.team) || !S.team.length) S.team = JSON.parse(JSON.stringify(Kalender.team()));
     const render = () => {
-      main().innerHTML = `<p class="hint" style="margin-top:0">Im Kalender kannst du oben zwischen den Personen umschalten. Die E-Mail-Adressen werden für Terminbestätigungen gebraucht.</p>
+      const T = Kalender.mailTexte();
+      const ROLLEN = [
+        ['team', 'Ihr (Team)', 'Alle Angaben: Anlass, Zeit, Ort, Kunde mit Telefon, Objekt, Projekt, Subunternehmer, wer dabei ist, Notiz.'],
+        ['kunde', 'Kunde', 'Nur Anlass, Zeit, Ort und wer von uns kommt. Kein Hinweis auf den Subunternehmer, keine interne Notiz.'],
+        ['partner', 'Subunternehmer', 'Anlass, Zeit, Adresse, Projekt und Kundenname, dazu dass der Termin mit DOM ist und wer von uns dabei ist. Keine Kundentelefonnummer, keine interne Notiz.'],
+      ];
+      main().innerHTML = `<div class="sec-h" style="margin-top:4px"><h2>Team</h2></div>
+        <p class="hint" style="margin-top:-4px">Im Kalender kannst du oben zwischen den Personen umschalten. Die E-Mail-Adressen werden für die Terminmails gebraucht.</p>
         ${S.team.map((p, i) => `<div class="card kform" data-tp="${i}">
           <label style="margin-top:0">Name</label><input type="text" data-tf="name" value="${esc(p.name)}" autocomplete="off" placeholder="Vor- und Nachname">
           <label>E-Mail</label><input type="email" data-tf="email" value="${esc(p.email || '')}" autocomplete="off" inputmode="email" placeholder="name@firma.de">
@@ -206,7 +235,21 @@ function einstellungSeite(k) {
           <select id="erinT">${[[0, 'keine'], [1, '1 Tag vorher'], [2, '2 Tage vorher'], [3, '3 Tage vorher'], [7, '1 Woche vorher']].map(([v, n]) => `<option value="${v}" ${(S.erinnerungTage ?? 1) === v ? 'selected' : ''}>${n}</option>`).join('')}</select>
           <button class="btn secondary block" id="mailTest" style="margin-top:12px" ${window.Sync?.active() ? '' : 'disabled'}>${icon('mail')} Test-Mail an das Team senden</button>
           ${S.mailAktiv ? '<button class="link-danger" id="mailAus" style="margin-top:6px">Terminmails ausschalten</button>' : ''}
-        </div>`;
+        </div>
+        <div class="sec-h"><h2>Wer bekommt was?</h2></div>
+        <p class="hint" style="margin-top:-4px">Jeder bekommt seine eigene Mail. Den Einleitungssatz kannst du je Empfänger ändern, leer lassen heißt Standardtext.</p>
+        ${ROLLEN.map(([r, n, was]) => `<div class="card kform mvorl" data-mr="${r}">
+          <div class="hv-h" style="margin-top:0">${icon(r === 'team' ? 'users' : r === 'kunde' ? 'user' : 'wrench')}<span>${n}</span></div>
+          <p class="muted" style="margin:6px 0 0;font-size:14px">${was}</p>
+          <label>Terminbestätigung</label><textarea data-mt="bestaetigung" rows="2" placeholder="${esc(Kalender.MAILTEXTE[r].bestaetigung)}">${esc(S.mailTexte?.[r]?.bestaetigung || '')}</textarea>
+          <label>Erinnerung</label><textarea data-mt="erinnerung" rows="2" placeholder="${esc(Kalender.MAILTEXTE[r].erinnerung)}">${esc(S.mailTexte?.[r]?.erinnerung || '')}</textarea>
+          <button class="btn secondary small" data-mvor style="margin-top:10px">${icon('eye')} Beispiel ansehen</button>
+        </div>`).join('')}`;
+      $$('[data-mr]').forEach((c) => {
+        const r = c.dataset.mr;
+        $$('[data-mt]', c).forEach((ta) => (ta.oninput = () => { S.mailTexte ??= {}; S.mailTexte[r] ??= {}; S.mailTexte[r][ta.dataset.mt] = ta.value; save(); }));
+        $('[data-mvor]', c).onclick = () => mailVorschau(r, Kalender.mailTexte()[r].bestaetigung);
+      });
       $('#erinT').onchange = (e) => { S.erinnerungTage = +e.target.value; save(); };
       $('#mailTest').onclick = async () => {
         const an = S.team.filter((p) => /.+@.+\..+/.test(p.email || '')).map((p) => ({ name: p.name, email: p.email }));
