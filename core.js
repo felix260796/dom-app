@@ -95,9 +95,12 @@ async function loadAll() {
 const saveSettings = () => kvSet('settings', state.settings);
 const saveBoards = () => kvSet('boards', state.boards);
 const saveBoardsDebounced = debounce(saveBoards, 500);
-/** Moodboards (Pakete) eines Raumtyps; fehlende werden mit den Beispielen angelegt. */
-function packagesFor(rt) {
-  const list = (state.boards[rt] ??= defaultPackagesFor(rt));
+/** Moodboards (Pakete) eines Raumtyps; fehlende werden mit den Beispielen angelegt.
+ * Hat das offene Projekt ein eigenes (angepasstes) Moodboard für den Raumtyp, gilt dieses:
+ * für Visualisierung, Kundenmappe, Baumappe und Angebot. w = null erzwingt das allgemeine Moodboard. */
+function packagesFor(rt, w = state.wohnung) {
+  const own = w?.boards?.[rt];
+  const list = Array.isArray(own) && own.length ? own : (state.boards[rt] ??= defaultPackagesFor(rt));
   for (const p of list) { p.images ??= []; p.products ??= []; p.fields ??= {}; }
   return list;
 }

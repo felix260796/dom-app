@@ -301,5 +301,102 @@ window.Mappe = (() => {
     await teilen(doc, `Kundenmappe_${fileSafe(w.customer)}${pk.length === 1 ? '_' + fileSafe(pk[0]) : ''}.pdf`);
   }
 
-  return { kunde, baueKunde, start, cover, head: null, raumSeiten, produktSeite, ausstattung, schluss, teilen, crop, fileSafe, clean, hexRgb, C: { NAVY, BRASS, CREAM, INK, GREY, LIGHT, SOFT } };
+  // ---------- Präsentation (nur die neuen Bilder, ohne Vorher) ----------
+  /** Ausstattung als eine Spalte (Bezeichnung + Text) im Bereich x..x+w von y bis maxY. */
+  function ausstattungSpalte(c, r, pkg, x, y, w, maxY) {
+    const items = fieldsFor(r.roomType).filter(([k]) => !['beschreibung', 'sonstiges'].includes(k) && pkg.fields[k]?.trim());
+    if (!items.length) return y;
+    c.caps('Ausstattung', x, y); y += 6.5;
+    for (const [k, label] of items) {
+      c.font(8.2, 'normal', INK);
+      const lines = c.lines(pkg.fields[k].trim(), w).slice(0, 3);
+      if (y + 3.8 + lines.length * 3.7 > maxY) break;
+      c.font(6.3, 'bold', GREY); c.text(label.replace(/\s*\(.*\)/, '').toUpperCase(), x, y, { charSpace: 0.25 });
+      c.font(8.2, 'normal', INK); c.text(lines, x, y + 3.9);
+      y += 3.9 + lines.length * 3.7 + 3.2;
+    }
+    return y;
+  }
+
+  /** Präsentationsseiten eines Raums in einem Paket: großes Bild mit Ausstattung, weitere Ansichten groß, Abendstimmung. */
+  async function praesSeiten(c, r, pkg, { evening = true } = {}) {
+    const { M, W } = c;
+    const rgb = hexRgb(pkg.color);
+    const views = r.photos.map((_, i) => [r.results[pkg.id]?.[i], i]).filter(([res]) => res);
+    if (!views.length) return;
+    const rn = r.room || roomType(r.roomType).name;
+    // Seite 1: Hauptbild links, rechts Paket und Ausstattung
+    await c.head(roomType(r.roomType).name !== rn ? roomType(r.roomType).name : 'Ihr neuer Raum', rn, '', rgb);
+    const iw = 182, ih = 146, by = 37;
+    await c.image(views[0][0], M, by, iw, ih);
+    c.fill(rgb, M, by + ih, iw, 1.2);
+    const rx = M + iw + 9, rw = W - M - rx;
+    c.pill('Paket ' + pkg.name, rx, by, rgb);
+    let y = by + 13;
+    if (pkg.fields.beschreibung?.trim()) {
+      c.font(10, 'normal', INK);
+      const dl = c.lines(pkg.fields.beschreibung.trim(), rw).slice(0, 6);
+      c.text(dl, rx, y, { lineHeightFactor: 1.35 }); y += dl.length * 4.9 + 4;
+      c.fill(BRASS, rx, y - 2, 14, 0.7); y += 6;
+    }
+    ausstattungSpalte(c, r, pkg, rx, y, rw, by + ih);
+    // Weitere Ansichten: je Seite ein großes Bild über die ganze Breite
+    for (const [vi, [res]] of views.entries()) {
+      if (vi === 0) continue;
+      await c.head(`${rn}  ·  Paket ${pkg.name}`, `Ansicht ${vi + 1} von ${views.length}`, '', rgb);
+      await c.image(res, M, by, W - 2 * M, ih);
+      c.fill(rgb, M, by + ih, W - 2 * M, 1.2);
+    }
+    // Abendstimmung
+    const eves = evening ? views.map(([, i]) => eveningOf(r, pkg.id, i)).filter(Boolean) : [];
+    if (eves.length) {
+      await c.head(`${rn}  ·  Paket ${pkg.name}`, 'Am Abend', 'Die eingeplanten Leuchten eingeschaltet und gedimmt, warmweißes Licht.', rgb);
+      if (eves.length === 1) await c.image(eves[0], M, by + 2, W - 2 * M, ih - 2);
+      else {
+        const gap = 6, bw = (W - 2 * M - gap) / 2;
+        await c.image(eves[0], M, by + 2, bw, ih - 2); await c.image(eves[1], M + bw + gap, by + 2, bw, ih - 2);
+      }
+    }
+  }
+
+  async function baueVorstellung(w, sel, { evening = w.pdfEvening !== false, products = w.pdfProducts, prices = w.pdfPrices } = {}) {
+    const c = await start('Präsentation · KI-Visualisierung, unverbindliche Darstellung');
+    const first = sel[0];
+    const heroPk = first.pkgs[first.pkgs.length - 1];
+    const one = sel.length === 1;
+    const allPk = Object.keys(PKG_META).filter((id) => sel.some((x) => x.pkgs.some((p) => p.id === id)));
+    await cover(c, {
+      tag: one ? 'Präsentation Ihres neuen Raums' : 'Präsentation Ihrer neuen Räume',
+      title: one ? (first.r.room || roomType(first.r.roomType).name) : 'Ihre Sanierung',
+      sub: one ? (first.pkgs.length > 1 ? `in ${first.pkgs.length} Ausstattungsvarianten` : `Paket ${heroPk.name}`) : sel.map((x) => x.r.room || roomType(x.r.roomType).name).join(' · '),
+      meta: [['Für', w.customer], ['Objekt', w.address], ['Datum', new Date().toLocaleDateString('de-DE', { day: '2-digit', month: 'long', year: 'numeric' })]],
+      hero: firstResult(first.r, heroPk.id),
+      chips: allPk.map((id) => { const p = sel.map((x) => x.pkgs.find((y) => y.id === id)).find(Boolean); return [p.name, hexRgb(p.color)]; }),
+    });
+    const shownProducts = new Set();
+    for (const { r, pkgs } of sel) {
+      for (const pk of pkgs) {
+        await praesSeiten(c, r, pk, { evening });
+        const k = r.roomType + ':' + pk.id;
+        if (products && !shownProducts.has(k) && pk.products.some((x) => x.name?.trim())) { shownProducts.add(k); await produktSeite(c, pk, { prices, sub: roomType(r.roomType).name }); }
+      }
+    }
+    await schluss(c, {
+      steps: [
+        ['Auswahl treffen', 'Sagen Sie uns, was Ihnen gefällt und was Sie anders möchten. Wir passen Ausstattung und Produkte gerne für Sie an.'],
+        ['Festpreis-Angebot', 'Nach einem genauen Aufmaß erhalten Sie ein verbindliches Angebot mit allen Positionen und einem Bauzeitenplan.'],
+        ['Umsetzung aus einer Hand', 'Wir koordinieren alle Gewerke, vom Rückbau bis zur Endreinigung, und sind Ihr fester Ansprechpartner.'],
+      ],
+      note: 'Die Bilder sind KI-Visualisierungen. Sie zeigen die Wirkung der Ausstattung und sind keine verbindliche Planung. Farben, Formate und Produkte werden im Angebot festgelegt.',
+    });
+    c.footer();
+    return c.doc;
+  }
+  async function praesentation(w, sel) {
+    const doc = await baueVorstellung(w, sel);
+    const pk = [...new Set(sel.flatMap((x) => x.pkgs.map((p) => p.name)))];
+    await teilen(doc, `Praesentation_${fileSafe(w.customer)}${pk.length === 1 ? '_' + fileSafe(pk[0]) : ''}.pdf`);
+  }
+
+  return { kunde, baueKunde, praesentation, baueVorstellung, start, cover, head: null, raumSeiten, produktSeite, ausstattung, schluss, teilen, crop, fileSafe, clean, hexRgb, C: { NAVY, BRASS, CREAM, INK, GREY, LIGHT, SOFT } };
 })();
