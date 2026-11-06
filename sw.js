@@ -1,5 +1,5 @@
 // Offline-Cache für die App-Dateien. Bei Änderungen VERSION erhöhen.
-const VERSION = 'v21';
+const VERSION = 'v23';
 const FILES = ['./', 'index.html', 'style.css', 'rooms.js', 'core.js', 'voice.js', 'moodboards.js', 'backup.js', 'sync.js', 'social.js', 'angebot.js', 'garten.js', 'pdf.js', 'baumappe.js', 'projekt.js', 'app.js',
   'data/preisliste.json', 'vendor/xlsx.mini.min.js', 'vendor/jspdf.umd.min.js', 'manifest.webmanifest',
   'icons/icon-180.png', 'icons/icon-192.png', 'icons/icon-512.png', 'assets/dom_logo.png', 'assets/dom_logo_weiss.png'];

@@ -197,6 +197,8 @@ details.sub > summary { font-size: 14px; font-weight: 600; color: var(--navy-2);
 .voice { margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--line); }
 .voice-h { display: flex; flex-direction: column; margin-bottom: 10px; }
 .voice-h span { font-size: 13px; color: var(--muted); }
+.voice-err { margin: 8px 0 4px; padding: 10px 12px; border-radius: 10px; background: #fbeaea; color: #8a1f1f; font-size: 13px; display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.voice-err[hidden] { display: none; }
 .empty-res { display: flex; gap: 12px; align-items: center; color: var(--muted); font-size: 14px; }
 .empty-res svg.i { color: var(--brass); width: 28px; height: 28px; }
 #toMappe { margin-top: 4px; }
@@ -385,3 +387,5 @@ span.x { background: none; }
   .tiles { grid-template-columns: 1fr 1fr; }
   .rtgrid { grid-template-columns: 1fr 1fr; }
 }
+
+.masse-row input { text-align: center; }

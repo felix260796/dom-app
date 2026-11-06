@@ -128,37 +128,144 @@ async function deleteProject(id) {
 
 // ---------- KI: Prompt & Gemini-Aufruf ----------
 const MAX_PHOTOS = 4;
-/** Baut die Anweisung. ctx: { others: Anzahl weiterer Raumfotos, rendered: true wenn eine fertige Ansicht als Vorlage dabei ist } */
-function buildPrompt(pkg, room, note, ctx = { others: 0, rendered: false, wishes: '' }) {
-  const rt = roomType(ctx.rt || roomTypeIdFromName(room));
-  const FIELDS = fieldsFor(rt.id);
-  const spec = FIELDS.filter(([k]) => k !== 'beschreibung' && pkg.fields[k]?.trim())
+const ANALYSE_MODEL = 'gemini-2.5-flash'; // liest Fotos und plant, bevor das Bild gemacht wird (günstig, schnell)
+
+/** Kurzer Fingerabdruck eines Textes (z. B. der Fotos), um zu erkennen, ob sich etwas geändert hat. */
+function quickHash(str) {
+  let h = 2166136261; const step = Math.max(1, Math.floor(str.length / 4000));
+  for (let i = 0; i < str.length; i += step) { h ^= str.charCodeAt(i); h = Math.imul(h, 16777619); }
+  return (h >>> 0).toString(36) + str.length.toString(36);
+}
+const amDez = (v) => (+v).toLocaleString('de-DE', { maximumFractionDigits: 2 });
+const amZahl = (v) => { const n = parseFloat(String(v ?? '').replace(',', '.')); return isFinite(n) ? n : 0; };
+/** Maße aus dem Aufmaß als Text, damit die KI die echte Raumgröße kennt. */
+function aufmassText(p) {
+  return (p.aufmass?.raeume || []).map((r) => {
+    const teile = (r.teile || []).map((t) => [amZahl(t.l), amZahl(t.b)]).filter(([l, b]) => l > 0 && b > 0);
+    if (!teile.length) return '';
+    const fl = teile.reduce((s, [l, b]) => s + l * b, 0), h = amZahl(r.h);
+    const oe = (r.oeff || []).filter((o) => amZahl(o.n) > 0 && amZahl(o.b) > 0).map((o) => `${o.n}× ${o.art} ${amDez(amZahl(o.b))} × ${amDez(amZahl(o.h))} m`).join(', ');
+    return `- ${r.name || 'Raum'}: ${teile.map(([l, b]) => `${amDez(l)} × ${amDez(b)} m`).join(' + ')} (${amDez(fl)} m² Boden)${h ? `, Raumhöhe ${amDez(h)} m` : ''}${oe ? `; ${oe}` : ''}${r.dusche ? `; Dusche${amZahl(r.duschwand) ? ` (Wandlänge ${amDez(amZahl(r.duschwand))} m)` : ''}` : ''}${r.notiz?.trim() ? `; Notiz: ${r.notiz.trim()}` : ''}`;
+  }).filter(Boolean).join('\n');
+}
+
+/** Schnell eingegebene Raummaße im Schritt Fotos (Länge × Breite × Höhe in m). */
+function raumMasse(p) {
+  const l = amZahl(p.masse?.l), b = amZahl(p.masse?.b), h = amZahl(p.masse?.h);
+  if (!l && !b) return '';
+  return `- Raum: ${[l, b].filter(Boolean).map(amDez).join(' × ')} m${l && b ? ` (${amDez(l * b)} m² Boden)` : ''}${h ? `, Raumhöhe ${amDez(h)} m` : ''} (vor Ort gemessen)`;
+}
+/** Alle bekannten Maße: vor Ort eingegeben und aus dem Aufmaß. */
+function masseText(p) { return [raumMasse(p), aufmassText(p)].filter(Boolean).join('\n'); }
+
+/** Schritt 1: Die KI schaut sich die Fotos an und beschreibt den Bestand (was wo steht, wie groß, was fehlt).
+ *  Ergebnis wird im Raum gespeichert (p.bestand) und kann in der App korrigiert werden. */
+const _bestandJobs = new Map();
+function bestandSig(p) { return quickHash(p.photos.join('|') + '|' + p.roomType + '|' + masseText(p)); }
+async function roomBestand(p) {
+  const sig = bestandSig(p);
+  if (p.bestand?.text?.trim() && (p.bestand.sig === sig || p.bestand.manual && p.bestand.photos === p.photos.length && p.bestand.masse === masseText(p))) return p.bestand.text;
+  const key = p.id + sig;
+  if (!_bestandJobs.has(key)) _bestandJobs.set(key, (async () => {
+    const rt = roomType(p.roomType);
+    const masse = masseText(p);
+    const parts = [{ text: `Du bist erfahrener Bausachverständiger. ${p.photos.length > 1 ? `Die ${p.photos.length} Fotos zeigen DENSELBEN ${rt.outdoor ? 'Bereich' : 'Raum'} aus verschiedenen Blickwinkeln` : 'Das Foto zeigt einen ' + (rt.outdoor ? 'Außenbereich' : 'Raum')} (Raumtyp: ${rt.name}${p.room && p.room !== rt.name ? `, „${p.room}“` : ''}) VOR der Sanierung.${masse ? `\n\nGemessene Maße (diese sind verbindlich):\n${masse}` : ''}
+
+Beschreibe nüchtern den BESTAND, damit eine Bild-KI bei der Sanierung den Raum nicht verändert und nichts dazuerfindet. Antworte auf Deutsch, knapp, genau in diesem Format:
+
+RAUM: Größe (sehr klein / klein / mittel / groß), Maße Länge × Breite × Höhe in m (${masse ? 'gemessen, siehe oben' : 'geschätzt, Tür ≈ 2 m hoch und ≈ 0,8 m breit als Maßstab'}), Form (z. B. schmaler Schlauch, quadratisch, L-Form), Dachschräge ja/nein
+FENSTER UND TÜREN: Anzahl, Lage, ungefähre Größe
+VORHANDEN: je Gegenstand eine Zeile „- Gegenstand – Lage im Raum – ungefähre Größe“ (z. B. „- Badewanne – an der Stirnwand unter dem Fenster – ca. 170 × 75 cm“). Alle Sanitärobjekte, Möbel, Heizkörper, Geräte, Leuchten.
+NICHT VORHANDEN: was in einem Raum dieses Typs üblich wäre, hier aber fehlt (z. B. WC, Dusche, Badewanne, zweites Waschbecken, Heizkörper, Küchenzeile)
+ANSCHLÜSSE: wo Wasser, Abfluss, Strom, Heizung sichtbar sind oder sicher anzunehmen sind
+PLATZ: was hier realistisch hineinpasst und was nicht (z. B. „nur Einzelwaschtisch bis ca. 60 cm, kein Doppelwaschtisch, keine freistehende Wanne, keine zusätzliche Dusche“)
+${p.photos.length > 1 ? 'JE FOTO: „Foto 1: Blickrichtung, welche Wände und Gegenstände zu sehen sind“, dann Foto 2 usw.' : 'FOTO: Blickrichtung, welche Wände und Gegenstände zu sehen sind'}
+
+Nur was wirklich zu sehen oder gemessen ist. Nichts erfinden. Wenn etwas unsicher ist, schreibe „unklar“.` }];
+    p.photos.forEach((ph, i) => { parts.push({ text: `Foto ${i + 1}:` }, { inline_data: { mime_type: mimeOf(ph), data: b64(ph) } }); });
+    const text = (await geminiText(parts, false, { temperature: 0.2 }, ANALYSE_MODEL)).trim();
+    p.bestand = { sig, text, photos: p.photos.length, masse: masseText(p), t: Date.now() };
+    await saveProject(p);
+    return text;
+  })().finally(() => setTimeout(() => _bestandJobs.delete(key), 1000)));
+  return _bestandJobs.get(key);
+}
+
+/** Ausstattung des Moodboards als Textzeilen. */
+function pkgSpec(pkg, rt) {
+  const spec = fieldsFor(rt.id).filter(([k]) => k !== 'beschreibung' && pkg.fields[k]?.trim())
     .map(([k, label]) => `- ${label.replace(/\s*\(.*\)/, '')}: ${pkg.fields[k].trim()}`).join('\n');
-  let n = 2;
-  const otherTxt = ctx.others ? `- Bild ${n}${ctx.others > 1 ? ` bis ${n + ctx.others - 1}` : ''}: weitere Fotos DESSELBEN Raums aus anderen Blickwinkeln (nur zum Verständnis von Grundriss, Fenstern, Anschlüssen und Größe, nicht ausgeben)\n` : '';
-  n += ctx.others;
-  const renderedTxt = ctx.rendered ? `- Bild ${n}: bereits fertig sanierte Ansicht DESSELBEN Raums in diesem Paket. Verwende EXAKT dieselben Fliesen, Farben, Möbel, Armaturen und Leuchten, damit alle Ansichten zusammenpassen\n` : '';
-  if (ctx.rendered) n += 1;
-  const refs = pkg.images.slice(0, MAX_REF_IMAGES)
-    .map((im, i) => `- Bild ${n + i}: ${im.label?.trim() || 'Referenz für Material/Stil'} (Moodboard-Vorlage, nicht als Raum übernehmen)`).join('\n');
-  const list = otherTxt + renderedTxt + (refs ? refs + '\n' : '');
   const fieldLabel = (k) => (FIELD_LIB[k]?.[0] || '').replace(/\s*\(.*\)/, '');
   const prods = (pkg.products || []).filter((x) => x.name?.trim())
     .map((x) => `- ${x.area ? fieldLabel(x.area) + ': ' : ''}${x.name.trim()}`).join('\n');
-  const what = `${rt.what || (rt.outdoor ? 'eines bestehenden Gebäudes von außen' : 'eines bestehenden Raums')} (${room})`;
-  return `Du bist ein Werkzeug für fotorealistische Sanierungs-Visualisierungen.
+  return { spec, prods };
+}
 
-Bild 1 ist ein Foto ${what}. Bearbeite GENAU DIESES FOTO (Bild 1) so, dass es ${rt.same || (rt.outdoor ? 'dasselbe Gebäude' : 'denselben Raum')} nach einer kompletten Sanierung in der Ausstattungslinie "${pkg.name}" zeigt. Gib genau ein Bild aus: die sanierte Version von Bild 1.
+/** Schritt 2: Moodboard auf genau diesen Raum zuschneiden (nichts dazu, was es nicht gibt; nichts, was nicht passt). */
+const _planJobs = new Map();
+async function roomPlan(pkg, p, bestand) {
+  const rt = roomType(p.roomType);
+  const { spec, prods } = pkgSpec(pkg, rt);
+  const sig = quickHash([bestand, spec, prods, p.wishes || '', p.note || '', pkg.name].join('|'));
+  if (p.plan?.[pkg.id]?.sig === sig) return p.plan[pkg.id].text;
+  const key = p.id + pkg.id + sig;
+  if (!_planJobs.has(key)) _planJobs.set(key, (async () => {
+    const text = (await geminiText([{ text: `Du planst als Innenarchitekt die Sanierung eines bestehenden ${rt.outdoor ? 'Außenbereichs' : 'Raums'} (${rt.name}) in der Ausstattungslinie „${pkg.name}“. Eine Bild-KI setzt danach deinen Plan auf dem Foto um.
 
-UNBEDINGT BEIBEHALTEN:
-- exakt dieselbe Kameraposition, Perspektive, Brennweite und Bildausschnitt wie Bild 1
-${rt.keep.map((k) => '- ' + k).join('\n')}
+BESTAND (so ist der Raum heute, das ist verbindlich):
+${bestand}
 
-ERNEUERN nach dieser Ausstattung:
+AUSSTATTUNG LAUT MOODBOARD „${pkg.name}“ (allgemein für alle Räume geschrieben, nicht für diesen):
 ${spec || '- moderne, hochwertige Sanierung'}
-${prods ? `\nKONKRETE PRODUKTE (so originalgetreu wie möglich darstellen):\n${prods}\n` : ''}${list ? `\nWEITERE BILDER:\n${list}` : ''}${note?.trim() ? `\nZUSÄTZLICHER HINWEIS ZU DIESEM PROJEKT: ${note.trim()}\n` : ''}${ctx.wishes?.trim() ? `\nKUNDENWÜNSCHE AUS DEM GESPRÄCH VOR ORT (haben Vorrang vor der Ausstattung oben, wenn sie sich widersprechen; Perspektive und Raumgeometrie bleiben trotzdem gleich):\n${ctx.wishes.trim()}\n` : ''}
-Gilt eine Angabe für diesen ${rt.outdoor ? 'Bildausschnitt' : 'Raum'} nicht, lass sie weg.
-Ergebnis: fotorealistisch wie professionelle Architektur-/Interior-Fotografie, helles, freundliches Tageslicht, aufgeräumt, keine Personen, kein Text, keine Wasserzeichen, kein Baustellenzustand.`;
+${prods ? `\nKONKRETE PRODUKTE:\n${prods}\n` : ''}${p.wishes?.trim() ? `\nKUNDENWÜNSCHE AUS DEM GESPRÄCH:\n${p.wishes.trim()}\n` : ''}${p.note?.trim() ? `\nHINWEIS DES PLANERS:\n${p.note.trim()}\n` : ''}
+Schneide die Ausstattung auf GENAU DIESEN Raum zu. Regeln:
+1. Jeder vorhandene Gegenstand bleibt an seiner Stelle und in seiner Größe. Er wird nur in der Ausführung der Ausstattungslinie erneuert.
+2. Was im Bestand NICHT vorhanden ist, kommt NICHT dazu, auch wenn das Moodboard es nennt (z. B. kein WC, wenn heute keins da ist). Ausnahme: Kundenwunsch oder Hinweis verlangt es ausdrücklich UND es passt räumlich.
+3. Was nicht in den Raum passt, wird auf die passende Variante reduziert (z. B. Einzelwaschtisch in der heutigen Breite statt Doppelwaschtisch, Wanne bleibt Wanne in heutiger Größe statt freistehender Wanne, keine Kochinsel ohne Platz).
+4. Oberflächen (Wände, Boden, Decke, Fliesen, Farben, Licht, Armaturen) aus dem Moodboard vollständig übernehmen, Fliesenformate maßstäblich zur echten Raumgröße.
+5. Kundenwünsche haben Vorrang vor dem Moodboard, aber nur im Rahmen dessen, was räumlich möglich ist. Spätere Aussagen gelten vor früheren.
+
+Antworte auf Deutsch, knapp, genau in diesem Format:
+ERNEUERN:
+- Gegenstand (Lage, Größe wie Bestand): neue Ausführung
+OBERFLÄCHEN:
+- Bereich: Ausführung
+ÄNDERUNGEN LAUT KUNDENWUNSCH: (nur wenn ausdrücklich gewünscht, sonst „keine“)
+NICHT EINBAUEN:
+- Moodboard-Punkt oder Gegenstand: kurzer Grund` }], false, { temperature: 0.2 }, ANALYSE_MODEL)).trim();
+    p.plan = { ...(p.plan || {}), [pkg.id]: { sig, text } };
+    await saveProject(p);
+    return text;
+  })().finally(() => setTimeout(() => _planJobs.delete(key), 1000)));
+  return _planJobs.get(key);
+}
+
+/** Baut die Anweisung fürs Bildmodell (als Textteile zwischen den Bildern).
+ *  ctx: { bestand, plan, others: [Index der weiteren Fotos], rendered, refs } */
+function buildPrompt(pkg, project, ctx) {
+  const rt = roomType(project.roomType || roomTypeIdFromName(project.room));
+  const room = project.room;
+  const { spec, prods } = pkgSpec(pkg, rt);
+  const what = `${rt.what || (rt.outdoor ? 'eines bestehenden Gebäudes von außen' : 'eines bestehenden Raums')} (${room})`;
+  const raum = rt.outdoor ? 'Bereich' : 'Raum';
+  const umsetzung = ctx.plan
+    ? `UMSETZUNG (auf diesen ${raum} zugeschnitten, genau so umsetzen):\n${ctx.plan}`
+    : `AUSSTATTUNG (gilt nur für das, was im Foto vorhanden ist; Anzahl, Größe und Lage der Gegenstände kommen immer aus dem Foto, z. B. bleibt ein einzelner Waschtisch ein einzelner Waschtisch in derselben Breite):\n${spec || '- moderne, hochwertige Sanierung'}${prods ? `\n\nKONKRETE PRODUKTE (so originalgetreu wie möglich):\n${prods}` : ''}${project.wishes?.trim() ? `\n\nKUNDENWÜNSCHE AUS DEM GESPRÄCH (haben Vorrang, soweit räumlich möglich):\n${project.wishes.trim()}` : ''}${project.note?.trim() ? `\n\nHINWEIS: ${project.note.trim()}` : ''}`;
+  const intro = `Du bist ein Werkzeug für fotorealistische Sanierungs-Visualisierungen IM BESTAND. Das ist eine Renovierung eines echten ${raum}s, KEIN neuer Entwurf und keine Katalog-Szene.
+
+Bild 1 ist ein Foto ${what}. Bearbeite GENAU DIESES FOTO so, dass es ${rt.same || (rt.outdoor ? 'dasselbe Gebäude' : 'denselben Raum')} nach der Sanierung in der Ausstattungslinie „${pkg.name}“ zeigt. Gib genau ein Bild aus: die sanierte Version von Bild 1.`;
+  const regeln = `UNVERÄNDERLICH (wichtiger als alles andere):
+- Kamera exakt wie Bild 1: gleiche Position, Höhe, Blickrichtung, Brennweite und Bildausschnitt. Nicht weitwinkliger, nicht herauszoomen, nichts außerhalb des Bildausschnitts dazuerfinden.
+- Der ${raum} behält seine echte Größe und Form: Wände, Ecken, Decke, Dachschrägen, Vorsprünge, Fenster und Türen bleiben an derselben Stelle, in derselben Größe und mit denselben Fluchtlinien. Der ${raum} darf nicht größer, breiter oder tiefer wirken.
+${rt.keep.map((k) => '- ' + k).join('\n')}
+${rt.outdoor ? '' : `- Jeder Einrichtungs- und Sanitärgegenstand bleibt an seiner Stelle und in seiner Größe und wird nur erneuert. NICHTS hinzufügen, was im Foto nicht vorhanden ist: keine zusätzliche Toilette, Dusche oder Wanne, kein zweites Waschbecken, keine zusätzlichen Möbel oder Einbauten, außer es steht ausdrücklich unter UMSETZUNG.
+- Maßstab realistisch: Fliesen, Armaturen und Möbel im richtigen Größenverhältnis zum echten ${raum} (eine Tür ist etwa 2 m hoch).
+`}- Licht aus derselben Richtung wie im Foto (Fenster bleiben die Lichtquelle).`;
+  const masse = masseText(project);
+  const bestand = (masse ? `GEMESSENE RAUMMASSE (verbindlich, danach richten sich Größe und Anzahl der Objekte):\n${masse}\n\n` : '') + (ctx.bestand ? `BESTAND (so sieht der ${raum} heute aus, das ist verbindlich):\n${ctx.bestand}` : '');
+  const schluss = `Gilt eine Angabe für diesen ${rt.outdoor ? 'Bildausschnitt' : raum} nicht oder passt sie nicht hinein, lass sie weg.
+Ergebnis: fotorealistisch wie professionelle Architektur-/Interior-Fotografie, helles, natürliches Tageslicht, aufgeräumt, keine Personen, kein Text, keine Wasserzeichen, kein Baustellenzustand. Vorher und Nachher müssen sich exakt übereinanderlegen lassen.`;
+  return { intro, regeln, bestand, umsetzung, schluss };
 }
 
 const ASPECTS = { '1:1': 1, '4:3': 4 / 3, '3:4': 3 / 4, '3:2': 3 / 2, '2:3': 2 / 3, '16:9': 16 / 9, '9:16': 9 / 16, '5:4': 5 / 4, '4:5': 4 / 5 };
@@ -173,15 +280,24 @@ async function renderWithGemini(pkg, project, i, rendered) {
   // Garten: Wärmepumpe an markierter Stelle einsetzen (garten.js), sonst Garten ohne Wärmepumpen-Angaben
   if (window.Garten?.zustaendig(project)) return Garten.render(pkg, project, i, rendered);
   pkg = window.Garten?.pkgFuer(pkg, project) || pkg;
-  const { apiKey, model } = state.settings;
+  const { apiKey } = state.settings;
   if (!apiKey) throw new Error('Kein API-Schlüssel hinterlegt (Einstellungen).');
+  // Erst verstehen, dann bauen: Bestand erkennen und Moodboard auf den Raum zuschneiden.
+  // Klappt das nicht (z. B. kurz kein Netz), geht es mit den strengen Regeln trotzdem weiter.
+  let bestand = '', plan = '';
+  try { bestand = await roomBestand(project); } catch (e) { console.warn('Bestand nicht erkannt', e); }
+  if (bestand) try { plan = await roomPlan(pkg, project, bestand); } catch (e) { console.warn('Plan nicht erstellt', e); }
   const target = project.photos[i];
-  const others = project.photos.filter((_, k) => k !== i);
+  const others = project.photos.map((ph, k) => [ph, k]).filter(([, k]) => k !== i);
+  const refs = pkg.images.slice(0, MAX_REF_IMAGES);
+  const t = buildPrompt(pkg, project, { bestand, plan });
   const img = (d) => ({ inline_data: { mime_type: mimeOf(d), data: b64(d) } });
-  const parts = [{ text: buildPrompt(pkg, project.room, project.note, { others: others.length, rendered: !!rendered, wishes: project.wishes, rt: project.roomType }) }, img(target)];
-  for (const o of others) parts.push(img(o));
-  if (rendered) parts.push(img(rendered));
-  for (const im of pkg.images.slice(0, MAX_REF_IMAGES)) parts.push(img(im.data));
+  let n = 1;
+  const parts = [{ text: t.intro }, { text: 'Bild 1 – das Foto, das bearbeitet wird:' }, img(target)];
+  for (const [ph, k] of others) parts.push({ text: `Bild ${++n} – Foto ${k + 1} DESSELBEN Raums aus einem anderen Blickwinkel. Nur zum Verständnis von Grundriss, Größe, Fenstern und Anschlüssen. Nicht ausgeben, Blickwinkel nicht übernehmen:` }, img(ph));
+  if (rendered) parts.push({ text: `Bild ${++n} – bereits fertig sanierte andere Ansicht DESSELBEN Raums in „${pkg.name}“. Verwende exakt dieselben Fliesen, Farben, Armaturen, Möbelausführungen und Leuchten, damit alle Ansichten zusammenpassen. Perspektive und Raumaufbau kommen aber nur aus Bild 1:` }, img(rendered));
+  for (const im of refs) parts.push({ text: `Bild ${++n} – Moodboard-Vorlage: ${im.label?.trim() || 'Material/Stil'}. Nur Material, Farbe und Stil übernehmen. Raum, Aufteilung, Größe und Gegenstände aus diesem Bild NICHT übernehmen:` }, img(im.data));
+  parts.push({ text: [t.regeln, t.bestand, t.umsetzung, t.schluss].filter(Boolean).join('\n\n') });
   return geminiImage(parts, await nearestAspect(target));
 }
 
@@ -191,7 +307,7 @@ async function geminiImage(parts, aspectRatio) {
   if (!apiKey) throw new Error('Kein API-Schlüssel hinterlegt (Einstellungen).');
   const body = {
     contents: [{ role: 'user', parts }],
-    generationConfig: { responseModalities: ['TEXT', 'IMAGE'], imageConfig: { aspectRatio } },
+    generationConfig: { responseModalities: ['TEXT', 'IMAGE'], imageConfig: { aspectRatio, ...(/gemini-3/.test(model || '') ? { imageSize: '2K' } : {}) } },
   };
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model || 'gemini-2.5-flash-image')}:generateContent`;
   const r = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey }, body: JSON.stringify(body) });
@@ -350,6 +466,7 @@ async function runAll(p) {
   if (!state.settings.apiKey) { toast('Bitte zuerst in den Einstellungen den API-Schlüssel eintragen.', 4000); return; }
   const pkgs = packagesFor(p.roomType).filter((x) => p.selected.includes(x.id));
   if (!pkgs.length) { toast('Bitte mindestens ein Paket auswählen.'); return; }
+  await window.voiceReady?.(p); // Gespräch erst fertig auswerten, damit die Wünsche ins Bild kommen
   await Promise.all(pkgs.map((pkg) => runPackage(p, pkg)));
   const total = pkgs.length * p.photos.length;
   const ok = pkgs.reduce((n, x) => n + (p.results[x.id] || []).filter(Boolean).length, 0);
