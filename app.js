@@ -159,7 +159,7 @@ ERNEUERN nach dieser Ausstattung:
 ${spec || '- moderne, hochwertige Sanierung'}
 ${prods ? `\nKONKRETE PRODUKTE (so originalgetreu wie möglich darstellen):\n${prods}\n` : ''}${list ? `\nWEITERE BILDER:\n${list}` : ''}${note?.trim() ? `\nZUSÄTZLICHER HINWEIS ZU DIESEM PROJEKT: ${note.trim()}\n` : ''}${ctx.wishes?.trim() ? `\nKUNDENWÜNSCHE AUS DEM GESPRÄCH VOR ORT (haben Vorrang vor der Ausstattung oben, wenn sie sich widersprechen; Perspektive und Raumgeometrie bleiben trotzdem gleich):\n${ctx.wishes.trim()}\n` : ''}
 Gilt eine Angabe für diesen ${rt.outdoor ? 'Bildausschnitt' : 'Raum'} nicht, lass sie weg.
-Ergebnis: fotorealistisch wie professionelle Architektur-/Interior-Fotografie, natürliches Licht, aufgeräumt, keine Personen, kein Text, keine Wasserzeichen, kein Baustellenzustand.`;
+Ergebnis: fotorealistisch wie professionelle Architektur-/Interior-Fotografie, helles, freundliches Tageslicht, aufgeräumt, keine Personen, kein Text, keine Wasserzeichen, kein Baustellenzustand.`;
 }
 
 const ASPECTS = { '1:1': 1, '4:3': 4 / 3, '3:4': 3 / 4, '3:2': 3 / 2, '2:3': 2 / 3, '16:9': 16 / 9, '9:16': 9 / 16, '5:4': 5 / 4, '4:5': 4 / 5 };
@@ -180,9 +180,16 @@ async function renderWithGemini(pkg, project, i, rendered) {
   for (const o of others) parts.push(img(o));
   if (rendered) parts.push(img(rendered));
   for (const im of pkg.images.slice(0, MAX_REF_IMAGES)) parts.push(img(im.data));
+  return geminiImage(parts, await nearestAspect(target));
+}
+
+/** Schickt Text + Bilder an das Gemini-Bildmodell und gibt das gelieferte Bild (max. 1600 px) zurück. */
+async function geminiImage(parts, aspectRatio) {
+  const { apiKey, model } = state.settings;
+  if (!apiKey) throw new Error('Kein API-Schlüssel hinterlegt (Einstellungen).');
   const body = {
     contents: [{ role: 'user', parts }],
-    generationConfig: { responseModalities: ['TEXT', 'IMAGE'], imageConfig: { aspectRatio: await nearestAspect(target) } },
+    generationConfig: { responseModalities: ['TEXT', 'IMAGE'], imageConfig: { aspectRatio } },
   };
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model || 'gemini-2.5-flash-image')}:generateContent`;
   const r = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey }, body: JSON.stringify(body) });
@@ -198,6 +205,31 @@ async function renderWithGemini(pkg, project, i, rendered) {
   return resize(`data:${d.mimeType || d.mime_type || 'image/png'};base64,${d.data}`, 1600);
 }
 
+// ---------- Lichtstimmung: Abend (warmes, gedimmtes Licht) ----------
+/** Anweisung, um eine fertige Tageslicht-Visualisierung in die Abendstimmung zu versetzen. */
+function eveningPrompt(pkg, rt) {
+  const light = rt.outdoor
+    ? `- Abenddämmerung (blaue Stunde): Himmel tiefblau bis dunkelorange, kein direktes Sonnenlicht mehr
+- Fenster leuchten von innen warmweiß, Außen- und Fassadenbeleuchtung, Wege- und Eingangslicht eingeschaltet (warmweiß, ca. 2700 K)`
+    : `- Abend nach Sonnenuntergang: durch die Fenster nur noch dunkelblaues Dämmerlicht, kein Sonnenlicht
+- alle vorhandenen Leuchten sind eingeschaltet und GEDIMMT: Einbauspots, Deckenleuchten, Wandleuchten, LED-Spiegel, indirekte Beleuchtung und beleuchtete Nischen leuchten sichtbar in warmweißem Licht (ca. 2700 K)
+- gemütliche, hochwertige Atmosphäre wie in einem Hotel: weiche Lichtkegel, sanfte Schatten, warme Reflexe auf den Oberflächen`;
+  return `Bild 1 ist eine fertige, fotorealistische Visualisierung (Ausstattungslinie "${pkg.name}") bei Tageslicht. Erzeuge GENAU DIESES BILD noch einmal, aber in Abendstimmung. Gib genau ein Bild aus.
+
+UNBEDINGT IDENTISCH LASSEN:
+- Kameraposition, Perspektive, Bildausschnitt
+- alle Materialien, Fliesen, Farben, Möbel, Armaturen, Leuchten und Gegenstände an derselben Stelle (nichts hinzufügen, nichts entfernen; nur Licht, das schon als Leuchte vorhanden ist, darf leuchten)
+
+NUR DIE LICHTSTIMMUNG ÄNDERN:
+${light}
+
+Ergebnis: fotorealistisch wie professionelle Architektur-/Interior-Fotografie am Abend, korrekt belichtet (nicht zu dunkel, Details gut erkennbar), keine Personen, kein Text, keine Wasserzeichen.`;
+}
+async function renderEvening(pkg, project, dayImg) {
+  const parts = [{ text: eveningPrompt(pkg, roomType(project.roomType)) }, { inline_data: { mime_type: mimeOf(dayImg), data: b64(dayImg) } }];
+  return geminiImage(parts, await nearestAspect(dayImg));
+}
+
 /** Ältere Projekte (ein Foto) auf das neue Format (mehrere Fotos) umstellen. */
 function normalizeProject(p) {
   if (!p) return p;
@@ -208,10 +240,15 @@ function normalizeProject(p) {
   if (!p.roomType) p.roomType = roomTypeIdFromName(p.room);
   p.room ||= roomType(p.roomType).name;
   p.pdfProducts ??= true;
+  p.evening ??= {};
+  p.withEvening ??= false;
+  p.pdfEvening ??= true;
   return p;
 }
 const hasAnyResult = (p) => Object.values(p.results).some((arr) => arr.some(Boolean));
 const firstResult = (p, id) => (p.results[id] || []).find(Boolean);
+const eveningOf = (p, id, i) => p.evening?.[id]?.[i] || '';
+const hasAnyEvening = (p) => Object.values(p.evening || {}).some((arr) => arr.some(Boolean));
 
 // ---------- PDF ----------
 const hexRgb = (h) => [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16));
@@ -427,14 +464,16 @@ async function viewProjekt() {
       <h2>3. Pakete visualisieren</h2>
       <p class="muted">Moodboards für: <b>${esc(roomType(p.roomType).name)}</b></p>
       ${pkgs.map((x) => `<label class="check"><input type="checkbox" data-sel="${x.id}" ${p.selected.includes(x.id) ? 'checked' : ''}><span class="swatch" style="background:${x.color};height:20px;width:8px"></span>${esc(x.name)}</label>`).join('')}
+      <label class="check"><input type="checkbox" id="withEvening" ${p.withEvening ? 'checked' : ''}>🌙 Zusätzlich Abendstimmung (warmes, gedimmtes Licht)</label>
       <button class="btn block" id="go" ${p.photos.length ? '' : 'disabled'}>✨ Visualisierung erstellen</button>
-      <p class="muted">${p.photos.length > 1 ? `${p.photos.length} Ansichten × Pakete. ` : ''}Dauert ca. 10–30 Sekunden pro Bild.</p>
+      <p class="muted">${p.photos.length > 1 ? `${p.photos.length} Ansichten × Pakete. ` : ''}Dauert ca. 10–30 Sekunden pro Bild. Die Abendstimmung kostet ein zusätzliches Bild pro Ansicht und lässt sich auch später einzeln erstellen.</p>
     </div>
     <div id="results">${pkgs.filter((x) => p.selected.includes(x.id) || firstResult(p, x.id)).map(resultCard).join('')}</div>
     <div id="angebot-card"></div>
     <div class="card">
       ${anyProducts ? `<label class="check"><input type="checkbox" id="pdfProducts" ${p.pdfProducts ? 'checked' : ''}>Produktliste mit Shop-Links ins PDF</label>
       <label class="check"><input type="checkbox" id="pdfPrices" ${p.pdfPrices ? 'checked' : ''} ${p.pdfProducts ? '' : 'disabled'}>Preise in der Produktliste zeigen</label>` : ''}
+      <label class="check" id="pdfEveningRow" ${hasAnyEvening(p) ? '' : 'hidden'}><input type="checkbox" id="pdfEvening" ${p.pdfEvening ? 'checked' : ''}>Abendstimmung ins PDF (eigene Seite: Tag und Abend nebeneinander)</label>
       <button class="btn block" id="pdf" ${hasAnyResult(p) ? '' : 'disabled'}>📄 Vorher-Nachher-PDF erstellen</button>
       <button class="btn secondary block" id="social" style="margin-top:10px" ${hasAnyResult(p) ? '' : 'disabled'}>🎬 Instagram-Video & Post</button>
       <div class="row" style="margin-top:10px">
@@ -459,6 +498,7 @@ async function viewProjekt() {
     const i = +b.dataset.delphoto;
     p.photos.splice(i, 1);
     for (const k of Object.keys(p.results)) p.results[k].splice(i, 1);
+    for (const k of Object.keys(p.evening || {})) p.evening[k].splice(i, 1);
     p.thumb = p.photos[0] ? await resize(p.photos[0], 200) : '';
     await saveProject(p); viewProjekt();
   }));
@@ -474,6 +514,8 @@ async function viewProjekt() {
     $('#pdfProducts').onchange = (e) => { p.pdfProducts = e.target.checked; $('#pdfPrices').disabled = !p.pdfProducts; persist(); };
     $('#pdfPrices').onchange = (e) => { p.pdfPrices = e.target.checked; persist(); };
   }
+  $('#withEvening').onchange = (e) => { p.withEvening = e.target.checked; persist(); };
+  $('#pdfEvening').onchange = (e) => { p.pdfEvening = e.target.checked; persist(); };
   $$('[data-sel]').forEach((c) => (c.onchange = () => { p.selected = $$('[data-sel]').filter((x) => x.checked).map((x) => x.dataset.sel); persist(); }));
   bindVoice(p, persist);
   $('#go').onclick = () => runAll(p);
@@ -490,14 +532,51 @@ async function viewProjekt() {
   window.Angebot?.projektKarte(p);
 }
 
+// ---------- Vorher-Nachher-Schieberegler ----------
+const moodSel = {}; // gewählte Lichtstimmung je Ansicht (nur für die Anzeige)
+/** Vorher-Foto und Nachher-Bild übereinander; mit dem Finger die Trennlinie verschieben. */
+function beforeAfter(before, after, alt) {
+  return `<div class="ba" style="--pos:50%">
+    <img class="ba-after" src="${after}" alt="${esc(alt)}" draggable="false">
+    <img class="ba-before" src="${before}" alt="Vorher" draggable="false">
+    <div class="ba-line"><span class="ba-knob">‹ ›</span></div>
+    <span class="ba-tag l">Vorher</span><span class="ba-tag r">Nachher</span>
+  </div>`;
+}
+(() => {
+  let cur = null;
+  const set = (e) => {
+    const r = cur.getBoundingClientRect();
+    cur.style.setProperty('--pos', Math.max(0, Math.min(100, ((e.clientX - r.left) / r.width) * 100)) + '%');
+  };
+  document.addEventListener('pointerdown', (e) => {
+    const el = e.target.closest?.('.ba'); if (!el) return;
+    cur = el; el.setPointerCapture?.(e.pointerId); set(e); e.preventDefault();
+  });
+  document.addEventListener('pointermove', (e) => { if (cur) set(e); });
+  const end = () => (cur = null);
+  document.addEventListener('pointerup', end);
+  document.addEventListener('pointercancel', end);
+})();
+
 function resultCard(pkg) {
   const p = state.project;
   const views = p.photos.map((_, i) => {
-    const st = p.status?.[`${pkg.id}:${i}`], res = p.results[pkg.id]?.[i];
+    const key = `${pkg.id}:${i}`;
+    const st = p.status?.[key], res = p.results[pkg.id]?.[i];
+    const eve = eveningOf(p, pkg.id, i), est = p.status?.[key + ':abend'];
+    const mood = moodSel[`${p.id}:${key}`] === 'abend' && (eve || est?.loading || est?.error) ? 'abend' : 'tag';
     let body;
     if (st?.loading) body = `<div class="status"><div class="spinner"></div>KI arbeitet an „${esc(pkg.name)}“${p.photos.length > 1 ? `, Ansicht ${i + 1}` : ''} …</div>`;
     else if (st?.error) body = `<div class="status err">${esc(st.error)}</div>`;
-    else if (res) body = `<img src="${res}" alt="Nachher ${esc(pkg.name)}">`;
+    else if (res) {
+      const moodBar = `<div class="seg mood"><button data-mood="tag" data-pkg="${pkg.id}" data-view="${i}" class="${mood === 'tag' ? 'on' : ''}">☀️ Tageslicht</button><button data-mood="abend" data-pkg="${pkg.id}" data-view="${i}" class="${mood === 'abend' ? 'on' : ''}">🌙 Abendstimmung${eve || est?.loading ? '' : ' erstellen'}</button></div>`;
+      let pic;
+      if (mood === 'abend' && est?.loading) pic = `<div class="status"><div class="spinner"></div>KI setzt das Licht auf Abend …</div>`;
+      else if (mood === 'abend' && est?.error && !eve) pic = `<div class="status err">${esc(est.error)}</div>`;
+      else pic = beforeAfter(p.photos[i], mood === 'abend' ? eve : res, `Nachher ${pkg.name}`);
+      body = `<div style="width:100%">${moodBar}${pic}${mood === 'abend' && (eve || est?.error) && !est?.loading ? `<div style="padding:8px 10px;text-align:right"><button class="btn small secondary" data-redoeve="${pkg.id}" data-view="${i}">↻ Abend neu</button></div>` : ''}</div>`;
+    }
     else body = '<div class="status">Noch nicht erstellt</div>';
     const label = p.photos.length > 1 ? `<span class="muted">Ansicht ${i + 1}</span>` : '<span></span>';
     return `<div style="border-top:1px solid var(--line)"><div class="head" style="font-weight:400;padding:6px 12px">${label}
@@ -517,11 +596,19 @@ function refreshResult(pkg) {
   bindResultButtons(state.project);
   const pdf = $('#pdf'); if (pdf) pdf.disabled = !hasAnyResult(state.project);
   const soc = $('#social'); if (soc) soc.disabled = !hasAnyResult(state.project);
+  const er = $('#pdfEveningRow'); if (er) er.hidden = !hasAnyEvening(state.project);
 }
 function bindResultButtons(p) {
   const pk = (id) => packagesFor(p.roomType).find((x) => x.id === id);
   $$('[data-redo]').forEach((b) => (b.onclick = () => runView(p, pk(b.dataset.redo), +b.dataset.view)));
   $$('[data-redoall]').forEach((b) => (b.onclick = () => runPackage(p, pk(b.dataset.redoall))));
+  $$('[data-mood]').forEach((b) => (b.onclick = () => {
+    const pkg = pk(b.dataset.pkg), i = +b.dataset.view;
+    moodSel[`${p.id}:${pkg.id}:${i}`] = b.dataset.mood;
+    if (b.dataset.mood === 'abend' && !eveningOf(p, pkg.id, i) && !p.status?.[`${pkg.id}:${i}:abend`]?.loading) runEvening(p, pkg, i);
+    else refreshResult(pkg);
+  }));
+  $$('[data-redoeve]').forEach((b) => (b.onclick = () => runEvening(p, pk(b.dataset.redoeve), +b.dataset.view)));
 }
 
 /** Eine Ansicht rendern. Für Ansicht 2+ dient die erste fertige Ansicht als Material-Vorlage. */
@@ -534,8 +621,27 @@ async function runView(p, pkg, i) {
     const arr = (p.results[pkg.id] ??= []);
     const ref = arr.find((r, k) => r && k !== i);
     arr[i] = await renderWithGemini(pkg, p, i, ref);
+    if (p.evening?.[pkg.id]) p.evening[pkg.id][i] = ''; // alte Abendstimmung passt nicht mehr zum neuen Bild
     p.status[key] = {};
     await saveProject(p);
+  } catch (e) {
+    p.status[key] = { error: e.message };
+  }
+  if (state.project === p) refreshResult(pkg);
+  if (p.withEvening && p.results[pkg.id]?.[i] && !p.status[key].error) await runEvening(p, pkg, i);
+}
+/** Abendstimmung einer fertigen Ansicht erstellen (Vorlage: die Tageslicht-Visualisierung). */
+async function runEvening(p, pkg, i) {
+  const day = p.results[pkg.id]?.[i];
+  if (!day) return;
+  p.status ??= {};
+  const key = `${pkg.id}:${i}:abend`;
+  p.status[key] = { loading: true };
+  if (state.project === p) refreshResult(pkg);
+  try {
+    const img = await renderEvening(pkg, p, day);
+    if (p.results[pkg.id]?.[i] === day) { (p.evening[pkg.id] ??= [])[i] = img; await saveProject(p); }
+    p.status[key] = {};
   } catch (e) {
     p.status[key] = { error: e.message };
   }
