@@ -95,11 +95,21 @@ async function loadAll() {
 const saveSettings = () => kvSet('settings', state.settings);
 const saveBoards = () => kvSet('boards', state.boards);
 const saveBoardsDebounced = debounce(saveBoards, 500);
-/** Moodboards (Pakete) eines Raumtyps; fehlende werden mit den Beispielen angelegt. */
-function packagesFor(rt) {
-  const list = (state.boards[rt] ??= defaultPackagesFor(rt));
+/** Moodboards (Pakete) eines Raumtyps; fehlende werden mit den Beispielen angelegt.
+ * Hat das offene Projekt ein eigenes (angepasstes) Moodboard für den Raumtyp, gilt dieses:
+ * für Visualisierung, Kundenmappe, Baumappe und Angebot. w = null erzwingt das allgemeine Moodboard. */
+function packagesFor(rt, w = state.wohnung) {
+  const own = w?.boards?.[rt];
+  const list = Array.isArray(own) && own.length ? own : (state.boards[rt] ??= defaultPackagesFor(rt));
   for (const p of list) { p.images ??= []; p.products ??= []; p.fields ??= {}; }
   return list;
+}
+/** Moodboard eines Raums: eigenes Raum-Moodboard, sonst das des Projekts, sonst das allgemeine. */
+function roomPackages(r) {
+  const own = r?.boards;
+  if (!Array.isArray(own) || !own.length || r.boardsType !== r.roomType) return packagesFor(r.roomType);
+  for (const p of own) { p.images ??= []; p.products ??= []; p.fields ??= {}; }
+  return own;
 }
 /** Alte Bad-Pakete: Feld "licht" hieß dort "Spiegel & Licht" und heißt jetzt "spiegel". */
 function migrateBathPackage(p) {
@@ -425,7 +435,7 @@ function normalizeProject(p) {
   p.results ??= {};
   if (!p.roomType) p.roomType = roomTypeIdFromName(p.room);
   p.room ||= roomType(p.roomType).name;
-  if (!Array.isArray(p.selected)) p.selected = packagesFor(p.roomType).map((x) => x.id);
+  if (!Array.isArray(p.selected)) p.selected = roomPackages(p).map((x) => x.id);
   p.pdfProducts ??= true;
   p.evening ??= {};
   p.withEvening ??= false;
@@ -547,7 +557,7 @@ async function runTop(p, pkg) {
 }
 async function runAll(p) {
   if (!state.settings.apiKey) { toast('Bitte zuerst in den Einstellungen den API-Schlüssel eintragen.', 4000); return; }
-  const pkgs = packagesFor(p.roomType).filter((x) => p.selected.includes(x.id));
+  const pkgs = roomPackages(p).filter((x) => p.selected.includes(x.id));
   if (!pkgs.length) { toast('Bitte mindestens ein Paket auswählen.'); return; }
   await window.voiceReady?.(p); // Gespräch erst fertig auswerten, damit die Wünsche ins Bild kommen
   await Promise.all(pkgs.map((pkg) => runPackage(p, pkg)));

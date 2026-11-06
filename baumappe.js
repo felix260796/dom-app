@@ -14,7 +14,7 @@ window.Baumappe = (() => {
   const dez = (x, d = 2) => (Math.round(x * 10 ** d) / 10 ** d).toLocaleString('de-DE', { minimumFractionDigits: d === 2 ? 2 : 0, maximumFractionDigits: d });
   const m = (x) => dez(x) + ' m';
   const done = (r, id) => !!firstResult(r, id);
-  const pkgOf = (r, id) => packagesFor(r.roomType).find((x) => x.id === id);
+  const pkgOf = (r, id) => roomPackages(r).find((x) => x.id === id);
   const A = () => window.Angebot?._intern;
 
   function bau(r) {

@@ -406,3 +406,5 @@ body.recording main { padding-bottom: 150px; }
 .vp-r span { color: var(--muted); font-size: 13px; text-align: right; }
 .vp-miss { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin: 8px 0; font-size: 13px; color: var(--muted); }
 .vp-miss > span { width: 100%; }
+.recbar .rb-meter { flex: none; width: 84px; height: 28px; display: flex; align-items: center; gap: 1.5px; }
+.recbar .rb-meter i { flex: 1; min-height: 3px; height: 8%; border-radius: 2px; background: #fff; opacity: .9; transition: height .07s linear; }

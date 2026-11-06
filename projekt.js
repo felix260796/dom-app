@@ -11,7 +11,7 @@ window.Projekt = (() => {
   let running = null; // Projekt-ID, während „Alle Räume visualisieren“ läuft
 
   const key = (id) => 'wohnung:' + id;
-  const pkgOf = (r, id) => packagesFor(r.roomType).find((x) => x.id === id);
+  const pkgOf = (r, id) => roomPackages(r).find((x) => x.id === id);
   const done = (r, id) => !!firstResult(r, id);
   async function raum(id) {
     if (!rooms.has(id)) { const r = normalizeProject(await kvGet('project:' + id)); if (r) rooms.set(id, r); }
@@ -170,11 +170,19 @@ window.Projekt = (() => {
         <p class="hint center" id="wRunInfo">${running === w.id ? '' : `${nBilder} Bilder in ${withPhotos.length} Räumen`}</p>` : ''}
 
       ${list.length ? `
+      <div class="sec-h"><h2>Moodboard dieses Projekts</h2></div>
+      <div class="docs">${[...new Set(list.map((r) => r.roomType))].map((rt) => {
+        const own = eigenes(w, rt);
+        return `<button class="doc" data-board="${rt}">
+          <span class="d-ico ${own ? 'brass' : 'grey'}">${icon('palette')}</span>
+          <span class="d-t"><b>${esc(roomType(rt).name)}</b><span>${own ? 'Für diesen Kunden angepasst' : 'Standard-Moodboard, tippen zum Anpassen'}</span></span>${icon('chevron', 'pc-chev')}</button>`;
+      }).join('')}</div>
+
       <div class="sec-h"><h2>Unterlagen</h2></div>
       <div class="docs">
         <button class="doc" id="dMappe" ${anyResult ? '' : 'disabled'}>
           <span class="d-ico navy">${icon('book')}</span>
-          <span class="d-t"><b>Kundenmappe</b><span>Vorher-Nachher für den Kunden, alle Varianten oder deine Auswahl</span></span>${icon('chevron', 'pc-chev')}</button>
+          <span class="d-t"><b>Kundenmappe</b><span>Vorher-Nachher oder Präsentation nur mit den neuen Bildern</span></span>${icon('chevron', 'pc-chev')}</button>
         <button class="doc" id="dBau" ${anyResult ? '' : 'disabled'}>
           <span class="d-ico brass">${icon('clipboard')}</span>
           <span class="d-t"><b>Baumappe</b><span>Für Subunternehmer: Markierungen, Produkte, Maße, Fliesenspiegel, ohne Preise</span></span>${icon('chevron', 'pc-chev')}</button>
@@ -194,6 +202,7 @@ window.Projekt = (() => {
     $$('[data-room]').forEach((el) => (el.onclick = (e) => { if (e.target.closest('[data-up]')) return; raumOeffnen(rooms.get(el.dataset.room), w); }));
     $$('[data-up]').forEach((b) => (b.onclick = async () => { const i = +b.dataset.up; [w.rooms[i - 1], w.rooms[i]] = [w.rooms[i], w.rooms[i - 1]]; await save(w); view(); }));
     $$('[data-rt]').forEach((b) => (b.onclick = () => addRoom(w, b.dataset.rt)));
+    $$('[data-board]').forEach((b) => (b.onclick = () => moodboardView(w, b.dataset.board)));
     if ($('#wAdd')) $('#wAdd').onclick = () => pickRoomType(w);
     if ($('#wRun')) $('#wRun').onclick = () => runAll(w);
     if ($('#dMappe')) {
@@ -218,7 +227,7 @@ window.Projekt = (() => {
   async function runAll(w) {
     if (!state.settings.apiKey) { toast('Bitte zuerst in den Einstellungen den API-Schlüssel eintragen.', 4000); return; }
     const list = (await raeume(w)).filter((r) => r.photos.length && r.selected.length);
-    const total = list.reduce((n, r) => n + viewCount(r) * packagesFor(r.roomType).filter((x) => r.selected.includes(x.id)).length, 0);
+    const total = list.reduce((n, r) => n + viewCount(r) * roomPackages(r).filter((x) => r.selected.includes(x.id)).length, 0);
     if (!total) { toast('Keine Räume mit Fotos und ausgewählten Paketen.'); return; }
     const already = list.filter(hasAnyResult).length;
     if (!confirm(`${total} Bilder für ${list.length} Räume erstellen?${already ? `\n\n${already} ${already === 1 ? 'Raum hat' : 'Räume haben'} schon Bilder, die werden dabei neu gemacht.` : ''}`)) return;
@@ -227,7 +236,7 @@ window.Projekt = (() => {
     // Raum für Raum, damit Google nicht zu viele Anfragen gleichzeitig bekommt
     for (const [i, r] of list.entries()) {
       const info = $('#wRunInfo'); if (info && state.wohnung === w && !state.project) info.textContent = `Raum ${i + 1} von ${list.length}: ${r.room} …`;
-      const pkgs = packagesFor(r.roomType).filter((x) => r.selected.includes(x.id));
+      const pkgs = roomPackages(r).filter((x) => r.selected.includes(x.id));
       await window.voiceReady?.(r);
       await Promise.all(pkgs.map((pkg) => runPackage(r, pkg)));
       ok += pkgs.reduce((n, x) => n + (r.results[x.id] || []).filter(Boolean).length + (topOf(r, x.id) ? 1 : 0), 0);
@@ -236,6 +245,49 @@ window.Projekt = (() => {
     await save(w);
     if (state.wohnung === w && !state.project) view();
     toast(ok === total ? 'Fertig! Jetzt kannst du die Kundenmappe erstellen.' : `${ok} von ${total} Bildern fertig. Fehlgeschlagene im Raum mit „Neu“ wiederholen.`, 5000);
+  }
+
+  // ---------- Moodboard dieses Projekts ----------
+  /** Eigenes Moodboard des Projekts für einen Raumtyp (Kopie des Standard-Moodboards) oder null. */
+  const eigenes = (w, rt) => (Array.isArray(w.boards?.[rt]) && w.boards[rt].length ? w.boards[rt] : null);
+  /** Kopie anlegen, sobald im Projekt etwas geändert wird. Danach ändern sich nur noch die Pakete dieses Projekts. */
+  function kopie(w, rt) {
+    w.boards ??= {};
+    if (!eigenes(w, rt)) w.boards[rt] = JSON.parse(JSON.stringify(packagesFor(rt, null)));
+    return w.boards[rt];
+  }
+  async function moodboardView(w, rt) {
+    state.project = null;
+    const own = eigenes(w, rt);
+    const pkgs = packagesFor(rt, w);
+    header('Moodboard', `${w.customer || 'Projekt'} · ${roomType(rt).name}`, { label: 'Projekt', fn: () => { view(); window.scrollTo(0, 0); } });
+    main().innerHTML = `
+      <div class="card intro"><p>${own
+        ? `Dieses Moodboard gilt <b>nur für ${esc(w.customer || 'dieses Projekt')}</b>. Visualisierung, Kundenmappe, Baumappe und Angebot nutzen es.`
+        : `Hier steht noch dein <b>Standard-Moodboard</b>. Tippe auf ein Paket und ändere, was der Kunde anders möchte, zum Beispiel einen anderen Heizkörper. Die Änderung gilt nur für dieses Projekt.`}</p></div>
+      <div class="pkgs">${pkgs.map((p) => `
+        <button class="pkgcard" data-edit="${p.id}" style="--c:${p.color}">
+          <span class="pk-thumbs">${p.images.slice(0, 3).map((im) => `<img src="${im.data}" alt="">`).join('') || `<span class="pk-empty">${icon('palette')}</span>`}</span>
+          <span class="pk-t"><b><i></i>${esc(p.name)}</b><span>${esc(p.fields.beschreibung || '')}</span>
+            <small>${p.images.length} ${p.images.length === 1 ? 'Bild' : 'Bilder'} · ${p.products.length} ${p.products.length === 1 ? 'Produkt' : 'Produkte'}</small></span>
+          ${icon('chevron', 'pc-chev')}
+        </button>`).join('')}</div>
+      ${own ? `<p class="hint">Nach einer Änderung den Raum neu visualisieren, damit die Bilder zum Moodboard passen.</p>
+        <button class="link-danger" id="mbReset">${icon('refresh')} Zurück zum Standard-Moodboard</button>` : ''}`;
+    $$('[data-edit]').forEach((el) => (el.onclick = () => { kopie(w, rt); editView(w, rt, el.dataset.edit); window.scrollTo(0, 0); }));
+    if ($('#mbReset')) $('#mbReset').onclick = async () => {
+      if (!confirm(`Die Anpassungen für ${roomType(rt).name} in diesem Projekt verwerfen und wieder das Standard-Moodboard nutzen?`)) return;
+      delete w.boards[rt]; await save(w); moodboardView(w, rt);
+    };
+  }
+  function editView(w, rt, id) {
+    const soon = debounce(() => save(w), 500);
+    viewPaketEdit(id, {
+      rt, list: kopie(w, rt), save: () => save(w), saveSoon: soon,
+      sub: `${w.customer || 'Projekt'} · nur für dieses Projekt`, backLabel: 'Moodboard',
+      banner: `<div class="notice" style="margin:0 0 12px">${icon('palette')}<span>Änderungen gelten nur für <b>${esc(w.customer || 'dieses Projekt')}</b>. Dein Standard-Moodboard bleibt, wie es ist.</span></div>`,
+      back: async () => { await save(w); moodboardView(w, rt); window.scrollTo(0, 0); },
+    });
   }
 
   // ---------- Ansicht: Kundenmappe ----------
@@ -254,12 +306,12 @@ window.Projekt = (() => {
     const nm = (id) => list.map((r) => pkgOf(r, id)?.name).find(Boolean) || PKG_META[id][0];
     const col = (id) => list.map((r) => pkgOf(r, id)?.color).find(Boolean) || PKG_META[id][1];
     const anyEve = list.some(hasAnyEvening);
-    const anyProducts = list.some((r) => packagesFor(r.roomType).some((x) => x.products.some((y) => y.name?.trim())));
+    const anyProducts = list.some((r) => roomPackages(r).some((x) => x.products.some((y) => y.name?.trim())));
     const picks = () => list.map((r) => ({ r, w: wahl(w, r) })).filter((x) => x.w);
     const seiten = () => picks().reduce((n, { r, w: v }) => n + (v === 'alle' ? PKG_IDS.filter((id) => done(r, id)).length : 1), 0);
     main().innerHTML = `
       <div class="card intro">
-        <p>Die Mappe zeigt dem Kunden jeden Raum vorher und nachher. Wähle, ob er <b>alle Varianten</b> zum Vergleich sieht oder pro Raum <b>ein Paket</b>.</p>
+        <p>Wähle für jeden Raum, ob der Kunde <b>alle Varianten</b> zum Vergleich sieht oder <b>ein Paket</b>. Danach als Vorher-Nachher-PDF oder als Präsentation nur mit den neuen Bildern erstellen.</p>
         <div class="quick"><span>Für alle Räume:</span>
           <button class="qchip" data-all="alle">Alle Varianten</button>
           ${allPk.map((id) => `<button class="qchip" data-all="${id}" style="--c:${col(id)}">${esc(nm(id))}</button>`).join('')}
@@ -279,10 +331,12 @@ window.Projekt = (() => {
         ${anyProducts ? `<label class="toggle"><input type="checkbox" id="mProd" ${w.pdfProducts ? 'checked' : ''}><span class="tg"></span><span>Produktliste mit Links</span></label>
         <label class="toggle"><input type="checkbox" id="mPrice" ${w.pdfPrices ? 'checked' : ''} ${w.pdfProducts ? '' : 'disabled'}><span class="tg"></span><span>Preise der Produkte zeigen</span></label>` : ''}
         ${anyEve ? `<label class="toggle"><input type="checkbox" id="mEve" ${w.pdfEvening !== false ? 'checked' : ''}><span class="tg"></span><span>Abendstimmung (Tag und Abend nebeneinander)</span></label>` : ''}
-        <button class="btn big block" id="mPdf">${icon('file')} Kundenmappe als PDF</button>
+        <button class="btn big block" id="mPdf">${icon('file')} Vorher-Nachher als PDF</button>
+        <button class="btn big block secondary" id="mPres" style="margin-top:10px">${icon('image')} Präsentation als PDF</button>
+        <p class="hint center" style="margin-top:4px">Präsentation: nur die neuen Bilder, ohne Vorher-Fotos</p>
         <p class="hint center" id="mInfo"></p>
       </div>`;
-    const info = () => { const n = picks().length, s = seiten(); $('#mInfo').textContent = n ? `${n} ${n === 1 ? 'Raum' : 'Räume'} · ${s} Vorher-Nachher-${s === 1 ? 'Seite' : 'Seiten'}` : 'Bitte mindestens einen Raum auswählen.'; $('#mPdf').disabled = !n; };
+    const info = () => { const n = picks().length, s = seiten(); $('#mInfo').textContent = n ? `${n} ${n === 1 ? 'Raum' : 'Räume'} · ${s} Vorher-Nachher-${s === 1 ? 'Seite' : 'Seiten'}` : 'Bitte mindestens einen Raum auswählen.'; $('#mPdf').disabled = !n; $('#mPres').disabled = !n; };
     info();
     const persist = () => save(w);
     $$('[data-m]').forEach((b) => (b.onclick = () => { w.mappe[b.dataset.m] = b.dataset.v; persist(); const y = window.scrollY; mappeView(w).then(() => window.scrollTo(0, y)); }));
@@ -296,16 +350,18 @@ window.Projekt = (() => {
       $('#mPrice').onchange = (e) => { w.pdfPrices = e.target.checked; persist(); };
     }
     if ($('#mEve')) $('#mEve').onchange = (e) => { w.pdfEvening = e.target.checked; persist(); };
-    $('#mPdf').onclick = async () => {
+    const pdf = async (btn, fn) => {
       const sel = picks().map(({ r, w: v }) => ({ r, pkgs: (v === 'alle' ? PKG_IDS.filter((id) => done(r, id)) : [v]).map((id) => pkgOf(r, id)) }));
-      const b = $('#mPdf'); b.disabled = true; const t = b.innerHTML; b.innerHTML = '<span class="spinner sm"></span> PDF wird erstellt …';
-      try { await window.Mappe.kunde(w, sel); } catch (e) { console.error(e); toast('PDF-Fehler: ' + e.message, 6000); }
+      const b = $(btn); b.disabled = true; const t = b.innerHTML; b.innerHTML = '<span class="spinner sm"></span> PDF wird erstellt …';
+      try { await fn(w, sel); } catch (e) { console.error(e); toast('PDF-Fehler: ' + e.message, 6000); }
       b.disabled = false; b.innerHTML = t;
     };
+    $('#mPdf').onclick = () => pdf('#mPdf', window.Mappe.kunde);
+    $('#mPres').onclick = () => pdf('#mPres', window.Mappe.praesentation);
   }
 
   const forget = (id) => rooms.delete(id);
-  return { forget, neu, oeffnen, view, mappeView, migrate, raum, raeume, raumGespeichert, raumEntfernt, save, wahl, PKG_IDS, _intern: { titel, addRoom } };
+  return { forget, neu, oeffnen, view, mappeView, moodboardView, migrate, raum, raeume, raumGespeichert, raumEntfernt, save, wahl, PKG_IDS, _intern: { titel, addRoom } };
 })();
 // Ältere Aufrufe (PR „Wohnungen“) laufen weiter
 window.Wohnung = { neu: () => Projekt.neu(), oeffnen: (id) => Projekt.oeffnen(id), view: () => Projekt.view(), raumGespeichert: (p) => Projekt.raumGespeichert(p), raumEntfernt: (p) => Projekt.raumEntfernt(p) };

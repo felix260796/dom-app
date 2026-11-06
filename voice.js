@@ -195,8 +195,10 @@ const Rec = {
   async start(id, label, onBlob) {
     if (voice.rec) return false;
     if (!navigator.mediaDevices?.getUserMedia || !window.MediaRecorder) { toast('Aufnahme wird auf diesem Gerät nicht unterstützt. Bitte Audio importieren.', 5000); return false; }
+    // Für die Pegelanzeige: AudioContext gleich beim Antippen anlegen (iPhone erlaubt das nur direkt nach dem Tippen)
+    try { const AC = window.AudioContext || window.webkitAudioContext; voice.meterCtx = AC ? new AC() : null; } catch { voice.meterCtx = null; }
     try { voice.stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true } }); }
-    catch { toast('Kein Zugriff aufs Mikrofon. Bitte in den iPhone-Einstellungen (Safari > Mikrofon) erlauben.', 6000); return false; }
+    catch { voice.meterCtx?.close?.(); voice.meterCtx = null; toast('Kein Zugriff aufs Mikrofon. Bitte in den iPhone-Einstellungen (Safari > Mikrofon) erlauben.', 6000); return false; }
     const mime = ['audio/mp4', 'audio/webm;codecs=opus', 'audio/webm'].find((m) => MediaRecorder.isTypeSupported?.(m));
     let rec;
     try { rec = new MediaRecorder(voice.stream, { ...(mime ? { mimeType: mime } : {}), audioBitsPerSecond: 64000 }); }
@@ -208,7 +210,7 @@ const Rec = {
     let done = false;
     const finish = () => {
       if (done) return; done = true;
-      clearInterval(voice.timer); voice.stream?.getTracks().forEach((t) => t.stop());
+      clearInterval(voice.timer); meterStop(); voice.stream?.getTracks().forEach((t) => t.stop());
       voice.wake?.release?.().catch(() => {}); voice.wake = null;
       const blob = new Blob(chunks, { type: (rec.mimeType || mime || 'audio/mp4').split(';')[0] });
       voice.rec = null; voice.recId = null; voice.finish = null;
@@ -232,17 +234,51 @@ const Rec = {
       if (s >= REC_MAX_MIN * 60) { toast(`Nach ${REC_MAX_MIN} Minuten automatisch gestoppt. Für mehr einfach neu starten.`, 5000); Rec.stop(); }
     }, 1000);
     recBar();
+    meterStart();
     return true;
   },
   stop() { if (!voice.rec) return; voice.rec.state !== 'inactive' ? voice.rec.stop() : voice.finish?.(); },
 };
+/** Pegelanzeige: Ausschläge zeigen, dass das Mikrofon wirklich etwas hört. */
+const METER_BARS = 24;
+function meterStart() {
+  const ctx = voice.meterCtx;
+  if (!ctx || !voice.stream) return;
+  try {
+    ctx.resume?.();
+    const src = ctx.createMediaStreamSource(voice.stream), an = ctx.createAnalyser();
+    an.fftSize = 512; src.connect(an);
+    const buf = new Float32Array(an.fftSize), hist = new Array(METER_BARS).fill(0);
+    let last = 0, quiet = 0;
+    const tick = (t) => {
+      if (!voice.rec) return;
+      voice.meterRaf = requestAnimationFrame(tick);
+      if (t - last < 70) return; last = t;
+      an.getFloatTimeDomainData(buf);
+      let s = 0; for (let i = 0; i < buf.length; i++) s += buf[i] * buf[i];
+      const lvl = Math.min(1, Math.sqrt(s / buf.length) * 6);
+      hist.push(lvl); hist.shift();
+      quiet = lvl < 0.02 ? quiet + 1 : 0;
+      const el = $('#rb-meter');
+      if (el) el.innerHTML = hist.map((v) => `<i style="height:${Math.max(8, Math.round(v * 100))}%"></i>`).join('');
+      const hint = $('#rb-hint');
+      if (hint) hint.textContent = quiet > 70 ? 'Sehr leise, Mikrofon frei?' : (voice.recLabel || '');
+    };
+    voice.meterRaf = requestAnimationFrame(tick);
+  } catch (e) { console.warn('Pegelanzeige nicht möglich', e); }
+}
+function meterStop() {
+  cancelAnimationFrame(voice.meterRaf);
+  voice.meterCtx?.close?.().catch?.(() => {});
+  voice.meterCtx = null;
+}
 /** Leiste über der Navigation, solange die Aufnahme läuft (auf jeder Seite sichtbar). */
 function recBar() {
   let el = $('#recbar');
   if (!voice.rec) { el?.remove(); document.body.classList.remove('recording'); return; }
   if (!el) { el = document.createElement('div'); el.id = 'recbar'; el.className = 'recbar'; document.body.appendChild(el); }
   document.body.classList.add('recording');
-  el.innerHTML = `<span class="rb-dot"></span><span class="rb-t"><b>Aufnahme läuft <span id="recbar-t">0:00</span></b><span>${esc(voice.recLabel || '')}</span></span><button id="recbar-stop">■ Beenden</button>`;
+  el.innerHTML = `<span class="rb-dot"></span><span class="rb-t"><b>Aufnahme läuft <span id="recbar-t">0:00</span></b><span id="rb-hint">${esc(voice.recLabel || '')}</span></span><span class="rb-meter" id="rb-meter" aria-hidden="true">${'<i></i>'.repeat(METER_BARS)}</span><button id="recbar-stop">■ Beenden</button>`;
   $('#recbar-stop').onclick = () => Rec.stop();
 }
 
