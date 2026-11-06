@@ -861,7 +861,7 @@ Gib Länge (längere Seite) und Breite der Grundfläche, Raumhöhe, Anzahl und G
       </div>
       <div class="card"><button class="btn danger block" id="vReset">Alle Vorlagen auf Standard zurücksetzen</button></div>`;
     const save = debounce(() => kvSet('angebotVorlagen', VORL), 300);
-    $('#vBack').onclick = () => switchTab('einstellungen');
+    $('#vBack').onclick = () => (window.einstellungSeite ? einstellungSeite('preise') : switchTab('einstellungen'));
     $('#vPkg').onchange = (e) => vorlagenView(e.target.value, grp);
     $('#vGrp').onchange = (e) => vorlagenView(pkgId, e.target.value);
     $$('[data-vm]').forEach((el) => (el.oninput = () => { rows[+el.dataset.vm].menge = el.value; try { rechne(el.value, masse(neuerRaum())); el.style.borderColor = ''; } catch { el.style.borderColor = 'var(--danger)'; } save(); }));

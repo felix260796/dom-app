@@ -73,7 +73,7 @@ window.Schnell = (() => {
       <div id="sExtra"></div>
 
       <details class="more card" id="sDet">
-        <summary>${icon('clipboard')}<span>Enthaltene Positionen<small id="sDetInfo"></small></span>${icon('chevron', 'more-chev')}</summary>
+        <summary>${icon('clipboard')}<span>Enthaltene Positionen und Rechenweg<small id="sDetInfo"></small></span>${icon('chevron', 'more-chev')}</summary>
         <div id="sPos"></div>
       </details>
 
@@ -116,9 +116,9 @@ window.Schnell = (() => {
     const ex = $('#sExtra');
     ex.innerHTML = S.extra.length ? `<div class="card xlist">${S.extra.map((x) => {
       const it = posOf(x.nr); if (!it) return '';
-      return `<div class="xrow"><span class="xt"><b>${esc(it.text)}</b><small>${eur2(ep(it))} je ${esc(it.einheit)}</small></span>
+      return `<div class="xrow"><span class="xt"><b>${esc(it.text)}</b><small>${eur2(ep(it))} je ${esc(it.einheit)}, netto</small></span>
         <label class="qm sm"><input type="text" inputmode="decimal" data-xm="${x.id}" value="${esc(x.menge)}"><span>${esc(it.einheit)}</span></label>
-        <span class="xgp" data-xgp="${x.id}">${eur(num(x.menge) * ep(it))}</span>
+        <span class="xgp" data-xgp="${x.id}">${eur2(num(x.menge) * ep(it))}</span>
         <button class="icon-btn" data-xdel="${x.id}" aria-label="Entfernen">${icon('x')}</button></div>`;
     }).join('')}</div>` : '';
     $$('[data-xm]', ex).forEach((inp) => (inp.oninput = () => {
@@ -130,15 +130,20 @@ window.Schnell = (() => {
   }
   function resHtml(s, qm, leer) {
     if (leer) return `<p class="sres-hint">${icon('ruler')}<span>Fläche eintragen oder einzelne Punkte antippen, dann erscheint hier der Preis.</span></p>`;
+    const E = PLcache.einstellungen, pz = (x) => Math.round(x * 100) + ' %';
     return `<span class="sres-l">Preisrichtung inkl. MwSt.</span>
       <b class="sres-p">ca. ${eur(s.von)} – ${eur(s.bis)}</b>
-      <span class="sres-s">Kalkuliert ${eur2(s.brutto)} brutto · ${eur2(s.netto)} netto${qm ? ` · ${eur(s.brutto / qm)} je m²` : ''}</span>
-      <span class="sres-s">Unverbindliche Schätzung mit Preisen aus deiner Preisliste, Spanne ± ${Math.round(PLs() * 100)} %.</span>`;
+      <span class="sres-s">Spanne ± ${pz(E.spanne)} um den kalkulierten Preis, auf 100 € gerundet${qm ? ` · ca. ${eur(s.brutto / qm)} je m²` : ''}</span>
+      <div class="sres-tab">
+        <span>Summe der ${s.zeilen.length} Positionen (netto)</span><b>${eur2(s.netto)}</b>
+        <span>+ ${pz(E.mwst)} MwSt.</span><b>${eur2(s.mwst)}</b>
+        <span class="tot">Kalkuliert brutto</span><b class="tot">${eur2(s.brutto)}</b>
+      </div>`;
   }
   // Beim Tippen in einer Menge nur Ergebnis, Zeilenpreise und Liste aktualisieren (Eingabefeld bleibt)
   function rechnenOhneExtra() {
     const ep = A().ep;
-    for (const x of S.extra) { const el = $(`[data-xgp="${x.id}"]`), it = posOf(x.nr); if (el && it) el.textContent = eur(num(x.menge) * ep(it)); }
+    for (const x of S.extra) { const el = $(`[data-xgp="${x.id}"]`), it = posOf(x.nr); if (el && it) el.textContent = eur2(num(x.menge) * ep(it)); }
     const { gen, alle } = positionen(), s = A().summen(alle);
     $('#sRes').innerHTML = resHtml(s, S.raeume.reduce((t, r) => t + num(r.qm), 0), !alle.length);
     liste(gen, s);
@@ -156,8 +161,16 @@ window.Schnell = (() => {
     el.innerHTML = Object.entries(byRaum).map(([rn, zs]) => `<div class="o-h">${icon('home')}<span>${esc(rn)}</span></div>
       ${zs.map((z) => { const it = posOf(z.nr), k = keyOf(z), on = !aus.has(k);
         return `<label class="prow ${on ? '' : 'off'}"><input type="checkbox" data-pk2="${esc(k)}" ${on ? 'checked' : ''}>
-          <span class="xt"><b>${esc(it?.text || z.nr)}</b><small>${mg(z.menge)} ${esc(it?.einheit || '')}${z.bem ? ' · ' + esc(z.bem) : ''}</small></span>
-          <span class="xgp">${on ? eur(gp.get(k) || 0) : '–'}</span></label>`; }).join('')}`).join('') || '<p class="hint">Mit Fläche und Paket erscheinen hier die einzelnen Positionen. Antippen nimmt eine heraus.</p>';
+          <span class="xt"><b>${esc(it?.text || z.nr)}</b><small>${mg(z.menge)} ${esc(it?.einheit || '')} × ${it ? eur2(A().ep(it)) : ''}${z.bem ? ' · ' + esc(z.bem) : ''}</small></span>
+          <span class="xgp">${on ? eur2(gp.get(k) || 0) : '–'}</span></label>`; }).join('')}`).join('');
+    if (!gen.length) { el.innerHTML = '<p class="hint">Mit Fläche und Paket erscheinen hier die einzelnen Positionen. Antippen nimmt eine heraus.</p>'; return; }
+    const E = PLcache.einstellungen, pz = (x) => Math.round(x * 100) + ' %';
+    const nExtra = S.extra.filter((x) => num(x.menge) > 0 && posOf(x.nr)).length;
+    const sumGen = s.zeilen.filter((z) => !z.extra).reduce((t, z) => t + z.gp, 0);
+    el.innerHTML += `<div class="psum"><span>Summe Paket-Positionen netto</span><b>${eur2(sumGen)}</b>
+      ${nExtra ? `<span>+ einzelne Punkte netto</span><b>${eur2(s.netto - sumGen)}</b><span>Summe netto</span><b>${eur2(s.netto)}</b>` : ''}</div>
+      <p class="hint">Alle Preise hier sind <b>netto</b>. Oben steht der Preis mit ${pz(E.mwst)} MwSt.<br>
+      So entsteht ein Einzelpreis (wie in deinem Excel-Angebotstool): Sub-Lohn + ${pz(E.aufLohn)} Aufschlag, plus Material + ${pz(E.aufMat)} Aufschlag, das Ganze + ${pz(E.wagnis)} Wagnis. Die Mengen rechnet die App aus der Grundfläche (Raum etwa 4 : 3, Höhe 2,50 m, eine Tür, ein Fenster) mit den Paket-Vorlagen aus den Einstellungen.</p>`;
     $$('[data-pk2]', el).forEach((c) => (c.onchange = () => {
       const k = c.dataset.pk2; S.aus = c.checked ? S.aus.filter((x) => x !== k) : [...S.aus, k]; speichern(); rechnen();
     }));
