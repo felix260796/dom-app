@@ -695,3 +695,9 @@ input.bad { border-color: var(--danger) !important; background: var(--danger-sof
 .bf-mini { display: block; margin-top: 6px; max-width: 240px; }
 .bf-mini .bf-bar { height: 4px; }
 .bf-mini .bf-txt { font-size: 12px; margin-top: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* iOS zeigt die App kürzer als den Bildschirm: kein zusätzlicher Abstand unter der Leiste */
+html.ios-kurz .tabbar { height: 66px; padding-bottom: 0; }
+
+.pc-wo, .pc-wer { display: flex; align-items: center; gap: 5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pc-wo svg.i, .pc-wer svg.i { width: 15px; height: 15px; flex: none; opacity: .7; }

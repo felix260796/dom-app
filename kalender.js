@@ -181,7 +181,8 @@ window.Kalender = (() => {
     const isNeu = !vorlage.id;
     const t = { id: uid(), kind: 'termin', titel: '', art: 'kunde', datum: heute(), von: '09:00', bis: '10:00', ganztag: false, wer: wer() ? [wer()] : team().map((p) => p.id), kundeId: '', objektId: '', projektId: '', partnerId: '', ort: '', notiz: '', created: Date.now(), ...vorlage };
     if (!Array.isArray(t.wer)) t.wer = [];
-    t.erinnerung ??= state.settings.erinnerungTage ?? 1;
+    t.erinnerung ??= state.settings.erinnerungAuto === false ? 0 : state.settings.erinnerungTage ?? 1;
+    if (isNeu && t.mailKunde === undefined) t.mailKunde = state.settings.mailKundeAuto !== false;
     const alt = isNeu ? null : JSON.stringify([t.datum, t.von, t.bis, t.ganztag, t.ort, t.titel]);
     let mailen = null; // null = automatisch (neu: ja, geändert: ja, wenn schon eine Bestätigung rausging)
     if (isNeu && t.kundeId && !t.objektId) { const k = Kunden.byId(t.kundeId); if (k?.objekte.length === 1) t.objektId = k.objekte[0].id; }
@@ -295,11 +296,11 @@ window.Kalender = (() => {
   // Jede Person bekommt ihre eigene Mail (rolle): team = alle Angaben, kunde = Zeit, Ort, Anlass (ohne Subunternehmer),
   // partner = Adresse, Projekt, Kunde und dass der Termin mit uns ist.
   function beteiligte(t) {
-    const out = team().filter((p) => !t.wer?.length || t.wer.includes(p.id)).map((p) => ({ name: p.name, email: (p.email || '').trim(), rolle: 'team' }));
+    const out = team().filter((p) => !t.wer?.length || t.wer.includes(p.id)).map((p) => ({ name: p.name, email: (p.email || '').trim(), rolle: 'team', anrede: `Hallo ${vorname(p)},` }));
     const p = window.Partner?.byId(t.partnerId);
-    if (p) out.push({ name: [p.inhaber, p.firma].filter(Boolean).join(', ') || 'Subunternehmer', email: p.email.trim(), rolle: 'partner' });
+    if (p) out.push({ name: [p.inhaber, p.firma].filter(Boolean).join(', ') || 'Subunternehmer', email: p.email.trim(), rolle: 'partner', anrede: p.inhaber?.trim() ? `Hallo ${p.inhaber.trim()},` : 'Hallo,' });
     const k = Kunden.byId(t.kundeId);
-    if (k && t.mailKunde) out.push({ name: Kunden.name(k), email: k.email.trim(), rolle: 'kunde' });
+    if (k && t.mailKunde) out.push({ name: Kunden.name(k), email: k.email.trim(), rolle: 'kunde', anrede: Kunden.briefAnrede(k) });
     return out;
   }
   const empfaenger = (t) => beteiligte(t).filter((x) => /.+@.+\..+/.test(x.email));

@@ -265,7 +265,6 @@ window.Kunden = (() => {
       </button>
       ${state.settings.apiKey ? '' : `<button class="notice" id="toSet">${icon('gear')}<span><b>KI noch nicht eingerichtet.</b> Einmalig den Google-Schlüssel in den Einstellungen eintragen.</span>${icon('chevron')}</button>`}
       <div id="backupHint"></div>
-      <div id="kKal"></div>
       ${all.length ? `<div class="sec-h"><h2>Deine Kunden</h2><span class="count" id="kCount">${all.length}</span></div><div class="plist" id="klist"></div>`
         : `<div class="empty-state">${icon('user')}<b>Noch keine Kunden</b><span>Tippe auf „Neuer Kunde“ und trage Name, Telefon und Anschrift ein. Danach legst du beim Kunden seine Projekte an.</span></div>`}`;
     const render = () => {
@@ -290,7 +289,6 @@ window.Kunden = (() => {
     $('#kNew').onclick = () => { filter = ''; detail(neu({ isNew: true })); window.scrollTo(0, 0); };
     if ($('#toSet')) $('#toSet').onclick = () => { switchTab('einstellungen'); einstellungSeite('ki'); };
     window.Backup?.hinweis($('#backupHint'));
-    window.Kalender?.kachel($('#kKal'));
   }
 
   // ---------- Adress-Vorschläge (OpenStreetMap über Photon, kostenlos, ohne Schlüssel) ----------

@@ -23,7 +23,7 @@ const cors = { "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Headers
 const antwort = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { ...cors, "Content-Type": "application/json" } });
 
 type Rolle = "team" | "kunde" | "partner";
-type Person = { name?: string; email?: string; rolle?: Rolle };
+type Person = { name?: string; email?: string; rolle?: Rolle; anrede?: string };
 type Texte = Partial<Record<Rolle, { bestaetigung?: string; erinnerung?: string }>>;
 type Termin = {
   id: string; titel?: string; art?: string; datum: string; von?: string; bis?: string; ganztag?: boolean;
@@ -97,7 +97,8 @@ function mailHtml(t: Termin, p: Person, art: Art, wann = "") {
       ? anlass + zeit + zeile("Wo", t.ort, karte) + zeile("Von uns kommt", k.wer)
       : anlass + zeit + zeile("Adresse", t.ort, karte) + zeile("Projekt", k.projekt) + zeile("Kunde", k.kunde) + zeile("Termin mit", [firma, k.werKontakt || k.wer].filter(Boolean).join(" · "));
   const vor = String(p.name || "").trim();
-  const anrede = rolle === "team" ? "Hallo," : rolle === "kunde" ? `Guten Tag${vor ? " " + vor : ""},` : `Hallo${vor ? " " + vor.split(",")[0] : ""},`;
+  // Anrede kommt aus der App (Kundenkarte bzw. Subunternehmer); sonst wie bisher
+  const anrede = String(p.anrede || "").trim() || (rolle === "team" ? "Hallo," : rolle === "kunde" ? `Guten Tag${vor ? " " + vor : ""},` : `Hallo${vor ? " " + vor.split(",")[0] : ""},`);
   const gruss = rolle === "team" ? "" : `<p style="margin:18px 0 0">Viele Grüße<br>${esc(firma)}${k.kontakt ? `<br><span style="font-size:13px;color:#6b7380">${esc(k.kontakt)}</span>` : ""}</p>`;
   return `<!doctype html><html><body style="margin:0;background:#f3f1ec;font-family:-apple-system,Segoe UI,Helvetica,Arial,sans-serif;color:#1b2533">
   <div style="max-width:560px;margin:0 auto;padding:24px 16px">

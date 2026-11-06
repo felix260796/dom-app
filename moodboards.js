@@ -194,7 +194,7 @@ function mailVorschau(r, satz) {
     : r === 'kunde'
       ? z('Anlass', 'Aufmaß Bad') + z('Wann', 'Freitag, 13. November 2026, 14:00 Uhr bis 15:00 Uhr') + z('Wo', 'Musterstraße 1, 70173 Stuttgart') + z('Von uns kommt', wer)
       : z('Anlass', 'Aufmaß Bad') + z('Wann', 'Freitag, 13. November 2026, 14:00 Uhr bis 15:00 Uhr') + z('Adresse', 'Musterstraße 1, 70173 Stuttgart') + z('Projekt', 'Badumbau · Nr. 1001-01') + z('Kunde', 'Familie Müller') + z('Termin mit', `${firma} (${wer})`);
-  const anrede = r === 'team' ? 'Hallo,' : r === 'kunde' ? 'Guten Tag Familie Müller,' : 'Hallo Herr Kaya,';
+  const anrede = r === 'team' ? 'Hallo Felix,' : r === 'kunde' ? 'Sehr geehrte Familie Müller,' : 'Hallo Mehmet Kaya,';
   const html = `<div style="background:#1e3550;color:#fff;border-radius:14px 14px 0 0;padding:14px 16px"><div style="font-size:12px;opacity:.75">${esc(firma)}</div><div style="font-size:19px;font-weight:700;margin-top:3px">Terminbestätigung</div></div>
     <div style="background:#fff;border-radius:0 0 14px 14px;padding:14px 16px;color:#1b2533"><p style="margin:0 0 4px">${esc(anrede)}</p><p style="margin:0 0 12px">${esc(satz)}</p><table style="border-collapse:collapse;font-size:14.5px">${zeilen}</table>
     ${r === 'team' ? '' : `<p style="margin:14px 0 0">Viele Grüße<br>${esc(firma)}</p>`}</div>`;
@@ -234,13 +234,16 @@ function einstellungSeite(k) {
         <div class="card kform">
           <p class="muted" style="margin-top:0">Beim Speichern eines Termins bekommen die Beteiligten eine Bestätigung mit Ort, Zeit und Anlass, vor dem Termin eine Erinnerung. Einmalig in Supabase einzurichten: <a href="https://github.com/felix260796/dom-app/blob/main/TERMINMAILS_EINRICHTEN.md" target="_blank" rel="noopener">Anleitung öffnen</a>.</p>
           <p><b>${S.mailAktiv ? 'Eingerichtet' : 'Noch nicht eingerichtet'}</b>${window.Sync?.active() ? '' : ' · zuerst den Cloud-Abgleich verbinden'}</p>
-          <label>Erinnerung standardmäßig</label>
-          <select id="erinT">${[[0, 'keine'], [1, '1 Tag vorher'], [2, '2 Tage vorher'], [3, '3 Tage vorher'], [7, '1 Woche vorher']].map(([v, n]) => `<option value="${v}" ${(S.erinnerungTage ?? 1) === v ? 'selected' : ''}>${n}</option>`).join('')}</select>
+          <label class="toggle" style="margin-top:12px"><input type="checkbox" id="mkAuto" ${S.mailKundeAuto !== false ? 'checked' : ''}><span class="tg"></span><span>Kunde bekommt bei neuen Terminen eine Bestätigung</span></label>
+          <label class="toggle"><input type="checkbox" id="erAuto" ${S.erinnerungAuto !== false ? 'checked' : ''}><span class="tg"></span><span>Erinnerungen automatisch verschicken</span></label>
+          <p class="hint" style="margin:2px 0 0">Beides ist nur die Voreinstellung. Beim einzelnen Termin kannst du es trotzdem an- oder abwählen.</p>
+          <div id="erinBox" ${S.erinnerungAuto === false ? 'hidden' : ''}><label>Erinnerung standardmäßig</label>
+          <select id="erinT">${[[0, 'keine'], [1, '1 Tag vorher'], [2, '2 Tage vorher'], [3, '3 Tage vorher'], [7, '1 Woche vorher']].map(([v, n]) => `<option value="${v}" ${(S.erinnerungTage ?? 1) === v ? 'selected' : ''}>${n}</option>`).join('')}</select></div>
           <button class="btn secondary block" id="mailTest" style="margin-top:12px" ${window.Sync?.active() ? '' : 'disabled'}>${icon('mail')} Test-Mail an das Team senden</button>
           ${S.mailAktiv ? '<button class="link-danger" id="mailAus" style="margin-top:6px">Terminmails ausschalten</button>' : ''}
         </div>
         <div class="sec-h"><h2>Wer bekommt was?</h2></div>
-        <p class="hint" style="margin-top:-4px">Jeder bekommt seine eigene Mail. Den Einleitungssatz kannst du je Empfänger ändern, leer lassen heißt Standardtext.</p>
+        <p class="hint" style="margin-top:-4px">Jeder bekommt seine eigene Mail. Die Anrede setzt die App automatisch ein, z. B. „Sehr geehrte Familie Müller,“ aus der Kundenkarte oder „Hallo Mehmet Kaya,“ beim Subunternehmer. Den Satz danach kannst du je Empfänger ändern. Leer lassen heißt Standardtext.</p>
         ${ROLLEN.map(([r, n, was]) => `<div class="card kform mvorl" data-mr="${r}">
           <div class="hv-h" style="margin-top:0">${icon(r === 'team' ? 'users' : r === 'kunde' ? 'user' : 'wrench')}<span>${n}</span></div>
           <p class="muted" style="margin:6px 0 0;font-size:14px">${was}</p>
@@ -254,6 +257,8 @@ function einstellungSeite(k) {
         $('[data-mvor]', c).onclick = () => mailVorschau(r, Kalender.mailTexte()[r].bestaetigung);
       });
       $('#erinT').onchange = (e) => { S.erinnerungTage = +e.target.value; save(); };
+      $('#mkAuto').onchange = (e) => { S.mailKundeAuto = e.target.checked; save(); };
+      $('#erAuto').onchange = (e) => { S.erinnerungAuto = e.target.checked; $('#erinBox').hidden = !e.target.checked; save(); };
       $('#mailTest').onclick = async () => {
         const an = S.team.filter((p) => /.+@.+\..+/.test(p.email || '')).map((p) => ({ name: p.name, email: p.email }));
         if (!an.length) { toast('Bitte zuerst oben eine E-Mail-Adresse eintragen.'); return; }

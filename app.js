@@ -6,7 +6,7 @@
  * Kern-Funktionen (Speicher, KI, Bilder) stehen in core.js. */
 
 // ---------- Symbole (einfache Linien-Icons) ----------
-const APP_VERSION = '45';
+const APP_VERSION = '46';
 const ICONS = {
   plus: '<path d="M12 5v14M5 12h14"/>',
   camera: '<path d="M3 8.5A2 2 0 0 1 5 6.5h2l1.6-2h6.8l1.6 2h2a2 2 0 0 1 2 2V18a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><circle cx="12" cy="13" r="3.6"/>',
@@ -129,6 +129,12 @@ function sheet(title, items, { text, value = '' } = {}) {
 
 // ---------- Projektliste ----------
 /** Zweite Zeile einer Projektkarte: Objekt (Bezeichnung bzw. Anschrift), nicht der Kunde. */
+/** Projektliste: wo (Objektanschrift) und für wen (Kunde) */
+function projektOrt(x) {
+  const k = Kunden.byId(x.kundeId), o = k && Kunden.objekt(k, x.objektId);
+  return (o && Kunden.einzeilig(o.adresse)) || x.address || (o && o.name.trim()) || '';
+}
+const projektKunde = (x) => Kunden.name(Kunden.byId(x.kundeId)) || x.customer || '';
 function objektZeile(x) {
   const k = Kunden.byId(x.kundeId), o = k && Kunden.objekt(k, x.objektId);
   return [o && o.name.trim(), x.address || (o && Kunden.einzeilig(o.adresse))].filter(Boolean).join(' · ');
@@ -161,8 +167,8 @@ async function viewProjektListe() {
         <button class="pcard" data-open="${x.id}" data-kind="${x.kind || ''}">
           ${x.thumb ? `<img src="${x.thumb}" alt="">` : `<span class="pc-ph">${icon('home')}</span>`}
           <span class="pc-t"><b>${esc(x.titel || x.room || 'Projekt')}${stOf(x) === 'abgesagt' ? ' <span class="st-pill">Abgesagt</span>' : ''}</b>
-            ${objektZeile(x) ? `<span class="muted">${esc(objektZeile(x))}</span>` : ''}
-            <span class="pc-meta">${x.nr ? esc(x.nr) + ' · ' : ''}${x.titel && x.room ? esc(x.room) + ' · ' : ''}${fmtDay(x.updated || x.created)}</span>
+            ${projektOrt(x) ? `<span class="muted pc-wo">${icon('map')}${esc(projektOrt(x))}</span>` : ''}
+            ${projektKunde(x) ? `<span class="muted pc-wer">${icon('user')}${esc(projektKunde(x))}</span>` : ''}
             ${x.fort && Projekt.zugesagt(x.status) ? `<span class="bf-mini">${Fortschritt.balken(x.fort)}</span>` : ''}</span>
           ${icon('chevron', 'pc-chev')}
         </button>`).join('') || '<p class="empty">Nichts gefunden.</p>'}</div>`}` : `
