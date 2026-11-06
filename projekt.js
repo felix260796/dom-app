@@ -34,7 +34,7 @@ window.Projekt = (() => {
     await kvSet(key(w.id), w);
     const list = await raeume(w);
     const idx = (await projectIndex()).filter((x) => x.id !== w.id);
-    idx.unshift({ id: w.id, kind: 'wohnung', nr: w.nr || '', titel: w.titel || '', status: w.status || '', kundeId: w.kundeId || '', objektId: w.objektId || '', customer: w.customer, address: w.address, room: list.length ? summary(list) : 'noch kein Raum', rooms: list.length, created: w.created, updated: w.updated, thumb: list.find((r) => r?.thumb)?.thumb || '' });
+    idx.unshift({ id: w.id, kind: 'wohnung', nr: w.nr || '', titel: w.titel || '', status: w.status || '', kundeId: w.kundeId || '', objektId: w.objektId || '', customer: w.customer, address: w.address, room: list.length ? summary(list) : 'noch kein Raum', rooms: list.length, fort: window.Fortschritt?.kurz(w) || null, created: w.created, updated: w.updated, thumb: list.find((r) => r?.thumb)?.thumb || '' });
     await kvSet('projectIndex', idx);
   }
   const neuesProjekt = () => ({ id: uid(), kind: 'wohnung', created: Date.now(), customer: '', address: '', rooms: [], mappe: {}, pdfProducts: true, pdfPrices: false, pdfEvening: true });
@@ -190,7 +190,8 @@ window.Projekt = (() => {
       <div class="wstat-l">Angebot</div>
       <div class="seg2 full wstatus" id="wStatus">${[['angebot', 'Versendet', ANGEBOT[0][2]], ['abgesagt', 'Abgesagt', ANGEBOT[1][2]], ['__zu', 'Zugesagt', '#237a4b']].map(([id, n, c]) => `<button data-st="${id}" class="${(id === '__zu' ? zugesagt(w.status) : (w.status || '') === id) ? 'on' : ''}" style="--c:${c}">${n}</button>`).join('')}</div>
       ${zugesagt(w.status) ? `<div class="wstat-l">Ausführung</div>
-      <div class="seg2 full wstatus">${STATUS.map(([id, n, c]) => `<button data-st="${id}" class="${(w.status || '') === id ? 'on' : ''}" style="--c:${c}">${n}</button>`).join('')}</div>` : ''}
+      <div class="seg2 full wstatus">${STATUS.map(([id, n, c]) => `<button data-st="${id}" class="${(w.status || '') === id ? 'on' : ''}" style="--c:${c}">${n}</button>`).join('')}</div>
+      <div id="wFort"></div>` : ''}
       ${k ? `<div class="docs" style="margin-top:12px"><button class="doc" id="wBilder"><span class="d-ico brass">${icon('camera')}</span>
         <span class="d-t"><b>Bilder & Dokumentation</b><span>${nFotos ? `${nFotos} ${nFotos === 1 ? 'Bild' : 'Bilder'} in diesem Projekt` : 'Bestand, Baufortschritt, Abnahme, eigene Ordner'}</span></span>${icon('chevron', 'pc-chev')}</button></div>` : ''}
       ${window.Gespraech?.karte(w, list) || ''}
@@ -237,6 +238,7 @@ window.Projekt = (() => {
       ${anyResult ? '' : '<p class="hint center">Kunden- und Baumappe gibt es, sobald ein Raum visualisiert ist.</p>'}
       <div id="wTermine"></div>
       <button class="link-danger" id="wDel">${icon('trash')} Projekt löschen</button>` : ''}`;
+    if ($('#wFort')) window.Fortschritt?.abschnitt($('#wFort'), w, list, () => save(w));
     if (k && $('#wTermine')) window.Kalender?.abschnitt($('#wTermine'), { kundeId: k.id, objektId: w.objektId, projektId: w.id, zurueck: () => view() });
     $$('[data-st]').forEach((b) => (b.onclick = async () => {
       const v = b.dataset.st;

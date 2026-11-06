@@ -6,7 +6,7 @@
  * Kern-Funktionen (Speicher, KI, Bilder) stehen in core.js. */
 
 // ---------- Symbole (einfache Linien-Icons) ----------
-const APP_VERSION = '44';
+const APP_VERSION = '45';
 const ICONS = {
   plus: '<path d="M12 5v14M5 12h14"/>',
   camera: '<path d="M3 8.5A2 2 0 0 1 5 6.5h2l1.6-2h6.8l1.6 2h2a2 2 0 0 1 2 2V18a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><circle cx="12" cy="13" r="3.6"/>',
@@ -47,6 +47,7 @@ const ICONS = {
   edit: '<path d="M4 20h4L19 9l-4-4L4 16z"/><path d="M14 6l4 4"/>',
   x: '<path d="M6 6l12 12M18 6L6 18"/>',
   up: '<path d="M6 15l6-6 6 6"/>',
+  down: '<path d="M6 9l6 6 6-6"/>',
   calendar: '<rect x="3.5" y="5" width="17" height="15.5" rx="2.5"/><path d="M3.5 10h17M8 3v4M16 3v4"/><path d="M7.5 13.5h2M11 13.5h2M14.5 13.5h2M7.5 17h2M11 17h2"/>',
   // Raumtypen
   'rt-bad': '<path d="M4 12h16v2.5A4.5 4.5 0 0 1 15.5 19h-7A4.5 4.5 0 0 1 4 14.5z"/><path d="M6.5 12V6.5a2.5 2.5 0 0 1 5 0"/><path d="M7.5 19l-1 2M16.5 19l1 2"/>',
@@ -161,7 +162,8 @@ async function viewProjektListe() {
           ${x.thumb ? `<img src="${x.thumb}" alt="">` : `<span class="pc-ph">${icon('home')}</span>`}
           <span class="pc-t"><b>${esc(x.titel || x.room || 'Projekt')}${stOf(x) === 'abgesagt' ? ' <span class="st-pill">Abgesagt</span>' : ''}</b>
             ${objektZeile(x) ? `<span class="muted">${esc(objektZeile(x))}</span>` : ''}
-            <span class="pc-meta">${x.nr ? esc(x.nr) + ' · ' : ''}${x.titel && x.room ? esc(x.room) + ' · ' : ''}${fmtDay(x.updated || x.created)}</span></span>
+            <span class="pc-meta">${x.nr ? esc(x.nr) + ' · ' : ''}${x.titel && x.room ? esc(x.room) + ' · ' : ''}${fmtDay(x.updated || x.created)}</span>
+            ${x.fort && Projekt.zugesagt(x.status) ? `<span class="bf-mini">${Fortschritt.balken(x.fort)}</span>` : ''}</span>
           ${icon('chevron', 'pc-chev')}
         </button>`).join('') || '<p class="empty">Nichts gefunden.</p>'}</div>`}` : `
       <div class="empty-state">${icon('home')}<b>${{ '': 'Keine laufenden Projekte', angebot: 'Keine offenen Angebote', geplant: 'Nichts eingeplant', fertig: 'Noch nichts abgeschlossen' }[listStatus]}</b><span>${alleP.length ? 'Den Status stellst du im Projekt direkt unter dem Kunden ein.' : 'Tippe auf „Neues Projekt“, gib den Kunden ein und füge die Räume hinzu.'}</span></div>`}`;
