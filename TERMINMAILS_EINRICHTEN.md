@@ -2,7 +2,7 @@
 
 Einmalig, ca. 15–20 Minuten, am besten am PC. Voraussetzung: Der Cloud-Abgleich (Supabase) läuft schon.
 
-Danach gilt: Wenn du in der App einen Termin speicherst, bekommen alle Beteiligten (du, Daniel, der Subunternehmer, auf Wunsch der Kunde) eine **Terminbestätigung** mit Anlass, Zeit und Ort. Im Anhang ist eine Kalendereinladung. Zum eingestellten Zeitpunkt (z. B. 1 oder 2 Tage vorher) kommt eine **Erinnerung**. Änderst oder löschst du den Termin, geht auf Wunsch eine Änderung bzw. Absage raus.
+Danach gilt: Wenn du in der App einen Termin speicherst, bekommen alle Beteiligten (du, Deniel, der Subunternehmer, auf Wunsch der Kunde) eine **Terminbestätigung** mit Anlass, Zeit und Ort. Im Anhang ist eine Kalendereinladung. Zum eingestellten Zeitpunkt (z. B. 1 oder 2 Tage vorher) kommt eine **Erinnerung**. Änderst oder löschst du den Termin, geht auf Wunsch eine Änderung bzw. Absage raus.
 
 ---
 
@@ -53,7 +53,7 @@ Die Angaben findest du beim Anbieter unter „SMTP-Server“ bzw. „Postausgang
 
 ## 5. In der App einschalten
 1. In der App auf **Einstellungen → Team** gehen.
-2. Bei dir und bei Daniel die E-Mail-Adresse eintragen.
+2. Bei dir und bei Deniel die E-Mail-Adresse eintragen.
 3. Auf **Test-Mail an das Team senden** tippen. Kommt die Mail an, sind die Terminmails eingeschaltet.
 4. Beim Subunternehmer die E-Mail in seiner Karte eintragen. Dann bekommt er die Mails ebenfalls, sobald er beim Termin ausgewählt ist.
 

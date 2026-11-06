@@ -93,13 +93,13 @@ window.Bilder = (() => {
   /** Objekt-Ebene: ein Ordner je Projekt. */
   function projekteView(ctx, d, pr) {
     header('Bilder & Dokumentation', ctx.titel || '', ctx.zurueck);
-    const kacheln = [...pr.map((p) => ({ id: p.id, name: p.name, nr: p.nr })), ...(d.bilder.some((b) => !b.projektId) ? [{ id: OHNE, name: 'Ohne Projekt', nr: '' }] : [])];
+    const kacheln = [...pr.map((p) => ({ id: p.id, name: p.name, nr: p.nr })), { id: OHNE, name: 'Ohne Projekt', nr: '', frei: true }];
     main().innerHTML = `
       <div class="sec-h"><h2>Projekte</h2><span class="count">${kacheln.length}</span></div>
       <p class="hint" style="margin-top:-4px">Die Bilder liegen beim jeweiligen Projekt, darin die Ordner Bestand, Baufortschritt, Abnahme und deine eigenen.</p>
       <div class="fgrid">${kacheln.map((p) => { const l = d.bilder.filter((b) => passt(b, p.id)).sort((a, b) => b.t - a.t); return `
-        <button class="fold" data-pp="${p.id}">${deckel(l)}
-          <b>${esc(p.name)}</b><span>${l.length} ${l.length === 1 ? 'Bild' : 'Bilder'}${p.nr ? ' · ' + esc(p.nr) : ''}</span>
+        <button class="fold ${p.frei && !l.length ? 'add' : ''}" data-pp="${p.id}">${p.frei && !l.length ? `<span class="f-cov"><span class="f-empty">${icon('plus')}</span></span>` : deckel(l)}
+          <b>${esc(p.frei && !l.length ? 'Bilder ohne Projekt' : p.name)}</b><span>${p.frei && !l.length ? 'z. B. Besichtigung, Schäden, Zähler' : `${l.length} ${l.length === 1 ? 'Bild' : 'Bilder'}${p.nr ? ' · ' + esc(p.nr) : ''}`}</span>
         </button>`; }).join('')}</div>`;
     $$('[data-pp]').forEach((b) => (b.onclick = () => {
       const p = kacheln.find((x) => x.id === b.dataset.pp);
