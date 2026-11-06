@@ -155,6 +155,7 @@ const EINST = [
   ['ki', 'KI-Bildbearbeitung', 'sparkle', 'navy'],
   ['preise', 'Preisliste & Angebot', 'euro', 'grey'],
   ['team', 'E-Mail-Automatisierung', 'mail', 'navy'],
+  ['bau', 'Baufortschritt', 'check', 'brass'],
   ['cloud', 'Cloud-Abgleich', 'refresh', 'brass'],
   ['sicherung', 'Datensicherung', 'download', 'grey'],
 ];
@@ -169,6 +170,7 @@ function einstellungInfo(k) {
   if (k === 'preise') return 'Excel-Angebotstool, Aufschläge, Paket-Vorlagen';
   if (k === 'team') return `${S.mailAktiv ? 'Terminmails an' : 'Terminmails aus'} · ${(window.Kalender?.team() || []).map((p) => p.name).join(', ')}`;
   if (k === 'cloud') return window.Sync?.active() ? 'Verbunden, gleicht automatisch ab' : 'Nicht verbunden';
+  if (k === 'bau') return 'Vorlagen für Bad, Küche und alle anderen Räume';
   if (k === 'sicherung') return window.Sync?.active() ? 'Notfall-Export als Datei' : 'Sicherung als Datei, z. B. in OneDrive';
   return '';
 }
@@ -210,6 +212,7 @@ function einstellungSeite(k) {
   const [, titel] = EINST.find((x) => x[0] === k) || [];
   header(titel || 'Einstellungen', '', { label: 'Einstellungen', fn: () => { viewEinstellungen(); window.scrollTo(0, 0); } });
   const save = debounce(saveSettings, 300);
+  if (k === 'bau') return Fortschritt.einstellungen();
   if (k === 'team') {
     // Personen für den Kalender (Termine je Person, oben im Kalender umschaltbar)
     if (!Array.isArray(S.team) || !S.team.length) S.team = JSON.parse(JSON.stringify(Kalender.team()));

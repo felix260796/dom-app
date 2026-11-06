@@ -674,3 +674,24 @@ input.bad { border-color: var(--danger) !important; background: var(--danger-sof
 .kal-f { margin-top: 4px; padding-top: 6px; gap: 2px 10px; }
 .kal-f button { font-size: 11.5px; padding: 2px 0; }
 .kal-wer button[data-wer=""] { flex: .55; }
+
+/* Baufortschritt */
+.bf { padding: 6px 14px 12px; }
+.bf-z { display: flex; align-items: center; gap: 12px; padding: 9px 0; border-bottom: 1px solid var(--line); }
+.bf-ck { flex: none; width: 28px; height: 28px; border-radius: 50%; border: 2px solid #c9c3b8; background: #fff; color: #fff; display: flex; align-items: center; justify-content: center; padding: 0; }
+.bf-ck svg.i { width: 18px; height: 18px; stroke-width: 3; }
+.bf-z.ok .bf-ck { background: var(--ok); border-color: var(--ok); }
+.bf-t { flex: 1; min-width: 0; border: 0; background: none; text-align: left; padding: 0; display: flex; flex-direction: column; }
+.bf-t b { font-size: 15.5px; font-weight: 600; }
+.bf-z.ok .bf-t b { color: var(--muted); text-decoration: line-through; text-decoration-color: rgba(0,0,0,.25); }
+.bf-t small { font-size: 12.5px; color: var(--muted); }
+.bf-neu { display: flex; gap: 8px; margin-top: 10px; }
+.bf-neu input { flex: 1; }
+.bf-neu .btn { padding: 0 14px; }
+.bf-kopf { margin: -4px 4px 10px; }
+.bf-bar { display: block; height: 6px; border-radius: 3px; background: #e7e3db; overflow: hidden; }
+.bf-bar i { display: block; height: 100%; background: var(--ok); border-radius: 3px; }
+.bf-txt { display: block; font-size: 12.5px; color: var(--muted); margin-top: 4px; }
+.bf-mini { display: block; margin-top: 6px; max-width: 240px; }
+.bf-mini .bf-bar { height: 4px; }
+.bf-mini .bf-txt { font-size: 12px; margin-top: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
