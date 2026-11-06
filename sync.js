@@ -3,7 +3,9 @@
  * zwischen den Geräten abgeglichen (iPhone, iPad, PC). Jeder Speicher-Eintrag (Projekt,
  * Moodboards, Einstellungen, …) liegt als eigene Datei im privaten Storage-Bucket „dom“
  * unter <Benutzer-ID>/<Schlüssel>.json. Zugriff nur mit Anmeldung (E-Mail + Passwort).
- * Konflikte: der zuletzt geänderte Stand gewinnt; Projektliste wird zusammengeführt.
+ * Konflikte: Änderungen werden feldweise zusammengeführt (Drei-Wege-Abgleich gegen den zuletzt
+ * abgeglichenen Stand). Nur wenn dasselbe Feld auf zwei Geräten geändert wurde, gewinnt die neuere Eingabe.
+ * Projektliste und Löschliste werden zusammengeführt.
  * Baut auf app.js auf (db, kvGet, $, esc, toast, state, viewProjektListe). */
 window.Sync = (() => {
   const BUCKET = 'dom';
@@ -34,10 +36,55 @@ window.Sync = (() => {
     const d = await db();
     return new Promise((res, rej) => { const tx = d.transaction('kv', 'readwrite'); tx.objectStore('kv').delete(k); tx.oncomplete = () => res(); tx.onerror = () => rej(tx.error); });
   }
+  // Zuletzt abgeglichener Stand je Schlüssel (Basis für das feldweise Zusammenführen), eigene Datenbank
+  let _bdb;
+  const bdb = () => (_bdb ??= new Promise((res, rej) => {
+    const q = indexedDB.open('dom-sync', 1);
+    q.onupgradeneeded = () => q.result.createObjectStore('base');
+    q.onsuccess = () => res(q.result); q.onerror = () => rej(q.error);
+  }));
+  const BASE_MAX = 3e6; // sehr große Einträge (z. B. Räume mit vielen Fotos) ohne Basis: dann gewinnt die neuere Eingabe
+  async function baseGet(k) {
+    try { const d = await bdb(); return await new Promise((res) => { const q = d.transaction('base').objectStore('base').get(k); q.onsuccess = () => res(q.result); q.onerror = () => res(undefined); }); } catch { return undefined; }
+  }
+  async function baseSet(k, v) {
+    try {
+      const keep = v !== undefined && v !== null && typeof v === 'object' && JSON.stringify(v).length < BASE_MAX;
+      const d = await bdb();
+      await new Promise((res) => { const tx = d.transaction('base', 'readwrite'); keep ? tx.objectStore('base').put(v, k) : tx.objectStore('base').delete(k); tx.oncomplete = res; tx.onerror = res; });
+    } catch {}
+  }
   async function localKeys() {
     const d = await db();
     return new Promise((res, rej) => { const q = d.transaction('kv').objectStore('kv').getAllKeys(); q.onsuccess = () => res(q.result.map(String)); q.onerror = () => rej(q.error); });
   }
+
+  // MD5 (für den Vergleich mit dem eTag der Cloud-Datei: war die Datei danach noch unsere?)
+  function md5(bytes) {
+    const K = [], S = [7, 12, 17, 22, 5, 9, 14, 20, 4, 11, 16, 23, 6, 10, 15, 21];
+    for (let i = 0; i < 64; i++) K[i] = Math.floor(Math.abs(Math.sin(i + 1)) * 2 ** 32) >>> 0;
+    const n = bytes.length, len = ((n + 8) >> 6) + 1 << 4, w = new Uint32Array(len);
+    for (let i = 0; i < n; i++) w[i >> 2] |= bytes[i] << ((i % 4) * 8);
+    w[n >> 2] |= 0x80 << ((n % 4) * 8);
+    w[len - 2] = (n * 8) >>> 0; w[len - 1] = Math.floor(n / 2 ** 29);
+    let a0 = 0x67452301, b0 = 0xefcdab89, c0 = 0x98badcfe, d0 = 0x10325476;
+    for (let j = 0; j < len; j += 16) {
+      let A = a0, B = b0, C = c0, D = d0;
+      for (let i = 0; i < 64; i++) {
+        let F, g;
+        if (i < 16) { F = (B & C) | (~B & D); g = i; }
+        else if (i < 32) { F = (D & B) | (~D & C); g = (5 * i + 1) % 16; }
+        else if (i < 48) { F = B ^ C ^ D; g = (3 * i + 5) % 16; }
+        else { F = C ^ (B | ~D); g = (7 * i) % 16; }
+        const tmp = D; D = C; C = B;
+        const x = (A + F + K[i] + w[j + g]) >>> 0, sh = S[(i >> 4) * 4 + (i % 4)];
+        B = (B + ((x << sh) | (x >>> (32 - sh)))) >>> 0; A = tmp;
+      }
+      a0 = (a0 + A) >>> 0; b0 = (b0 + B) >>> 0; c0 = (c0 + C) >>> 0; d0 = (d0 + D) >>> 0;
+    }
+    return [a0, b0, c0, d0].map((v) => [0, 8, 16, 24].map((s) => ((v >>> s) & 255).toString(16).padStart(2, '0')).join('')).join('');
+  }
+  const etagOf = (x) => String(x?.metadata?.eTag || x?.metadata?.etag || '').replace(/"/g, '').toLowerCase();
 
   // ---------- Supabase (REST, ohne Bibliothek) ----------
   const base = (u) => String(u || '').trim().replace(/\/+$/, '').replace(/\/(rest|auth|storage)\/v1.*$/, '');
@@ -71,7 +118,12 @@ window.Sync = (() => {
     }
   }
   const download = async (k) => (await api(`object/authenticated/${BUCKET}/${objPath(k)}?t=${Date.now()}`)).json();
-  const upload = (k, payload) => api(`object/${BUCKET}/${objPath(k)}`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-upsert': 'true' }, body: JSON.stringify(payload) });
+  /** Lädt hoch und liefert den MD5 des Inhalts (zum späteren Vergleich mit dem eTag). */
+  async function upload(k, payload) {
+    const body = new TextEncoder().encode(JSON.stringify(payload));
+    await api(`object/${BUCKET}/${objPath(k)}`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-upsert': 'true' }, body });
+    return md5(body);
+  }
   const remove = (k) => api(`object/${BUCKET}`, { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ prefixes: [`${SPACE}/${k.replace(/:/g, '--')}.json`] }) });
 
   // ---------- Zusammenführen ----------
@@ -85,6 +137,43 @@ window.Sync = (() => {
   // Gelöschte Räume (project:) und Projekte (wohnung:) werden über die Liste „projectDeleted“ auf allen Geräten entfernt
   const delId = (k) => (/^(project|wohnung|kunde|bild):/.test(k) ? k.slice(k.indexOf(':') + 1) : '');
   const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+  const isObj = (x) => x !== null && typeof x === 'object' && !Array.isArray(x);
+  const hasIds = (a) => Array.isArray(a) && a.length > 0 && a.every((x) => isObj(x) && x.id != null);
+  /** Drei-Wege-Zusammenführung: b = zuletzt abgeglichener Stand, l = lokal, r = Cloud.
+   * Was nur auf einer Seite geändert wurde, bleibt erhalten; echter Konflikt im selben Feld: localWins entscheidet. */
+  function merge3(b, l, r, localWins) {
+    if (same(l, r)) return l;
+    if (same(l, b)) return r;
+    if (same(r, b)) return l;
+    if (isObj(l) && isObj(r)) {
+      const bb = isObj(b) ? b : {}, out = {};
+      for (const key of new Set([...Object.keys(r), ...Object.keys(l)])) {
+        const v = merge3(bb[key], l[key], r[key], localWins);
+        if (v !== undefined) out[key] = v;
+      }
+      return out;
+    }
+    if ((hasIds(l) || l?.length === 0) && (hasIds(r) || r?.length === 0) && (hasIds(l) || hasIds(r))) {
+      // Listen mit IDs (z. B. Objekte eines Kunden): Eintrag für Eintrag
+      const bm = new Map((Array.isArray(b) ? b : []).filter(isObj).map((x) => [x.id, x]));
+      const lm = new Map(l.map((x) => [x.id, x])), rm = new Map(r.map((x) => [x.id, x]));
+      const ids = [...new Set([...r.map((x) => x.id), ...l.map((x) => x.id)])];
+      const out = [];
+      for (const id of ids) {
+        const inL = lm.has(id), inR = rm.has(id), bx = bm.get(id);
+        if (inL && inR) out.push(merge3(bx, lm.get(id), rm.get(id), localWins));
+        else if (inL) { if (!bx || !same(lm.get(id), bx)) out.push(lm.get(id)); } // in der Cloud gelöscht und hier unverändert: weg
+        else if (inR) { if (!bx || !same(rm.get(id), bx)) out.push(rm.get(id)); }
+      }
+      return out;
+    }
+    if (Array.isArray(l) && Array.isArray(r) && [...l, ...r].every((x) => typeof x !== 'object')) {
+      // Listen einfacher Werte (z. B. Raum-IDs): Hinzugefügtes beider Seiten behalten, Entferntes entfernen
+      const bs = new Set(Array.isArray(b) ? b : []), ls = new Set(l), rs = new Set(r);
+      return [...new Set([...r, ...l])].filter((x) => (ls.has(x) && rs.has(x)) || (ls.has(x) && !bs.has(x)) || (rs.has(x) && !bs.has(x)));
+    }
+    return localWins ? l : r;
+  }
 
   // ---------- Abgleich ----------
   async function syncOnce() {
@@ -104,6 +193,7 @@ window.Sync = (() => {
       if (m.seen === seen && !firstSync) continue;
       const payload = await download(k);
       const local = await kvGet(k);
+      const mNow = meta[k] || {}; // erneut lesen: während des Downloads kann getippt worden sein
       let v = payload.v;
       if (MERGE_KEYS.has(k)) {
         v = mergeValue(k, local, payload.v, tomb);
@@ -113,31 +203,55 @@ window.Sync = (() => {
       } else if (delId(k) && tomb.includes(delId(k))) {
         meta[k] = { seen, dirty: false, del: true, t: Date.now() };
         if (local !== undefined) { await rawDel(k); changed.add(k); }
-      } else if (!m.dirty || (payload.t || 0) >= (m.t || 0)) {
+      } else if (mNow.dirty && mNow.del) {
+        meta[k] = { ...mNow, seen }; // hier gelöscht: Löschung wird gleich übertragen
+      } else if (!mNow.dirty || local === undefined) {
         meta[k] = { seen, dirty: false, t: payload.t || 0 };
         if (!same(v, local)) { await rawPut(k, v); changed.add(k); }
-      } else meta[k] = { ...m, seen }; // lokal neuer: wird gleich hochgeladen
+        await baseSet(k, v);
+      } else {
+        // Auf beiden Seiten geändert: feldweise zusammenführen, nichts geht verloren
+        const b = firstSync ? undefined : await baseGet(k);
+        const localWins = (mNow.t || 0) > (payload.t || 0);
+        const merged = b === undefined && !(isObj(local) && isObj(v)) ? (localWins ? local : v) : merge3(b, local, v, localWins);
+        if ((meta[k] || {}).t !== mNow.t) { meta[k] = { ...meta[k], seen }; continue; } // inzwischen erneut geändert: nächster Durchlauf
+        const t = Math.max(mNow.t || 0, payload.t || 0);
+        if (!same(merged, local)) { await rawPut(k, merged); changed.add(k); }
+        await baseSet(k, v);
+        meta[k] = { seen, dirty: !same(merged, v), t };
+      }
     }
     // Auf anderem Gerät gelöschte Projekte auch hier entfernen
     for (const id of tomb) for (const pre of ['project:', 'wohnung:', 'kunde:', 'bild:']) if ((await kvGet(pre + id)) !== undefined) { await rawDel(pre + id); changed.add(pre + id); }
     saveMeta();
     // 2) Hochladen, was lokal geändert wurde
     const uploaded = [];
+    // Kurz vorher noch einmal nachsehen: Hat ein anderes Gerät inzwischen dieselbe Datei geändert, erst zusammenführen (nächster Durchlauf)
+    const dirtyKeys = Object.entries(meta).filter(([, m]) => m.dirty && !m.del).map(([k]) => k);
+    const before = dirtyKeys.length ? new Map((await listRemote()).map((x) => [keyOf(decodeURIComponent(x.name)), x.updated_at || x.created_at])) : remoteMap;
     for (const [k, m] of Object.entries(meta)) {
       if (!m.dirty) continue;
       if (m.del) { if (remoteMap.has(k)) await remove(k); delete meta[k]; saveMeta(); continue; }
+      if (before.has(k) && before.get(k) !== m.seen && m.seen !== '' && !(firstSync && !remoteMap.has(k))) { again = true; continue; }
+      if (before.has(k) && !remoteMap.has(k)) { again = true; continue; } // neu von einem anderen Gerät: erst holen
       const v = await kvGet(k);
       if (v === undefined) { delete meta[k]; continue; }
       const t = m.t || Date.now();
-      await upload(k, { k, t, v });
-      meta[k] = { dirty: false, t, seen: '' };
-      uploaded.push(k);
-      saveMeta();
+      const hash = await upload(k, { k, t, v });
+      uploaded.push({ k, t, v, hash, mt: m.t });
     }
-    // Server-Zeitstempel der eigenen Uploads merken, damit sie nicht erneut heruntergeladen werden
+    // Prüfen, ob die Cloud-Datei danach noch unsere ist. Hat ein anderes Gerät im selben Moment überschrieben,
+    // bleibt die Änderung offen und wird im nächsten Durchlauf mit dessen Stand zusammengeführt.
     if (uploaded.length) {
-      const fresh = new Map((await listRemote()).map((x) => [keyOf(decodeURIComponent(x.name)), x.updated_at || x.created_at]));
-      for (const k of uploaded) if (meta[k] && !meta[k].dirty) meta[k].seen = fresh.get(k) || '';
+      const fresh = new Map((await listRemote()).map((x) => [keyOf(decodeURIComponent(x.name)), x]));
+      for (const u of uploaded) {
+        const f = fresh.get(u.k), cur = meta[u.k] || {};
+        const ours = f && etagOf(f) === u.hash;
+        if (ours) await baseSet(u.k, u.v);
+        const still = cur.t === u.mt; // während des Hochladens nicht erneut geändert
+        meta[u.k] = { ...cur, dirty: !(ours && still), t: still ? u.t : cur.t, seen: ours ? (f.updated_at || f.created_at) : '' };
+        if (!ours) again = true;
+      }
       saveMeta();
     }
     if (firstSync) { cfg.initialized = true; saveCfg(); }
@@ -164,7 +278,7 @@ window.Sync = (() => {
     })();
     return running;
   }
-  const runSoon = debounce(() => run(), 3000);
+  const runSoon = debounce(() => run(), 1500);
 
   async function applyChanged(changed) {
     if (changed.has('settings')) state.settings = (await kvGet('settings')) || state.settings;
@@ -177,6 +291,11 @@ window.Sync = (() => {
     const typing = /INPUT|TEXTAREA|SELECT/.test(document.activeElement?.tagName || '');
     if (!typing && document.getElementById('new') && state.tab === 'projekt') viewProjektListe();
     if (!typing && document.getElementById('kNew') && state.tab === 'kunden') window.Kunden?.listeView();
+    // Offene Kundenkarte bzw. offenes Objekt mit dem neuen Stand neu zeichnen, damit nicht mit altem Stand weitergearbeitet wird
+    else if (!typing && state.tab === 'kunden' && state.kunde && changed.has('kunde:' + state.kunde.id)) {
+      const k = window.Kunden?.byId(state.kunde.id), y = window.scrollY;
+      if (k) { const o = state.objekt && window.Kunden.objekt(k, state.objekt); await (o ? window.Kunden.objektView(k, o) : window.Kunden.detail(k)); window.scrollTo(0, y); }
+    }
     if (state.project && changed.has('project:' + state.project.id)) toast('Dieses Projekt wurde auf einem anderen Gerät geändert. Zum Aktualisieren Projekt neu öffnen.', 5000);
     else toast(`${changed.size} Änderung(en) vom anderen Gerät übernommen`);
   }
@@ -257,7 +376,9 @@ window.Sync = (() => {
   }
 
   // ---------- Automatik ----------
-  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') run(); });
+  // Beim Wechsel aus der App sofort hochladen (iOS hält die App im Hintergrund an)
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' || pending()) run(); });
+  window.addEventListener('pagehide', () => { if (pending()) run(); });
   window.addEventListener('online', () => run());
   setInterval(() => { if (document.visibilityState === 'visible') run(); }, 60000);
   setTimeout(() => run(), 1500);
