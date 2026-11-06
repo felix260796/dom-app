@@ -148,25 +148,62 @@ function viewPaketEdit(id, ctx = globalBoardCtx()) {
 }
 
 // ---------- Ansicht: Einstellungen ----------
-function viewEinstellungen() {
-  header('Einstellungen', 'Moodboards, Firma, KI, Preise, Sicherung');
+// Übersicht als Liste (wie „Standard-Moodboards“), jede Rubrik öffnet ihre eigene Seite.
+const EINST = [
+  ['moodboards', 'Standard-Moodboards', 'palette', 'brass'],
+  ['firma', 'Firma & Logo', 'home', 'navy'],
+  ['ki', 'KI-Bildbearbeitung', 'sparkle', 'navy'],
+  ['preise', 'Preisliste & Angebot', 'euro', 'grey'],
+  ['cloud', 'Cloud-Abgleich', 'refresh', 'brass'],
+  ['sicherung', 'Datensicherung', 'download', 'grey'],
+];
+function einstellungInfo(k) {
   const S = state.settings;
-  const nBoards = ROOM_TYPES.filter((r) => state.boards?.[r.id]?.some((p) => p.images?.length || p.products?.length)).length;
-  main().innerHTML = `
-    <div class="docs" style="margin-bottom:14px">
-      <button class="doc" id="toBoards"><span class="d-ico brass">${icon('palette')}</span>
-        <span class="d-t"><b>Standard-Moodboards</b><span>Basic, Standard und Premium je Raumtyp${nBoards ? ` · ${nBoards} Raumtyp${nBoards === 1 ? '' : 'en'} mit Bildern` : ''}</span></span>${icon('chevron', 'pc-chev')}</button>
-    </div>
+  if (k === 'moodboards') {
+    const n = ROOM_TYPES.filter((r) => state.boards?.[r.id]?.some((p) => p.images?.length || p.products?.length)).length;
+    return `Basic, Standard und Premium je Raumtyp${n ? ` · ${n} mit Bildern` : ''}`;
+  }
+  if (k === 'firma') return [S.company, S.logo ? 'mit Logo' : 'ohne Logo'].filter(Boolean).join(' · ');
+  if (k === 'ki') return S.apiKey ? `Eingerichtet · ${(S.modelList || []).find((m) => m.id === S.model)?.label || S.model}` : 'Noch nicht eingerichtet';
+  if (k === 'preise') return 'Excel-Angebotstool, Aufschläge, Paket-Vorlagen';
+  if (k === 'cloud') return window.Sync?.active() ? 'Verbunden, gleicht automatisch ab' : 'Nicht verbunden';
+  if (k === 'sicherung') return window.Sync?.active() ? 'Notfall-Export als Datei' : 'Sicherung als Datei, z. B. in OneDrive';
+  return '';
+}
+function viewEinstellungen() {
+  state.editPkg = null;
+  header('Einstellungen', state.settings.company || '');
+  const warn = (k) => (k === 'ki' && !state.settings.apiKey) || (k === 'cloud' && !window.Sync?.active());
+  main().innerHTML = `<div class="docs">${EINST.map(([k, t, ic, col]) => `
+    <button class="doc" data-einst="${k}"><span class="d-ico ${col}">${icon(ic)}</span>
+      <span class="d-t"><b>${esc(t)}</b><span class="${warn(k) ? 'warn' : ''}">${esc(einstellungInfo(k))}</span></span>${icon('chevron', 'pc-chev')}</button>`).join('')}</div>`;
+  $$('[data-einst]').forEach((b) => (b.onclick = () => { einstellungSeite(b.dataset.einst); window.scrollTo(0, 0); }));
+}
+function einstellungSeite(k) {
+  if (k === 'moodboards') { state.editPkg = null; return viewPakete(); }
+  const S = state.settings;
+  const [, titel] = EINST.find((x) => x[0] === k) || [];
+  header(titel || 'Einstellungen', '', { label: 'Einstellungen', fn: () => { viewEinstellungen(); window.scrollTo(0, 0); } });
+  const save = debounce(saveSettings, 300);
+  if (k === 'firma') {
+    main().innerHTML = `
     <div class="card">
-      <h2>Firma</h2>
       <label>Firmenname</label><input type="text" id="company" value="${esc(S.company)}" placeholder="z. B. Muster Projektentwicklung GmbH">
       <label>Kontaktzeile für die PDF-Fußzeile</label><input type="text" id="contact" value="${esc(S.contact)}" placeholder="Firma · Straße · Tel. · www">
       <label>Logo</label>
       ${S.logo ? `<img class="logo-prev" src="${S.logo}" alt="Logo">` : ''}
       <div class="row" style="margin-top:8px"><button class="btn secondary" id="logo">Logo wählen</button>${S.logo ? '<button class="btn danger" id="nologo">Entfernen</button>' : ''}</div>
     </div>
+`;
+    for (const id of ['company', 'contact']) $('#' + id).oninput = (e) => { S[id] = e.target.value.trim(); save(); };
+    $('#logo').onclick = async () => {
+      const [f] = await pickFiles(); if (!f) return;
+      S.logo = await resize(await fileToDataUrl(f), 800, 'image/png'); await saveSettings(); einstellungSeite('firma');
+    };
+    if ($('#nologo')) $('#nologo').onclick = async () => { S.logo = ''; await saveSettings(); einstellungSeite('firma'); };
+  } else if (k === 'ki') {
+    main().innerHTML = `
     <div class="card">
-      <h2>KI-Bildbearbeitung (Google Gemini)</h2>
       <p class="muted">Schlüssel kostenlos erstellen unter <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">aistudio.google.com/apikey</a>. Abgerechnet wird pro Bild bei Google. Der Schlüssel bleibt nur auf diesem Gerät gespeichert.</p>
       <label>API-Schlüssel</label><input type="password" id="apiKey" value="${esc(S.apiKey)}" placeholder="AIza…" autocomplete="off">
       <label>Modell</label>
@@ -179,39 +216,36 @@ function viewEinstellungen() {
       <label>Eigenes Modell (optional, überschreibt Auswahl)</label><input type="text" id="modelCustom" placeholder="Modell-ID">
       <button class="btn secondary block" id="test" style="margin-top:12px">Verbindung testen & Modelle laden</button>
     </div>
-    <div id="angebot-settings"></div>
-    <div id="sync-settings"></div>
-    <div id="backup-settings"></div>`;
-  $('#toBoards').onclick = () => { state.editPkg = null; viewPakete(); window.scrollTo(0, 0); };
-  const save = debounce(saveSettings, 300);
-  for (const id of ['company', 'contact', 'apiKey']) $('#' + id).oninput = (e) => { S[id] = e.target.value.trim(); save(); };
-  $('#model').onchange = (e) => { S.model = e.target.value; save(); };
-  $('#modelCustom').oninput = (e) => { if (e.target.value.trim()) { S.model = e.target.value.trim(); save(); } };
-  $('#logo').onclick = async () => {
-    const [f] = await pickFiles(); if (!f) return;
-    S.logo = await resize(await fileToDataUrl(f), 800, 'image/png'); await saveSettings(); viewEinstellungen();
-  };
-  $('#nologo') && ($('#nologo').onclick = async () => { S.logo = ''; await saveSettings(); viewEinstellungen(); });
-  window.Angebot?.einstellungenKarte();
-  window.Sync?.einstellungenKarte($('#sync-settings'));
-  window.Backup?.einstellungenKarte($('#backup-settings'));
-  $('#test').onclick = async () => {
-    if (!S.apiKey) { toast('Bitte zuerst den API-Schlüssel eintragen.'); return; }
-    try {
-      // Alle verfügbaren Modelle laden und die Bild-Modelle zur Auswahl anbieten
-      const r = await fetch('https://generativelanguage.googleapis.com/v1beta/models?pageSize=1000', { headers: { 'x-goog-api-key': S.apiKey } });
-      const j = await r.json().catch(() => ({}));
-      if (!r.ok) { toast(`${j.error?.message || r.status}`, 6000); return; }
-      const imgModels = (j.models || [])
-        .filter((m) => /image/i.test(m.name) && !/imagen/i.test(m.name) && (m.supportedGenerationMethods || []).includes('generateContent'))
-        .map((m) => ({ id: m.name.replace(/^models\//, ''), label: m.displayName || m.name }));
-      if (!imgModels.length) { toast('Schlüssel ok, aber kein Bild-Modell gefunden.', 6000); return; }
-      const sel = $('#model');
-      sel.innerHTML = imgModels.map((m) => `<option value="${esc(m.id)}" ${m.id === S.model ? 'selected' : ''}>${esc(m.label)}</option>`).join('');
-      if (!imgModels.some((m) => m.id === S.model)) { S.model = imgModels[0].id; sel.value = S.model; await saveSettings(); }
-      S.modelList = imgModels; await saveSettings();
-      toast(`Verbunden. ${imgModels.length} Bild-Modell(e) gefunden, ausgewählt: ${sel.selectedOptions[0].textContent}`, 6000);
-    } catch (e) { toast('' + e.message, 6000); }
-  };
+`;
+    $('#apiKey').oninput = (e) => { S.apiKey = e.target.value.trim(); save(); };
+    $('#model').onchange = (e) => { S.model = e.target.value; save(); };
+    $('#modelCustom').oninput = (e) => { if (e.target.value.trim()) { S.model = e.target.value.trim(); save(); } };
+    $('#test').onclick = async () => {
+      if (!S.apiKey) { toast('Bitte zuerst den API-Schlüssel eintragen.'); return; }
+      try {
+        // Alle verfügbaren Modelle laden und die Bild-Modelle zur Auswahl anbieten
+        const r = await fetch('https://generativelanguage.googleapis.com/v1beta/models?pageSize=1000', { headers: { 'x-goog-api-key': S.apiKey } });
+        const j = await r.json().catch(() => ({}));
+        if (!r.ok) { toast(`${j.error?.message || r.status}`, 6000); return; }
+        const imgModels = (j.models || [])
+          .filter((m) => /image/i.test(m.name) && !/imagen/i.test(m.name) && (m.supportedGenerationMethods || []).includes('generateContent'))
+          .map((m) => ({ id: m.name.replace(/^models\//, ''), label: m.displayName || m.name }));
+        if (!imgModels.length) { toast('Schlüssel ok, aber kein Bild-Modell gefunden.', 6000); return; }
+        const sel = $('#model');
+        sel.innerHTML = imgModels.map((m) => `<option value="${esc(m.id)}" ${m.id === S.model ? 'selected' : ''}>${esc(m.label)}</option>`).join('');
+        if (!imgModels.some((m) => m.id === S.model)) { S.model = imgModels[0].id; sel.value = S.model; await saveSettings(); }
+        S.modelList = imgModels; await saveSettings();
+        toast(`Verbunden. ${imgModels.length} Bild-Modell(e) gefunden, ausgewählt: ${sel.selectedOptions[0].textContent}`, 6000);
+      } catch (e) { toast('' + e.message, 6000); }
+    };
+  } else if (k === 'preise') {
+    main().innerHTML = '<div id="angebot-settings"></div>';
+    window.Angebot?.einstellungenKarte();
+  } else if (k === 'cloud') {
+    main().innerHTML = '<div id="sync-settings"></div>';
+    window.Sync?.einstellungenKarte($('#sync-settings'));
+  } else if (k === 'sicherung') {
+    main().innerHTML = '<div id="backup-settings"></div>';
+    window.Backup?.einstellungenKarte($('#backup-settings'));
+  }
 }
-
