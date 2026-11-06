@@ -196,7 +196,28 @@ function einstellungSeite(k) {
           <label style="margin-top:0">Name</label><input type="text" data-tf="name" value="${esc(p.name)}" autocomplete="off" placeholder="Vor- und Nachname">
           <label>E-Mail</label><input type="email" data-tf="email" value="${esc(p.email || '')}" autocomplete="off" inputmode="email" placeholder="name@firma.de">
           ${S.team.length > 1 ? `<button class="link-danger" data-tdel style="margin-top:10px">${icon('trash')} Entfernen</button>` : ''}</div>`).join('')}
-        <button class="add-room" id="tpAdd">${icon('plus')} Person hinzufügen</button>`;
+        <button class="add-room" id="tpAdd">${icon('plus')} Person hinzufügen</button>
+        <div class="sec-h"><h2>Terminmails</h2></div>
+        <div class="card kform">
+          <p class="muted" style="margin-top:0">Beim Speichern eines Termins bekommen die Beteiligten eine Bestätigung mit Ort, Zeit und Anlass, vor dem Termin eine Erinnerung. Einmalig in Supabase einzurichten: <a href="https://github.com/felix260796/dom-app/blob/main/TERMINMAILS_EINRICHTEN.md" target="_blank" rel="noopener">Anleitung öffnen</a>.</p>
+          <p><b>${S.mailAktiv ? 'Eingerichtet' : 'Noch nicht eingerichtet'}</b>${window.Sync?.active() ? '' : ' · zuerst den Cloud-Abgleich verbinden'}</p>
+          <label>Erinnerung standardmäßig</label>
+          <select id="erinT">${[[0, 'keine'], [1, '1 Tag vorher'], [2, '2 Tage vorher'], [3, '3 Tage vorher'], [7, '1 Woche vorher']].map(([v, n]) => `<option value="${v}" ${(S.erinnerungTage ?? 1) === v ? 'selected' : ''}>${n}</option>`).join('')}</select>
+          <button class="btn secondary block" id="mailTest" style="margin-top:12px" ${window.Sync?.active() ? '' : 'disabled'}>${icon('mail')} Test-Mail an das Team senden</button>
+          ${S.mailAktiv ? '<button class="link-danger" id="mailAus" style="margin-top:6px">Terminmails ausschalten</button>' : ''}
+        </div>`;
+      $('#erinT').onchange = (e) => { S.erinnerungTage = +e.target.value; save(); };
+      $('#mailTest').onclick = async () => {
+        const an = S.team.filter((p) => /.+@.+\..+/.test(p.email || '')).map((p) => ({ name: p.name, email: p.email }));
+        if (!an.length) { toast('Bitte zuerst oben eine E-Mail-Adresse eintragen.'); return; }
+        $('#mailTest').disabled = true;
+        try {
+          const r = await Sync.funktion('termin-mail', { aktion: 'test', an });
+          S.mailAktiv = true; await saveSettings();
+          toast(`Test-Mail an ${r.gesendet} ${r.gesendet === 1 ? 'Adresse' : 'Adressen'} verschickt. Terminmails sind jetzt eingeschaltet.`, 5000); render();
+        } catch (e) { toast('Hat nicht geklappt: ' + e.message, 7000); $('#mailTest').disabled = false; }
+      };
+      if ($('#mailAus')) $('#mailAus').onclick = async () => { S.mailAktiv = false; await saveSettings(); render(); };
       $$('[data-tp]').forEach((c) => {
         const p = S.team[+c.dataset.tp];
         $$('[data-tf]', c).forEach((inp) => (inp.oninput = () => { p[inp.dataset.tf] = inp.value.trim(); save(); }));

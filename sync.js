@@ -393,5 +393,17 @@ window.Sync = (() => {
   setInterval(() => { if (document.visibilityState === 'visible') run(); }, 60000);
   setTimeout(() => run(), 1500);
 
-  return { changed, deleted, run, active, pending, einstellungenKarte, status: () => status };
+  /** Supabase Edge Function aufrufen (z. B. 'termin-mail'), angemeldet als der App-Benutzer. */
+  async function funktion(name, body) {
+    if (!active()) throw new Error('Bitte zuerst den Cloud-Abgleich einrichten.');
+    let r;
+    try {
+      r = await fetch(`${cfg.url}/functions/v1/${name}`, { method: 'POST', headers: { apikey: cfg.key, Authorization: 'Bearer ' + (await token()), 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    } catch { throw new Error('Keine Verbindung. Bitte später nochmal versuchen.'); }
+    const j = await r.json().catch(() => ({}));
+    if (r.status === 404) throw new Error('Die Funktion „' + name + '“ ist in Supabase noch nicht angelegt (siehe Anleitung Terminmails).');
+    if (!r.ok) throw new Error(j.fehler || j.message || j.msg || `Fehler ${r.status}`);
+    return j;
+  }
+  return { changed, deleted, run, active, pending, einstellungenKarte, funktion, status: () => status };
 })();
