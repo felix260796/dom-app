@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <title>Bildschirm-Test</title>
+  <style>
+    html { background: #14263b; }
+    body { margin: 0; font: 15px/1.4 -apple-system, Helvetica, Arial, sans-serif; background: #f3f1ec; color: #1b2533; }
+    .kopf { background: #1e3550; color: #fff; padding: calc(env(safe-area-inset-top) + 10px) 16px 12px; }
+    .kopf b { font-size: 20px; }
+    .inhalt { padding: 14px 16px 140px; }
+    table { width: 100%; border-collapse: collapse; background: #fff; border-radius: 12px; overflow: hidden; }
+    td { padding: 7px 10px; border-bottom: 1px solid #e7e3db; font-size: 14px; }
+    td:last-child { text-align: right; font-weight: 700; font-variant-numeric: tabular-nums; }
+    .knopf { display: block; width: 100%; margin: 10px 0 0; padding: 13px; border: 0; border-radius: 12px; font: inherit; font-weight: 700; background: #1e3550; color: #fff; }
+    .knopf.hell { background: #fff; color: #1e3550; border: 1px solid #d9d4ca; }
+    #lang { height: 0; }
+    /* rote Linie = ganz unten im Fenster (bottom: 0), grün = Sicherheitsabstand für den Home-Balken */
+    #unten { position: fixed; left: 0; right: 0; bottom: 0; height: 6px; background: #d33; z-index: 5; }
+    #safe { position: fixed; left: 0; right: 0; bottom: 6px; height: env(safe-area-inset-bottom); background: rgba(30, 160, 80, .45); z-index: 5; }
+    #probe { position: fixed; bottom: 0; height: env(safe-area-inset-bottom); width: 1px; visibility: hidden; }
+    #probeT { position: fixed; top: 0; height: env(safe-area-inset-top); width: 1px; visibility: hidden; }
+    #modus { font-weight: 700; }
+  </style>
+</head>
+<body>
+  <div class="kopf"><b>Bildschirm-Test</b><br><span>Bitte einen Screenshot davon schicken, einmal kurz und einmal lang.</span></div>
+  <div class="inhalt">
+    <p>Seite gerade: <span id="modus">kurz</span></p>
+    <table id="werte"></table>
+    <button class="knopf" id="umschalten">Seite lang machen</button>
+    <button class="knopf hell" onclick="location.href='./'">Zurück zur App</button>
+    <div id="lang"></div>
+  </div>
+  <div id="safe"></div><div id="unten"></div><div id="probe"></div><div id="probeT"></div>
+  <script>
+    const $ = (id) => document.getElementById(id);
+    let lang = false;
+    function zeig() {
+      const vv = window.visualViewport;
+      const z = [
+        ['Bildschirm (screen.height)', screen.height],
+        ['Fenster (innerHeight)', innerHeight],
+        ['Unterschied', screen.height - innerHeight],
+        ['visualViewport.height', vv ? Math.round(vv.height) : '–'],
+        ['clientHeight', document.documentElement.clientHeight],
+        ['Abstand unten (safe-area)', Math.round($('probe').getBoundingClientRect().height)],
+        ['Abstand oben (safe-area)', Math.round($('probeT').getBoundingClientRect().height)],
+        ['rote Linie endet bei', Math.round($('unten').getBoundingClientRect().bottom)],
+        ['Seitenhöhe', document.documentElement.scrollHeight],
+        ['Als App gestartet', navigator.standalone ? 'ja' : 'nein'],
+        ['iOS', (navigator.userAgent.match(/OS (\d+[_\d]*)/) || [, '?'])[1].replace(/_/g, '.')],
+      ];
+      $('werte').innerHTML = z.map(([a, b]) => `<tr><td>${a}</td><td>${b}</td></tr>`).join('');
+      $('modus').textContent = lang ? 'lang (kann scrollen)' : 'kurz (passt auf den Bildschirm)';
+      $('umschalten').textContent = lang ? 'Seite kurz machen' : 'Seite lang machen';
+    }
+    $('umschalten').onclick = () => { lang = !lang; $('lang').style.height = lang ? '1500px' : '0'; setTimeout(zeig, 400); };
+    addEventListener('resize', zeig); window.visualViewport?.addEventListener('resize', zeig);
+    zeig(); setTimeout(zeig, 800);
+  </script>
+</body>
+</html>
