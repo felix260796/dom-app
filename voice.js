@@ -3,21 +3,15 @@
  * -> Transkript über Gemini -> Kundenwünsche, die in die Visualisierung einfließen.
  * Wird vor app.js geladen; nutzt dessen Hilfsfunktionen ($, esc, toast, state, saveProject) erst zur Laufzeit. */
 
-const VOICE_MODEL = 'gemini-2.5-flash';   // Text-/Audio-Modell (günstig, versteht Deutsch gut)
 const VOICE_SEGMENT_SEC = 300;            // Audio wird in 5-Minuten-Stücke geteilt (API-Limit 20 MB pro Anfrage)
 const VOICE_RATE = 16000;                 // 16 kHz Mono reicht für Sprache
 
 const voice = { rec: null, recId: null, recLabel: '', stream: null, timer: null, started: 0, job: null, jobId: null, step: '', error: null, wake: null, finish: null };
 
 // ---------- Gemini (Text/Audio) ----------
-async function geminiText(parts, json = false, config = {}, model = VOICE_MODEL) {
-  const { apiKey } = state.settings;
-  if (!apiKey) throw new Error('Kein API-Schlüssel hinterlegt (Einstellungen).');
-  const body = { contents: [{ role: 'user', parts }], generationConfig: { ...(json ? { responseMimeType: 'application/json' } : {}), ...config } };
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`;
-  const r = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey }, body: JSON.stringify(body) });
-  const j = await r.json().catch(() => ({}));
-  if (!r.ok) throw new Error(j.error?.message || `Fehler ${r.status}`);
+// Text-/Audio-Modell: textModel() in core.js (wechselt automatisch, wenn Google ein Modell abschaltet)
+async function geminiText(parts, json = false, config = {}) {
+  const j = await geminiCall('text', () => ({ contents: [{ role: 'user', parts }], generationConfig: { ...(json ? { responseMimeType: 'application/json' } : {}), ...config } }));
   const txt = j.candidates?.[0]?.content?.parts?.map((p) => p.text).filter(Boolean).join('') || '';
   if (!txt) throw new Error(j.promptFeedback?.blockReason || 'Die KI hat keinen Text geliefert.');
   return txt;
@@ -445,6 +439,19 @@ window.Gespraech = {
     if (!$('#vrec')) return;
     const owner = { id: w.id, projekt: true }, g = w.gespraech || {};
     bindRecButtons(owner, [w.customer, w.address].filter(Boolean).join(' · ') || 'Projekt');
+    // Aufnahmen aus der älteren Version (je Raum gespeichert, Auswertung war fehlgeschlagen) fürs Projekt auswerten
+    (async () => {
+      if (pendingFor(w.id) || voice.rec) return;
+      for (const r of list) {
+        const blob = await audioLoad(r.id);
+        if (!blob || !$('#verr')) continue;
+        $('#verr').hidden = false;
+        $('#verr span').textContent = `Es gibt noch eine gespeicherte Aufnahme aus „${r.room}“, die nicht ausgewertet wurde.`;
+        const b = $('#vretry'); b.hidden = false; b.textContent = 'Jetzt auswerten';
+        b.onclick = () => voiceRun(w.id, async () => { await audioStore(w.id, blob); await auswertenAudio(owner, blob, true); await audioStore(r.id, null); });
+        return;
+      }
+    })();
     const zu = () => voiceRun(w.id, () => zuordnen(w), 'Wünsche den Räumen zugeordnet.');
     if ($('#vzu')) $('#vzu').onclick = zu;
     if ($('#vzu2')) $('#vzu2').onclick = zu;

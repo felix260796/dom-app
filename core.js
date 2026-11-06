@@ -126,9 +126,46 @@ async function deleteProject(id) {
   await kvSet('projectIndex', (await projectIndex()).filter((x) => x.id !== id));
 }
 
+// ---------- KI-Modelle: veraltete Namen automatisch ersetzen ----------
+// Google schaltet ältere Modelle ab (z. B. „gemini-2.5-flash is no longer available“). Dann nimmt die App
+// das von Google genannte Nachfolgemodell bzw. das neueste passende aus der Modellliste und merkt es sich.
+const GEMINI = 'https://generativelanguage.googleapis.com/v1beta';
+const textModel = () => state.settings.textModel || 'gemini-2.5-flash';
+const imageModel = () => state.settings.model || 'gemini-3-pro-image-preview';
+const veraltet = (msg) => /no longer available|not found|is not supported|deprecated|has been (retired|shut ?down)|please (update|migrate)/i.test(msg || '');
+/** Neuestes Modell der Art ('text' oder 'image') laut Modellliste des Schlüssels. */
+async function neuestesModell(kind) {
+  const r = await fetch(`${GEMINI}/models?pageSize=1000`, { headers: { 'x-goog-api-key': state.settings.apiKey } });
+  const j = await r.json().catch(() => ({}));
+  const ver = (n) => parseFloat((n.match(/gemini-(\d+(?:\.\d+)?)/) || [])[1] || 0);
+  const ok = (j.models || []).filter((m) => (m.supportedGenerationMethods || []).includes('generateContent')).map((m) => m.name.replace(/^models\//, ''));
+  const pick = (re) => ok.filter((n) => re.test(n)).sort((a, b) => ver(b) - ver(a) || a.length - b.length)[0];
+  return kind === 'image'
+    ? pick(/^gemini-[\d.]+-pro-image/) || pick(/^gemini-[\d.]+-flash-image/) || pick(/image/)
+    : pick(/^gemini-[\d.]+-flash$/) || pick(/^gemini-[\d.]+-flash(-latest)?$/) || pick(/^gemini-[\d.]+-flash/);
+}
+/** generateContent mit automatischem Wechsel auf ein Nachfolgemodell. kind: 'text' | 'image'. */
+async function geminiCall(kind, body, model = kind === 'image' ? imageModel() : textModel()) {
+  const { apiKey } = state.settings;
+  if (!apiKey) throw new Error('Kein API-Schlüssel hinterlegt (Einstellungen).');
+  const send = (m) => fetch(`${GEMINI}/models/${encodeURIComponent(m)}:generateContent`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey }, body: JSON.stringify(body(m)) });
+  let r = await send(model), j = await r.json().catch(() => ({}));
+  if (!r.ok && veraltet(j.error?.message)) {
+    const genannt = (j.error.message.match(/use\s+(?:models\/)?(gemini-[\w.\-]+)/i) || [])[1]?.replace(/[.,;)]+$/, '');
+    let neu = genannt;
+    if (!neu || neu === model) neu = await neuestesModell(kind).catch(() => null);
+    if (neu && neu !== model) {
+      console.warn(`Modell ${model} abgeschaltet, nehme ${neu}`);
+      r = await send(neu); j = await r.json().catch(() => ({}));
+      if (r.ok) { state.settings[kind === 'image' ? 'model' : 'textModel'] = neu; saveSettings(); }
+    }
+  }
+  if (!r.ok) throw new Error(j.error?.message || `Fehler ${r.status}`);
+  return j;
+}
+
 // ---------- KI: Prompt & Gemini-Aufruf ----------
 const MAX_PHOTOS = 4;
-const ANALYSE_MODEL = 'gemini-2.5-flash'; // liest Fotos und plant, bevor das Bild gemacht wird (günstig, schnell)
 
 /** Kurzer Fingerabdruck eines Textes (z. B. der Fotos), um zu erkennen, ob sich etwas geändert hat. */
 function quickHash(str) {
@@ -183,7 +220,7 @@ ${p.photos.length > 1 ? 'JE FOTO: „Foto 1: Blickrichtung, welche Wände und Ge
 
 Nur was wirklich zu sehen oder gemessen ist. Nichts erfinden. Wenn etwas unsicher ist, schreibe „unklar“.` }];
     p.photos.forEach((ph, i) => { parts.push({ text: `Foto ${i + 1}:` }, { inline_data: { mime_type: mimeOf(ph), data: b64(ph) } }); });
-    const text = (await geminiText(parts, false, { temperature: 0.2 }, ANALYSE_MODEL)).trim();
+    const text = (await geminiText(parts, false, { temperature: 0.2 })).trim();
     p.bestand = { sig, text, photos: p.photos.length, masse: masseText(p), t: Date.now() };
     await saveProject(p);
     return text;
@@ -232,7 +269,7 @@ OBERFLÄCHEN:
 - Bereich: Ausführung
 ÄNDERUNGEN LAUT KUNDENWUNSCH: (nur wenn ausdrücklich gewünscht, sonst „keine“)
 NICHT EINBAUEN:
-- Moodboard-Punkt oder Gegenstand: kurzer Grund` }], false, { temperature: 0.2 }, ANALYSE_MODEL)).trim();
+- Moodboard-Punkt oder Gegenstand: kurzer Grund` }], false, { temperature: 0.2 })).trim();
     p.plan = { ...(p.plan || {}), [pkg.id]: { sig, text } };
     await saveProject(p);
     return text;
@@ -340,16 +377,10 @@ Erzeuge daraus EINE neue Ansicht: eine fotorealistische 3D-Draufsicht des fertig
 
 /** Schickt Text + Bilder an das Gemini-Bildmodell und gibt das gelieferte Bild (max. 1600 px) zurück. */
 async function geminiImage(parts, aspectRatio) {
-  const { apiKey, model } = state.settings;
-  if (!apiKey) throw new Error('Kein API-Schlüssel hinterlegt (Einstellungen).');
-  const body = {
+  const j = await geminiCall('image', (m) => ({
     contents: [{ role: 'user', parts }],
-    generationConfig: { responseModalities: ['TEXT', 'IMAGE'], imageConfig: { aspectRatio, ...(/gemini-3/.test(model || '') ? { imageSize: '2K' } : {}) } },
-  };
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model || 'gemini-2.5-flash-image')}:generateContent`;
-  const r = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey }, body: JSON.stringify(body) });
-  const j = await r.json().catch(() => ({}));
-  if (!r.ok) throw new Error(j.error?.message || `Fehler ${r.status}`);
+    generationConfig: { responseModalities: ['TEXT', 'IMAGE'], imageConfig: { aspectRatio, ...(/gemini-[3-9]/.test(m) && /pro/.test(m) ? { imageSize: '2K' } : {}) } },
+  }));
   const cand = j.candidates?.[0];
   const imgPart = cand?.content?.parts?.find((p) => p.inlineData || p.inline_data);
   if (!imgPart) {

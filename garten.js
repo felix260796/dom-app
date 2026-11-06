@@ -133,11 +133,8 @@ Ergebnis: fotorealistisch, Licht und Schatten passend zum Foto (das Gerät wirft
     if (markiert) parts.push(img(markiert));
     if (rendered) parts.push(img(rendered));
     for (const r of refs) parts.push(img(r.data));
-    const body = { contents: [{ role: 'user', parts }], generationConfig: { responseModalities: ['TEXT', 'IMAGE'], imageConfig: { aspectRatio: await nearestAspect(target) } } };
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model || 'gemini-2.5-flash-image')}:generateContent`;
-    const r = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey }, body: JSON.stringify(body) });
-    const j = await r.json().catch(() => ({}));
-    if (!r.ok) throw new Error(j.error?.message || `Fehler ${r.status}`);
+    const aspectRatio = await nearestAspect(target);
+    const j = await geminiCall('image', () => ({ contents: [{ role: 'user', parts }], generationConfig: { responseModalities: ['TEXT', 'IMAGE'], imageConfig: { aspectRatio } } }));
     const cand = j.candidates?.[0];
     const part = cand?.content?.parts?.find((x) => x.inlineData || x.inline_data);
     if (!part) throw new Error(cand?.content?.parts?.map((x) => x.text).filter(Boolean).join(' ') || j.promptFeedback?.blockReason || cand?.finishReason || 'Die KI hat kein Bild geliefert. Bitte nochmal versuchen.');
