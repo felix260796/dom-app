@@ -473,3 +473,8 @@ body.recording main { padding-bottom: 150px; }
 .prow { margin: 0; color: var(--text); font-weight: 400; font-size: 14px; }
 .prow input { width: 20px; height: 20px; flex: none; accent-color: var(--navy); }
 .prow.off .xt, .prow.off .xgp { opacity: .45; text-decoration: line-through; }
+.sres-tab { display: grid; grid-template-columns: 1fr auto; gap: 3px 12px; margin-top: 10px; padding-top: 10px; border-top: 1px solid rgba(255,255,255,.18); text-align: left; font-size: 13.5px; color: rgba(255,255,255,.85); }
+.sres-tab b { text-align: right; font-weight: 600; }
+.sres-tab .tot { color: #fff; font-weight: 700; padding-top: 3px; border-top: 1px solid rgba(255,255,255,.18); }
+.psum { display: grid; grid-template-columns: 1fr auto; gap: 4px 12px; margin-top: 8px; padding-top: 10px; border-top: 2px solid var(--line); font-size: 14px; }
+.psum b { text-align: right; }
