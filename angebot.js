@@ -384,9 +384,7 @@ Gib Länge (längere Seite) und Breite der Grundfläche, Raumhöhe, Anzahl und G
           begruendung: { type: 'STRING' } }, required: ['laenge', 'breite', 'hoehe'] },
       },
     };
-    const r = await fetch('https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent', { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-goog-api-key': key }, body: JSON.stringify(body) });
-    const j = await r.json().catch(() => ({}));
-    if (!r.ok) throw new Error(j.error?.message || `Fehler ${r.status}`);
+    const j = await geminiCall('text', () => body);
     const txt = j.candidates?.[0]?.content?.parts?.map((x) => x.text).filter(Boolean).join('');
     try { return JSON.parse(txt); } catch { throw new Error('Die KI hat keine Maße geliefert. Bitte nochmal versuchen.'); }
   }
