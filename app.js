@@ -123,12 +123,18 @@ function sheet(title, items, { text, value = '' } = {}) {
 }
 
 // ---------- Projektliste ----------
-let listFilter = '', listFertig = false;
+/** Zweite Zeile einer Projektkarte: Objekt (Bezeichnung bzw. Anschrift), nicht der Kunde. */
+function objektZeile(x) {
+  const k = Kunden.byId(x.kundeId), o = k && Kunden.objekt(k, x.objektId);
+  return [o && o.name.trim(), x.address || (o && Kunden.einzeilig(o.adresse))].filter(Boolean).join(' · ');
+}
+let listFilter = '', listStatus = '';
 async function viewProjektListe() {
-  header(listFertig ? 'Abgeschlossene Projekte' : 'Laufende Projekte', state.settings.company || '');
+  const ST = Projekt.STATUS;
+  header({ '': 'Laufende Projekte', geplant: 'Vorgesehene Projekte', fertig: 'Abgeschlossene Projekte' }[listStatus], state.settings.company || '');
   const alleP = await projectIndex();
-  const nFertig = alleP.filter((x) => x.status === 'fertig').length;
-  const idx = alleP.filter((x) => (x.status === 'fertig') === listFertig);
+  const stOf = (x) => (ST.some((s) => s[0] === x.status) ? x.status : '');
+  const idx = alleP.filter((x) => stOf(x) === listStatus);
   const q = listFilter.trim().toLowerCase();
   const hay = (x) => { const k = Kunden.byId(x.kundeId); return `${x.nr || ''} ${x.titel || ''} ${x.customer} ${x.address || ''} ${x.room || ''} ${k ? `${k.nr} ${k.telefon} ${k.email} ${k.privat}` : ''}`.toLowerCase(); };
   const shown = q ? idx.filter((x) => q.split(/\s+/).every((t) => hay(x).includes(t))) : idx;
@@ -140,20 +146,19 @@ async function viewProjektListe() {
     </button>
     ${state.settings.apiKey ? '' : `<button class="notice" id="toSet">${icon('gear')}<span><b>KI noch nicht eingerichtet.</b> Einmalig den Google-Schlüssel in den Einstellungen eintragen.</span>${icon('chevron')}</button>`}
     <div id="backupHint"></div>
+    ${alleP.length ? `<div class="seg2 full wstatus" style="margin-top:14px">${[ST[1], ST[0], ST[2]].map(([id, n, c]) => `<button data-ls="${id}" class="${listStatus === id ? 'on' : ''}" style="--c:${c}">${n} ${alleP.filter((x) => stOf(x) === id).length}</button>`).join('')}</div>` : ''}
     ${idx.length ? `
-      <div class="sec-h"><h2>${listFertig ? 'Abgeschlossen' : 'In Arbeit'}</h2><span class="count">${idx.length}</span></div>
       <label class="search">${icon('search')}<input type="search" id="q" value="${esc(listFilter)}" placeholder="Kunde, Adresse, Raum oder Nummer" autocomplete="off"></label>
       <div class="plist">${shown.map((x) => `
         <button class="pcard" data-open="${x.id}" data-kind="${x.kind || ''}">
           ${x.thumb ? `<img src="${x.thumb}" alt="">` : `<span class="pc-ph">${icon('home')}</span>`}
-          <span class="pc-t"><b>${esc(x.customer || 'Ohne Namen')}${x.titel ? ` · ${esc(x.titel)}` : ''}</b>
-            ${x.address ? `<span class="muted">${esc(x.address)}</span>` : ''}
-            <span class="pc-meta">${x.nr ? esc(x.nr) + ' · ' : ''}${esc(x.room || '')}${x.room ? ' · ' : ''}${fmtDay(x.updated || x.created)}</span></span>
+          <span class="pc-t"><b>${esc(x.titel || x.room || 'Projekt')}</b>
+            ${objektZeile(x) ? `<span class="muted">${esc(objektZeile(x))}</span>` : ''}
+            <span class="pc-meta">${x.nr ? esc(x.nr) + ' · ' : ''}${x.titel && x.room ? esc(x.room) + ' · ' : ''}${fmtDay(x.updated || x.created)}</span></span>
           ${icon('chevron', 'pc-chev')}
         </button>`).join('') || '<p class="empty">Nichts gefunden.</p>'}</div>` : `
-      <div class="empty-state">${icon('home')}<b>${listFertig ? 'Noch nichts abgeschlossen' : 'Keine laufenden Projekte'}</b><span>${listFertig ? 'Im Projekt unten „Projekt abschließen“ tippen, dann erscheint es hier.' : 'Tippe auf „Neues Projekt“, gib den Kunden ein und füge die Räume hinzu.'}</span></div>`}
-    ${nFertig || listFertig ? `<button class="add-room" id="fertigT" style="margin-top:14px">${icon(listFertig ? 'back' : 'check')} ${listFertig ? 'Zurück zu den laufenden Projekten' : `Abgeschlossene Projekte (${nFertig})`}</button>` : ''}`;
-  if ($('#fertigT')) $('#fertigT').onclick = () => { listFertig = !listFertig; viewProjektListe(); window.scrollTo(0, 0); };
+      <div class="empty-state">${icon('home')}<b>${{ '': 'Keine laufenden Projekte', geplant: 'Nichts vorgesehen', fertig: 'Noch nichts abgeschlossen' }[listStatus]}</b><span>${alleP.length ? 'Den Status stellst du im Projekt direkt unter dem Kunden ein.' : 'Tippe auf „Neues Projekt“, gib den Kunden ein und füge die Räume hinzu.'}</span></div>`}`;
+  $$('[data-ls]').forEach((b) => (b.onclick = () => { listStatus = b.dataset.ls; viewProjektListe(); }));
   $('#new').onclick = () => Projekt.neu();
   if ($('#toSet')) $('#toSet').onclick = () => { switchTab('einstellungen'); einstellungSeite('ki'); };
   if ($('#q')) $('#q').oninput = debounce((e) => { listFilter = e.target.value; viewProjektListe().then(() => { const i = $('#q'); if (i) { i.focus(); i.setSelectionRange(i.value.length, i.value.length); } }); }, 250);
