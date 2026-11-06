@@ -85,9 +85,9 @@ new MutationObserver(() => {
 const tabState = {};
 function switchTab(tab, restore) {
   if (state.tab !== tab || restore) {
-    tabState[state.tab] = { project: state.project, wohnung: state.wohnung, kunde: state.kunde };
+    tabState[state.tab] = { project: state.project, wohnung: state.wohnung, kunde: state.kunde, objekt: state.objekt };
     const s = restore || tabState[tab] || {};
-    state.project = s.project || null; state.wohnung = s.wohnung || null; state.kunde = s.kunde || null;
+    state.project = s.project || null; state.wohnung = s.wohnung || null; state.kunde = s.kunde || null; state.objekt = s.objekt || null;
   }
   state.tab = tab;
   $$('.tabbar button').forEach((b) => b.classList.toggle('active', b.dataset.tab === tab));
@@ -105,12 +105,12 @@ $$('.tabbar button').forEach((b) => (b.onclick = () => {
 
 /** Auswahlfenster von unten. items: [{ label, sub?, icon?, color?, value }] → Promise<value|null>.
  * text: Platzhalter für ein freies Textfeld (Ergebnis dann { text }). */
-function sheet(title, items, { text } = {}) {
+function sheet(title, items, { text, value = '' } = {}) {
   return new Promise((res) => {
     const el = document.createElement('div');
     el.className = 'sheet-bg';
     el.innerHTML = `<div class="sheet" role="dialog" aria-label="${esc(title)}"><div class="sheet-h"><b>${esc(title)}</b><button class="icon-btn" data-x aria-label="Schließen">${icon('x')}</button></div>
-      ${text ? `<div class="sheet-text"><input type="text" id="sheetText" placeholder="${esc(text)}"><button class="btn" id="sheetOk">OK</button></div>` : ''}
+      ${text ? `<div class="sheet-text"><input type="text" id="sheetText" placeholder="${esc(text)}" value="${esc(value)}"><button class="btn" id="sheetOk">OK</button></div>` : ''}
       <div class="sheet-list">${items.map((it, i) => `<button class="sheet-item" data-i="${i}">${it.icon ? `<span class="si-ico" ${it.color ? `style="--c:${it.color}"` : ''}>${it.icon}</span>` : ''}<span class="si-t"><b>${esc(it.label)}</b>${it.sub ? `<span>${esc(it.sub)}</span>` : ''}</span></button>`).join('')}</div></div>`;
     const close = (v) => { el.classList.remove('on'); setTimeout(() => el.remove(), 180); res(v); };
     el.onclick = (e) => { if (e.target === el || e.target.closest('[data-x]')) close(null); };
@@ -431,7 +431,7 @@ function bindResultButtons(p) {
 (async () => {
   await loadAll();
   try { await Projekt.migrate(); } catch (e) { console.error('Umstellung', e); }
-  try { await Kunden.laden(); await Kunden.migrate(); } catch (e) { console.error('Kunden', e); }
+  try { await Kunden.laden(); await Kunden.migrate(); await Kunden.nummern(); } catch (e) { console.error('Kunden', e); }
   navigator.storage?.persist?.();
   switchTab('kunden');
   if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost')) {

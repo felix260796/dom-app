@@ -172,7 +172,7 @@ window.Sync = (() => {
     if (changed.has('preisliste') || changed.has('angebotVorlagen')) toast('Preisliste/Vorlagen vom anderen Gerät übernommen. Wirksam nach Neustart der App.', 5000);
     if (changed.has('projectIndex')) await window.Projekt?.migrate();
     if ([...changed].some((k) => k.startsWith('kunde:'))) await window.Kunden?.laden();
-    if (changed.has('projectIndex')) await window.Kunden?.migrate();
+    if (changed.has('projectIndex')) { await window.Kunden?.migrate(); await window.Kunden?.nummern(); }
     for (const k of changed) if (k.startsWith('project:') && state.project?.id !== k.slice(8)) window.Projekt?.forget(k.slice(8));
     const typing = /INPUT|TEXTAREA|SELECT/.test(document.activeElement?.tagName || '');
     if (!typing && document.getElementById('new') && state.tab === 'projekt') viewProjektListe();
