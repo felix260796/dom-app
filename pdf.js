@@ -156,6 +156,14 @@ window.Mappe = (() => {
         c.text(c.lines('Die Abendansicht zeigt die eingeplanten Leuchten (Spots, Spiegel, indirektes Licht) eingeschaltet und gedimmt. Lichtfarbe ca. 2700 Kelvin.', W - 2 * M), M, by + bh + 10);
       }
     }
+    const top = topOf(r, pkg.id);
+    if (top) {
+      const by = 39, bh = 112;
+      await c.head(`${rn}  ·  Draufsicht`, `Paket ${pkg.name}`, 'Der neue Raum auf einen Blick, von oben gesehen.', rgb);
+      const box = await c.contain(top, M, by, W - 2 * M, bh);
+      c.pill('Draufsicht · ' + pkg.name, box.x + 4, box.y + 4, rgb);
+      if (!views.length) ausstattung(c, r, pkg, M, by + bh + 9, W - 2 * M, 38);
+    }
   }
 
   /** Produktliste eines Pakets (Shop-Links, optional Preise). */

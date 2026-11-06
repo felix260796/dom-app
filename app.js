@@ -158,7 +158,7 @@ async function viewProjekt() {
   const pkgs = packagesFor(p.roomType);
   const full = p.photos.length >= MAX_PHOTOS;
   const visible = pkgs.filter((x) => firstResult(p, x.id) || Object.keys(p.status || {}).some((k) => k.startsWith(x.id + ':') && (p.status[k].loading || p.status[k].error)));
-  const nImg = p.photos.length * p.selected.length;
+  const nImg = viewCount(p) * p.selected.length;
   const marks = window.Baumappe?.anzahl(p) || 0;
   const am = p.aufmass?.raeume || [], qm = am.reduce((s, r) => s + (window.Angebot?._intern.masse(r).boden || 0), 0);
   main().innerHTML = `
@@ -174,10 +174,12 @@ async function viewProjekt() {
       <div class="step-h"><span class="num">1</span><h2>Fotos</h2><span class="step-x">${p.photos.length} von ${MAX_PHOTOS}</span></div>
       <div class="card">
         <div class="photos">${p.photos.map((ph, i) => `
-          <div class="ph"><img src="${ph}" alt="Ansicht ${i + 1}"><span class="ph-n">${i + 1}</span><button class="ph-x" data-delphoto="${i}" aria-label="Foto entfernen">${icon('x')}</button></div>`).join('')}
+          <div class="ph ${renderIdx(p).includes(i) ? '' : 'ph-off'}"><img src="${ph}" alt="Ansicht ${i + 1}"><span class="ph-n">${i + 1}</span><button class="ph-x" data-delphoto="${i}" aria-label="Foto entfernen">${icon('x')}</button>
+            ${p.photos.length > 1 ? `<button class="ph-view" data-view="${i}">${renderIdx(p).includes(i) ? `${icon('check')} Nachher` : 'nur Info'}</button>` : ''}</div>`).join('')}
           ${full ? '' : `<button class="ph-add" id="cam">${icon('camera')}<span>Kamera</span></button><button class="ph-add" id="gal">${icon('image')}<span>Fotos</span></button>`}
         </div>
-        <p class="hint">${p.photos.length ? 'Jedes Foto wird eine eigene Nachher-Ansicht. Die KI nutzt alle Fotos, um den Raum zu verstehen.' : 'Am besten quer und aus den Ecken fotografieren, bis zu 4 Blickwinkel.'}</p>
+        <p class="hint">${p.photos.length > 1 ? 'Die KI nutzt alle Fotos, um den Raum zu verstehen. Ein Nachher-Bild gibt es nur für die Fotos mit Haken. Tippe unten aufs Foto, um das zu ändern.' : p.photos.length ? 'Weitere Blickwinkel helfen der KI, den Raum zu verstehen.' : 'Am besten quer und aus den Ecken fotografieren, bis zu 4 Blickwinkel.'}</p>
+        ${p.photos.length && !rt.outdoor && rt.id !== 'garten' ? `<label class="toggle"><input type="checkbox" id="withTop" ${wantsTop(p) ? 'checked' : ''}><span class="tg"></span><span>Draufsicht: der neue Raum von oben</span></label>` : ''}
         ${rt.outdoor ? '' : `<div id="masseBox"><label>Raummaße in Metern (damit die KI weiß, wie groß der Raum ist)</label>
         <div class="row masse-row">${[['l', 'Länge'], ['b', 'Breite'], ['h', 'Höhe']].map(([k, l]) => `<input type="text" inputmode="decimal" data-mass="${k}" placeholder="${l}" aria-label="${l} in m" value="${esc(p.masse?.[k] || '')}">`).join('')}</div>
         ${aufmassText(p) && !raumMasse(p) ? '<p class="hint">Maße aus dem Aufmaß werden verwendet.</p>' : ''}</div>`}
@@ -233,6 +235,7 @@ async function viewProjekt() {
     const i = +b.dataset.delphoto;
     if (Object.values(p.results).some((a) => a[i]) && !confirm('Foto mit den zugehörigen Nachher-Bildern entfernen?')) return;
     p.photos.splice(i, 1);
+    if (Array.isArray(p.views?.on)) p.views.on = p.views.on.filter((k) => k !== i).map((k) => (k > i ? k - 1 : k));
     for (const k of Object.keys(p.results)) p.results[k].splice(i, 1);
     for (const k of Object.keys(p.evening || {})) p.evening[k].splice(i, 1);
     window.Baumappe?.fotoEntfernt(p, i);
@@ -252,11 +255,19 @@ async function viewProjekt() {
   if ($('#bestand')) $('#bestand').oninput = (e) => { Object.assign(p.bestand, { text: e.target.value, manual: true, photos: p.photos.length, masse: masseText(p) }); persist(); };
   $('#more').ontoggle = (e) => { uiOpen.more = e.target.open; };
   const updGoInfo = () => {
-    const n = p.photos.length * p.selected.length;
+    const n = viewCount(p) * p.selected.length;
     $('#go').disabled = !n;
     if (p.photos.length) $('#goInfo').textContent = n ? `${n} ${n === 1 ? 'Bild' : 'Bilder'}${p.withEvening ? ' + Abendstimmung' : ''} · ca. 10–30 Sekunden pro Bild` : 'Bitte mindestens ein Paket wählen.';
   };
   $('#withEvening').onchange = (e) => { p.withEvening = e.target.checked; persist(); updGoInfo(); };
+  if ($('#withTop')) $('#withTop').onchange = (e) => { p.views = { ...(p.views || {}), top: e.target.checked }; persist(); updGoInfo(); };
+  $$('[data-view]').forEach((b) => (b.onclick = () => {
+    const i = +b.dataset.view, on = new Set(renderIdx(p));
+    on.has(i) ? on.delete(i) : on.add(i);
+    if (!on.size) return toast('Mindestens ein Foto braucht ein Nachher-Bild.');
+    p.views = { ...(p.views || {}), on: [...on].sort() };
+    rerender();
+  }));
   $$('[data-sel]').forEach((c) => (c.onclick = () => {
     c.classList.toggle('on');
     p.selected = $$('[data-sel]').filter((x) => x.classList.contains('on')).map((x) => x.dataset.sel);
@@ -293,8 +304,9 @@ async function viewProjekt() {
 // ---------- Ergebnis-Karten ----------
 function resultCard(pkg) {
   const p = state.project;
-  const multi = p.photos.length > 1;
-  const views = p.photos.map((_, i) => {
+  const shown = p.photos.map((_, i) => i).filter((i) => p.results[pkg.id]?.[i] || p.status?.[`${pkg.id}:${i}`]?.loading || p.status?.[`${pkg.id}:${i}`]?.error);
+  const multi = shown.length > 1 || !!(topOf(p, pkg.id) || p.status?.[`${pkg.id}:top`]);
+  const views = shown.map((i) => {
     const key = `${pkg.id}:${i}`;
     const st = p.status?.[key], res = p.results[pkg.id]?.[i];
     const eve = eveningOf(p, pkg.id, i), est = p.status?.[key + ':abend'];
@@ -311,11 +323,19 @@ function resultCard(pkg) {
     const actions = [mood === 'abend' && (eve || est?.error) && !est?.loading ? `<button class="mini" data-redoeve="${pkg.id}" data-view="${i}">Abend neu</button>` : '',
       (res || st?.error) && !st?.loading ? `<button class="mini" data-redo="${pkg.id}" data-view="${i}">${icon('refresh')} Neu</button>` : ''].join('');
     return `<div class="rview">${multi ? `<div class="rv-n">Ansicht ${i + 1}</div>` : ''}<div class="rv-body">${body}</div><div class="rv-bar">${moodBar}<span class="rv-act">${actions}</span></div></div>`;
-  }).join('');
+  }).join('') + topCard(p, pkg);
   return `<div class="result" id="res-${pkg.id}" style="--c:${pkg.color}">
     <div class="r-head"><span class="r-name"><i></i>${esc(pkg.name)}</span><span class="r-desc">${esc(pkg.fields?.beschreibung || '')}</span></div>
     ${views}
   </div>`;
+}
+function topCard(p, pkg) {
+  const st = p.status?.[`${pkg.id}:top`], img = topOf(p, pkg.id);
+  if (!img && !st?.loading && !st?.error) return '';
+  const body = st?.loading ? `<div class="status"><div class="spinner"></div>KI zeichnet die Draufsicht …</div>`
+    : st?.error ? `<div class="status err">${esc(st.error)}</div>`
+    : `<img class="top-img" src="${img}" alt="Draufsicht ${esc(pkg.name)}">`;
+  return `<div class="rview"><div class="rv-n">Draufsicht</div><div class="rv-body">${body}</div><div class="rv-bar"><span></span><span class="rv-act">${st?.loading ? '' : `<button class="mini" data-redotop="${pkg.id}">${icon('refresh')} Neu</button>`}</span></div></div>`;
 }
 function refreshResult(pkg) {
   const p = state.project;
@@ -344,6 +364,7 @@ function bindResultButtons(p) {
       runEvening(p, pkg, i);
     } else refreshResult(pkg);
   }));
+  $$('[data-redotop]').forEach((b) => (b.onclick = async () => { await window.voiceReady?.(p); runTop(p, pk(b.dataset.redotop)); }));
   $$('[data-redoeve]').forEach((b) => (b.onclick = () => runEvening(p, pk(b.dataset.redoeve), +b.dataset.view)));
 }
 

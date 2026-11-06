@@ -109,9 +109,9 @@ window.Projekt = (() => {
     let n = 2; while (taken.has(`${base} ${n}`.toLowerCase())) n++;
     return `${base} ${n}`;
   }
-  async function addRoom(w, rt) {
+  async function addRoom(w, rt, extra = {}) {
     const list = await raeume(w);
-    const r = { id: uid(), created: Date.now(), wohnungId: w.id, customer: w.customer, address: w.address, roomType: rt, room: titel(list, rt), note: '', photos: [], thumb: '', results: {}, selected: packagesFor(rt).map((x) => x.id), pdfProducts: true, pdfPrices: false };
+    const r = { id: uid(), created: Date.now(), wohnungId: w.id, customer: w.customer, address: w.address, roomType: rt, room: titel(list, rt), note: '', photos: [], thumb: '', results: {}, selected: packagesFor(rt).map((x) => x.id), pdfProducts: true, pdfPrices: false, ...extra };
     rooms.set(r.id, r);
     w.rooms.push(r.id);
     delete w.isNew;
@@ -137,7 +137,7 @@ window.Projekt = (() => {
     header(w.customer || 'Neues Projekt', w.address || (w.isNew ? 'Kunde und Räume anlegen' : ''), { label: 'Projekte', fn: leave });
     const anyResult = list.some(hasAnyResult);
     const withPhotos = list.filter((r) => r.photos.length);
-    const nBilder = withPhotos.reduce((n, r) => n + r.photos.length * r.selected.length, 0);
+    const nBilder = withPhotos.reduce((n, r) => n + viewCount(r) * r.selected.length, 0);
     const stand = (r) => {
       const fertig = PKG_IDS.filter((id) => done(r, id));
       if (!r.photos.length) return '<span class="st todo">Fotos fehlen</span>';
@@ -149,6 +149,7 @@ window.Projekt = (() => {
         <label class="ic-field">${icon('user')}<input type="text" id="wCustomer" value="${esc(w.customer)}" placeholder="Kunde, z. B. Familie Müller" autocomplete="off"></label>
         <label class="ic-field">${icon('map')}<input type="text" id="wAddress" value="${esc(w.address)}" placeholder="Adresse, z. B. Hauptstr. 5, 2. OG" autocomplete="off"></label>
       </div>
+      ${window.Gespraech?.karte(w, list) || ''}
 
       <div class="sec-h"><h2>Räume</h2>${list.length ? `<span class="count">${list.length}</span>` : ''}</div>
       <div class="rlist">${list.map((r, i) => `
@@ -189,6 +190,7 @@ window.Projekt = (() => {
     $('#wCustomer').oninput = (e) => { w.customer = e.target.value; $('#title').textContent = w.customer || 'Neues Projekt'; persist(); sync(); };
     $('#wAddress').oninput = (e) => { w.address = e.target.value; persist(); sync(); };
     if (w.isNew) setTimeout(() => $('#wCustomer')?.focus(), 50);
+    window.Gespraech?.bind(w, list);
     $$('[data-room]').forEach((el) => (el.onclick = (e) => { if (e.target.closest('[data-up]')) return; raumOeffnen(rooms.get(el.dataset.room), w); }));
     $$('[data-up]').forEach((b) => (b.onclick = async () => { const i = +b.dataset.up; [w.rooms[i - 1], w.rooms[i]] = [w.rooms[i], w.rooms[i - 1]]; await save(w); view(); }));
     $$('[data-rt]').forEach((b) => (b.onclick = () => addRoom(w, b.dataset.rt)));
@@ -216,7 +218,7 @@ window.Projekt = (() => {
   async function runAll(w) {
     if (!state.settings.apiKey) { toast('Bitte zuerst in den Einstellungen den API-Schlüssel eintragen.', 4000); return; }
     const list = (await raeume(w)).filter((r) => r.photos.length && r.selected.length);
-    const total = list.reduce((n, r) => n + r.photos.length * packagesFor(r.roomType).filter((x) => r.selected.includes(x.id)).length, 0);
+    const total = list.reduce((n, r) => n + viewCount(r) * packagesFor(r.roomType).filter((x) => r.selected.includes(x.id)).length, 0);
     if (!total) { toast('Keine Räume mit Fotos und ausgewählten Paketen.'); return; }
     const already = list.filter(hasAnyResult).length;
     if (!confirm(`${total} Bilder für ${list.length} Räume erstellen?${already ? `\n\n${already} ${already === 1 ? 'Raum hat' : 'Räume haben'} schon Bilder, die werden dabei neu gemacht.` : ''}`)) return;
@@ -228,7 +230,7 @@ window.Projekt = (() => {
       const pkgs = packagesFor(r.roomType).filter((x) => r.selected.includes(x.id));
       await window.voiceReady?.(r);
       await Promise.all(pkgs.map((pkg) => runPackage(r, pkg)));
-      ok += pkgs.reduce((n, x) => n + (r.results[x.id] || []).filter(Boolean).length, 0);
+      ok += pkgs.reduce((n, x) => n + (r.results[x.id] || []).filter(Boolean).length + (topOf(r, x.id) ? 1 : 0), 0);
     }
     running = null;
     await save(w);

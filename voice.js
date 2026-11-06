@@ -4,11 +4,10 @@
  * Wird vor app.js geladen; nutzt dessen Hilfsfunktionen ($, esc, toast, state, saveProject) erst zur Laufzeit. */
 
 const VOICE_MODEL = 'gemini-2.5-flash';   // Text-/Audio-Modell (günstig, versteht Deutsch gut)
-const VOICE_MAX_MIN = 15;                 // Aufnahme stoppt automatisch nach 15 Minuten
 const VOICE_SEGMENT_SEC = 300;            // Audio wird in 5-Minuten-Stücke geteilt (API-Limit 20 MB pro Anfrage)
 const VOICE_RATE = 16000;                 // 16 kHz Mono reicht für Sprache
 
-const voice = { rec: null, recId: null, stream: null, chunks: [], timer: null, started: 0, job: null, jobId: null, step: '', error: null, wake: null };
+const voice = { rec: null, recId: null, recLabel: '', stream: null, timer: null, started: 0, job: null, jobId: null, step: '', error: null, wake: null, finish: null };
 
 // ---------- Gemini (Text/Audio) ----------
 async function geminiText(parts, json = false, config = {}, model = VOICE_MODEL) {
@@ -92,22 +91,46 @@ function geminiAudioMime(blob) {
   if (/flac/.test(t)) return 'audio/flac';
   return t || 'audio/aac';
 }
+/** Große Aufnahmen (langes Gespräch) über die Datei-Schnittstelle von Gemini hochladen. Gibt die Datei-Adresse zurück. */
+async function geminiUpload(blob, mime, onStep) {
+  const { apiKey } = state.settings;
+  const base = 'https://generativelanguage.googleapis.com';
+  onStep('Aufnahme wird hochgeladen …');
+  const start = await fetch(`${base}/upload/v1beta/files`, { method: 'POST', headers: { 'x-goog-api-key': apiKey, 'X-Goog-Upload-Protocol': 'resumable', 'X-Goog-Upload-Command': 'start', 'X-Goog-Upload-Header-Content-Length': String(blob.size), 'X-Goog-Upload-Header-Content-Type': mime, 'Content-Type': 'application/json' }, body: JSON.stringify({ file: { display_name: 'gespraech-' + Date.now() } }) });
+  const upUrl = start.headers.get('x-goog-upload-url');
+  if (!start.ok || !upUrl) { const j = await start.json().catch(() => ({})); throw new Error(j.error?.message || `Hochladen nicht möglich (${start.status})`); }
+  const up = await fetch(upUrl, { method: 'POST', headers: { 'X-Goog-Upload-Offset': '0', 'X-Goog-Upload-Command': 'upload, finalize' }, body: blob });
+  let file = (await up.json().catch(() => ({}))).file;
+  if (!up.ok || !file?.name) throw new Error('Hochladen der Aufnahme fehlgeschlagen.');
+  for (let k = 0; file.state === 'PROCESSING' && k < 60; k++) {
+    onStep('Aufnahme wird vorbereitet …');
+    await new Promise((r) => setTimeout(r, 3000));
+    file = await (await fetch(`${base}/v1beta/${file.name}`, { headers: { 'x-goog-api-key': apiKey } })).json();
+  }
+  if (file.state === 'FAILED') throw new Error('Google konnte die Aufnahme nicht lesen.');
+  return file.uri;
+}
+const MB = 1024 * 1024;
 async function transcribeAudio(blob, onStep) {
   if (!blob?.size) throw new Error('Die Aufnahme ist leer. Bitte Mikrofon-Zugriff prüfen und nochmal aufnehmen.');
   onStep('Audio wird vorbereitet …');
   let segments = null;
-  try { ({ segments } = await audioToWavSegments(blob)); } catch (e) { console.warn('Audio nicht umwandelbar, schicke Original', e); }
+  // Kurze Aufnahmen: in Sprach-WAV umwandeln (zuverlässigste Variante). Lange: Original hochladen (spart Speicher auf dem iPhone).
+  if (blob.size <= 12 * MB) try { ({ segments } = await audioToWavSegments(blob)); } catch (e) { console.warn('Audio nicht umwandelbar, schicke Original', e); }
   const parts = [];
-  if (!segments) {
-    // Umwandeln ging nicht (kommt auf dem iPhone vor): Originaldatei direkt schicken
-    if (blob.size > 18 * 1024 * 1024) throw new Error('Die Aufnahme ist zu groß. Bitte kürzere Aufnahmen machen (bis ca. 15 Minuten).');
-    onStep('Transkribiere …');
-    parts.push((await geminiText([{ text: TRANSCRIBE_PROMPT(0, 1) }, { inline_data: { mime_type: geminiAudioMime(blob), data: bufToB64(await blob.arrayBuffer()) } }])).trim());
-  } else {
+  if (segments) {
     for (let k = 0; k < segments.length; k++) {
       onStep(`Transkribiere${segments.length > 1 ? ` Teil ${k + 1} von ${segments.length}` : ''} …`);
       parts.push((await geminiText([{ text: TRANSCRIBE_PROMPT(k, segments.length) }, { inline_data: { mime_type: 'audio/wav', data: bufToB64(segments[k]) } }])).trim());
     }
+  } else if (blob.size <= 12 * MB) {
+    onStep('Transkribiere …');
+    parts.push((await geminiText([{ text: TRANSCRIBE_PROMPT(0, 1) }, { inline_data: { mime_type: geminiAudioMime(blob), data: bufToB64(await blob.arrayBuffer()) } }])).trim());
+  } else {
+    const mime = geminiAudioMime(blob);
+    const uri = await geminiUpload(blob, mime, onStep);
+    onStep('Transkribiere das Gespräch (bei langen Aufnahmen 1–3 Minuten) …');
+    parts.push((await geminiText([{ text: TRANSCRIBE_PROMPT(0, 1) }, { file_data: { mime_type: mime, file_uri: uri } }])).trim());
   }
   const t = parts.join('\n').trim();
   if (!t || /^\(keine Sprache erkannt\)$/i.test(t)) throw new Error('In der Aufnahme war keine Sprache zu hören. War das Mikrofon frei?');
@@ -137,18 +160,6 @@ async function audioLoad(id) {
   } catch { return null; }
 }
 
-/** Läuft gerade eine Auswertung für diesen Raum? Visualisieren wartet darauf. */
-function voicePending(p) { return voice.job && voice.jobId === p.id ? voice.job : null; }
-/** Vor dem Visualisieren: laufende Auswertung abwarten; Transkript ohne Wünsche noch auswerten. */
-async function voiceReady(p) {
-  const job = voicePending(p);
-  if (job) { toast('Das Gespräch wird noch ausgewertet. Danach geht es automatisch los.', 5000); await job.catch(() => {}); }
-  if (p.transcript?.trim() && !p.wishes?.trim() && !p.wishesFromTranscript) {
-    try { toast('Wünsche aus dem Gespräch werden übernommen …', 4000); Object.assign(p, await extractWishes(p)); p.wishesFromTranscript = true; await saveProject(p); }
-    catch (e) { console.warn('Wünsche nicht ableitbar', e); }
-  }
-}
-
 /** Leitet aus dem Transkript die Wünsche ab: fürs Bild (fließt in die Visualisierung) und Sonstiges (fürs spätere Angebot). */
 async function extractWishes(p) {
   const txt = await geminiText([{ text: `Du unterstützt eine Sanierungsfirma. Unten steht das Transkript bzw. die Notizen eines Vor-Ort-Gesprächs mit dem Kunden zum Raum "${p.room}".
@@ -167,30 +178,94 @@ ${p.transcript}` }], true);
   return { wishes: list(j.bild), otherNotes: list(j.sonstiges) };
 }
 
-// ---------- Oberfläche ----------
-function voiceCard(p) {
-  const rec = voice.rec && voice.recId === p.id, busy = !!voicePending(p);
-  const err = voice.error?.id === p.id ? voice.error.msg : '';
-  return `
-    <div class="voice" id="voicecard">
-      <div class="voice-h"><b>Gespräch vor Ort</b><span>Die KI schreibt mit und übernimmt die Wünsche ins Bild. Kunden vorher um Erlaubnis fragen. Während der Aufnahme die App geöffnet lassen.</span></div>
-      <div class="row">
-        <button class="btn ${rec ? 'rec' : ''}" id="vrec" ${busy || (voice.rec && !rec) ? 'disabled' : ''}>${rec ? '■ Aufnahme beenden' : '● Aufnahme starten'}</button>
-        <button class="btn secondary" id="vfile" ${rec || busy ? 'disabled' : ''}>Audio importieren</button>
-      </div>
-      <p class="hint" id="vstatus">${rec ? 'Aufnahme läuft …' : busy ? esc(voice.step || 'Gespräch wird ausgewertet …') : ''}</p>
-      <div class="voice-err" id="verr" ${err ? '' : 'hidden'}><span>${esc(err)}</span> <button class="btn secondary small" id="vretry" hidden>Nochmal auswerten</button></div>
-      <label>Kundenwünsche fürs Bild</label>
-      <textarea id="wishes" placeholder="- z. B. Badewanne raus, bodengleiche Dusche&#10;- Waschtisch an die Fensterwand">${esc(p.wishes)}</textarea>
-      <label>Sonstiges fürs Angebot (nicht im Bild)</label>
-      <textarea id="otherNotes" placeholder="- z. B. Budget ca. 25.000 €, Start im März">${esc(p.otherNotes)}</textarea>
-      <details class="sub">
-        <summary>Transkript / Notizen aus Plaud ${p.transcript ? `(${p.transcript.length} Zeichen)` : ''}</summary>
-        <textarea id="transcript" style="min-height:120px" placeholder="Hier erscheint das Transkript. Oder Text einfügen, z. B. die Zusammenfassung aus der Plaud-App.">${esc(p.transcript)}</textarea>
-        <button class="btn secondary small" id="vextract" style="margin-top:8px" ${p.transcript ? '' : 'disabled'}>Wünsche aus Transkript ableiten</button>
-      </details>
-    </div>`;
+// ---------- Wem gehört das Gespräch? ----------
+// Räume in einem Projekt: ein Gespräch fürs ganze Projekt (die KI verteilt die Wünsche auf die Räume).
+// Räume ohne Projekt (sehr alte Daten): Gespräch nur für diesen Raum.
+const ownerOf = (p) => (p.wohnungId ? { id: p.wohnungId, projekt: true } : { id: p.id, projekt: false });
+async function wohnungVon(id) {
+  if (state.wohnung?.id === id) return state.wohnung;
+  return (await kvGet('wohnung:' + id)) || null;
 }
+const pendingFor = (id) => (voice.job && voice.jobId === id ? voice.job : null);
+function voicePending(p) { return pendingFor(ownerOf(p).id); }
+/** Ansicht neu zeichnen, wenn sie gerade zu diesem Gespräch gehört. */
+function voiceRefresh(id) {
+  if (state.project && ownerOf(state.project).id === id) viewProjekt();
+  else if (!state.project && state.wohnung?.id === id) window.Projekt?.view();
+}
+
+// ---------- Aufnahme (eine zur Zeit; läuft weiter, während man Räume anlegt und fotografiert) ----------
+const REC_MAX_MIN = 90;
+const Rec = {
+  active: () => !!voice.rec,
+  async start(id, label, onBlob) {
+    if (voice.rec) return false;
+    if (!navigator.mediaDevices?.getUserMedia || !window.MediaRecorder) { toast('Aufnahme wird auf diesem Gerät nicht unterstützt. Bitte Audio importieren.', 5000); return false; }
+    try { voice.stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true } }); }
+    catch { toast('Kein Zugriff aufs Mikrofon. Bitte in den iPhone-Einstellungen (Safari > Mikrofon) erlauben.', 6000); return false; }
+    const mime = ['audio/mp4', 'audio/webm;codecs=opus', 'audio/webm'].find((m) => MediaRecorder.isTypeSupported?.(m));
+    let rec;
+    try { rec = new MediaRecorder(voice.stream, { ...(mime ? { mimeType: mime } : {}), audioBitsPerSecond: 64000 }); }
+    catch { rec = new MediaRecorder(voice.stream, mime ? { mimeType: mime } : undefined); }
+    const chunks = [];
+    voice.error = null;
+    rec.ondataavailable = (e) => { if (e.data?.size) chunks.push(e.data); };
+    rec.onerror = (e) => console.warn('Aufnahme-Fehler', e.error || e);
+    let done = false;
+    const finish = () => {
+      if (done) return; done = true;
+      clearInterval(voice.timer); voice.stream?.getTracks().forEach((t) => t.stop());
+      voice.wake?.release?.().catch(() => {}); voice.wake = null;
+      const blob = new Blob(chunks, { type: (rec.mimeType || mime || 'audio/mp4').split(';')[0] });
+      voice.rec = null; voice.recId = null; voice.finish = null;
+      recBar();
+      if (!blob.size) { voice.error = { id, msg: 'Die Aufnahme ist leer angekommen. Bitte App beim Aufnehmen geöffnet lassen und nochmal versuchen.' }; voiceRefresh(id); return; }
+      onBlob(blob);
+      voiceRefresh(id);
+    };
+    // iPhone liefert die Daten erst nach "stop", deshalb kurz warten, falls das letzte Stück noch kommt
+    rec.onstop = () => setTimeout(finish, 300);
+    voice.finish = finish;
+    // Bildschirm anlassen, sonst stoppt das iPhone die Aufnahme beim Sperren
+    try { voice.wake = await navigator.wakeLock?.request('screen'); } catch { voice.wake = null; }
+    voice.stream.getAudioTracks().forEach((t) => (t.onended = () => rec.state !== 'inactive' && rec.stop()));
+    // Kein Zeitraster: das iPhone erzeugt sonst Stücke, die sich später nicht mehr zusammensetzen lassen
+    rec.start();
+    voice.rec = rec; voice.recId = id; voice.recLabel = label; voice.started = Date.now();
+    voice.timer = setInterval(() => {
+      const s = Math.floor((Date.now() - voice.started) / 1000);
+      const el = $('#recbar-t'); if (el) el.textContent = `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+      if (s >= REC_MAX_MIN * 60) { toast(`Nach ${REC_MAX_MIN} Minuten automatisch gestoppt. Für mehr einfach neu starten.`, 5000); Rec.stop(); }
+    }, 1000);
+    recBar();
+    return true;
+  },
+  stop() { if (!voice.rec) return; voice.rec.state !== 'inactive' ? voice.rec.stop() : voice.finish?.(); },
+};
+/** Leiste über der Navigation, solange die Aufnahme läuft (auf jeder Seite sichtbar). */
+function recBar() {
+  let el = $('#recbar');
+  if (!voice.rec) { el?.remove(); document.body.classList.remove('recording'); return; }
+  if (!el) { el = document.createElement('div'); el.id = 'recbar'; el.className = 'recbar'; document.body.appendChild(el); }
+  document.body.classList.add('recording');
+  el.innerHTML = `<span class="rb-dot"></span><span class="rb-t"><b>Aufnahme läuft <span id="recbar-t">0:00</span></b><span>${esc(voice.recLabel || '')}</span></span><button id="recbar-stop">■ Beenden</button>`;
+  $('#recbar-stop').onclick = () => Rec.stop();
+}
+
+// ---------- Auswerten ----------
+/** Führt eine Auswertung aus (eine zur Zeit je Gespräch). Fehler bleiben in der Karte stehen. */
+function voiceRun(id, fn, okMsg = 'Gespräch ausgewertet. Die Wünsche fließen in die Visualisierung ein.') {
+  if (pendingFor(id)) return voice.job;
+  voice.error = null; voice.jobId = id;
+  voice.job = (async () => {
+    try { await fn(); toast(okMsg, 4500); }
+    catch (e) { voice.error = { id, msg: 'Auswertung fehlgeschlagen: ' + (e?.message || 'unbekannter Fehler') }; toast(voice.error.msg, 7000); }
+    finally { voice.job = null; voice.step = ''; voiceRefresh(id); }
+  })();
+  voiceRefresh(id);
+  return voice.job;
+}
+const voiceStatus = (t) => { voice.step = t; const el = $('#vstatus'); if (el) el.textContent = t; };
 
 /** Ergebnis in das Raum-Objekt schreiben, auch wenn der Raum inzwischen neu geladen wurde. */
 function voiceApply(p, fields) {
@@ -198,91 +273,188 @@ function voiceApply(p, fields) {
   if (state.project && state.project !== p && state.project.id === p.id) Object.assign(state.project, fields);
 }
 
+const asList = (a) => (Array.isArray(a) ? a : []).map((s) => String(s).trim()).filter(Boolean);
+const bullets = (a) => asList(a).map((s) => '- ' + s).join('\n');
+
+/** Projekt-Gespräch auf die Räume verteilen. Ein Raum darf an mehreren Stellen besprochen werden. */
+async function zuordnen(w, { fragen = true } = {}) {
+  const g = w.gespraech;
+  if (!g?.transcript?.trim()) return;
+  const list = await window.Projekt.raeume(w);
+  voiceStatus('Wünsche werden den Räumen zugeordnet …');
+  const raumListe = list.map((r) => ({ id: r.id, name: r.room || roomType(r.roomType).name, typ: roomType(r.roomType).name }));
+  const txt = await geminiText([{ text: `Du unterstützt eine Sanierungsfirma. Unten steht das Transkript eines Vor-Ort-Termins beim Kunden${w.customer ? ` (${w.customer}${w.address ? ', ' + w.address : ''})` : ''}. Das Gespräch geht durch mehrere Räume, springt hin und her, und ein Raum kann am Anfang und am Ende nochmal besprochen werden.
+
+In der App angelegte Räume:
+${JSON.stringify(raumListe)}
+
+Ordne jede Aussage dem richtigen Raum zu. Fasse alles, was zu einem Raum gesagt wurde, zusammen. Spätere Aussagen haben Vorrang vor früheren (Kunde ändert seine Meinung). Ist der Raum nicht ausdrücklich genannt, nutze den Zusammenhang (z. B. Dusche, WC -> Bad; Kochfeld -> Küche). Gibt es zwei Räume gleichen Typs, nutze die Namen.
+
+Je Raum als kurze Stichpunkte auf Deutsch:
+- "bild": alles, was man auf einem Foto des sanierten Raums sehen würde (Aufteilung, Dusche/Wanne, Möbel, Farben, Materialien, Fliesen, Licht, was raus soll, was bleiben soll, was NEU dazukommen soll). Schreibe ausdrücklich, wenn etwas neu eingebaut oder entfernt werden soll.
+- "sonstiges": alles andere für Angebot und Planung (Budget, Termine, Maße, Technik, Elektro, Heizung, Barrierefreiheit, offene Fragen).
+"allgemein": was für alle Räume oder die ganze Wohnung gilt (z. B. überall derselbe Boden, Budget insgesamt, Starttermin).
+"fehlend": Räume, über die gesprochen wurde, die aber noch nicht angelegt sind; "typ" ist einer von ${JSON.stringify(ROOM_TYPES.map((r) => r.id))}.
+Nimm nur auf, was wirklich gesagt wurde.
+
+Antworte nur mit JSON:
+{"raeume":[{"id":"<id aus der Liste>","bild":["..."],"sonstiges":["..."]}],"allgemein":{"bild":["..."],"sonstiges":["..."]},"fehlend":[{"name":"...","typ":"...","bild":["..."],"sonstiges":["..."]}]}
+
+TRANSKRIPT:
+${g.transcript}` }], true, { temperature: 0.2 });
+  let j; try { j = JSON.parse(txt.replace(/^```(json)?|```$/g, '').trim()); } catch { throw new Error('Antwort der KI war nicht lesbar. Bitte nochmal versuchen.'); }
+  const allgB = asList(j.allgemein?.bild), allgS = asList(j.allgemein?.sonstiges);
+  const neu = list.map((r) => {
+    const e = (j.raeume || []).find((x) => x.id === r.id) || {};
+    return { r, wishes: bullets([...asList(e.bild), ...allgB.map((s) => s + ' (gilt für alle Räume)')]), otherNotes: bullets([...asList(e.sonstiges), ...allgS.map((s) => s + ' (ganzes Projekt)')]) };
+  });
+  // Selbst geänderte Wünsche nur nach Rückfrage überschreiben
+  const edited = neu.filter(({ r, wishes, otherNotes }) => (r.wishes?.trim() && r.wishes !== r.wishesAuto && r.wishes !== wishes) || (r.otherNotes?.trim() && r.otherNotes !== r.otherAuto && r.otherNotes !== otherNotes));
+  const ueberschreiben = !edited.length || !fragen || confirm(`In ${edited.map(({ r }) => r.room).join(', ')} hast du die Wünsche selbst geändert. Mit dem Gespräch überschreiben?\n\nOK = überschreiben\nAbbrechen = deine Änderungen behalten`);
+  for (const { r, wishes, otherNotes } of neu) {
+    if (!ueberschreiben && edited.some((x) => x.r === r)) continue;
+    voiceApply(r, { wishes, otherNotes, wishesAuto: wishes, otherAuto: otherNotes, wishesFromTranscript: true });
+    await saveProject(r);
+  }
+  Object.assign(g, { zugeordnet: list.map((r) => r.id), allgemein: { bild: allgB, sonstiges: allgS }, fehlend: (j.fehlend || []).filter((f) => f?.name), stand: g.transcript.length });
+  await window.Projekt.save(w);
+}
+
+async function auswertenAudio(owner, blob, fromStore) {
+  if (!fromStore) await audioStore(owner.id, blob); // Aufnahme sichern, damit sie bei einem Fehler nicht verloren ist
+  const t = await transcribeAudio(blob, voiceStatus);
+  const join = (a) => [a?.trim(), t].filter(Boolean).join('\n\n--- weitere Aufnahme ---\n\n');
+  if (owner.projekt) {
+    const w = await wohnungVon(owner.id);
+    if (!w) throw new Error('Projekt nicht gefunden.');
+    w.gespraech = { ...(w.gespraech || {}), transcript: join(w.gespraech?.transcript), t: Date.now() };
+    await window.Projekt.save(w);
+    await zuordnen(w);
+  } else {
+    const p = state.project?.id === owner.id ? state.project : normalizeProject(await kvGet('project:' + owner.id));
+    voiceApply(p, { transcript: join(p.transcript) });
+    await saveProject(p);
+    voiceStatus('Wünsche werden abgeleitet …');
+    voiceApply(p, { ...(await extractWishes(p)), wishesFromTranscript: true });
+    await saveProject(p);
+  }
+  await audioStore(owner.id, null);
+}
+const startAufnahme = (owner, label) => Rec.start(owner.id, label, (blob) => voiceRun(owner.id, () => auswertenAudio(owner, blob)));
+function importAudio(owner) {
+  const inp = document.createElement('input');
+  inp.type = 'file'; inp.accept = 'audio/*,.m4a,.mp3,.wav';
+  inp.onchange = () => inp.files[0] && voiceRun(owner.id, () => auswertenAudio(owner, inp.files[0]));
+  inp.click();
+}
+
+/** Vor dem Visualisieren: laufende Auswertung abwarten, neue Räume zuordnen, Transkript ohne Wünsche noch auswerten. */
+async function voiceReady(p) {
+  const owner = ownerOf(p);
+  const job = pendingFor(owner.id);
+  if (job) { toast('Das Gespräch wird noch ausgewertet. Danach geht es automatisch los.', 5000); await job.catch(() => {}); }
+  try {
+    if (owner.projekt) {
+      const w = await wohnungVon(owner.id);
+      const g = w?.gespraech;
+      if (g?.transcript?.trim() && (!g.zugeordnet?.includes(p.id) || g.stand !== g.transcript.length)) {
+        toast('Wünsche aus dem Gespräch werden übernommen …', 4000);
+        await voiceRun(owner.id, () => zuordnen(w, { fragen: false }), 'Wünsche aus dem Gespräch übernommen.');
+      }
+    } else if (p.transcript?.trim() && !p.wishes?.trim() && !p.wishesFromTranscript) {
+      toast('Wünsche aus dem Gespräch werden übernommen …', 4000);
+      Object.assign(p, await extractWishes(p)); p.wishesFromTranscript = true; await saveProject(p);
+    }
+  } catch (e) { console.warn('Wünsche nicht übernommen', e); }
+}
+
+// ---------- Oberfläche ----------
+function recButtons(owner) {
+  const rec = voice.rec && voice.recId === owner.id, busy = !!pendingFor(owner.id);
+  return `<div class="row">
+      <button class="btn ${rec ? 'rec' : ''}" id="vrec" ${busy || (voice.rec && !rec) ? 'disabled' : ''}>${rec ? '■ Aufnahme beenden' : '● Aufnahme starten'}</button>
+      <button class="btn secondary" id="vfile" ${rec || busy ? 'disabled' : ''}>Audio importieren</button>
+    </div>
+    <p class="hint" id="vstatus">${rec ? 'Aufnahme läuft. Du kannst jetzt Räume anlegen und fotografieren.' : busy ? esc(voice.step || 'Gespräch wird ausgewertet …') : ''}</p>
+    <div class="voice-err" id="verr" ${voice.error?.id === owner.id ? '' : 'hidden'}><span>${esc(voice.error?.id === owner.id ? voice.error.msg : '')}</span> <button class="btn secondary small" id="vretry" hidden>Nochmal auswerten</button></div>`;
+}
+function bindRecButtons(owner, label) {
+  $('#vrec').onclick = () => (voice.rec ? Rec.stop() : startAufnahme(owner, label).then((ok) => ok && voiceRefresh(owner.id)));
+  $('#vfile').onclick = () => importAudio(owner);
+  (async () => { const b = $('#vretry'); if (b && voice.error?.id === owner.id) b.hidden = !(await audioLoad(owner.id)); })();
+  $('#vretry').onclick = async () => { const b = await audioLoad(owner.id); if (b) voiceRun(owner.id, () => auswertenAudio(owner, b, true)); };
+}
+
+/** Karte im Raum: Wünsche dieses Raums; aufgenommen wird fürs ganze Projekt. */
+function voiceCard(p) {
+  const owner = ownerOf(p);
+  return `
+    <div class="voice" id="voicecard">
+      <div class="voice-h"><b>Gespräch vor Ort</b><span>${owner.projekt
+        ? 'Eine Aufnahme fürs ganze Projekt. Einfach laufen lassen, Räume anlegen und fotografieren. Die KI verteilt die Wünsche danach auf die Räume. Kunden vorher um Erlaubnis fragen.'
+        : 'Die KI schreibt mit und übernimmt die Wünsche ins Bild. Kunden vorher um Erlaubnis fragen.'}</span></div>
+      ${recButtons(owner)}
+      <label>Kundenwünsche fürs Bild${owner.projekt ? ' (dieser Raum)' : ''}</label>
+      <textarea id="wishes" placeholder="- z. B. Badewanne raus, bodengleiche Dusche&#10;- Waschtisch an die Fensterwand">${esc(p.wishes)}</textarea>
+      <label>Sonstiges fürs Angebot (nicht im Bild)</label>
+      <textarea id="otherNotes" placeholder="- z. B. Budget ca. 25.000 €, Start im März">${esc(p.otherNotes)}</textarea>
+      ${owner.projekt ? '<p class="hint">Das ganze Gespräch findest du in der Projektübersicht.</p>' : `
+      <details class="sub">
+        <summary>Transkript / Notizen aus Plaud ${p.transcript ? `(${p.transcript.length} Zeichen)` : ''}</summary>
+        <textarea id="transcript" style="min-height:120px" placeholder="Hier erscheint das Transkript. Oder Text einfügen, z. B. die Zusammenfassung aus der Plaud-App.">${esc(p.transcript)}</textarea>
+        <button class="btn secondary small" id="vextract" style="margin-top:8px" ${p.transcript ? '' : 'disabled'}>Wünsche aus Transkript ableiten</button>
+      </details>`}
+    </div>`;
+}
 function bindVoice(p, persist) {
-  const status = (t) => { voice.step = t; const el = $('#vstatus'); if (el && state.project?.id === p.id) el.textContent = t; };
-  for (const id of ['wishes', 'otherNotes', 'transcript']) $('#' + id).oninput = (e) => {
+  const owner = ownerOf(p);
+  for (const id of ['wishes', 'otherNotes', 'transcript']) if ($('#' + id)) $('#' + id).oninput = (e) => {
     p[id] = e.target.value; persist();
     if (id === 'transcript') { $('#vextract').disabled = !p.transcript.trim(); p.wishesFromTranscript = false; }
   };
-  const showRetry = async () => { const b = $('#vretry'); if (b && voice.error?.id === p.id) b.hidden = !(await audioLoad(p.id)); };
-  showRetry();
-
-  const run = (fn) => {
-    if (voicePending(p)) return voice.job;
-    voice.error = null;
-    voice.jobId = p.id;
-    voice.job = (async () => {
-      try { await fn(); toast('Gespräch ausgewertet. Die Wünsche fließen in die Visualisierung ein.', 4000); }
-      catch (e) { voice.error = { id: p.id, msg: 'Auswertung fehlgeschlagen: ' + (e?.message || 'unbekannter Fehler') }; toast(voice.error.msg, 7000); }
-      finally { voice.job = null; voice.step = ''; if (state.project?.id === p.id) viewProjekt(); }
-    })();
-    return voice.job;
-  };
-  const extract = async () => {
-    status('Wünsche werden abgeleitet …');
-    voiceApply(p, { ...(await extractWishes(p)), wishesFromTranscript: true });
-    await saveProject(p);
-  };
-  const handleAudio = (blob, fromStore) => run(async () => {
-    if (!fromStore) await audioStore(p.id, blob); // Aufnahme sichern, damit sie bei einem Fehler nicht verloren ist
-    const t = await transcribeAudio(blob, status);
-    voiceApply(p, { transcript: [p.transcript?.trim(), t].filter(Boolean).join('\n\n--- weitere Aufnahme ---\n\n') });
-    await saveProject(p);
-    await extract(); // nach einer neuen Aufnahme immer neu ableiten
-    await audioStore(p.id, null);
-  });
-
-  $('#vextract').onclick = () => {
+  bindRecButtons(owner, owner.projekt ? [p.customer, 'ganzes Projekt'].filter(Boolean).join(' · ') : p.room);
+  if ($('#vextract')) $('#vextract').onclick = () => {
     if ((p.wishes?.trim() || p.otherNotes?.trim()) && !confirm('Die Wünsche-Felder werden neu aus dem Transkript erstellt. Eigene Änderungen dort gehen verloren. Fortfahren?')) return;
-    run(extract);
-  };
-  $('#vretry').onclick = async () => { const b = await audioLoad(p.id); if (b) handleAudio(b, true); };
-  $('#vfile').onclick = () => {
-    const inp = document.createElement('input');
-    inp.type = 'file'; inp.accept = 'audio/*,.m4a,.mp3,.wav';
-    inp.onchange = () => inp.files[0] && handleAudio(inp.files[0]);
-    inp.click();
-  };
-  $('#vrec').onclick = async () => {
-    if (voice.rec) { voice.rec.state !== 'inactive' ? voice.rec.stop() : voice.finish?.(); return; }
-    if (!navigator.mediaDevices?.getUserMedia || !window.MediaRecorder) return toast('Aufnahme wird auf diesem Gerät nicht unterstützt. Bitte Audio importieren.', 5000);
-    try { voice.stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true } }); }
-    catch { return toast('Kein Zugriff aufs Mikrofon. Bitte in den iPhone-Einstellungen (Safari > Mikrofon) erlauben.', 6000); }
-    const mime = ['audio/mp4', 'audio/webm;codecs=opus', 'audio/webm'].find((m) => MediaRecorder.isTypeSupported?.(m));
-    const rec = new MediaRecorder(voice.stream, mime ? { mimeType: mime } : undefined);
-    voice.chunks = [];
-    voice.error = null;
-    rec.ondataavailable = (e) => { if (e.data?.size) voice.chunks.push(e.data); };
-    rec.onerror = (e) => console.warn('Aufnahme-Fehler', e.error || e);
-    // iPhone liefert die Daten erst nach "stop" – deshalb kurz warten, falls das letzte Stück noch kommt
-    rec.onstop = () => setTimeout(finish, 300);
-    let done = false;
-    function finish() {
-      if (done) return; done = true;
-      clearInterval(voice.timer); voice.stream?.getTracks().forEach((t) => t.stop());
-      voice.wake?.release?.().catch(() => {}); voice.wake = null;
-      const blob = new Blob(voice.chunks, { type: (rec.mimeType || mime || 'audio/mp4').split(';')[0] });
-      voice.rec = null; voice.recId = null; voice.chunks = [];
-      if (!blob.size) {
-        voice.error = { id: p.id, msg: 'Die Aufnahme ist leer angekommen. Bitte App beim Aufnehmen geöffnet lassen und nochmal versuchen.' };
-        if (state.project?.id === p.id) viewProjekt();
-        return;
-      }
-      handleAudio(blob);
-      if (state.project?.id === p.id) viewProjekt();
-    }
-    // Bildschirm anlassen, sonst stoppt das iPhone die Aufnahme beim Sperren
-    try { voice.wake = await navigator.wakeLock?.request('screen'); } catch { voice.wake = null; }
-    voice.stream.getAudioTracks().forEach((t) => (t.onended = () => rec.state !== 'inactive' && rec.stop()));
-    // Kein Zeitraster: das iPhone erzeugt sonst Stücke, die sich später nicht mehr zusammensetzen lassen
-    voice.finish = finish;
-    rec.start();
-    voice.rec = rec; voice.recId = p.id; voice.started = Date.now();
-    voice.timer = setInterval(() => {
-      const s = Math.floor((Date.now() - voice.started) / 1000);
-      if (state.project?.id === p.id) { const el = $('#vstatus'); if (el) el.textContent = `Aufnahme läuft … ${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`; }
-      if (s >= VOICE_MAX_MIN * 60) { toast(`Nach ${VOICE_MAX_MIN} Minuten automatisch gestoppt. Für mehr einfach neu starten.`, 5000); rec.stop(); }
-    }, 1000);
-    $('#vrec').textContent = '■ Aufnahme beenden'; $('#vrec').classList.add('rec'); $('#vfile').disabled = true;
+    voiceRun(owner.id, async () => { voiceStatus('Wünsche werden abgeleitet …'); voiceApply(p, { ...(await extractWishes(p)), wishesFromTranscript: true }); await saveProject(p); });
   };
 }
+
+/** Karte in der Projektübersicht: Aufnahme starten, Ergebnis je Raum, nicht angelegte Räume. */
+window.Gespraech = {
+  karte(w, list) {
+    const owner = { id: w.id, projekt: true }, g = w.gespraech || {};
+    const count = (s) => (s || '').split('\n').filter((l) => l.trim()).length;
+    const offen = list.filter((r) => !g.zugeordnet?.includes(r.id));
+    const fehlend = (g.fehlend || []).filter((f) => !list.some((r) => (r.room || '').toLowerCase() === String(f.name).toLowerCase()));
+    return `
+      <div class="sec-h"><h2>Gespräch vor Ort</h2></div>
+      <div class="card voice-p">
+        <p class="hint" style="margin-top:0">Einmal starten und laufen lassen. Währenddessen Räume anlegen und fotografieren. Am Ende ordnet die KI alles den richtigen Räumen zu, auch wenn ihr über einen Raum mehrmals sprecht. Kunden vorher um Erlaubnis fragen.</p>
+        ${recButtons(owner)}
+        ${g.transcript ? `
+          <div class="vp-list">${list.map((r) => `<div class="vp-r"><b>${esc(r.room || roomType(r.roomType).name)}</b><span>${g.zugeordnet?.includes(r.id) ? `${count(r.wishes)} Wünsche fürs Bild · ${count(r.otherNotes)} fürs Angebot` : 'noch nicht zugeordnet'}</span></div>`).join('')}</div>
+          ${g.allgemein?.bild?.length || g.allgemein?.sonstiges?.length ? `<p class="hint"><b>Für alle Räume:</b> ${esc([...(g.allgemein.bild || []), ...(g.allgemein.sonstiges || [])].join(' · '))}</p>` : ''}
+          ${fehlend.length ? `<div class="vp-miss"><span>Im Gespräch erwähnt, aber noch nicht angelegt:</span>${fehlend.map((f, i) => `<button class="qchip" data-miss="${i}">${icon('plus')} ${esc(f.name)}</button>`).join('')}</div>` : ''}
+          ${offen.length || g.stand !== g.transcript.length ? `<button class="btn secondary small" id="vzu">Wünsche den Räumen neu zuordnen</button>` : ''}
+          <details class="sub"><summary>Ganzes Gespräch (${g.transcript.length} Zeichen)</summary>
+            <textarea id="wTranscript" style="min-height:160px">${esc(g.transcript)}</textarea>
+            <button class="btn secondary small" id="vzu2" style="margin-top:8px">Nach Änderung neu zuordnen</button></details>` : ''}
+      </div>`;
+  },
+  bind(w, list) {
+    if (!$('#vrec')) return;
+    const owner = { id: w.id, projekt: true }, g = w.gespraech || {};
+    bindRecButtons(owner, [w.customer, w.address].filter(Boolean).join(' · ') || 'Projekt');
+    const zu = () => voiceRun(w.id, () => zuordnen(w), 'Wünsche den Räumen zugeordnet.');
+    if ($('#vzu')) $('#vzu').onclick = zu;
+    if ($('#vzu2')) $('#vzu2').onclick = zu;
+    if ($('#wTranscript')) $('#wTranscript').oninput = debounce((e) => { g.transcript = e.target.value; window.Projekt.save(w); }, 500);
+    const fehlend = (g.fehlend || []).filter((f) => !list.some((r) => (r.room || '').toLowerCase() === String(f.name).toLowerCase()));
+    $$('[data-miss]').forEach((b) => (b.onclick = () => {
+      const f = fehlend[+b.dataset.miss];
+      const rt = ROOM_TYPES.some((r) => r.id === f.typ) ? f.typ : roomTypeIdFromName(f.name);
+      const wishes = bullets(f.bild), otherNotes = bullets(f.sonstiges);
+      window.Projekt._intern.addRoom(w, rt, { room: f.name, wishes, otherNotes, wishesAuto: wishes, otherAuto: otherNotes, wishesFromTranscript: true, nachZuordnen: true });
+    }));
+  },
+};
