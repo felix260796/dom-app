@@ -156,6 +156,8 @@ window.Projekt = (() => {
     if (state.wohnung !== w || state.project) return; // inzwischen woanders hin gewechselt
     const leave = () => { state.wohnung = null; viewProjekt(); window.scrollTo(0, 0); };
     const k = Kunden.byId(w.kundeId);
+    const nFotos = k ? await Bilder.anzahl(w.kundeId, w.objektId) : 0;
+    if (state.wohnung !== w || state.project) return;
     header(w.customer || 'Neues Projekt', w.address || (w.isNew ? 'Räume anlegen' : ''), { label: state.tab === 'kunden' && state.kunde ? 'Kunde' : 'Projekte', fn: leave });
     const anyResult = list.some(hasAnyResult);
     const withPhotos = list.filter((r) => r.photos.length);
@@ -175,6 +177,8 @@ window.Projekt = (() => {
           <option value="__neu">Anderes Objekt …</option></select></label>`
         : `<button class="kline" id="wKundeWahl">${icon('user')}<span class="kl-t"><b>${esc(w.customer || 'Kunde zuordnen')}</b><small>Kunde auswählen oder neu anlegen</small></span>${icon('chevron', 'pc-chev')}</button>`}
       </div>
+      ${k ? `<div class="docs" style="margin-top:12px"><button class="doc" id="wBilder"><span class="d-ico brass">${icon('camera')}</span>
+        <span class="d-t"><b>Bilder & Dokumentation</b><span>${nFotos ? `${nFotos} ${nFotos === 1 ? 'Bild' : 'Bilder'} am Objekt` : 'Bestand, Baufortschritt, Abnahme'}</span></span>${icon('chevron', 'pc-chev')}</button></div>` : ''}
       ${window.Gespraech?.karte(w, list) || ''}
 
       <div class="sec-h"><h2>Räume</h2>${list.length ? `<span class="count">${list.length}</span>` : ''}</div>
@@ -220,6 +224,7 @@ window.Projekt = (() => {
       <button class="link-danger" id="wDel">${icon('trash')} Projekt löschen</button>` : ''}`;
 
     if ($('#wKunde')) $('#wKunde').onclick = () => Kunden.oeffnen(k.id);
+    if ($('#wBilder')) $('#wBilder').onclick = () => { Bilder.view({ kundeId: k.id, objektId: w.objektId, titel: [w.customer, w.address].filter(Boolean).join(' · '), zurueck: { label: 'Projekt', fn: () => { view(); window.scrollTo(0, 0); } } }); window.scrollTo(0, 0); };
     if ($('#wObjekt')) $('#wObjekt').onchange = async (e) => {
       let oid = e.target.value;
       if (oid === '__neu') { oid = await Kunden.objektWaehlen(k, 'Welches Objekt?'); if (oid === null) return view(); }

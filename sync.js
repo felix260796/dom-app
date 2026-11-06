@@ -78,7 +78,7 @@ window.Sync = (() => {
     return [...byId.values()].sort((a, b) => (b.created || 0) - (a.created || 0));
   }
   // Gelöschte Räume (project:) und Projekte (wohnung:) werden über die Liste „projectDeleted“ auf allen Geräten entfernt
-  const delId = (k) => (/^(project|wohnung|kunde):/.test(k) ? k.slice(k.indexOf(':') + 1) : '');
+  const delId = (k) => (/^(project|wohnung|kunde|bild):/.test(k) ? k.slice(k.indexOf(':') + 1) : '');
   const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 
   // ---------- Abgleich ----------
@@ -114,7 +114,7 @@ window.Sync = (() => {
       } else meta[k] = { ...m, seen }; // lokal neuer: wird gleich hochgeladen
     }
     // Auf anderem Gerät gelöschte Projekte auch hier entfernen
-    for (const id of tomb) for (const pre of ['project:', 'wohnung:', 'kunde:']) if ((await kvGet(pre + id)) !== undefined) { await rawDel(pre + id); changed.add(pre + id); }
+    for (const id of tomb) for (const pre of ['project:', 'wohnung:', 'kunde:', 'bild:']) if ((await kvGet(pre + id)) !== undefined) { await rawDel(pre + id); changed.add(pre + id); }
     saveMeta();
     // 2) Hochladen, was lokal geändert wurde
     const uploaded = [];

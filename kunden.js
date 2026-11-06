@@ -244,6 +244,8 @@ window.Kunden = (() => {
         <span class="pc-t"><b>${esc(x.room || 'Projekt')}</b><span class="pc-meta">${x.rooms ? `${x.rooms} ${x.rooms === 1 ? 'Raum' : 'Räume'} · ` : ''}${fmtDay(x.updated || x.created)}</span></span>
         ${icon('chevron', 'pc-chev')}</button>`;
     const a = alter(k);
+    const nBilder = Object.fromEntries(await Promise.all(k.objekte.map(async (o) => [o.id, await Bilder.anzahl(k.id, o.id)])));
+    if (state.kunde !== k) return;
     main().innerHTML = `
       <div class="kd-actions" id="kAct"></div>
       <div class="card kform">
@@ -267,6 +269,7 @@ window.Kunden = (() => {
             <input type="text" data-of="adresse" value="${esc(o.adresse)}" placeholder="Straße Nr., PLZ Ort" autocomplete="off">
           </div>
           <div class="o-a">
+            <button class="icon-btn obild" data-obild="${o.id}" aria-label="Bilder">${icon('camera')}${nBilder[o.id] ? `<i>${nBilder[o.id]}</i>` : ''}</button>
             ${o.adresse.trim() ? `<a class="icon-btn" href="${esc(mapLink(o.adresse))}" target="_blank" rel="noopener" aria-label="In Karten öffnen">${icon('map')}</a>` : ''}
             ${idx.some((x) => x.objektId === o.id) ? '' : `<button class="icon-btn" data-odel="${o.id}" aria-label="Objekt entfernen">${icon('trash')}</button>`}
           </div>
@@ -310,6 +313,11 @@ window.Kunden = (() => {
       const o = objekt(k, card.dataset.obj);
       $$('[data-of]', card).forEach((inp) => (inp.oninput = () => { o[inp.dataset.of] = inp.value; persist(); titel(); }));
     });
+    $$('[data-obild]').forEach((b) => (b.onclick = () => {
+      const o = objekt(k, b.dataset.obild);
+      Bilder.view({ kundeId: k.id, objektId: o.id, titel: [name(k), objektText(o)].filter(Boolean).join(' · '), zurueck: { label: name(k) || 'Kunde', fn: () => { detail(k); window.scrollTo(0, 0); } } });
+      window.scrollTo(0, 0);
+    }));
     $$('[data-odel]').forEach((b) => (b.onclick = async () => {
       const o = objekt(k, b.dataset.odel);
       if ((o.adresse.trim() || o.name.trim()) && !confirm(`Objekt „${objLabel(o)}“ entfernen?`)) return;
