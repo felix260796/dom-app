@@ -150,7 +150,7 @@ async function viewProjektListe() {
         </button>`).join('') || '<p class="empty">Nichts gefunden.</p>'}</div>` : `
       <div class="empty-state">${icon('home')}<b>Noch keine Projekte</b><span>Tippe auf „Neues Projekt“, gib den Kunden ein und füge die Räume hinzu.</span></div>`}`;
   $('#new').onclick = () => Projekt.neu();
-  if ($('#toSet')) $('#toSet').onclick = () => switchTab('einstellungen');
+  if ($('#toSet')) $('#toSet').onclick = () => { switchTab('einstellungen'); einstellungSeite('ki'); };
   if ($('#q')) $('#q').oninput = debounce((e) => { listFilter = e.target.value; viewProjektListe().then(() => { const i = $('#q'); if (i) { i.focus(); i.setSelectionRange(i.value.length, i.value.length); } }); }, 250);
   $$('[data-open]').forEach((el) => (el.onclick = async () => {
     if (el.dataset.kind === 'wohnung') return Projekt.oeffnen(el.dataset.open);

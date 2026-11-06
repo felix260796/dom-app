@@ -478,3 +478,5 @@ body.recording main { padding-bottom: 150px; }
 .sres-tab .tot { color: #fff; font-weight: 700; padding-top: 3px; border-top: 1px solid rgba(255,255,255,.18); }
 .psum { display: grid; grid-template-columns: 1fr auto; gap: 4px 12px; margin-top: 8px; padding-top: 10px; border-top: 2px solid var(--line); font-size: 14px; }
 .psum b { text-align: right; }
+.d-t .warn { color: var(--brass); font-weight: 600; }
+#angebot-settings > .card > h2:first-child, #sync-settings > .card > h2:first-child, #backup-settings > .card > h2:first-child { display: none; }

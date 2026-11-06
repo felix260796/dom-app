@@ -222,7 +222,7 @@ window.Kunden = (() => {
     render();
     $('#kq').oninput = (e) => { filter = e.target.value; render(); };
     $('#kNew').onclick = () => { filter = ''; detail(neu({ isNew: true })); window.scrollTo(0, 0); };
-    if ($('#toSet')) $('#toSet').onclick = () => switchTab('einstellungen');
+    if ($('#toSet')) $('#toSet').onclick = () => { switchTab('einstellungen'); einstellungSeite('ki'); };
     window.Backup?.hinweis($('#backupHint'));
   }
 
