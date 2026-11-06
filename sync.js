@@ -18,7 +18,7 @@ window.Sync = (() => {
   // (Bis 6.11.2026 hatte jeder Benutzer einen eigenen Ordner <uid>; der bleibt als Altbestand liegen.)
   const SPACE = 'team';
   // Fest hinterlegt (öffentliche Werte, kein Geheimnis; geschützt wird alles über die Anmeldung)
-  const FEST = { url: 'https://flqjnhetnqdcgskjsgkv.supabase.co', key: '' };
+  const FEST = { url: 'https://flqjnhetnqdcgskjsgkv.supabase.co', key: 'sb_publishable_pw5SIPuEKUS22hU9qzQbOQ_wF_VTLrU' };
   const fest = () => !!FEST.key;
   let cfg = lsGet(LS_CFG, null); // { url, key, email, uid, access, refresh, expires, initialized, space }
   let meta = lsGet(LS_META, {}); // { [key]: { dirty, del, t, seen } }
