@@ -1,10 +1,13 @@
 'use strict';
-// Gescrollt wird im Inhaltsbereich <main>, nicht im Fenster (siehe style.css). Damit der übrige Code
-// unverändert bleibt, gehen window.scrollTo und window.scrollY an diesen Bereich.
+// Ganze Bildschirmhöhe als --voll (siehe style.css, Seitenaufbau): jede Seite ist etwas höher, damit iOS
+// die Leiste unten ganz an den Rand setzt.
 (() => {
-  const m = () => document.getElementById('main');
-  window.scrollTo = (x, y) => { const el = m(); if (!el) return; if (x && typeof x === 'object') el.scrollTo(x); else el.scrollTo(x || 0, y || 0); };
-  try { Object.defineProperty(window, 'scrollY', { configurable: true, get: () => m()?.scrollTop || 0 }); } catch {}
+  const setz = () => {
+    const hoch = innerHeight >= innerWidth;
+    const h = Math.max(hoch ? Math.max(screen.width, screen.height) : Math.min(screen.width, screen.height), innerHeight);
+    document.documentElement.style.setProperty('--voll', h + 'px');
+  };
+  setz(); addEventListener('resize', setz); addEventListener('orientationchange', () => setTimeout(setz, 300));
 })();
 /* DOM – Kern der App: Helfer, Speicher (IndexedDB), KI-Aufrufe (Gemini), Bildfunktionen.
  * Alle Daten liegen lokal auf dem Gerät. Sicherung: backup.js · Cloud-Abgleich: sync.js
