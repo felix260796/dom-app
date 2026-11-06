@@ -6,7 +6,7 @@
  * Kern-Funktionen (Speicher, KI, Bilder) stehen in core.js. */
 
 // ---------- Symbole (einfache Linien-Icons) ----------
-const APP_VERSION = '46';
+const APP_VERSION = '47';
 const ICONS = {
   plus: '<path d="M12 5v14M5 12h14"/>',
   camera: '<path d="M3 8.5A2 2 0 0 1 5 6.5h2l1.6-2h6.8l1.6 2h2a2 2 0 0 1 2 2V18a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><circle cx="12" cy="13" r="3.6"/>',
@@ -157,7 +157,7 @@ async function viewProjektListe() {
       <span class="cta-t"><b>Neues Projekt</b></span>
       ${icon('chevron', 'cta-chev')}
     </button>
-    ${state.settings.apiKey ? '' : `<button class="notice" id="toSet">${icon('gear')}<span><b>KI noch nicht eingerichtet.</b> Einmalig den Google-Schlüssel in den Einstellungen eintragen.</span>${icon('chevron')}</button>`}
+    ${state.settings.apiKey || (window.Sync?.fest() && !window.Sync.active()) ? '' : `<button class="notice" id="toSet">${icon('gear')}<span><b>KI noch nicht eingerichtet.</b> Einmalig den Google-Schlüssel in den Einstellungen eintragen.</span>${icon('chevron')}</button>`}
     <div id="backupHint"></div>
     ${alleP.length ? `<div class="seg2 full wstatus lstat" style="margin-top:14px">${GR.map(([id, n, c]) => `<button data-ls="${id}" class="${listStatus === id ? 'on' : ''}" style="--c:${c}">${n} <small>${alleP.filter((x) => grOf(x) === id).length}</small></button>`).join('')}</div>` : ''}
     ${idx.length ? `

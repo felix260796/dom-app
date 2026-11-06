@@ -123,6 +123,11 @@ window.Backup = (() => {
   async function hinweis(el) {
     if (!el) return;
     const idx = (await kvGet('projectIndex')) || [];
+    if (!idx.length && window.Sync?.fest() && !window.Sync.active()) {
+      el.innerHTML = `<button class="notice" id="bhCloud">${icon('refresh')}<span><b>Neues Gerät?</b> Einmal mit E-Mail und Passwort anmelden, dann sind alle Daten und Einstellungen wieder da.</span>${icon('chevron', 'pc-chev')}</button>`;
+      $('#bhCloud', el).onclick = () => { switchTab('einstellungen'); einstellungSeite('cloud'); };
+      return;
+    }
     if (!idx.length) {
       el.innerHTML = `<button class="notice" id="bhRestore">${icon('upload')}<span><b>Neues Gerät?</b> ${window.Sync?.active() ? 'Der Cloud-Abgleich holt deine Projekte gleich. Oder hier' : 'Hier'} eine Sicherung zurückholen.</span>${icon('chevron', 'pc-chev')}</button>`;
       $('#bhRestore', el).onclick = restore;
