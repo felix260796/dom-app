@@ -6,7 +6,7 @@
  * Kern-Funktionen (Speicher, KI, Bilder) stehen in core.js. */
 
 // ---------- Symbole (einfache Linien-Icons) ----------
-const APP_VERSION = '49';
+const APP_VERSION = '50';
 const ICONS = {
   plus: '<path d="M12 5v14M5 12h14"/>',
   camera: '<path d="M3 8.5A2 2 0 0 1 5 6.5h2l1.6-2h6.8l1.6 2h2a2 2 0 0 1 2 2V18a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><circle cx="12" cy="13" r="3.6"/>',
@@ -99,7 +99,7 @@ function switchTab(tab, restore) {
   $$('.tabbar button').forEach((b) => b.classList.toggle('active', b.dataset.tab === tab));
   window.scrollTo(0, 0);
   if (tab === 'einstellungen') state.editPkg = null;
-  ({ kunden: viewProjekt, partner: () => Partner.start(), projekt: viewProjekt, schnell: () => Schnell.view(), einstellungen: viewEinstellungen })[tab]();
+  ({ kunden: viewProjekt, partner: () => Partner.start(), projekt: viewProjekt, angebote: viewProjekt, einstellungen: viewEinstellungen })[tab]();
 }
 /** Reiter wechseln und dort direkt etwas öffnen, z. B. openTab('kunden', { kunde }). */
 window.openTab = (tab, s) => switchTab(tab, s);
@@ -139,15 +139,13 @@ function objektZeile(x) {
   const k = Kunden.byId(x.kundeId), o = k && Kunden.objekt(k, x.objektId);
   return [o && o.name.trim(), x.address || (o && Kunden.einzeilig(o.adresse))].filter(Boolean).join(' · ');
 }
-let listFilter = '', listStatus = '', listKarte = false;
+let listFilter = '', listStatus = 'auftrag', listKarte = false;
 async function viewProjektListe() {
-  // Reiter: Angebote (versendet und abgesagt) · Eingeplant · Läuft · Fertig
-  const GR = [['angebot', 'Angebote', Projekt.ANGEBOT[0][2]], ['geplant', 'Eingeplant', Projekt.STATUS[0][2]], ['', 'Läuft', Projekt.STATUS[1][2]], ['fertig', 'Fertig', Projekt.STATUS[2][2]]];
-  header({ '': 'Laufende Projekte', angebot: 'Angebote', geplant: 'Eingeplante Projekte', fertig: 'Abgeschlossene Projekte' }[listStatus], state.settings.company || '');
+  // Vier Bereiche: Angebot · Auftrag · Abrechnung · Erledigt (siehe Projekt.PHASEN)
+  header('Projekte', state.settings.company || '');
   const alleP = await projectIndex();
-  const stOf = (x) => (Projekt.ALLE.some((s) => s[0] === x.status) ? x.status : '');
-  const grOf = (x) => (stOf(x) === 'abgesagt' ? 'angebot' : stOf(x));
-  const idx = alleP.filter((x) => grOf(x) === listStatus).sort((a, b) => (stOf(a) === 'abgesagt') - (stOf(b) === 'abgesagt'));
+  const reihe = Projekt.ALLE.map((s) => s[0]);
+  const idx = alleP.filter((x) => Projekt.phase(x.status) === listStatus).sort((a, b) => reihe.indexOf(Projekt.norm(a.status)) - reihe.indexOf(Projekt.norm(b.status)) || (b.updated || 0) - (a.updated || 0));
   const q = listFilter.trim().toLowerCase();
   const hay = (x) => { const k = Kunden.byId(x.kundeId); return `${x.nr || ''} ${x.titel || ''} ${x.customer} ${x.address || ''} ${x.room || ''} ${k ? `${k.nr} ${k.telefon} ${k.email} ${k.privat}` : ''}`.toLowerCase(); };
   const shown = q ? idx.filter((x) => q.split(/\s+/).every((t) => hay(x).includes(t))) : idx;
@@ -159,20 +157,20 @@ async function viewProjektListe() {
     </button>
     ${state.settings.apiKey || (window.Sync?.fest() && !window.Sync.active()) ? '' : `<button class="notice" id="toSet">${icon('gear')}<span><b>KI noch nicht eingerichtet.</b> Einmalig den Google-Schlüssel in den Einstellungen eintragen.</span>${icon('chevron')}</button>`}
     <div id="backupHint"></div>
-    ${alleP.length ? `<div class="seg2 full wstatus lstat" style="margin-top:14px">${GR.map(([id, n, c]) => `<button data-ls="${id}" class="${listStatus === id ? 'on' : ''}" style="--c:${c}">${n} <small>${alleP.filter((x) => grOf(x) === id).length}</small></button>`).join('')}</div>` : ''}
+    ${alleP.length ? `<div class="phasen">${Projekt.PHASEN.map(([id, n]) => `<button data-ls="${id}" class="${listStatus === id ? 'on' : ''}"><b>${alleP.filter((x) => Projekt.phase(x.status) === id).length}</b><span>${n}</span></button>`).join('')}</div>` : ''}
     ${idx.length ? `
       <div class="lk-row"><label class="search">${icon('search')}<input type="search" id="q" value="${esc(listFilter)}" placeholder="Kunde, Adresse, Raum oder Nummer" autocomplete="off"></label>
         <button class="lk-toggle ${listKarte ? 'on' : ''}" id="lkToggle">${icon(listKarte ? 'list' : 'map')}<span>${listKarte ? 'Liste' : 'Karte'}</span></button></div>
       ${listKarte ? '<div class="pmap" id="pmap"></div><p class="hint pmap-info" id="pmapInfo">Karte wird geladen …</p>' : `<div class="plist">${shown.map((x) => `
         <button class="pcard" data-open="${x.id}" data-kind="${x.kind || ''}">
           ${x.thumb ? `<img src="${x.thumb}" alt="">` : `<span class="pc-ph">${icon('home')}</span>`}
-          <span class="pc-t"><b>${esc(x.titel || x.room || 'Projekt')}${stOf(x) === 'abgesagt' ? ' <span class="st-pill">Abgesagt</span>' : ''}</b>
+          <span class="pc-t"><b>${esc(x.titel || x.room || 'Projekt')}</b>${Projekt.pill(x.status)}
             ${projektOrt(x) ? `<span class="muted pc-wo">${icon('map')}${esc(projektOrt(x))}</span>` : ''}
             ${projektKunde(x) ? `<span class="muted pc-wer">${icon('user')}${esc(projektKunde(x))}</span>` : ''}
             ${x.fort && Projekt.zugesagt(x.status) ? `<span class="bf-mini">${Fortschritt.balken(x.fort)}</span>` : ''}</span>
           ${icon('chevron', 'pc-chev')}
         </button>`).join('') || '<p class="empty">Nichts gefunden.</p>'}</div>`}` : `
-      <div class="empty-state">${icon('home')}<b>${{ '': 'Keine laufenden Projekte', angebot: 'Keine offenen Angebote', geplant: 'Nichts eingeplant', fertig: 'Noch nichts abgeschlossen' }[listStatus]}</b><span>${alleP.length ? 'Den Status stellst du im Projekt direkt unter dem Kunden ein.' : 'Tippe auf „Neues Projekt“, gib den Kunden ein und füge die Räume hinzu.'}</span></div>`}`;
+      <div class="empty-state">${icon('home')}<b>${{ angebot: 'Keine offenen Angebote', auftrag: 'Gerade keine Aufträge', abrechnung: 'Nichts abzurechnen', erledigt: 'Noch nichts erledigt' }[listStatus]}</b><span>${alleP.length ? 'Den Status stellst du im Projekt direkt unter dem Kunden ein.' : 'Tippe auf „Neues Projekt“, gib den Kunden ein und füge die Räume hinzu.'}</span></div>`}`;
   $$('[data-ls]').forEach((b) => (b.onclick = () => { listStatus = b.dataset.ls; viewProjektListe(); }));
   if ($('#lkToggle')) $('#lkToggle').onclick = () => { listKarte = !listKarte; viewProjektListe(); };
   if (listKarte && $('#pmap')) window.Karte?.zeigen($('#pmap'), shown, $('#pmapInfo'), (id) => Projekt.oeffnen(id));
@@ -192,7 +190,7 @@ async function viewProjektListe() {
 const uiOpen = { more: false };
 async function viewProjekt() {
   const p = normalizeProject(state.project);
-  if (!p) return state.wohnung ? Projekt.view() : state.tab === 'kunden' ? Kunden.start() : viewProjektListe();
+  if (!p) return state.wohnung ? Projekt.view() : state.tab === 'kunden' ? Kunden.start() : state.tab === 'angebote' ? Angebote.view() : viewProjektListe();
   const w = state.wohnung;
   const rt = roomType(p.roomType);
   const backToProject = () => { state.project = null; viewProjekt(); window.scrollTo(0, 0); };

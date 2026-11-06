@@ -7,13 +7,47 @@
  * Baut auf core.js/app.js auf (state, kvGet/kvSet/kvDel, saveProject, packagesFor, header, icon, …). */
 window.Projekt = (() => {
   const PKG_IDS = Object.keys(PKG_META); // basic, standard, premium
-  // Projektstatus in zwei Stufen. Zuerst das Angebot: 'angebot' = versendet, 'abgesagt'. Zugesagt heißt: es geht
-  // in die Ausführung mit 'geplant' = eingeplant, '' = läuft (Standard, auch für alte Projekte), 'fertig' = abgeschlossen.
-  const ANGEBOT = [['angebot', 'Angebot versendet', '#7a6a9e'], ['abgesagt', 'Abgesagt', '#9a8f86']];
-  const STATUS = [['geplant', 'Eingeplant', '#5b7a99'], ['', 'Läuft', '#b8862f'], ['fertig', 'Abgeschlossen', '#237a4b']];
-  const ALLE = [...ANGEBOT, ...STATUS];
-  const zugesagt = (st) => STATUS.some((s) => s[0] === (st || ''));
-  const statusName = (st) => (ALLE.find((s) => s[0] === (st || '')) || STATUS[1])[1];
+  // Ablauf eines Projekts, ein Status nach dem anderen ('' = Baustelle läuft, auch für alte Projekte ohne Status).
+  // [id, Name, Farbe, kurzer Name für Listen]
+  const ALLE = [
+    ['besichtigung', 'Besichtigung', '#8a8f98', 'Besichtigung'],
+    ['entwurf', 'Angebot in Arbeit', '#c99a2e', 'In Arbeit'],
+    ['angebot', 'Angebot versendet', '#3b6ea8', 'Versendet'],
+    ['abgesagt', 'Abgesagt', '#c0392b', 'Abgesagt'],
+    ['geplant', 'Zugesagt, wird eingeplant', '#2f8a57', 'Zugesagt'],
+    ['', 'Baustelle läuft', '#17808a', 'Läuft'],
+    ['fertig', 'Abgeschlossen', '#1e3550', 'Abgeschlossen'],
+    ['rechnung', 'Rechnung gestellt', '#d2691e', 'Rechnung'],
+    ['bezahlt', 'Bezahlt', '#1b5e3a', 'Bezahlt'],
+  ];
+  // Die vier Bereiche in „Projekte“
+  const PHASEN = [
+    ['angebot', 'Angebot', ['besichtigung', 'entwurf', 'angebot']],
+    ['auftrag', 'Auftrag', ['geplant', '']],
+    ['abrechnung', 'Abrechnung', ['fertig', 'rechnung']],
+    ['erledigt', 'Erledigt', ['bezahlt', 'abgesagt']],
+  ];
+  // Der nächste Schritt als großer Knopf im Projekt
+  const WEITER = {
+    besichtigung: ['entwurf', 'Angebot erstellen'],
+    entwurf: ['angebot', 'Angebot ist verschickt'],
+    geplant: ['', 'Baustart: Baustelle läuft'],
+    '': ['fertig', 'Baustelle abschließen'],
+    fertig: ['rechnung', 'Rechnung ist gestellt'],
+    rechnung: ['bezahlt', 'Zahlung ist eingegangen'],
+  };
+  const PFAD = ['besichtigung', 'entwurf', 'angebot', 'geplant', '', 'fertig', 'rechnung', 'bezahlt'];
+  const norm = (st) => (ALLE.some((s) => s[0] === st) ? st : '');
+  const info = (st) => ALLE.find((s) => s[0] === norm(st));
+  const statusName = (st) => info(st)[1];
+  const statusKurz = (st) => info(st)[3];
+  const farbe = (st) => info(st)[2];
+  const phase = (st) => PHASEN.find((p) => p[2].includes(norm(st)))[0];
+  const zugesagt = (st) => ['geplant', '', 'fertig', 'rechnung', 'bezahlt'].includes(norm(st));
+  const pill = (st) => `<span class="st-pill" style="--c:${farbe(st)}">${esc(statusKurz(st))}</span>`;
+  // Für ältere Teile der App
+  const ANGEBOT = ALLE.filter((s) => ['angebot', 'abgesagt'].includes(s[0]));
+  const STATUS = ALLE.filter((s) => ['geplant', '', 'fertig'].includes(s[0]));
   const rooms = new Map(); // geladene Räume (dasselbe Objekt für Ansicht und laufende KI-Aufträge)
   let running = null; // Projekt-ID, während „Alle Räume visualisieren“ läuft
 
@@ -88,7 +122,7 @@ window.Projekt = (() => {
   /** Neues Projekt für Kunde k am Objekt oid. Gespeichert wird es mit dem ersten Raum. */
   function neuFuer(k, oid) {
     const w = neuesProjekt();
-    w.isNew = true; w.status = 'angebot';
+    w.isNew = true; w.status = 'besichtigung';
     w.kundeId = k.id; w.objektId = oid || '';
     w.customer = Kunden.name(k); w.address = Kunden.einzeilig(Kunden.objekt(k, oid)?.adresse || '');
     state.project = null; state.wohnung = w; view(); window.scrollTo(0, 0);
@@ -166,7 +200,7 @@ window.Projekt = (() => {
     const k = Kunden.byId(w.kundeId);
     const nFotos = k ? await Bilder.anzahl(w.kundeId, w.objektId, w.id) : 0;
     if (state.wohnung !== w || state.project) return;
-    const zurueckLabel = state.tab === 'kunden' && state.kunde ? (state.objekt ? 'Objekt' : 'Kunde') : 'Projekte';
+    const zurueckLabel = state.tab === 'kunden' && state.kunde ? (state.objekt ? 'Objekt' : 'Kunde') : state.tab === 'angebote' ? 'Angebote' : 'Projekte';
     header(w.customer || 'Neues Projekt', [w.nr && `Projekt-Nr. ${w.nr}`, w.address || (w.isNew ? 'Räume anlegen' : '')].filter(Boolean).join(' · '), { label: zurueckLabel, fn: leave });
     const anyResult = list.some(hasAnyResult);
     const withPhotos = list.filter((r) => r.photos.length);
@@ -187,11 +221,8 @@ window.Projekt = (() => {
         <label class="ic-field">${icon('edit')}<input type="text" id="wTitel" value="${esc(w.titel || '')}" placeholder="Projektname, z. B. Badumbau" autocomplete="off" aria-label="Projektname"></label>`
         : `<button class="kline" id="wKundeWahl">${icon('user')}<span class="kl-t"><b>${esc(w.customer || 'Kunde zuordnen')}</b><small>Kunde auswählen oder neu anlegen</small></span>${icon('chevron', 'pc-chev')}</button>`}
       </div>
-      <div class="wstat-l">Angebot</div>
-      <div class="seg2 full wstatus" id="wStatus">${[['angebot', 'Versendet', ANGEBOT[0][2]], ['abgesagt', 'Abgesagt', ANGEBOT[1][2]], ['__zu', 'Zugesagt', '#237a4b']].map(([id, n, c]) => `<button data-st="${id}" class="${(id === '__zu' ? zugesagt(w.status) : (w.status || '') === id) ? 'on' : ''}" style="--c:${c}">${n}</button>`).join('')}</div>
-      ${zugesagt(w.status) ? `<div class="wstat-l">Ausführung</div>
-      <div class="seg2 full wstatus">${STATUS.map(([id, n, c]) => `<button data-st="${id}" class="${(w.status || '') === id ? 'on' : ''}" style="--c:${c}">${n}</button>`).join('')}</div>
-      <div id="wFort"></div>` : ''}
+      ${statusKarte(w)}
+      ${['geplant', '', 'fertig'].includes(norm(w.status)) ? '<div id="wFort"></div>' : ''}
       ${k ? `<div class="docs" style="margin-top:12px"><button class="doc" id="wBilder"><span class="d-ico brass">${icon('camera')}</span>
         <span class="d-t"><b>Bilder & Dokumentation</b><span>${nFotos ? `${nFotos} ${nFotos === 1 ? 'Bild' : 'Bilder'} in diesem Projekt` : 'Bestand, Baufortschritt, Abnahme, eigene Ordner'}</span></span>${icon('chevron', 'pc-chev')}</button></div>` : ''}
       ${window.Gespraech?.karte(w, list) || ''}
@@ -240,13 +271,22 @@ window.Projekt = (() => {
       <button class="link-danger" id="wDel">${icon('trash')} Projekt löschen</button>` : ''}`;
     if ($('#wFort')) window.Fortschritt?.abschnitt($('#wFort'), w, list, () => save(w));
     if (k && $('#wTermine')) window.Kalender?.abschnitt($('#wTermine'), { kundeId: k.id, objektId: w.objektId, projektId: w.id, zurueck: () => view() });
+    const setzen = async (v) => {
+      w.status = v;
+      if (!w.isNew) await save(w);
+      toast(statusName(v));
+      const y = window.scrollY; await view(); window.scrollTo(0, y);
+    };
     $$('[data-st]').forEach((b) => (b.onclick = async () => {
       const v = b.dataset.st;
-      if (v === '__zu') { if (zugesagt(w.status)) return; w.status = 'geplant'; } else w.status = v;
-      if (!w.isNew) await save(w);
-      toast(`Status: ${v === '__zu' ? 'Zugesagt, eingeplant' : statusName(w.status)}`);
-      const y = window.scrollY; await view(); window.scrollTo(0, y);
+      // „Angebot erstellen“ öffnet gleich das Angebot
+      if (norm(w.status) === 'besichtigung' && v === 'entwurf' && list.length) { w.status = v; if (!w.isNew) await save(w); return $('#dAngebot')?.click(); }
+      setzen(v);
     }));
+    if ($('#stAlle')) $('#stAlle').onclick = async () => {
+      const v = await sheet('Status ändern', ALLE.map(([id, n, c]) => ({ label: n, icon: '<i class="si-dot"></i>', color: c, value: id || '__laeuft' })));
+      if (v !== null) setzen(v === '__laeuft' ? '' : v);
+    };
 
     if ($('#wKunde')) $('#wKunde').onclick = () => Kunden.oeffnen(k.id);
     if ($('#wTitel')) $('#wTitel').oninput = debounce(async (e) => { w.titel = e.target.value.trim(); if (!w.isNew) await save(w); }, 500);
@@ -290,7 +330,21 @@ window.Projekt = (() => {
       };
     }
   }
-  function raumAngebot(r, w) { r.customer = w.customer; r.address = w.address; r.kundeId = w.kundeId; r.projektNr = w.nr || ''; state.project = r; state.angebotAusProjekt = true; window.Angebot?.ansicht(r); }
+  /** Statuskarte im Projekt: wo steht es, was kommt als Nächstes (ein großer Knopf). */
+  function statusKarte(w) {
+    const st = norm(w.status), i = PFAD.indexOf(st), nx = WEITER[st];
+    const knoepfe = st === 'angebot'
+      ? `<div class="stk-2"><button class="btn" data-st="geplant" style="--c:#2f8a57">${icon('check')} Zugesagt</button><button class="btn" data-st="abgesagt" style="--c:#c0392b">${icon('x')} Abgesagt</button></div>`
+      : nx ? `<button class="btn block" data-st="${nx[0]}" style="--c:${farbe(nx[0])}">${esc(nx[1])}</button>` : '';
+    return `<div class="card stk" style="--c:${farbe(st)}">
+      <div class="stk-top"><span class="stk-dot"></span><span class="stk-t"><small>Status</small><b>${esc(statusName(st))}</b></span><button class="stk-alle" id="stAlle">Ändern</button></div>
+      <div class="stk-pfad" aria-hidden="true">${PFAD.map((id, j) => `<i class="${st === 'abgesagt' ? (j <= 2 ? 'ab' : '') : j < i ? 'ok' : j === i ? 'jetzt' : ''}" style="--c:${farbe(id)}"></i>`).join('')}</div>
+      ${knoepfe}</div>`;
+  }
+
+  function raumAngebot(r, w) {
+    if (norm(w.status) === 'besichtigung') { w.status = 'entwurf'; if (!w.isNew) save(w); }
+    r.customer = w.customer; r.address = w.address; r.kundeId = w.kundeId; r.projektNr = w.nr || ''; state.project = r; state.angebotAusProjekt = true; window.Angebot?.ansicht(r); }
 
   async function runAll(w) {
     if (!state.settings.apiKey) { toast('Bitte zuerst in den Einstellungen den API-Schlüssel eintragen.', 4000); return; }
@@ -429,7 +483,7 @@ window.Projekt = (() => {
   }
 
   const forget = (id) => rooms.delete(id);
-  return { STATUS, ANGEBOT, ALLE, zugesagt, statusName, forget, neu, neuFuer, kundeUebernehmen, oeffnen, view, mappeView, moodboardView, migrate, raum, raeume, raumGespeichert, raumEntfernt, save, wahl, PKG_IDS, _intern: { titel, addRoom } };
+  return { STATUS, ANGEBOT, ALLE, PHASEN, phase, farbe, pill, norm, zugesagt, statusName, statusKurz, raumAngebot, forget, neu, neuFuer, kundeUebernehmen, oeffnen, view, mappeView, moodboardView, migrate, raum, raeume, raumGespeichert, raumEntfernt, save, wahl, PKG_IDS, _intern: { titel, addRoom } };
 })();
 // Ältere Aufrufe (PR „Wohnungen“) laufen weiter
 window.Wohnung = { neu: () => Projekt.neu(), oeffnen: (id) => Projekt.oeffnen(id), view: () => Projekt.view(), raumGespeichert: (p) => Projekt.raumGespeichert(p), raumEntfernt: (p) => Projekt.raumEntfernt(p) };

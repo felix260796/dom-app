@@ -700,3 +700,34 @@ input.bad { border-color: var(--danger) !important; background: var(--danger-sof
 
 .pc-wo, .pc-wer { display: flex; align-items: center; gap: 5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .pc-wo svg.i, .pc-wer svg.i { width: 15px; height: 15px; flex: none; opacity: .7; }
+
+/* ---------- Ablauf: Status ---------- */
+.st-pill { display: inline-flex; align-self: flex-start; width: max-content; margin: 3px 0 1px; vertical-align: 0; font-size: 11.5px; font-weight: 700; color: #fff; background: var(--c, #9a8f86); border-radius: 999px; padding: 2px 9px; letter-spacing: .01em; }
+.pc-t > b + .st-pill { margin-left: 0; }
+.stk { border-left: 5px solid var(--c); padding-top: 12px; }
+.stk-top { display: flex; align-items: center; gap: 10px; }
+.stk-dot { width: 12px; height: 12px; border-radius: 50%; background: var(--c); flex: none; box-shadow: 0 0 0 4px color-mix(in srgb, var(--c) 18%, transparent); }
+.stk-t { flex: 1; display: flex; flex-direction: column; line-height: 1.2; }
+.stk-t small { font-size: 12px; color: var(--muted); font-weight: 600; }
+.stk-t b { font-size: 18px; }
+.stk-alle { border: 1px solid var(--line); background: #fff; border-radius: 10px; padding: 6px 11px; font-size: 13.5px; font-weight: 650; color: var(--navy); }
+.stk-pfad { display: flex; gap: 4px; margin: 12px 0 12px; }
+.stk-pfad i { flex: 1; height: 6px; border-radius: 3px; background: #e7e3db; }
+.stk-pfad i.ok { background: var(--c); opacity: .55; }
+.stk-pfad i.jetzt { background: var(--c); }
+.stk-pfad i.ab { background: #c0392b; opacity: .55; }
+.stk .btn[style*="--c"] { background: var(--c); border-color: var(--c); color: #fff; }
+.stk-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.stk-2 .btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; }
+.si-dot { display: block; width: 14px; height: 14px; border-radius: 50%; background: var(--c); }
+/* Bereiche in Projekte */
+.phasen { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin: 14px 0 4px; }
+.phasen button { border: 1.5px solid var(--line); background: #fff; border-radius: 12px; padding: 8px 4px 7px; display: flex; flex-direction: column; align-items: center; gap: 1px; color: var(--muted); }
+.phasen button b { font-size: 19px; color: var(--navy); line-height: 1.1; }
+.phasen button span { font-size: 12.5px; font-weight: 650; }
+.phasen button.on { background: var(--navy); border-color: var(--navy); color: rgba(255,255,255,.8); }
+.phasen button.on b { color: #fff; }
+.ang-sum { font-weight: 700; color: var(--navy); font-size: 14px; }
+.notice.plain { background: #fff; border-color: var(--line); color: var(--text); }
+.notice.plain svg.i { color: var(--navy); }
+.phasen.drei { grid-template-columns: repeat(3, 1fr); }

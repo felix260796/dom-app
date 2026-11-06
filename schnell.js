@@ -44,7 +44,7 @@ window.Schnell = (() => {
   async function view() {
     await laden(); await A().preisliste(); await A().vorlagen();
     const PL = await A().preisliste();
-    header('Schnellangebot', 'Grober Preis, z. B. am Telefon');
+    header('Schnellangebot', 'Grober Preis, z. B. am Telefon', window.Angebote ? { label: 'Angebote', fn: () => { Angebote.view(); window.scrollTo(0, 0); } } : null);
     const pk = Object.entries(PKG_META);
     const gewerke = [...new Set(PL.positionen.map((x) => x.gewerk))].filter((g) => g && !/eigenleistung/i.test(g));
     main().innerHTML = `

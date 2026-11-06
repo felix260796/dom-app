@@ -48,7 +48,7 @@ window.Karte = (() => {
     if (karte) { try { karte.remove(); } catch {} karte = null; }
     karte = L.map(el, { zoomControl: true, attributionControl: true }).setView([48.78, 9.18], 10);
     L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '© OpenStreetMap' }).addTo(karte);
-    const farbe = (st) => (Projekt.ALLE.find((s) => s[0] === (st || '')) || Projekt.STATUS[1])[2];
+    const farbe = (st) => Projekt.farbe(st);
     // Projekte am selben Objekt teilen sich einen Pin
     const orte = new Map(), ohne = [];
     for (const x of projekte) {

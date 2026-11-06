@@ -464,7 +464,7 @@ window.Kunden = (() => {
       ${x.thumb ? `<img src="${x.thumb}" alt="">` : `<span class="pc-ph">${icon('home')}</span>`}
       <span class="pc-t"><b>${esc(x.titel || x.room || 'Projekt')}</b>
         <span class="muted">${esc([x.nr, wo, x.titel && x.room].filter(Boolean).join(' · '))}</span>
-        <span class="pc-meta">${x.rooms ? `${x.rooms} ${x.rooms === 1 ? 'Raum' : 'Räume'} · ` : ''}${fmtDay(x.updated || x.created)}</span></span>
+        ${window.Projekt ? Projekt.pill(x.status) : ''}</span>
       ${icon('chevron', 'pc-chev')}</button>`;
 
   // ---------- Ansicht: ein Objekt (Anschrift, Notiz, Bilder, Projekte dort) ----------
