@@ -308,7 +308,7 @@ window.Projekt = (() => {
     const seiten = () => picks().reduce((n, { r, w: v }) => n + (v === 'alle' ? PKG_IDS.filter((id) => done(r, id)).length : 1), 0);
     main().innerHTML = `
       <div class="card intro">
-        <p>Wähle für jeden Raum, ob der Kunde, <b>alle Varianten</b> zum Vergleich sieht oder <b>ein Paket</b>. Danach als Vorher-Nachher-PDF oder als Präsentation nur mit den neuen Bildern erstellen.</p>
+        <p>Wähle für jeden Raum, ob der Kunde <b>alle Varianten</b> zum Vergleich sieht oder <b>ein Paket</b>. Danach als Vorher-Nachher-PDF oder als Präsentation nur mit den neuen Bildern erstellen.</p>
         <div class="quick"><span>Für alle Räume:</span>
           <button class="qchip" data-all="alle">Alle Varianten</button>
           ${allPk.map((id) => `<button class="qchip" data-all="${id}" style="--c:${col(id)}">${esc(nm(id))}</button>`).join('')}
