@@ -6,7 +6,7 @@
  * Kern-Funktionen (Speicher, KI, Bilder) stehen in core.js. */
 
 // ---------- Symbole (einfache Linien-Icons) ----------
-const APP_VERSION = '59';
+const APP_VERSION = '60';
 const ICONS = {
   plus: '<path d="M12 5v14M5 12h14"/>',
   camera: '<path d="M3 8.5A2 2 0 0 1 5 6.5h2l1.6-2h6.8l1.6 2h2a2 2 0 0 1 2 2V18a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><circle cx="12" cy="13" r="3.6"/>',
@@ -101,7 +101,7 @@ function switchTab(tab, restore) {
   $$('.tabbar button').forEach((b) => b.classList.toggle('active', b.dataset.tab === tab));
   window.scrollTo(0, 0);
   if (tab === 'einstellungen') state.editPkg = null;
-  ({ kunden: viewProjekt, partner: () => Partner.start(), projekt: viewProjekt, angebote: viewProjekt, rechnungen: () => Finanzen.view(), einstellungen: viewEinstellungen })[tab]();
+  ({ kunden: viewProjekt, partner: () => Partner.start(), projekt: viewProjekt, angebote: viewProjekt, rechnungen: () => Finanzen.view(), heute: () => Heute.view(), einstellungen: viewEinstellungen })[tab]();
 }
 /** Reiter wechseln und dort direkt etwas öffnen, z. B. openTab('kunden', { kunde }). */
 window.openTab = (tab, s) => switchTab(tab, s);
@@ -191,6 +191,8 @@ async function viewProjektListe() {
 $('#calBtn').onclick = () => { if (state.kalender) return; state.finanzen = false; Kalender.view(); window.scrollTo(0, 0); };
 // Einstellungen oben rechts; „Zurück“ führt in den Reiter, aus dem man kam
 $('#setBtn').onclick = () => switchTab('einstellungen');
+// Tippen aufs Logo: Startseite „Heute“
+$('.brand').onclick = () => switchTab('heute');
 
 // ---------- Start ----------
 (async () => {
@@ -199,7 +201,7 @@ $('#setBtn').onclick = () => switchTab('einstellungen');
   try { await Kunden.laden(); await Kunden.migrate(); await Kunden.nummern(); } catch (e) { console.error('Kunden', e); }
   try { await Partner.laden(); await Kalender.laden(); Kalender.punkt(); } catch (e) { console.error('Kalender', e); }
   navigator.storage?.persist?.();
-  switchTab('kunden');
+  switchTab(vorgabe('heuteStart') === 'nein' ? 'kunden' : 'heute');
   if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost')) {
     // Neue Version sofort übernehmen: beim Öffnen und beim Zurückkehren in die App nachsehen, dann einmal neu laden
     const reg = await navigator.serviceWorker.register('sw.js', { updateViaCache: 'none' }).catch(() => null);

@@ -164,3 +164,7 @@ details.sub > summary { font-size: 14px; font-weight: 600; color: var(--navy-2);
 .vg-l { display: flex; align-items: flex-end; justify-content: space-between; gap: 8px; }
 .vg-std { border: 0; background: none; color: var(--brass); font-weight: 650; font-size: 13px; padding: 0 0 4px; }
 .vg-hl { outline: 3px solid var(--brass); outline-offset: 2px; transition: outline .3s; }
+
+/* ---------- Startseite Heute ---------- */
+.brand { cursor: pointer; }
+.pcard.hz .pc-ph svg.i { width: 22px; height: 22px; }

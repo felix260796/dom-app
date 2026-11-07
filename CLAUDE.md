@@ -11,6 +11,7 @@ Die Oberfläche ist auf Deutsch. Der Nutzer ist Felix (Dom Projektmanagement Gmb
 |---|---|---|
 | Vorgaben (alles einstellbar) | `vorgaben.js` | Alle Annahmen mit Standardwert: `vorgabe(k)`, `vorgabeText(k, {platzhalter})`, gespeichert in `settings.vorgaben`. Seiten Rechnungen & Mahnungen, Abläufe & Listen, Aufschläge & Angebotstexte, Firmendaten, Preisliste-Editor, Suchindex. **Neue Annahme = neuer Eintrag in `VORGABEN`, nie fest im Code** |
 | Gemeinsame Helfer | `core.js` | Speicher (IndexedDB `kvGet/kvSet`), `$`, `esc`, `toast`, KI-Aufrufe (Gemini), Bildfunktionen, Bildschirmhöhe `--voll` |
+| Startseite Heute | `heute.js` | Alles, was heute dran ist (Termine, Nachfassen, Geld, Lieferungen, Mängel, Baustarts, laufende Baustellen). Start der App und Tippen aufs Logo (`state.tab = 'heute'`) |
 | Navigation, Leiste | `app.js`, `index.html` | Kopfzeile (oben rechts Kalender und Einstellungen), Reiter unten Kunden/Subunternehmer/Projekte/Angebote/Rechnungen (`switchTab`), Auswahlfenster `sheet`, Projektliste (Bereiche Angebot/Auftrag/Abrechnung/Erledigt), Start. `APP_VERSION` |
 | Raum-Ansicht | `raum.js` | Raum: Fotos, Pakete, KI-Ergebnis, Moodboard nur für den Raum. `viewProjekt` verteilt auch die Reiter Kunden/Projekte/Angebote |
 | Kunden | `kunden.js`, `kontakt.js` | Kundenkarte, Objekte (Anschriften), Nummern ab 1001, Anrede/Briefanrede, Quelle (`k.quelle`, `QUELLEN`) |

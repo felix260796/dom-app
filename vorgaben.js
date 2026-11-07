@@ -45,6 +45,10 @@ const VORGABEN = {
       { k: 'ampelKnapp', l: 'Marge gelb ab % (darunter rot)', t: 'zahl', d: 10 },
       { k: 'gewerkeExtra', l: 'Zusätzliche Gewerke für Eingangsrechnungen (neben denen der Preisliste)', t: 'liste', d: ['Material', 'Entsorgung', 'Sonstiges'] },
     ]],
+    ['Startseite „Heute“', [
+      { k: 'heuteStart', l: 'Beim Öffnen der App mit „Heute“ starten', t: 'janein', d: 'ja', h: 'Sonst startet die App bei den Kunden. „Heute“ erreichst du immer über das DOM-Logo oben.' },
+      { k: 'heuteVorlauf', l: 'Fälliges so viele Tage vorher zeigen', t: 'zahl', d: 3 },
+    ]],
     ['Baustelle', [
       { k: 'textAbnahme', l: 'Text im Abnahmeprotokoll', t: 'text', d: 'Die oben genannten Leistungen wurden am {datum} gemeinsam begangen und {ergebnis} abgenommen. Mit der Abnahme beginnt die Gewährleistungsfrist. Aufgeführte Mängel beseitigt der Auftragnehmer innerhalb der genannten Fristen.' },
     ]],
@@ -71,7 +75,7 @@ function planLesen(s) {
 window.Vorgaben = (() => {
   const PLATZHALTER = {
     rechnungen: '{nr} Nummer, {art} Art der Rechnung, {betrag} Betrag, {datum} Rechnungsdatum, {faellig} fällig am, {frist} neue Frist, {prozent} Abschlag in %, {vorher} Datum der letzten Mahnung, {stufe} Erinnerung/Mahnung, {anrede} Briefanrede, {firma} Firmenname',
-    ablauf: '{datum} Datum der Abnahme, {ergebnis} „ohne Mängel“ oder „mit den aufgeführten Mängeln“',
+    ablauf: 'im Abnahmetext: {datum} Datum der Abnahme, {ergebnis} „ohne Mängel“ oder „mit den aufgeführten Mängeln“',
   };
   /** Einstellungsseite für eine Gruppe von Vorgaben. */
   function seite(id) {
@@ -81,7 +85,8 @@ window.Vorgaben = (() => {
     const feld = (f) => {
       const geaendert = S.vorgaben[f.k] !== undefined && S.vorgaben[f.k] !== '';
       const kopf = `<div class="vg-l"><label>${esc(f.l)}</label>${geaendert ? `<button type="button" class="vg-std" data-std="${f.k}">Standard</button>` : ''}</div>`;
-      const inp = f.t === 'text' || f.t === 'liste' ? `<textarea data-vg="${f.k}" rows="${f.t === 'liste' ? Math.max(3, wert(f).split('\n').length) : 4}">${esc(wert(f))}</textarea>`
+      const inp = f.t === 'janein' ? `<select data-vg="${f.k}"><option value="ja" ${wert(f) === 'ja' ? 'selected' : ''}>Ja</option><option value="nein" ${wert(f) === 'nein' ? 'selected' : ''}>Nein</option></select>`
+        : f.t === 'text' || f.t === 'liste' ? `<textarea data-vg="${f.k}" rows="${f.t === 'liste' ? Math.max(3, wert(f).split('\n').length) : 4}">${esc(wert(f))}</textarea>`
         : `<input type="text" data-vg="${f.k}" ${f.t === 'zahl' ? 'inputmode="decimal"' : ''} value="${esc(wert(f))}">`;
       return kopf + inp + (f.h ? `<p class="hint" style="margin:4px 0 0">${esc(f.h)}</p>` : '');
     };
