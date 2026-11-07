@@ -112,6 +112,28 @@ window.Finanzen = (() => {
       ${icon('chevron', 'pc-chev')}</button>`;
   };
 
+  // ---------- Auswertung (B25) ----------
+  function auswertung(idx, kalk, rechnungen) {
+    const jahr = String(new Date().getFullYear());
+    const umsatz = rechnungen.filter((r) => (r.datum || '').startsWith(jahr)).reduce((s, r) => s + r.netto - (r.abzuege || []).reduce((t, a) => t + a.netto, 0), 0);
+    const eingang = rechnungen.filter((r) => (r.bezahlt || '').startsWith(jahr)).reduce((s, r) => s + Rechnung.zahlbetrag(r), 0);
+    const zu = idx.filter((x) => Projekt.zugesagt(x.status)).length, ab = idx.filter((x) => Projekt.norm(x.status) === 'abgesagt').length;
+    const quote = zu + ab ? Math.round((zu / (zu + ab)) * 100) : null;
+    const marge = kalk.filter((e) => e.k.soll.netto && e.k.ist.netto);
+    const margeSum = marge.reduce((s, e) => s + e.k.marge, 0), sollSum = marge.reduce((s, e) => s + e.k.soll.netto, 0);
+    const zaehl = (arr) => Object.entries(arr.reduce((m, v) => ((m[v] = (m[v] || 0) + 1), m), {})).sort((a, b) => b[1] - a[1]);
+    const kunden = Kunden.liste();
+    const quellen = zaehl(kunden.map((k) => k.quelle).filter(Boolean));
+    const quelleZu = (q) => idx.filter((x) => Projekt.zugesagt(x.status) && Kunden.byId(x.kundeId)?.quelle === q).length;
+    const gruende = zaehl(idx.map((x) => x.absage).filter(Boolean));
+    const balken = (liste, gesamt, extra) => liste.map(([n, c]) => `<div class="aw-b"><span>${esc(n)}</span><i style="--w:${Math.round((c / gesamt) * 100)}%"></i><b>${c}${extra ? extra(n) : ''}</b></div>`).join('');
+    return `<div class="sec-h"><h2>Auswertung ${jahr}</h2></div>
+      <div class="phasen zwei"><div class="fz"><b>${eur0(umsatz)}</b><span>Umsatz netto (Rechnungen)</span></div><div class="fz"><b>${eur0(eingang)}</b><span>Zahlungseingang</span></div></div>
+      <div class="phasen zwei" style="margin-top:8px"><div class="fz"><b>${quote == null ? '–' : quote + ' %'}</b><span>Zusagen (${zu} zu, ${ab} ab)</span></div><div class="fz"><b>${sollSum ? Math.round((margeSum / sollSum) * 100) + ' %' : '–'}</b><span>Marge Ø (${marge.length} ${marge.length === 1 ? 'Projekt' : 'Projekte'})</span></div></div>
+      ${quellen.length ? `<div class="card aw"><b class="aw-h">Woher kommen die Kunden?</b>${balken(quellen, kunden.filter((k) => k.quelle).length, (q) => { const n = quelleZu(q); return n ? ` <small>· ${n} Auftr.</small>` : ''; })}</div>` : ''}
+      ${gruende.length ? `<div class="card aw"><b class="aw-h">Warum abgesagt?</b>${balken(gruende, ab || 1)}</div>` : ''}`;
+  }
+
   // ---------- Übersicht ----------
   async function view() {
     state.beleg = null;
@@ -122,6 +144,7 @@ window.Finanzen = (() => {
     if (!hier()) return;
     const abrechnen = idx.filter((x) => Projekt.norm(x.status) === 'fertig');
     const aus = await Rechnung.uebersicht();
+    aus.alle = Rechnung.liste();
     const ausUeber = aus.offen.filter(Rechnung.ueberfaellig);
     const ein = liste(), einOffen = ein.filter((b) => !b.bezahlt), einUeber = einOffen.filter(ueberfaellig);
     const zeigeEin = alleZeigen ? ein : einOffen;
@@ -160,6 +183,7 @@ window.Finanzen = (() => {
           ${icon('chevron', 'pc-chev')}</button>`).join('')}</div>`
         : '<p class="hint">Sobald ein zugesagtes Projekt ein Angebot und Eingangsrechnungen hat, steht hier die Marge.</p>'}
 
+      ${auswertung(idx, kalk.filter(Boolean), aus.alle)}
       ${Rechnung.einstellungenHtml()}`;
     Rechnung.einstellungenBinden();
     $$('[data-rech]').forEach((b) => (b.onclick = async () => { await Rechnung.laden(); Rechnung.detail(Rechnung.liste().find((r) => r.id === b.dataset.rech), () => view()); }));

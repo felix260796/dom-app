@@ -201,6 +201,7 @@ window.Kalender = (() => {
           <label>Kunde</label>
           <button type="button" class="kline pick" id="tKunde">${k ? `<span class="av sm">${esc(Kunden.initialen(k))}</span>` : icon('user')}<span class="kl-t"><b>${esc(k ? Kunden.name(k) : 'Kunde wählen (optional)')}</b>${k?.nr ? `<small>Kunden-Nr. ${esc(k.nr)}</small>` : ''}</span>${k ? `<span class="icon-btn" data-kx aria-label="Kunde entfernen">${icon('x')}</span>` : icon('chevron', 'pc-chev')}</button>
           ${k && k.objekte.length ? `<label>Objekt</label><select id="tObjekt"><option value="">–</option>${k.objekte.map((o) => `<option value="${o.id}" ${o.id === t.objektId ? 'selected' : ''}>${esc(Kunden.objLabel(o))}</option>`).join('')}</select>` : ''}
+          ${k && !t.projektId && t.art === 'kunde' ? `<label class="chk" style="margin-top:10px"><input type="checkbox" id="tBesicht" ${t._besicht ? 'checked' : ''}> Besichtigung: gleich ein Projekt anlegen</label>` : ''}
           ${window.Partner ? `<label>Subunternehmer</label>
           <button type="button" class="kline pick" id="tPartner">${icon('users')}<span class="kl-t"><b>${esc(p ? p.firma || 'Ohne Namen' : 'Subunternehmer wählen (optional)')}</b>${p?.gewerk ? `<small>${esc(p.gewerk)}</small>` : ''}</span>${p ? `<span class="icon-btn" data-px aria-label="Entfernen">${icon('x')}</span>` : icon('chevron', 'pc-chev')}</button>` : ''}
           <label>Ort</label><div class="adr"><input type="text" id="tOrt" value="${esc(t.ort)}" autocomplete="off" placeholder="Anschrift oder z. B. Büro"></div>
@@ -264,6 +265,10 @@ window.Kalender = (() => {
         const bereit = state.settings.mailAktiv && window.Sync?.active();
         const sendJetzt = bereit && ($('#tMailAn')?.checked ?? false);
         t.mailAn = bereit ? empfaenger(t) : t.mailAn || [];
+        if ($('#tBesicht')?.checked && t.kundeId && !t.projektId) {
+          t.projektId = await Projekt.anlegen(t.kundeId, t.objektId, /^Kundentermin\b/.test(t.titel) ? '' : t.titel);
+          toast('Projekt angelegt (Besichtigung)');
+        }
         try { window.__projIdx = await projectIndex(); } catch {}
         t.kontext = kontext(t);
         await kvSet('termin:' + t.id, t); alle.set(t.id, t); punkt();

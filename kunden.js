@@ -17,8 +17,9 @@ window.Kunden = (() => {
   const istHv = (k) => k?.anrede === 'Hausverwaltung';
 
   // ---------- Daten ----------
+  const QUELLEN = ['Empfehlung', 'Google / Internet', 'Bauschild', 'Hausverwaltung', 'Stammkunde', 'Flyer / Anzeige', 'Sonstiges'];
   const norm = (k) => {
-    for (const f of ['anrede', 'vorname', 'name', 'telefon', 'email', 'geburtstag', 'privat', 'notiz', 'nr']) k[f] = String(k[f] ?? '');
+    for (const f of ['anrede', 'vorname', 'name', 'telefon', 'email', 'geburtstag', 'privat', 'notiz', 'nr', 'quelle']) k[f] = String(k[f] ?? '');
     k.weitere = Kontakt.norm(k.weitere);
     k.hv = k.hv && typeof k.hv === 'object' ? k.hv : {};
     for (const f of ['firma', 'ansprech', 'telefon', 'email', 'anschrift']) k.hv[f] = String(k.hv[f] ?? '');
@@ -379,6 +380,7 @@ window.Kunden = (() => {
         <label>E-Mail</label><input type="email" id="kMail" value="${esc(k.email)}" autocomplete="off" inputmode="email" placeholder="name@beispiel.de">
         <div id="kWeitere">${Kontakt.weitereHtml()}</div>
         <label id="kPrivatL">${istHv(k) ? 'Anschrift des Eigentümers (optional)' : 'Privatanschrift'}</label><div class="adr"><input type="text" id="kPrivat" value="${esc(k.privat)}" autocomplete="off" placeholder="Straße Nr., der Ort wird ergänzt"></div>
+        <label>Wie ist der Kunde auf uns gekommen?</label><select id="kQuelle"><option value="">Bitte wählen</option>${QUELLEN.map((q) => `<option ${q === k.quelle ? 'selected' : ''}>${esc(q)}</option>`).join('')}</select>
         <label>Notiz</label><textarea id="kNotiz" placeholder="z. B. erreichbar ab 17 Uhr, Schlüssel beim Nachbarn">${esc(k.notiz)}</textarea>
       </div>
 
@@ -418,7 +420,7 @@ window.Kunden = (() => {
     actions();
     const persist = debounce(async () => { await speichern(k); weitergeben(k); }, 400);
     const titel = () => { $('#title').textContent = name(k) || 'Neuer Kunde'; const s = $('#subtitle'); s.textContent = untertitel(k); s.hidden = !untertitel(k); };
-    const felder = { kAnrede: 'anrede', kVorname: 'vorname', kName: 'name', kTel: 'telefon', kMail: 'email', kPrivat: 'privat', kNotiz: 'notiz' };
+    const felder = { kAnrede: 'anrede', kVorname: 'vorname', kName: 'name', kTel: 'telefon', kMail: 'email', kPrivat: 'privat', kNotiz: 'notiz', kQuelle: 'quelle' };
     for (const [id, f] of Object.entries(felder)) {
       const el = $('#' + id);
       el[el.tagName === 'SELECT' ? 'onchange' : 'oninput'] = (e) => {
@@ -577,5 +579,5 @@ window.Kunden = (() => {
     return byId(id);
   }
 
-  return { adressVorschlaege, laden, migrate, nummern, projektNr, byId, liste, name, briefAnrede, postanschrift, istHv, zeilen, einzeilig, objekt, objektText, ort, initialen, ausName, speichern, waehlen, objektWaehlen, projektAnlegen, start, listeView, detail, objektView, objLabel, oeffnen, zu, bisGeburtstag };
+  return { QUELLEN, adressVorschlaege, laden, migrate, nummern, projektNr, byId, liste, name, briefAnrede, postanschrift, istHv, zeilen, einzeilig, objekt, objektText, ort, initialen, ausName, speichern, waehlen, objektWaehlen, projektAnlegen, start, listeView, detail, objektView, objLabel, oeffnen, zu, bisGeburtstag };
 })();
