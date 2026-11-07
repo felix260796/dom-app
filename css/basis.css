@@ -203,3 +203,11 @@ details.sub > summary { font-size: 14px; font-weight: 600; color: var(--navy-2);
 .menu-sync svg.i { width: 18px; height: 18px; flex: none; }
 .menu-v { margin: 0; padding-top: 0; }
 .su-feld { margin-bottom: 4px; }
+
+/* ---------- Mitteilungen ---------- */
+.push-k b { font-size: 16px; }
+.push-k p { margin: 6px 0 12px; line-height: 1.4; }
+.push-k.an { border-left: 4px solid #1b5e3a; }
+.push-k .row { gap: 8px; }
+.push-k .row .btn { flex: 1; }
+.push-aus { margin-top: 8px; }

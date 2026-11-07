@@ -6,7 +6,7 @@
  * Kern-Funktionen (Speicher, KI, Bilder) stehen in core.js. */
 
 // ---------- Symbole (einfache Linien-Icons) ----------
-const APP_VERSION = '63';
+const APP_VERSION = '64';
 const ICONS = {
   plus: '<path d="M12 5v14M5 12h14"/>',
   camera: '<path d="M3 8.5A2 2 0 0 1 5 6.5h2l1.6-2h6.8l1.6 2h2a2 2 0 0 1 2 2V18a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><circle cx="12" cy="13" r="3.6"/>',
@@ -15,6 +15,7 @@ const ICONS = {
   file: '<path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5M9 13h6M9 17h4"/>',
   chart: '<path d="M4 20V11M10 20V5M16 20v-8M21 20H3"/>',
   cloud: '<path d="M7 18a4.5 4.5 0 0 1-.6-9 6 6 0 0 1 11.4 1.5A3.8 3.8 0 0 1 17.5 18z"/>',
+  bell: '<path d="M6 16V11a6 6 0 0 1 12 0v5l1.5 2h-15z"/><path d="M10 20.5a2 2 0 0 0 4 0"/>',
   book: '<path d="M4 5a2 2 0 0 1 2-2h13v15H6a2 2 0 0 0-2 2z"/><path d="M4 20a2 2 0 0 0 2 2h13v-4M8 7h7"/>',
   clipboard: '<rect x="5" y="4" width="14" height="17" rx="2"/><path d="M9 4V3h6v1M9 10h6M9 14h6M9 18h3"/>',
   ruler: '<path d="M3 17L17 3l4 4L7 21z"/><path d="M7 13l2 2M10 10l2 2M13 7l2 2"/>',
@@ -227,7 +228,7 @@ function menue() {
     MENUE.find((m) => m[0] === b.dataset.m)[4]();
   }));
   // Wer nutzt dieses Gerät: filtert Kalender und „Heute“ (gemerkt auf dem Gerät)
-  $$('[data-mw]', el).forEach((b) => (b.onclick = () => { Kalender.werSetzen(b.dataset.mw); $$('[data-mw]', el).forEach((x) => x.classList.toggle('on', x === b)); Kalender.punkt(); if (state.tab === 'heute') Heute.view(); }));
+  $$('[data-mw]', el).forEach((b) => (b.onclick = () => { Kalender.werSetzen(b.dataset.mw); window.Push?.abgleich(); $$('[data-mw]', el).forEach((x) => x.classList.toggle('on', x === b)); Kalender.punkt(); if (state.tab === 'heute') Heute.view(); }));
   let x0 = null; // nach rechts wischen schließt
   el.addEventListener('touchstart', (e) => { x0 = e.touches[0].clientX; }, { passive: true });
   el.addEventListener('touchend', (e) => { if (x0 !== null && e.changedTouches[0].clientX - x0 > 60) zu(); x0 = null; });
@@ -238,6 +239,11 @@ $('#brandBtn').onclick = menue;
 // Mikrofon oben: Kunde, Projekt und Termin per Sprache anlegen (sprache.js)
 $('#micBtn').onclick = () => { const t = state.tab; Sprache.view(() => switchTab(t)); };
 
+function zielOeffnen(z) {
+  if (z === 'kalender') { switchTab('heute'); Kalender.view(); return; }
+  switchTab(['kunden', 'heute', 'projekt', 'angebote', 'rechnungen', 'partner'].includes(z) ? z : 'heute');
+}
+
 // ---------- Start ----------
 (async () => {
   await loadAll();
@@ -245,7 +251,12 @@ $('#micBtn').onclick = () => { const t = state.tab; Sprache.view(() => switchTab
   try { await Kunden.laden(); await Kunden.migrate(); await Kunden.nummern(); } catch (e) { console.error('Kunden', e); }
   try { await Partner.laden(); await Kalender.laden(); Kalender.punkt(); } catch (e) { console.error('Kalender', e); }
   navigator.storage?.persist?.();
-  switchTab(vorgabe('heuteStart') === 'nein' ? 'kunden' : 'heute');
+  // Aus einer Mitteilung geöffnet: ?ziel=heute|kalender
+  const ziel = new URLSearchParams(location.search).get('ziel');
+  if (ziel) history.replaceState(null, '', location.pathname);
+  zielOeffnen(ziel || (vorgabe('heuteStart') === 'nein' ? 'kunden' : 'heute'));
+  navigator.serviceWorker?.addEventListener('message', (e) => { if (e.data?.ziel) zielOeffnen(e.data.ziel); });
+  setTimeout(() => window.Push?.abgleich(), 4000);
   if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost')) {
     // Neue Version sofort übernehmen: beim Öffnen und beim Zurückkehren in die App nachsehen, dann einmal neu laden
     const reg = await navigator.serviceWorker.register('sw.js', { updateViaCache: 'none' }).catch(() => null);

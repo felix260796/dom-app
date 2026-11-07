@@ -3,7 +3,7 @@
  * Termine heute und morgen, Angebote zum Nachfassen, überfällige Rechnungen (Kunden und Eingang), Abzurechnen,
  * Lieferungen, Mängel mit Frist, bevorstehende Baustarts, laufende Baustellen.
  * Öffnet beim Start (einstellbar) und über das Menü (DOM-Logo). Eigener Zustand state.tab = 'heute' (kein Reiter unten).
- * Vorlauf in Tagen und Start-Verhalten: Vorgaben 'heuteStart', 'heuteVorlauf' (vorgaben.js). */
+ * Setzt die Zahl am App-Symbol (Push.badge). Vorlauf in Tagen und Start-Verhalten: Vorgaben 'heuteStart', 'heuteVorlauf' (vorgaben.js). */
 window.Heute = (() => {
   const iso = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
   const plus = (n) => { const d = new Date(); d.setDate(d.getDate() + n); return iso(d); };
@@ -26,7 +26,8 @@ window.Heute = (() => {
     const termine = (window.Kalender?.eintraege(h, morgen) || []).filter((t) => t.typ === 'termin' || t.art?.startsWith('geb')).sort((a, b) => (a.datum + (a.von || '')).localeCompare(b.datum + (b.von || '')));
     block('Termine heute und morgen', termine.map((t) => zeile(`kal:${t.datum}`, t.art?.startsWith('geb') ? 'cake' : 'calendar', t.titel || 'Termin', `${t.datum === h ? 'Heute' : 'Morgen'}${t.ganztag || !t.von ? '' : `, ${t.von} Uhr`}${t.ort ? ' · ' + t.ort : ''}`)));
     // Nachfassen
-    block('Angebote nachfassen', idx.filter((x) => Projekt.norm(x.status) === 'angebot' && Projekt.seitTagen(x.versendetAm) >= Projekt.nachfassen())
+    const nachf = idx.filter((x) => Projekt.norm(x.status) === 'angebot' && Projekt.seitTagen(x.versendetAm) >= Projekt.nachfassen());
+    block('Angebote nachfassen', nachf
       .map((x) => zeile('p:' + x.id, 'phone', name(x), `Seit ${Projekt.seitTagen(x.versendetAm)} Tagen beim Kunden`, '#b7791f')));
     // Geld
     const geld = [];
@@ -45,6 +46,8 @@ window.Heute = (() => {
     // Laufende Baustellen
     block('Laufende Baustellen', idx.filter((x) => Projekt.norm(x.status) === '').map((x) => zeile('p:' + x.id, 'home', name(x), x.fort ? `${x.fort.fertig} von ${x.fort.n} Schritten${x.fort.naechster ? ' · als Nächstes: ' + x.fort.naechster : ''}` : 'Noch keine Arbeitsschritte')));
 
+    // Zahl am App-Symbol: was heute zu tun ist (ohne morgen und ohne laufende Baustellen)
+    window.Push?.badge(termine.filter((t) => t.datum === h && t.typ === 'termin').length + nachf.length + geld.length + bau.length);
     main().innerHTML = (bloecke.join('') || `<div class="empty-state">${icon('check')}<b>Heute ist nichts offen</b><span>Termine, Nachfassen, Rechnungen und Baustellen erscheinen hier, sobald etwas ansteht.</span></div>`);
     $$('[data-hz]').forEach((b) => (b.onclick = () => oeffnen(b.dataset.hz)));
   }

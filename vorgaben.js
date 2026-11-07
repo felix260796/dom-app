@@ -32,6 +32,20 @@ const VORGABEN = {
       { k: 'mailMahnung', l: 'Erinnerung und Mahnung', t: 'text', d: '{anrede}\n\nzu unserer Rechnung Nr. {nr} vom {datum} konnten wir noch keinen Zahlungseingang feststellen. Anbei unsere {stufe}.\n\nFreundliche Grüße\n{firma}' },
     ]],
   ],
+  push: [
+    ['Morgenübersicht', [
+      { k: 'pushMorgen', l: 'Uhrzeit der Morgenübersicht (leer = aus)', t: 'zeile', d: '07:00', h: 'Zum Beispiel 07:00. Die Mitteilung zeigt, was heute ansteht, wie die Seite „Heute“.' },
+      { k: 'pushNachfassen', l: 'Angebote zum Nachfassen erwähnen', t: 'janein', d: 'ja' },
+      { k: 'pushGeld', l: 'Überfällige und fällige Rechnungen erwähnen', t: 'janein', d: 'ja' },
+      { k: 'pushBaustelle', l: 'Lieferungen, Mängel und Baustarts erwähnen', t: 'janein', d: 'ja' },
+    ]],
+    ['Termine', [
+      { k: 'pushTermin', l: 'Erinnerung so viele Minuten vor jedem Termin (0 = aus)', t: 'zahl', d: 60, h: 'Es zählen die Termine der Person, der dieses Gerät gehört (unten im Menü einstellbar).' },
+    ]],
+    ['App-Symbol', [
+      { k: 'appBadge', l: 'Zahl der offenen Punkte am App-Symbol zeigen', t: 'janein', d: 'ja' },
+    ]],
+  ],
   ablauf: [
     ['Angebote', [
       { k: 'nachfassenTage', l: 'Hinweis „Nachfassen“ nach wie vielen Tagen?', t: 'zahl', d: 7 },
@@ -82,7 +96,9 @@ window.Vorgaben = (() => {
     ablauf: 'im Abnahmetext: {datum} Datum der Abnahme, {ergebnis} „ohne Mängel“ oder „mit den aufgeführten Mängeln“',
   };
   /** Einstellungsseite für eine Gruppe von Vorgaben. */
-  function seite(id) {
+  // Zusätzlicher Bereich oben auf einer Seite (z. B. Mitteilungen: Gerät anmelden)
+  const seiteKopf = { push: (el) => window.Push?.karte(el) };
+  function seite(id, kopf = seiteKopf[id]) {
     const S = state.settings;
     S.vorgaben ??= {};
     const wert = (f) => { const v = vorgabe(f.k); return f.t === 'plan' ? v.join(' / ') : f.t === 'liste' ? v.join('\n') : v; };
@@ -94,8 +110,9 @@ window.Vorgaben = (() => {
         : `<input type="text" data-vg="${f.k}" ${f.t === 'zahl' ? 'inputmode="decimal"' : ''} value="${esc(wert(f))}">`;
       return kopf + inp + (f.h ? `<p class="hint" style="margin:4px 0 0">${esc(f.h)}</p>` : '');
     };
-    main().innerHTML = VORGABEN[id].map(([titel, felder]) => `<div class="sec-h"><h2>${esc(titel)}</h2></div><div class="card kform vg">${felder.map(feld).join('')}</div>`).join('')
+    main().innerHTML = (kopf ? '<div id="vgKopf"></div>' : '') + VORGABEN[id].map(([titel, felder]) => `<div class="sec-h"><h2>${esc(titel)}</h2></div><div class="card kform vg">${felder.map(feld).join('')}</div>`).join('')
       + (PLATZHALTER[id] ? `<p class="hint">Platzhalter in Texten: ${esc(PLATZHALTER[id])}</p>` : '');
+    if (kopf) kopf($('#vgKopf'));
     $$('[data-vg]').forEach((el) => (el.onchange = async () => {
       const f = VORGABE_FELDER[el.dataset.vg];
       let v = el.value;
@@ -105,13 +122,14 @@ window.Vorgaben = (() => {
       if (f.t === 'text' || f.t === 'zeile') v = v.trim();
       S.vorgaben[f.k] = v;
       await saveSettings(); toast('Gespeichert');
+      window.Push?.abgleich();
       const y = window.scrollY; seite(id); window.scrollTo(0, y);
     }));
     $$('[data-std]').forEach((b) => (b.onclick = async () => {
       delete S.vorgaben[b.dataset.std];
       if (b.dataset.std === 'zahlungsziel') delete S.zahlungsziel;
       if (b.dataset.std === 'abschlagPlan') delete S.abschlagPlan;
-      await saveSettings(); toast('Standard wiederhergestellt');
+      await saveSettings(); toast('Standard wiederhergestellt'); window.Push?.abgleich();
       const y = window.scrollY; seite(id); window.scrollTo(0, y);
     }));
   }

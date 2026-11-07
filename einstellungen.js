@@ -13,6 +13,7 @@ const EINST = [
   ['moodboards', 'Standard-Moodboards', 'palette', 'brass', 'Angebote', 'Bilder und Produkte je Raumtyp und Paket'],
   ['rechnungen', 'Rechnungen & Mahnungen', 'file', 'navy', 'Rechnungen', 'Zahlungsziel, Abschläge (30/40/30), Mahnfrist, alle Rechnungs- und Mahntexte, Begleittexte'],
   ['ablauf', 'Abläufe & Listen', 'check', 'brass', 'Abläufe', 'Nachfassen nach Tagen, Absagegründe, Kundenquellen, Marge-Ampel, Gewerke, Abnahmetext'],
+  ['push', 'Mitteilungen aufs iPhone', 'bell', 'brass', 'Abläufe', 'Morgenübersicht mit Uhrzeit, Erinnerung vor Terminen, Zahl am App-Symbol'],
   ['team', 'Terminmails & Team', 'mail', 'navy', 'Abläufe', 'Personen, Terminmails an Team, Kunde und Subunternehmer, Texte, Erinnerungen'],
   ['bau', 'Baufortschritt', 'check', 'grey', 'Abläufe', 'Vorlagen der Arbeitsschritte je Raumtyp'],
   ['ki', 'KI', 'sparkle', 'navy', 'Technik', 'Schlüssel und Modell für Bilder und Texte'],
@@ -26,6 +27,7 @@ function einstellungInfo(k) {
   if (k === 'ki') return S.apiKey ? `Eingerichtet · ${(S.modelList || []).find((m) => m.id === S.model)?.label || S.model}` : 'Noch nicht eingerichtet';
   if (k === 'team') return `${S.mailAktiv ? 'Terminmails an' : 'Terminmails aus'} · ${(window.Kalender?.team() || []).map((p) => p.name).join(', ')}`;
   if (k === 'cloud') return window.Sync?.active() ? 'Verbunden, gleicht automatisch ab' : 'Nicht verbunden';
+  if (k === 'push') return vorgabe('pushMorgen') ? `Morgenübersicht ${vorgabe('pushMorgen')} Uhr` : 'Morgenübersicht aus';
   if (k === 'rechnungen') return `Zahlungsziel ${vorgabe('zahlungsziel')} Tage · Abschläge ${vorgabe('abschlagPlan').join(' / ')} %`;
   return '';
 }
@@ -116,7 +118,7 @@ async function einstellungSeite(k) {
   header(titel || 'Einstellungen', '', { label: 'Einstellungen', fn: () => { viewEinstellungen(); window.scrollTo(0, 0); } });
   const save = debounce(saveSettings, 300);
   if (k === 'bau') return Fortschritt.einstellungen();
-  if (k === 'rechnungen' || k === 'ablauf') return Vorgaben.seite(k);
+  if (k === 'rechnungen' || k === 'ablauf' || k === 'push') return Vorgaben.seite(k);
   if (k === 'kalkulation') { main().innerHTML = '<div id="plKarten"></div>'; return Vorgaben.preisKarten($('#plKarten')); }
   if (k === 'team') {
     // Personen für den Kalender (Termine je Person, oben im Kalender umschaltbar)
