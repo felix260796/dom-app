@@ -40,7 +40,7 @@ window.Fortschritt = (() => {
         <div class="card bf">
           ${s.length ? s.map((x, i) => `<div class="bf-z ${x.fertig ? 'ok' : ''}" data-i="${i}">
               <button class="bf-ck" data-ck aria-label="${x.fertig ? 'Nicht erledigt' : 'Erledigt'}">${x.fertig ? icon('check') : ''}</button>
-              <button class="bf-t" data-ed><b>${esc(x.name)}</b>${x.fertig || x.notiz ? `<small>${[x.fertig && `erledigt ${tag(x.fertig)}${x.wer ? ' · ' + esc(x.wer) : ''}`, x.notiz && esc(x.notiz)].filter(Boolean).join(' · ')}</small>` : ''}</button>
+              <button class="bf-t" data-ed><b><span class="bf-nr">${i + 1}.</span> ${esc(x.name)}</b>${x.fertig || x.notiz ? `<small>${[x.fertig && `erledigt ${tag(x.fertig)}${x.wer ? ' · ' + esc(x.wer) : ''}`, x.notiz && esc(x.notiz)].filter(Boolean).join(' · ')}</small>` : ''}</button>
             </div>`).join('')
             : `<p class="hint" style="margin:0 0 10px">Lege die Arbeitsschritte an und hake sie ab, sobald sie erledigt sind. Zum Start eine Vorlage übernehmen:</p>
               <div class="chips">${arten.map((a) => `<button class="qchip" data-vl="${a}">${icon('plus')} Vorlage ${esc(NAMEN[a].replace(' (alle anderen Räume)', ''))}</button>`).join('')}</div>`}
@@ -62,15 +62,17 @@ window.Fortschritt = (() => {
         $('[data-ed]', z).onclick = async () => {
           const v = await sheet(x.name, [
             { label: 'Notiz', sub: x.notiz || 'z. B. Fliesenleger Kaya, Nacharbeit Ecke', icon: icon('edit'), value: 'notiz' },
-            ...(i > 0 ? [{ label: 'Nach oben', icon: icon('up'), value: 'hoch' }] : []),
-            ...(i < w.schritte.length - 1 ? [{ label: 'Nach unten', icon: icon('down'), value: 'runter' }] : []),
+            ...(w.schritte.length > 1 ? [{ label: 'Nummer ändern', sub: `Jetzt Schritt ${i + 1} von ${w.schritte.length}`, icon: icon('list'), value: 'nr' }] : []),
             { label: 'Löschen', icon: icon('trash'), value: 'weg' },
           ], { text: 'Umbenennen', value: x.name });
           if (!v) return;
           if (typeof v === 'object') x.name = v.text;
           else if (v === 'notiz') { const n = prompt('Notiz zu diesem Schritt', x.notiz || ''); if (n === null) return; x.notiz = n.trim(); }
-          else if (v === 'hoch') w.schritte.splice(i - 1, 0, w.schritte.splice(i, 1)[0]);
-          else if (v === 'runter') w.schritte.splice(i + 1, 0, w.schritte.splice(i, 1)[0]);
+          else if (v === 'nr') {
+            const n = await sheet(`${x.name}: welche Nummer?`, w.schritte.map((y, j) => ({ label: `${j + 1}.`, sub: j === i ? 'jetzt' : `${j < i ? 'vor' : 'nach'} ${y.name}`, value: String(j) })));
+            if (n == null || +n === i) return;
+            w.schritte.splice(+n, 0, w.schritte.splice(i, 1)[0]);
+          }
           else if (v === 'weg') { if (!confirm(`„${x.name}“ löschen?`)) return; w.schritte.splice(i, 1); }
           await sichern();
         };
@@ -91,7 +93,7 @@ window.Fortschritt = (() => {
   /** Einstellungen → Baufortschritt: Vorlagen bearbeiten (ein Schritt pro Zeile) */
   function einstellungen() {
     const S = state.settings;
-    main().innerHTML = `<p class="hint" style="margin-top:0">Diese Schritte übernimmst du im Projekt mit einem Tipp und kannst sie dort je Auftrag anpassen. Ein Schritt pro Zeile.</p>
+    main().innerHTML = `<p class="hint" style="margin-top:0">Diese Schritte übernimmst du im Projekt mit einem Tipp und kannst sie dort je Auftrag anpassen. Ein Schritt pro Zeile, von oben nach unten in der Reihenfolge, in der gearbeitet wird (Zeile 1 = Schritt 1).</p>
       ${Object.keys(VORLAGEN).map((a) => `<div class="card kform"><label style="margin-top:0">${esc(NAMEN[a])}</label>
         <textarea data-bv="${a}" rows="${Math.min(14, vorlage(a).length + 1)}">${esc(vorlage(a).join('\n'))}</textarea>
         <button class="link-danger" data-bvr="${a}" style="margin-top:6px">Auf Standard zurücksetzen</button></div>`).join('')}`;
