@@ -31,6 +31,16 @@ Die Oberfläche ist auf Deutsch. Der Nutzer ist Felix (Dom Projektmanagement Gmb
 | Offline | `sw.js`, `manifest.webmanifest` | Service Worker. Neue Datei → in `FILES` eintragen |
 | Test | `diag.html` | Bildschirm-Test (Höhen, Sicherheitsabstand) |
 
+## Verknüpfungen zwischen den Bereichen
+
+Alle Bereiche teilen einen Speicher (`kvGet/kvSet`, abgeglichen über `sync.js`). Verknüpft wird über IDs:
+
+- Projekt (`wohnung:<id>`) → `kundeId`, `objektId`; Räume (`project:<id>`) → `wohnungId`; Liste in `projectIndex`.
+- Angebot liegt im Raum (`r.angebot`, `r.aufmass`); `angebote.js` und `finanzen.js` lesen den Projektstatus aus `projectIndex`.
+- Termin (`termin:<id>`) → `kundeId`, `objektId`, `projektId`, `partnerId`, `wer` (Team).
+- Bilder (`bilder:<kundeId>:<objektId>`) → optional `projektId`.
+- Geplant: Eingangsrechnung → `projektId` + `partnerId`; Kalkulation vergleicht Angebot mit Eingangsrechnungen.
+
 ## Regeln
 
 - Bei jeder Änderung `APP_VERSION` in `app.js` und `VERSION` in `sw.js` um eins erhöhen.
