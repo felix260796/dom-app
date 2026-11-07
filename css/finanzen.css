@@ -23,3 +23,9 @@
 .kalk-gt span:not(:first-child) { text-align: right; }
 .kalk-gt:first-of-type { color: var(--muted, #6b7280); font-size: 12px; }
 .kalk-gt.drueber span:last-child { color: #c0392b; font-weight: 600; }
+
+/* ---------- Rechnungen an Kunden ---------- */
+.rbtns { display: flex; gap: 8px; margin-top: 10px; }
+.rbtns .btn { flex: 1; }
+.rset { margin-top: 18px; }
+.rset summary { cursor: pointer; font-weight: 650; color: var(--navy); }

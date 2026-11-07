@@ -54,6 +54,8 @@ window.Finanzen = (() => {
         for (const z of S.zeilen) { const g = z.it?.gewerk || 'Sonstiges'; out.gewerke[g] = (out.gewerke[g] || 0) + z.gp; }
       } catch {}
     }
+    // Nachträge zählen zum Auftrag
+    for (const n of w.nachtraege || []) { const gp = r2(n.menge * n.ep); out.netto += gp; out.gewerke.Nachträge = (out.gewerke.Nachträge || 0) + gp; }
     out.netto = r2(out.netto);
     return out;
   }
@@ -113,7 +115,8 @@ window.Finanzen = (() => {
     await laden();
     if (!hier()) return;
     const abrechnen = idx.filter((x) => Projekt.norm(x.status) === 'fertig');
-    const offen = idx.filter((x) => Projekt.norm(x.status) === 'rechnung');
+    const aus = await Rechnung.uebersicht();
+    const ausUeber = aus.offen.filter(Rechnung.ueberfaellig);
     const ein = liste(), einOffen = ein.filter((b) => !b.bezahlt), einUeber = einOffen.filter(ueberfaellig);
     const zeigeEin = alleZeigen ? ein : einOffen;
     const zeile = (x) => `<button class="pcard" data-fp="${x.id}">
@@ -129,7 +132,7 @@ window.Finanzen = (() => {
     main().innerHTML = `
       <div class="phasen drei">
         <div class="fz"><b>${abrechnen.length}</b><span>Abzurechnen</span></div>
-        <div class="fz"><b>${offen.length}</b><span>Rechnung an Kunde offen</span></div>
+        <div class="fz ${ausUeber.length ? 'rot' : ''}"><b>${aus.offen.length}</b><span>${ausUeber.length ? `${ausUeber.length} Kunde überfällig` : 'Kunde zahlt noch'}</span></div>
         <div class="fz ${einUeber.length ? 'rot' : ''}"><b>${einOffen.length}</b><span>${einUeber.length ? `${einUeber.length} überfällig` : 'Eingang offen'}</span></div>
       </div>
 
@@ -139,7 +142,8 @@ window.Finanzen = (() => {
       <div class="plist">${zeigeEin.map((b) => belegZeile(b)).join('') || (ein.length ? '<p class="hint">Alles bezahlt.</p>' : '<p class="hint">Fotografiere die Rechnung eines Subunternehmers oder Lieferanten. Die KI liest Betrag, Datum und Absender aus.</p>')}</div>
 
       ${abrechnen.length ? `<div class="sec-h"><h2>Abgeschlossen, noch keine Rechnung</h2></div><div class="plist">${abrechnen.map(zeile).join('')}</div>` : ''}
-      ${offen.length ? `<div class="sec-h"><h2>Rechnung an Kunde gestellt, Zahlung offen</h2></div><div class="plist">${offen.map(zeile).join('')}</div>` : ''}
+      <div class="sec-h"><h2>Rechnungen an Kunden, offen</h2>${aus.offen.length ? `<span class="count">${eur0(aus.offen.reduce((s, r) => s + Rechnung.zahlbetrag(r), 0))}</span>` : ''}</div>
+      <div class="plist">${aus.html || '<p class="hint">Keine offenen Rechnungen. Rechnungen erstellst du im Projekt (Abschlag oder Schlussrechnung).</p>'}</div>
 
       <div class="sec-h"><h2>Kalkulation je Projekt</h2></div>
       ${kalkShown.length ? `<div class="plist">${kalkShown.map(({ x, k }) => `<button class="pcard" data-fp="${x.id}">
@@ -150,8 +154,9 @@ window.Finanzen = (() => {
           ${icon('chevron', 'pc-chev')}</button>`).join('')}</div>`
         : '<p class="hint">Sobald ein zugesagtes Projekt ein Angebot und Eingangsrechnungen hat, steht hier die Marge.</p>'}
 
-      <div class="sec-h"><h2>Kommt noch</h2></div>
-      <div class="docs"><div class="doc off"><span class="d-ico grey">${icon('euro')}</span><span class="d-t"><b>Rechnungen an Kunden</b><span>Aus dem Angebot erzeugen, Abschläge, Zahlungseingang</span></span></div></div>`;
+      ${Rechnung.einstellungenHtml()}`;
+    Rechnung.einstellungenBinden();
+    $$('[data-rech]').forEach((b) => (b.onclick = async () => { await Rechnung.laden(); Rechnung.detail(Rechnung.liste().find((r) => r.id === b.dataset.rech), () => view()); }));
     $$('[data-fa]').forEach((b) => (b.onclick = () => { alleZeigen = b.dataset.fa === '1'; view(); }));
     $('#fNeu').onclick = () => erfassen(neu(), () => view());
     $$('[data-beleg]').forEach((b) => (b.onclick = () => erfassen(belege.get(b.dataset.beleg), () => view())));
