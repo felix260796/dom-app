@@ -6,7 +6,7 @@
  * Kern-Funktionen (Speicher, KI, Bilder) stehen in core.js. */
 
 // ---------- Symbole (einfache Linien-Icons) ----------
-const APP_VERSION = '64';
+const APP_VERSION = '65';
 const ICONS = {
   plus: '<path d="M12 5v14M5 12h14"/>',
   camera: '<path d="M3 8.5A2 2 0 0 1 5 6.5h2l1.6-2h6.8l1.6 2h2a2 2 0 0 1 2 2V18a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><circle cx="12" cy="13" r="3.6"/>',
@@ -104,7 +104,7 @@ function switchTab(tab, restore) {
   $$('.tabbar button').forEach((b) => b.classList.toggle('active', b.dataset.tab === tab));
   window.scrollTo(0, 0);
   if (tab === 'einstellungen') state.editPkg = null;
-  ({ kunden: viewProjekt, partner: () => Partner.start(), projekt: viewProjekt, angebote: viewProjekt, rechnungen: () => Finanzen.view(), heute: () => Heute.view(), suche: () => Suche.view(), karte: () => Karte.view(), auswertung: () => Finanzen.auswertungView(), einstellungen: viewEinstellungen })[tab]();
+  ({ kunden: viewProjekt, partner: () => Partner.start(), projekt: viewProjekt, angebote: viewProjekt, rechnungen: () => Finanzen.view(), heute: () => Heute.view(), suche: () => Suche.view(), karte: () => Karte.view(), auswertung: () => Finanzen.auswertungView(), unterlagen: () => Unterlagen.view(), hilfe: () => Hilfe.view(), einstellungen: viewEinstellungen })[tab]();
 }
 /** Reiter wechseln und dort direkt etwas öffnen, z. B. openTab('kunden', { kunde }). */
 window.openTab = (tab, s) => switchTab(tab, s);
@@ -198,6 +198,8 @@ const MENUE = [
   ['karte', 'Karte', 'map', () => 'Alle Baustellen auf der Karte', () => switchTab('karte')],
   ['auswertung', 'Auswertung', 'chart', () => 'Umsatz, Zusagen, Marge, Kundenquellen', () => switchTab('auswertung')],
   ['preisliste', 'Preisliste', 'euro', () => 'Positionen, Lohn, Material, Aufschläge', () => { switchTab('einstellungen'); einstellungSeite('preisliste'); }],
+  ['unterlagen', 'Unterlagen', 'file', () => 'Firmenordner, Rechnungen, Protokolle', () => switchTab('unterlagen')],
+  ['hilfe', 'Wie geht das?', 'sparkle', () => 'Frag, wo du was findest', () => switchTab('hilfe')],
   ['einstellungen', 'Einstellungen', 'sliders', () => 'Firma, Angebote, Rechnungen, Abläufe, Technik', () => switchTab('einstellungen')],
 ];
 /** Zeile unten im Menü: angemeldet als … und letzter Cloud-Abgleich. */

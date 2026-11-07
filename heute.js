@@ -16,7 +16,7 @@ window.Heute = (() => {
     const idx = await projectIndex();
     const name = (x) => [x.titel || x.room || 'Projekt', Kunden.name(Kunden.byId(x.kundeId)) || x.customer].filter(Boolean).join(' · ');
     const ws = (await Promise.all(idx.map((x) => kvGet('wohnung:' + x.id)))).filter(Boolean);
-    await Promise.all([window.Rechnung?.laden(), window.Finanzen?.laden()]);
+    await Promise.all([window.Rechnung?.laden(), window.Finanzen?.laden(), window.Unterlagen?.laden()]);
     if (state.tab !== 'heute') return;
     const bloecke = [];
     const zeile = (ziel, ic, titel, sub, farbe = '') => `<button class="pcard hz" data-hz="${esc(ziel)}"><span class="pc-ph" ${farbe ? `style="color:${farbe}"` : ''}>${icon(ic)}</span><span class="pc-t"><b>${esc(titel)}</b><span class="muted">${esc(sub)}</span></span>${icon('chevron', 'pc-chev')}</button>`;
@@ -43,11 +43,14 @@ window.Heute = (() => {
       if (Projekt.norm(w.status) === 'geplant' && w.baustart && w.baustart <= plus(7)) bau.push(zeile('p:' + w.id, 'calendar', `Baustart: ${w.titel || w.customer || 'Projekt'}`, tag(w.baustart)));
     }
     block('Baustellen: zu erledigen', bau);
+    // Firmendokumente, die bald ablaufen
+    const fdok = (window.Unterlagen?.ablaufend() || []).map((x) => zeile('u:' + x.id, 'file', `Erneuern: ${x.name}`, `${x.gueltig < h ? 'abgelaufen seit ' : 'gültig bis '}${tag(x.gueltig)}`, x.gueltig < h ? '#c0392b' : '#d2691e'));
+    block('Firmenordner', fdok);
     // Laufende Baustellen
     block('Laufende Baustellen', idx.filter((x) => Projekt.norm(x.status) === '').map((x) => zeile('p:' + x.id, 'home', name(x), x.fort ? `${x.fort.fertig} von ${x.fort.n} Schritten${x.fort.naechster ? ' · als Nächstes: ' + x.fort.naechster : ''}` : 'Noch keine Arbeitsschritte')));
 
     // Zahl am App-Symbol: was heute zu tun ist (ohne morgen und ohne laufende Baustellen)
-    window.Push?.badge(termine.filter((t) => t.datum === h && t.typ === 'termin').length + nachf.length + geld.length + bau.length);
+    window.Push?.badge(termine.filter((t) => t.datum === h && t.typ === 'termin').length + nachf.length + geld.length + bau.length + fdok.length);
     main().innerHTML = (bloecke.join('') || `<div class="empty-state">${icon('check')}<b>Heute ist nichts offen</b><span>Termine, Nachfassen, Rechnungen und Baustellen erscheinen hier, sobald etwas ansteht.</span></div>`);
     $$('[data-hz]').forEach((b) => (b.onclick = () => oeffnen(b.dataset.hz)));
   }
@@ -56,6 +59,7 @@ window.Heute = (() => {
     const [art, id] = [z.slice(0, z.indexOf(':')), z.slice(z.indexOf(':') + 1)];
     if (art === 'p') { switchTab('projekt', { wohnung: null }); return Projekt.oeffnen(id); }
     if (art === 'kal') { Kalender.view(); return; }
+    if (art === 'u') return switchTab('unterlagen');
     if (art === 'r') { switchTab('rechnungen'); await Rechnung.laden(); return Rechnung.detail(Rechnung.liste().find((r) => r.id === id), () => switchTab('rechnungen')); }
     if (art === 'b') { switchTab('rechnungen'); await Finanzen.laden(); return Finanzen.erfassen(Finanzen.liste().find((b) => b.id === id), () => switchTab('rechnungen')); }
   }

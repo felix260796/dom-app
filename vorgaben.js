@@ -51,6 +51,10 @@ const VORGABEN = {
       { k: 'nachfassenTage', l: 'Hinweis „Nachfassen“ nach wie vielen Tagen?', t: 'zahl', d: 7 },
       { k: 'absageGruende', l: 'Gründe für eine Absage (eine Zeile je Grund)', t: 'liste', d: ['Zu teuer', 'Anderer Anbieter', 'Macht es selbst', 'Kein Bedarf mehr', 'Zeitpunkt passt nicht', 'Keine Rückmeldung', 'Sonstiges'] },
     ]],
+    ['Firmenordner (Menü › Unterlagen)', [
+      { k: 'firmaDokArten', l: 'Arten von Firmendokumenten (eine Zeile je Art)', t: 'liste', d: ['Gewerbeanmeldung', 'Handelsregisterauszug', 'Betriebshaftpflicht', 'Freistellungsbescheinigung (§ 48b)', 'Unbedenklichkeitsbescheinigung Finanzamt', 'Unbedenklichkeitsbescheinigung Krankenkasse', 'Berufsgenossenschaft', 'Gesellschaftsvertrag', 'Sonstiges'] },
+      { k: 'firmaDokWarnTage', l: 'Auf „Heute“ warnen, so viele Tage bevor ein Dokument abläuft', t: 'zahl', d: 30 },
+    ]],
     ['Kunden', [
       { k: 'kundenQuellen', l: 'Wie kommen Kunden zu uns? (eine Zeile je Quelle)', t: 'liste', d: ['Empfehlung', 'Google / Internet', 'Bauschild', 'Hausverwaltung', 'Stammkunde', 'Flyer / Anzeige', 'Sonstiges'] },
     ]],
