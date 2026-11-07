@@ -6,7 +6,7 @@
  * Kern-Funktionen (Speicher, KI, Bilder) stehen in core.js. */
 
 // ---------- Symbole (einfache Linien-Icons) ----------
-const APP_VERSION = '51';
+const APP_VERSION = '52';
 const ICONS = {
   plus: '<path d="M12 5v14M5 12h14"/>',
   camera: '<path d="M3 8.5A2 2 0 0 1 5 6.5h2l1.6-2h6.8l1.6 2h2a2 2 0 0 1 2 2V18a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><circle cx="12" cy="13" r="3.6"/>',
@@ -255,7 +255,6 @@ async function viewProjekt() {
       <div class="tiles">
         <button class="tile" id="toAngebot"><span class="t-ico">${icon('ruler')}</span><b>Aufmaß & Angebot</b><span>${qm ? `${qm.toLocaleString('de-DE', { maximumFractionDigits: 1 })} m²${p.angebot?.nr ? ' · Nr. ' + esc(p.angebot.nr) : ''}` : 'Maße, Preise, Bauzeit'}</span></button>
         <button class="tile" id="toMarks" ${hasAnyResult(p) ? '' : 'disabled'}><span class="t-ico">${icon('pin')}</span><b>Markierungen</b><span>${marks ? `${marks} für die Baumappe` : 'Nummern für die Baumappe'}</span></button>
-        <button class="tile" id="social" ${hasAnyResult(p) ? '' : 'disabled'}><span class="t-ico">${icon('film')}</span><b>Instagram</b><span>Video & Post</span></button>
       </div>
     </section>
     <button class="link-danger" id="del">${icon('trash')} Raum löschen</button>`;
@@ -333,7 +332,8 @@ async function viewProjekt() {
   $('#toMappe').onclick = () => w && Projekt.mappeView(w);
   $('#toAngebot').onclick = () => { state.angebotAusProjekt = false; window.Angebot?.ansicht(p); };
   $('#toMarks').onclick = () => window.Baumappe?.markierungen(p);
-  $('#social').onclick = () => viewSocial(p).catch((e) => toast('Fehler: ' + e.message, 5000));
+  // Social Media (social.js) wird nicht gebraucht (Felix, 7.11.2026); Kachel entfernt, Datei bleibt liegen
+  if ($('#social')) $('#social').onclick = () => viewSocial(p).catch((e) => toast('Fehler: ' + e.message, 5000));
   $('#del').onclick = async () => {
     if (!confirm(`Raum „${p.room || rt.name}“ mit Fotos und Visualisierungen löschen?`)) return;
     await deleteProject(p.id);
@@ -459,7 +459,7 @@ $('#finBtn').onclick = () => { if (state.finanzen) return; Finanzen.view(); wind
 // ---------- Start ----------
 (async () => {
   await loadAll();
-  try { await Projekt.migrate(); } catch (e) { console.error('Umstellung', e); }
+  try { await Projekt.migrate(); await Projekt.automatik(); } catch (e) { console.error('Umstellung', e); }
   try { await Kunden.laden(); await Kunden.migrate(); await Kunden.nummern(); } catch (e) { console.error('Kunden', e); }
   try { await Partner.laden(); await Kalender.laden(); Kalender.punkt(); } catch (e) { console.error('Kalender', e); }
   navigator.storage?.persist?.();

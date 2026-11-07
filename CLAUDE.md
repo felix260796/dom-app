@@ -17,7 +17,7 @@ Die Oberfläche ist auf Deutsch. Der Nutzer ist Felix (Dom Projektmanagement Gmb
 | Baufortschritt | `fortschritt.js` | Arbeitsschritte zum Abhaken, Vorlagen |
 | Angebot (je Raum) | `angebot.js`, `data/preisliste.json` | Aufmaß, Positionen, Summen, PDF, Bauzeitenplan, Excel-Import der Preisliste |
 | Angebote-Reiter | `angebote.js`, `schnell.js` | Liste aller Angebote (Offen/Zugesagt/Abgesagt), Schnellangebot |
-| Finanzen | `finanzen.js` | €-Symbol oben neben dem Kalender: Abzurechnen, offene Rechnungen; geplant: Eingangsrechnungen je Projekt, Rechnungen an Kunden, Kalkulation Soll/Ist |
+| Finanzen | `finanzen.js` | €-Symbol oben neben dem Kalender: Abzurechnen, offene Rechnungen, Eingangsrechnungen (`beleg:<id>`, Datei in `bdatei:<id>`, KI liest aus), Kalkulation Soll/Ist mit Ampel (auch im Projekt und beim Subunternehmer); geplant: Rechnungen an Kunden, Abschläge |
 | Kalender & Terminmails | `kalender.js`, `supabase/functions/termin-mail/index.ts` | Termine, Geburtstage, Mails an Team/Kunde/Subunternehmer, Erinnerungen (Cron in Supabase) |
 | Fotos & Doku | `bilder.js` | Ordner je Objekt/Projekt |
 | KI-Visualisierung | `core.js` (KI-Teil), `rooms.js`, `moodboards.js` (oberer Teil), `garten.js` | Raumtypen, Moodboards Basic/Standard/Premium, Wärmepumpe im Garten |
@@ -26,7 +26,7 @@ Die Oberfläche ist auf Deutsch. Der Nutzer ist Felix (Dom Projektmanagement Gmb
 | Karte | `karte.js`, `vendor/leaflet` | Baustellen auf der Karte |
 | Einstellungen | `moodboards.js` (ab `EINST`) | Liste der Einstellungsseiten: Firma, KI, Preisliste, E-Mail-Automatisierung, Baufortschritt, Cloud, Sicherung |
 | Cloud-Abgleich & Sicherung | `sync.js`, `backup.js` | Supabase-Abgleich (Ordner „team“, feldweise Zusammenführung), Datei-Sicherung |
-| Marketing | `social.js` | Vorher-Nachher-Video, Instagram-Bilder |
+| Marketing (stillgelegt) | `social.js` | Vorher-Nachher-Video, Instagram. Nicht mehr eingebunden, wird nicht gebraucht |
 | Design | `style.css` | Ein Stylesheet, Abschnitte mit `/* ---------- Name ---------- */` |
 | Offline | `sw.js`, `manifest.webmanifest` | Service Worker. Neue Datei → in `FILES` eintragen |
 | Test | `diag.html` | Bildschirm-Test (Höhen, Sicherheitsabstand) |
@@ -39,7 +39,8 @@ Alle Bereiche teilen einen Speicher (`kvGet/kvSet`, abgeglichen über `sync.js`)
 - Angebot liegt im Raum (`r.angebot`, `r.aufmass`); `angebote.js` und `finanzen.js` lesen den Projektstatus aus `projectIndex`.
 - Termin (`termin:<id>`) → `kundeId`, `objektId`, `projektId`, `partnerId`, `wer` (Team).
 - Bilder (`bilder:<kundeId>:<objektId>`) → optional `projektId`.
-- Geplant: Eingangsrechnung → `projektId` + `partnerId`; Kalkulation vergleicht Angebot mit Eingangsrechnungen.
+- Eingangsrechnung (`beleg:<id>`) → `projektId`, `partnerId`; Kalkulation vergleicht die Raum-Angebote (Soll) mit den Eingangsrechnungen (Ist) je Gewerk.
+- Projekt: `verlauf` (Statuswechsel), `versendetAm` (Nachfassen nach 7 Tagen), `absage.grund`, `baustart`, unterschriebenes Angebot in `auftrag:<id>`.
 
 ## Regeln
 

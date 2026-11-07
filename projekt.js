@@ -68,7 +68,7 @@ window.Projekt = (() => {
     await kvSet(key(w.id), w);
     const list = await raeume(w);
     const idx = (await projectIndex()).filter((x) => x.id !== w.id);
-    idx.unshift({ id: w.id, kind: 'wohnung', nr: w.nr || '', titel: w.titel || '', status: w.status || '', kundeId: w.kundeId || '', objektId: w.objektId || '', customer: w.customer, address: w.address, room: list.length ? summary(list) : 'noch kein Raum', rooms: list.length, fort: window.Fortschritt?.kurz(w) || null, created: w.created, updated: w.updated, thumb: list.find((r) => r?.thumb)?.thumb || '' });
+    idx.unshift({ id: w.id, kind: 'wohnung', nr: w.nr || '', titel: w.titel || '', status: w.status || '', baustart: w.baustart || '', versendetAm: w.versendetAm || '', absage: w.absage?.grund || '', kundeId: w.kundeId || '', objektId: w.objektId || '', customer: w.customer, address: w.address, room: list.length ? summary(list) : 'noch kein Raum', rooms: list.length, fort: window.Fortschritt?.kurz(w) || null, created: w.created, updated: w.updated, thumb: list.find((r) => r?.thumb)?.thumb || '' });
     await kvSet('projectIndex', idx);
   }
   const neuesProjekt = () => ({ id: uid(), kind: 'wohnung', created: Date.now(), customer: '', address: '', rooms: [], mappe: {}, pdfProducts: true, pdfPrices: false, pdfEvening: true });
@@ -223,6 +223,7 @@ window.Projekt = (() => {
       </div>
       ${statusKarte(w)}
       ${['geplant', '', 'fertig'].includes(norm(w.status)) ? '<div id="wFort"></div>' : ''}
+      ${zugesagt(w.status) && !w.isNew ? '<div id="wKosten"></div>' : ''}
       ${k ? `<div class="docs" style="margin-top:12px"><button class="doc" id="wBilder"><span class="d-ico brass">${icon('camera')}</span>
         <span class="d-t"><b>Bilder & Dokumentation</b><span>${nFotos ? `${nFotos} ${nFotos === 1 ? 'Bild' : 'Bilder'} in diesem Projekt` : 'Bestand, Baufortschritt, Abnahme, eigene Ordner'}</span></span>${icon('chevron', 'pc-chev')}</button></div>` : ''}
       ${window.Gespraech?.karte(w, list) || ''}
@@ -269,9 +270,18 @@ window.Projekt = (() => {
       ${anyResult ? '' : '<p class="hint center">Kunden- und Baumappe gibt es, sobald ein Raum visualisiert ist.</p>'}
       <div id="wTermine"></div>
       <button class="link-danger" id="wDel">${icon('trash')} Projekt löschen</button>` : ''}`;
+    if ($('#wKosten')) window.Finanzen?.projektAbschnitt($('#wKosten'), w);
     if ($('#wFort')) window.Fortschritt?.abschnitt($('#wFort'), w, list, () => save(w));
     if (k && $('#wTermine')) window.Kalender?.abschnitt($('#wTermine'), { kundeId: k.id, objektId: w.objektId, projektId: w.id, zurueck: () => view() });
     const setzen = async (v) => {
+      // Absage: Grund festhalten (für später: „da war ich schon, abgesagt wegen …“)
+      if (v === 'abgesagt') {
+        const g = await sheet('Warum abgesagt?', ABSAGE.map((x) => ({ label: x, value: x })));
+        if (g === null) return;
+        w.absage = { grund: g, t: Date.now() };
+      }
+      if (v === 'angebot' && norm(w.status) !== 'angebot') w.versendetAm = heuteIso();
+      if (norm(v) !== norm(w.status)) (w.verlauf ??= []).push({ st: v, t: Date.now() });
       w.status = v;
       if (!w.isNew) await save(w);
       toast(statusName(v));
@@ -283,6 +293,29 @@ window.Projekt = (() => {
       if (norm(w.status) === 'besichtigung' && v === 'entwurf' && list.length) { w.status = v; if (!w.isNew) await save(w); return $('#dAngebot')?.click(); }
       setzen(v);
     }));
+    if ($('#wAuftrag')) $('#wAuftrag').onclick = async () => {
+      if (w.auftrag) {
+        const v = await sheet('Unterschriebenes Angebot', [{ label: 'Ansehen', icon: icon('file'), value: 'zeigen' }, { label: 'Andere Datei ablegen', icon: icon('upload'), value: 'neu' }, { label: 'Entfernen', icon: icon('trash'), value: 'weg' }]);
+        if (v === 'zeigen') return dateiZeigen(await kvGet('auftrag:' + w.id), w.auftrag);
+        if (v === 'weg') { await kvDel('auftrag:' + w.id); delete w.auftrag; await save(w); return view(); }
+        if (v !== 'neu') return;
+      }
+      const [f] = await pickFiles({ accept: 'application/pdf,image/*' });
+      if (!f) return;
+      if (f.size > 8e6) return toast('Die Datei ist zu groß (höchstens 8 MB).', 4000);
+      let data = await fileToDataUrl(f), typ = f.type || 'application/pdf';
+      if (typ.startsWith('image/')) { data = await resize(data, 2200, 'image/jpeg', 0.85); typ = 'image/jpeg'; }
+      await kvSet('auftrag:' + w.id, data);
+      w.auftrag = { name: f.name || 'Angebot unterschrieben', typ, t: Date.now() };
+      if (!w.isNew) await save(w);
+      toast('Unterschriebenes Angebot abgelegt'); const y = window.scrollY; await view(); window.scrollTo(0, y);
+    };
+    if ($('#wBaustart')) $('#wBaustart').onchange = async (e) => {
+      w.baustart = e.target.value;
+      if (w.baustart && w.baustart <= heuteIso()) return setzen('');
+      if (!w.isNew) await save(w);
+      toast(w.baustart ? 'Baustart gespeichert' : 'Baustart entfernt');
+    };
     if ($('#stAlle')) $('#stAlle').onclick = async () => {
       const v = await sheet('Status ändern', ALLE.map(([id, n, c]) => ({ label: n, icon: '<i class="si-dot"></i>', color: c, value: id || '__laeuft' })));
       if (v !== null) setzen(v === '__laeuft' ? '' : v);
@@ -333,13 +366,45 @@ window.Projekt = (() => {
   /** Statuskarte im Projekt: wo steht es, was kommt als Nächstes (ein großer Knopf). */
   function statusKarte(w) {
     const st = norm(w.status), i = PFAD.indexOf(st), nx = WEITER[st];
+    const f = window.Fortschritt?.kurz(w);
+    const allesErledigt = st === '' && f && f.fertig === f.n;
+    const tage = seitTagen(w.versendetAm);
     const knoepfe = st === 'angebot'
       ? `<div class="stk-2"><button class="btn" data-st="geplant" style="--c:#2f8a57">${icon('check')} Zugesagt</button><button class="btn" data-st="abgesagt" style="--c:#c0392b">${icon('x')} Abgesagt</button></div>`
       : nx ? `<button class="btn block" data-st="${nx[0]}" style="--c:${farbe(nx[0])}">${esc(nx[1])}</button>` : '';
     return `<div class="card stk" style="--c:${farbe(st)}">
       <div class="stk-top"><span class="stk-dot"></span><span class="stk-t"><small>Status</small><b>${esc(statusName(st))}</b></span><button class="stk-alle" id="stAlle">Ändern</button></div>
       <div class="stk-pfad" aria-hidden="true">${PFAD.map((id, j) => `<i class="${st === 'abgesagt' ? (j <= 2 ? 'ab' : '') : j < i ? 'ok' : j === i ? 'jetzt' : ''}" style="--c:${farbe(id)}"></i>`).join('')}</div>
+      ${st === 'geplant' ? `<label class="stk-feld">${icon('calendar')}<span>Baustart</span><input type="date" id="wBaustart" value="${esc(w.baustart || '')}"></label>
+        <p class="hint" style="margin:0 0 10px">Am Tag des Baustarts springt der Status von selbst auf „Baustelle läuft“.</p>` : ''}
+      ${st === 'angebot' && tage >= NACHFASSEN ? `<p class="stk-tipp warn">${icon('phone')} Seit ${tage} Tagen beim Kunden. Zeit zum Nachfassen.</p>` : ''}
+      ${st === 'angebot' && w.versendetAm && tage < NACHFASSEN ? `<p class="hint" style="margin:0 0 10px">Versendet am ${esc(datumText(w.versendetAm))}</p>` : ''}
+      ${st === 'abgesagt' && w.absage?.grund ? `<p class="hint" style="margin:0 0 10px">Grund: ${esc(w.absage.grund)} · ${esc(new Date(w.absage.t).toLocaleDateString('de-DE'))}</p>` : ''}
+      ${zugesagt(st) ? `<button class="doc stk-doc" id="wAuftrag"><span class="d-ico ${w.auftrag ? 'navy' : 'grey'}">${icon('file')}</span><span class="d-t"><b>Unterschriebenes Angebot</b><span>${w.auftrag ? `Abgelegt am ${esc(new Date(w.auftrag.t).toLocaleDateString('de-DE'))}` : 'Noch nicht abgelegt, tippen zum Ablegen'}</span></span>${icon('chevron', 'pc-chev')}</button>` : ''}
+      ${allesErledigt ? `<p class="stk-tipp">${icon('check')} Alle Schritte sind abgehakt. Jetzt abschließen?</p>` : ''}
       ${knoepfe}</div>`;
+  }
+  const NACHFASSEN = 7;
+  const ABSAGE = ['Zu teuer', 'Anderer Anbieter', 'Macht es selbst', 'Kein Bedarf mehr', 'Zeitpunkt passt nicht', 'Keine Rückmeldung', 'Sonstiges'];
+  const seitTagen = (iso) => (iso ? Math.floor((new Date(heuteIso() + 'T12:00') - new Date(iso + 'T12:00')) / 864e5) : -1);
+  const datumText = (iso) => new Date(iso + 'T12:00').toLocaleDateString('de-DE');
+  async function dateiZeigen(data, d) {
+    if (!data) return toast('Die Datei ist auf diesem Gerät noch nicht da. Bitte kurz warten (Cloud-Abgleich).', 4000);
+    const blob = await (await fetch(data)).blob();
+    const url = URL.createObjectURL(new File([blob], d.name || 'Dokument', { type: d.typ }));
+    const win = window.open(url, '_blank');
+    if (!win) { const a = document.createElement('a'); a.href = url; a.download = d.name || 'Dokument'; a.click(); }
+    setTimeout(() => URL.revokeObjectURL(url), 120000);
+  }
+  const heuteIso = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
+  /** Automatik beim Start: eingeplante Projekte mit erreichtem Baustart auf „Baustelle läuft“ setzen. */
+  async function automatik() {
+    const h = heuteIso();
+    for (const x of await projectIndex()) {
+      if (norm(x.status) !== 'geplant' || !x.baustart || x.baustart > h) continue;
+      const w = await kvGet(key(x.id));
+      if (w && norm(w.status) === 'geplant') { w.status = ''; await save(w); }
+    }
   }
 
   function raumAngebot(r, w) {
@@ -483,7 +548,7 @@ window.Projekt = (() => {
   }
 
   const forget = (id) => rooms.delete(id);
-  return { STATUS, ANGEBOT, ALLE, PHASEN, phase, farbe, pill, norm, zugesagt, statusName, statusKurz, raumAngebot, forget, neu, neuFuer, kundeUebernehmen, oeffnen, view, mappeView, moodboardView, migrate, raum, raeume, raumGespeichert, raumEntfernt, save, wahl, PKG_IDS, _intern: { titel, addRoom } };
+  return { automatik, NACHFASSEN, seitTagen, STATUS, ANGEBOT, ALLE, PHASEN, phase, farbe, pill, norm, zugesagt, statusName, statusKurz, raumAngebot, forget, neu, neuFuer, kundeUebernehmen, oeffnen, view, mappeView, moodboardView, migrate, raum, raeume, raumGespeichert, raumEntfernt, save, wahl, PKG_IDS, _intern: { titel, addRoom } };
 })();
 // Ältere Aufrufe (PR „Wohnungen“) laufen weiter
 window.Wohnung = { neu: () => Projekt.neu(), oeffnen: (id) => Projekt.oeffnen(id), view: () => Projekt.view(), raumGespeichert: (p) => Projekt.raumGespeichert(p), raumEntfernt: (p) => Projekt.raumEntfernt(p) };

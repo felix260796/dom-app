@@ -273,12 +273,15 @@ window.Kunden = (() => {
       const shown = all.filter((k) => treffer(k, idx, q));
       $('#kCount').textContent = q ? `${shown.length} von ${all.length}` : all.length;
       el.innerHTML = shown.map((k) => {
-        const n = idx.filter((x) => x.kundeId === k.id).length, g = bisGeburtstag(k);
+        const pk = idx.filter((x) => x.kundeId === k.id), n = pk.length, g = bisGeburtstag(k);
+        // Suche nach Straße: passende Objekte mit ihren Projekten zeigen („da war ich schon mal“)
+        const objTreffer = q ? k.objekte.filter((o) => q.split(/\s+/).filter(Boolean).every((w) => `${o.name} ${o.adresse}`.toLowerCase().includes(w))) : [];
         return `<button class="pcard kcard" data-k="${k.id}">
           <span class="av">${esc(initialen(k))}</span>
           <span class="pc-t"><b>${esc(name(k) || 'Ohne Namen')}</b>
             ${ort(k) ? `<span class="muted">${esc(ort(k))}</span>` : ''}
-            <span class="pc-meta">${k.nr ? `Nr. ${esc(k.nr)} · ` : ''}${n ? `${n} ${n === 1 ? 'Projekt' : 'Projekte'}` : 'noch kein Projekt'}${g !== null && g <= 14 ? ` · <span class="geb">${gebText(g)}</span>` : ''}</span></span>
+            <span class="pc-meta">${k.nr ? `Nr. ${esc(k.nr)} · ` : ''}${n ? `${n} ${n === 1 ? 'Projekt' : 'Projekte'}` : 'noch kein Projekt'}${g !== null && g <= 14 ? ` · <span class="geb">${gebText(g)}</span>` : ''}</span>
+            ${objTreffer.length ? objTreffer.map((o) => { const op = pk.filter((x) => x.objektId === o.id); return `<span class="otreff">${icon('map')}<span>${esc(objLabel(o))}${op.length ? '' : ' · noch kein Projekt'}</span>${pills(op)}</span>`; }).join('') : pills(pk)}</span>
           ${icon('chevron', 'pc-chev')}
         </button>`;
       }).join('') || '<p class="empty">Kein Kunde gefunden.</p>';
@@ -385,7 +388,8 @@ window.Kunden = (() => {
         <button class="pcard ocard" data-obj="${o.id}">
           <span class="o-ico">${icon('home')}</span>
           <span class="pc-t"><b>${esc(objLabel(o))}</b>${o.name.trim() && o.adresse.trim() ? `<span class="muted">${esc(einzeilig(o.adresse))}</span>` : ''}
-            <span class="pc-meta">${n ? `${n} ${n === 1 ? 'Projekt' : 'Projekte'}` : 'noch kein Projekt'}${nBilder[o.id] ? ` · ${nBilder[o.id]} ${nBilder[o.id] === 1 ? 'Bild' : 'Bilder'}` : ''}${o.notiz.trim() ? ' · Notiz' : ''}</span></span>
+            <span class="pc-meta">${n ? `${n} ${n === 1 ? 'Projekt' : 'Projekte'}` : 'noch kein Projekt'}${nBilder[o.id] ? ` · ${nBilder[o.id]} ${nBilder[o.id] === 1 ? 'Bild' : 'Bilder'}` : ''}${o.notiz.trim() ? ' · Notiz' : ''}</span>
+            ${pills(idx.filter((x) => x.objektId === o.id))}</span>
           ${icon('chevron', 'pc-chev')}
         </button>`; }).join('')}
         <div class="row">
@@ -457,6 +461,9 @@ window.Kunden = (() => {
     };
   }
 
+  /** Status der Projekte als farbige Schilder (höchstens 3, Rest als „+n“), z. B. für Kunden- und Objektkarten. */
+  const pills = (list) => (window.Projekt && list.length ? `<span class="pills">${list.slice(0, 3).map((x) => Projekt.pill(x.status)).join('')}${list.length > 3 ? `<span class="muted">+${list.length - 3}</span>` : ''}</span>` : '');
+  const monatJahr = (t) => (t ? new Date(t).toLocaleDateString('de-DE', { month: 'short', year: 'numeric' }) : '');
   const objLabel = (o) => (o ? o.name.trim() || einzeilig(o.adresse) || 'Objekt ohne Anschrift' : '');
   const untertitel = (k) => [k.nr && `Kunden-Nr. ${k.nr}`, ort(k)].filter(Boolean).join(' · ');
   /** Projektkarte; zweite Zeile z. B. „1001-02 · Miethaus 1“. */
@@ -464,7 +471,7 @@ window.Kunden = (() => {
       ${x.thumb ? `<img src="${x.thumb}" alt="">` : `<span class="pc-ph">${icon('home')}</span>`}
       <span class="pc-t"><b>${esc(x.titel || x.room || 'Projekt')}</b>
         <span class="muted">${esc([x.nr, wo, x.titel && x.room].filter(Boolean).join(' · '))}</span>
-        ${window.Projekt ? Projekt.pill(x.status) : ''}</span>
+        <span class="pills">${window.Projekt ? Projekt.pill(x.status) : ''}<span class="muted">${esc(monatJahr(x.created || x.updated))}</span></span>${x.absage ? `<span class="muted">Grund: ${esc(x.absage)}</span>` : ''}</span>
       ${icon('chevron', 'pc-chev')}</button>`;
 
   // ---------- Ansicht: ein Objekt (Anschrift, Notiz, Bilder, Projekte dort) ----------

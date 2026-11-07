@@ -117,6 +117,7 @@ window.Partner = (() => {
         <button type="button" class="link-add" id="pGebAdd">${icon('cake')} Geburtstag hinzufügen</button>
         <label>Notizen</label><textarea id="pNotiz" placeholder="z. B. Sohn Emre spielt Fußball, mag Rotwein, zuverlässig bei Kleinaufträgen">${esc(p.notiz)}</textarea>
       </div>
+      ${p.isNew ? '' : '<div id="pBelege"></div>'}
       ${p.isNew ? '' : `<button class="link-danger" id="pDel">${icon('trash')} Löschen</button>`}`;
 
     const persist = debounce(() => speichern(p), 400);
@@ -135,6 +136,7 @@ window.Partner = (() => {
     Kontakt.weitereBinden($('#pWeitere'), p.weitere, () => { persist(); actions(); });
     Kunden.adressVorschlaege($('#pAdr'));
     if (p.isNew) setTimeout(() => $('#pFirma')?.focus(), 50);
+    if ($('#pBelege')) window.Finanzen?.partnerAbschnitt($('#pBelege'), p);
 
     // Geburtstage
     const gebRender = () => {

@@ -138,7 +138,7 @@ window.Sync = (() => {
     return [...byId.values()].sort((a, b) => (b.created || 0) - (a.created || 0));
   }
   // Gelöschte Räume (project:) und Projekte (wohnung:) werden über die Liste „projectDeleted“ auf allen Geräten entfernt
-  const delId = (k) => (/^(project|wohnung|kunde|bild|termin|partner|pdok):/.test(k) ? k.slice(k.indexOf(':') + 1) : '');
+  const delId = (k) => (/^(project|wohnung|kunde|bild|termin|partner|pdok|beleg|bdatei|auftrag):/.test(k) ? k.slice(k.indexOf(':') + 1) : '');
   const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
   const isObj = (x) => x !== null && typeof x === 'object' && !Array.isArray(x);
   const hasIds = (a) => Array.isArray(a) && a.length > 0 && a.every((x) => isObj(x) && x.id != null);
@@ -309,6 +309,8 @@ window.Sync = (() => {
       if (state.partner && document.getElementById('pAct')) { const p = window.Partner?.byId(state.partner.id); if (p) { window.Partner.detail(p); window.scrollTo(0, y); } }
       else if (document.getElementById('pNew')) window.Partner?.listeView();
     }
+    // Finanzen-Übersicht mit neuen Eingangsrechnungen neu zeichnen
+    if (!typing && state.finanzen && !state.beleg && document.getElementById('fNeu') && [...changed].some((k) => k.startsWith('beleg:'))) window.Finanzen?.view();
     if (state.project && changed.has('project:' + state.project.id)) toast('Dieses Projekt wurde auf einem anderen Gerät geändert. Zum Aktualisieren Projekt neu öffnen.', 5000);
     else toast(`${changed.size} Änderung(en) vom anderen Gerät übernommen`);
   }

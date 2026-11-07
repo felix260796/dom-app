@@ -57,7 +57,7 @@ window.Fortschritt = (() => {
           x.fertig = x.fertig ? 0 : Date.now();
           x.wer = x.fertig ? wer() : '';
           await sichern();
-          if (x.fertig) toast(`${x.name} erledigt`);
+          if (x.fertig) toast(w.schritte.every((y) => y.fertig) ? 'Alle Schritte erledigt. Oben im Status kannst du die Baustelle abschließen.' : `${x.name} erledigt`, 4000);
         };
         $('[data-ed]', z).onclick = async () => {
           const v = await sheet(x.name, [

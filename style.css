@@ -739,3 +739,40 @@ input.bad { border-color: var(--danger) !important; background: var(--danger-sof
 .phasen .fz b { font-size: 22px; color: var(--navy); line-height: 1.1; }
 .phasen .fz span { font-size: 13px; font-weight: 650; }
 .doc.off { opacity: .6; }
+
+/* Status-Schilder in Kunden- und Objektkarten */
+.pills { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; margin-top: 3px; font-size: 12.5px; }
+.pills .st-pill { margin: 0; }
+.otreff { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; margin-top: 5px; font-size: 13px; color: var(--navy); font-weight: 600; }
+.otreff svg.i { width: 15px; height: 15px; color: var(--brass); }
+.otreff .pills { margin-top: 0; }
+
+.stk-feld { display: flex; align-items: center; gap: 8px; margin: 0 0 6px; font-weight: 650; color: var(--navy); }
+.stk-feld svg.i { width: 19px; height: 19px; color: var(--brass); }
+.stk-feld span { flex: 1; }
+.stk-feld input { width: auto; flex: none; }
+.stk-tipp { display: flex; align-items: center; gap: 6px; margin: 0 0 10px; font-weight: 650; color: #237a4b; }
+.stk-tipp svg.i { width: 18px; height: 18px; }
+
+/* ---------- Eingangsrechnungen & Kalkulation ---------- */
+.fz.rot b { color: #c0392b; }
+.kalk-z { display: flex; justify-content: space-between; align-items: baseline; padding: 4px 0; font-size: 15px; }
+.kalk-z span { color: var(--muted, #6b7280); }
+.kalk-z.big { font-size: 18px; border-top: 1px solid rgba(0,0,0,.08); margin-top: 6px; padding-top: 8px; }
+.kalk-z.big b { color: var(--c); }
+.kalk-bar { height: 8px; border-radius: 4px; background: rgba(0,0,0,.07); overflow: hidden; margin: 6px 0; }
+.kalk-bar i { display: block; height: 100%; border-radius: 4px; }
+.kalk-amp { display: flex; align-items: center; gap: 8px; margin: 6px 0 0; font-size: 14px; color: var(--c); font-weight: 600; }
+.kalk-amp i { width: 10px; height: 10px; border-radius: 50%; background: var(--c); }
+.kalk-g { margin-top: 10px; font-size: 14px; }
+.kalk-g summary { cursor: pointer; color: var(--muted, #6b7280); padding: 4px 0; }
+.kalk-gt { display: grid; grid-template-columns: 1fr 90px 90px; gap: 6px; padding: 3px 0; }
+.kalk-gt span:not(:first-child) { text-align: right; }
+.kalk-gt:first-of-type { color: var(--muted, #6b7280); font-size: 12px; }
+.kalk-gt.drueber span:last-child { color: #c0392b; font-weight: 600; }
+
+/* ---------- Nachfassen, Absage, unterschriebenes Angebot ---------- */
+.stk-tipp.warn { color: #b7791f; }
+.stk-doc { width: 100%; margin: 0 0 10px; }
+.nachfassen { display: block; color: #b7791f; font-size: 13px; font-weight: 650; }
+.stk-doc .d-t b { white-space: normal; }
