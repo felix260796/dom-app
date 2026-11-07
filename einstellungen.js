@@ -1,5 +1,5 @@
 'use strict';
-/* DOM – Einstellungen (Symbol oben rechts): Liste der Seiten EINST und jede Seite einzeln.
+/* DOM – Einstellungen (im Menü hinter dem DOM-Logo): Liste der Seiten EINST und jede Seite einzeln.
  * Baut auf app.js (header, main, icon, sheet), core.js und moodboards.js auf. */
 
 // ---------- Ansicht: Einstellungen ----------

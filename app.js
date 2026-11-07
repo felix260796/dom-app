@@ -6,7 +6,7 @@
  * Kern-Funktionen (Speicher, KI, Bilder) stehen in core.js. */
 
 // ---------- Symbole (einfache Linien-Icons) ----------
-const APP_VERSION = '61';
+const APP_VERSION = '62';
 const ICONS = {
   plus: '<path d="M12 5v14M5 12h14"/>',
   camera: '<path d="M3 8.5A2 2 0 0 1 5 6.5h2l1.6-2h6.8l1.6 2h2a2 2 0 0 1 2 2V18a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><circle cx="12" cy="13" r="3.6"/>',
@@ -188,11 +188,30 @@ async function viewProjektListe() {
   window.Backup?.hinweis($('#backupHint'));
 }
 
-$('#calBtn').onclick = () => { if (state.kalender) return; state.finanzen = false; Kalender.view(); window.scrollTo(0, 0); };
-// Einstellungen oben rechts; „Zurück“ führt in den Reiter, aus dem man kam
-$('#setBtn').onclick = () => switchTab('einstellungen');
-// Tippen aufs Logo: Startseite „Heute“
-$('.brand').onclick = () => switchTab('heute');
+// ---------- Menü: Tippen aufs DOM-Logo, fährt rechts heraus ----------
+// Alles, was keinen Reiter unten hat: Heute, Kalender, Einstellungen (das Mikrofon sitzt direkt unter dem Logo). Neues hier in MENUE eintragen.
+const MENUE = [
+  ['heute', 'Heute', 'sun', () => 'Was heute dran ist', () => switchTab('heute')],
+  ['kalender', 'Kalender', 'calendar', () => { const n = window.Kalender?.eintraege(Kalender._heute(), Kalender._heute()).length || 0; return n ? `Heute ${n} ${n === 1 ? 'Eintrag' : 'Einträge'}` : 'Termine, Geburtstage'; }, () => { state.finanzen = false; Kalender.view(); window.scrollTo(0, 0); }],
+  ['einstellungen', 'Einstellungen', 'sliders', () => 'Firma, Angebote, Rechnungen, Abläufe, Technik', () => switchTab('einstellungen')],
+];
+function menue() {
+  if ($('.menu-bg')) return;
+  const el = document.createElement('div');
+  el.className = 'menu-bg';
+  el.innerHTML = `<nav class="menu" aria-label="Menü"><div class="menu-h"><img src="assets/dom_logo_weiss.png" alt="DOM"><button class="icon-btn" data-x aria-label="Schließen">${icon('x')}</button></div>
+    ${MENUE.map(([id, l, ic, sub]) => `<button class="menu-i" data-m="${id}"><span class="menu-ic">${icon(ic)}</span><span><b>${esc(l)}</b><span>${esc(sub())}</span></span></button>`).join('')}
+    <p class="menu-v">Version ${APP_VERSION}</p></nav>`;
+  const zu = () => { el.classList.remove('on'); setTimeout(() => el.remove(), 220); };
+  el.onclick = (e) => { if (e.target === el || e.target.closest('[data-x]')) zu(); };
+  $$('[data-m]', el).forEach((b) => (b.onclick = () => { zu(); MENUE.find((m) => m[0] === b.dataset.m)[4](); }));
+  let x0 = null; // nach rechts wischen schließt
+  el.addEventListener('touchstart', (e) => { x0 = e.touches[0].clientX; }, { passive: true });
+  el.addEventListener('touchend', (e) => { if (x0 !== null && e.changedTouches[0].clientX - x0 > 60) zu(); x0 = null; });
+  document.body.appendChild(el);
+  requestAnimationFrame(() => el.classList.add('on'));
+}
+$('#brandBtn').onclick = menue;
 // Mikrofon oben: Kunde, Projekt und Termin per Sprache anlegen (sprache.js)
 $('#micBtn').onclick = () => { const t = state.tab; Sprache.view(() => switchTab(t)); };
 

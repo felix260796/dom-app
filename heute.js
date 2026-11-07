@@ -2,7 +2,7 @@
 /* DOM – Startseite „Heute“: alles, was heute dran ist, auf einen Blick.
  * Termine heute und morgen, Angebote zum Nachfassen, überfällige Rechnungen (Kunden und Eingang), Abzurechnen,
  * Lieferungen, Mängel mit Frist, bevorstehende Baustarts, laufende Baustellen.
- * Öffnet beim Start (einstellbar) und beim Tippen auf das DOM-Logo. Eigener Zustand state.tab = 'heute' (kein Reiter unten).
+ * Öffnet beim Start (einstellbar) und über das Menü (DOM-Logo). Eigener Zustand state.tab = 'heute' (kein Reiter unten).
  * Vorlauf in Tagen und Start-Verhalten: Vorgaben 'heuteStart', 'heuteVorlauf' (vorgaben.js). */
 window.Heute = (() => {
   const iso = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
@@ -45,9 +45,7 @@ window.Heute = (() => {
     // Laufende Baustellen
     block('Laufende Baustellen', idx.filter((x) => Projekt.norm(x.status) === '').map((x) => zeile('p:' + x.id, 'home', name(x), x.fort ? `${x.fort.fertig} von ${x.fort.n} Schritten${x.fort.naechster ? ' · als Nächstes: ' + x.fort.naechster : ''}` : 'Noch keine Arbeitsschritte')));
 
-    const mic = `<button class="pcard hz sp-start" id="hzMic"><span class="pc-ph">${icon('mic')}</span><span class="pc-t"><b>Per Sprache anlegen</b><span class="muted">Kunde, Projekt und Termin in einem Satz</span></span>${icon('chevron', 'pc-chev')}</button>`;
-    main().innerHTML = mic + (bloecke.join('') || `<div class="empty-state">${icon('check')}<b>Heute ist nichts offen</b><span>Termine, Nachfassen, Rechnungen und Baustellen erscheinen hier, sobald etwas ansteht.</span></div>`);
-    $('#hzMic').onclick = () => Sprache.view(() => switchTab('heute'));
+    main().innerHTML = (bloecke.join('') || `<div class="empty-state">${icon('check')}<b>Heute ist nichts offen</b><span>Termine, Nachfassen, Rechnungen und Baustellen erscheinen hier, sobald etwas ansteht.</span></div>`);
     $$('[data-hz]').forEach((b) => (b.onclick = () => oeffnen(b.dataset.hz)));
   }
 

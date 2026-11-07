@@ -5,7 +5,7 @@
  *   titel, art, wer:[personId], kundeId, objektId, projektId, partnerId, ort, notiz, created, updated }
  * Personen (Felix, Deniel …) stehen in den Einstellungen unter „Team“ (state.settings.team); oben im Kalender
  * lässt sich einer oder alle anzeigen. Termine ohne Person gelten für alle.
- * Immer erreichbar über das Kalender-Symbol oben unter dem DOM-Schriftzug, dazu die Kachel im Reiter Kunden
+ * Immer erreichbar über das Menü (DOM-Logo oben), dazu die Kachel im Reiter Kunden
  * und „Termine“ in Kundenkarte, Objekt und Projekt. */
 window.Kalender = (() => {
   const ARTEN = [
@@ -353,5 +353,5 @@ window.Kalender = (() => {
   /** Punkt am Kalender-Symbol, wenn heute etwas ansteht. */
   function punkt() { const d = $('#calDot'); if (d) d.hidden = !eintraege(heute(), heute()).length; }
 
-  return { laden, view, kachel, abschnitt, bearbeiten, eintraege, punkt, team, ARTEN, MAILTEXTE, mailTexte };
+  return { _heute: heute, laden, view, kachel, abschnitt, bearbeiten, eintraege, punkt, team, ARTEN, MAILTEXTE, mailTexte };
 })();

@@ -1,7 +1,7 @@
 'use strict';
 /* DOM – Per Sprache anlegen: ein Satz wie „Neuer Kunde Herr Müller, Hauptstraße 5 in Köln, Telefon 0170…,
  * Besichtigung Bad am Dienstag um 10 Uhr“ wird zu Kunde, Objekt, Projekt und Termin.
- * Ablauf: Mikrofon oben in der Kopfzeile (oder auf „Heute“) → sprechen → die KI (Gemini) liest Name, Anschrift,
+ * Ablauf: Mikrofon oben in der Kopfzeile (unter dem DOM-Logo) → sprechen → die KI (Gemini) liest Name, Anschrift,
  * Telefon, E-Mail, Projekt und Termin heraus → Prüfseite mit allen Feldern → „Anlegen“.
  * Ein bekannter Kunde wird erkannt (gleicher Name), dann kommt nur Objekt/Projekt/Termin dazu.
  * Der Termin öffnet danach den normalen Termin-Editor (dort Mails an Team und Kunde wie gewohnt).

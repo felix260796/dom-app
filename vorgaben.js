@@ -46,7 +46,7 @@ const VORGABEN = {
       { k: 'gewerkeExtra', l: 'Zusätzliche Gewerke für Eingangsrechnungen (neben denen der Preisliste)', t: 'liste', d: ['Material', 'Entsorgung', 'Sonstiges'] },
     ]],
     ['Startseite „Heute“', [
-      { k: 'heuteStart', l: 'Beim Öffnen der App mit „Heute“ starten', t: 'janein', d: 'ja', h: 'Sonst startet die App bei den Kunden. „Heute“ erreichst du immer über das DOM-Logo oben.' },
+      { k: 'heuteStart', l: 'Beim Öffnen der App mit „Heute“ starten', t: 'janein', d: 'ja', h: 'Sonst startet die App bei den Kunden. „Heute“ erreichst du immer über das Menü (DOM-Logo oben).' },
       { k: 'heuteVorlauf', l: 'Fälliges so viele Tage vorher zeigen', t: 'zahl', d: 3 },
     ]],
     ['Per Sprache anlegen (Mikrofon oben)', [

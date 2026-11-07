@@ -22,7 +22,9 @@ svg.i { width: 22px; height: 22px; flex: none; fill: none; stroke: currentColor;
   background: linear-gradient(180deg, var(--navy-ink) 0%, var(--navy) 100%);
   padding: calc(env(safe-area-inset-top) + 8px) 16px 14px; box-shadow: 0 2px 10px rgba(20, 38, 59, .18); }
 .brand-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; min-height: 34px; }
-.brand { display: flex; flex-direction: column; align-items: flex-end; margin-left: auto; opacity: .96; }
+.brand { position: relative; display: flex; align-items: center; margin-left: auto; opacity: .96; border: 0; background: none; color: #fff; padding: 4px 0 4px 8px; cursor: pointer; }
+.brand-logo { display: flex; flex-direction: column; align-items: flex-end; }
+.brand #calDot { position: absolute; top: 0; right: -6px; width: 8px; height: 8px; border-radius: 50%; background: var(--brass); box-shadow: 0 0 0 2px var(--navy-ink); }
 .brand img { height: 22px; width: auto; display: block; }
 .brand small { font-size: 6.3px; line-height: 1; font-weight: 600; letter-spacing: .02em; color: rgba(255,255,255,.82); margin-top: 3px; white-space: nowrap; }
 .topback { display: inline-flex; align-items: center; gap: 2px; border: 0; background: rgba(255,255,255,.12); color: #fff; font-size: 15px; font-weight: 600;
@@ -143,9 +145,7 @@ details.sub > summary { font-size: 14px; font-weight: 600; color: var(--navy-2);
 #aBack, #soBack, #vBack { display: none; }
 
 /* Kalender-Symbol oben */
-.titles { position: relative; padding-right: 150px; }
-#calBtn { right: 50px; }
-#micBtn { right: 100px; }
+.titles { position: relative; padding-right: 52px; }
 .calbtn { position: absolute; right: 0; top: 50%; transform: translateY(-50%); width: 42px; height: 42px; border-radius: 13px; border: 0; background: rgba(255,255,255,.12); color: #fff; display: flex; align-items: center; justify-content: center; }
 .calbtn svg.i { width: 23px; height: 23px; }
 .calbtn i { position: absolute; top: 7px; right: 7px; width: 9px; height: 9px; border-radius: 50%; background: var(--brass); box-shadow: 0 0 0 2px var(--navy); }
@@ -168,12 +168,9 @@ details.sub > summary { font-size: 14px; font-weight: 600; color: var(--navy-2);
 .vg-hl { outline: 3px solid var(--brass); outline-offset: 2px; transition: outline .3s; }
 
 /* ---------- Startseite Heute ---------- */
-.brand { cursor: pointer; }
 .pcard.hz .pc-ph svg.i { width: 22px; height: 22px; }
 
 /* ---------- Per Sprache anlegen ---------- */
-.sp-start { margin-bottom: 18px; }
-.sp-start .pc-ph { background: var(--navy); color: #fff; }
 .sp-card { display: flex; flex-direction: column; align-items: center; text-align: center; gap: 10px; padding: 26px 18px; }
 .sp-mic { width: 96px; height: 96px; border-radius: 50%; border: 0; background: var(--navy); color: #fff; display: grid; place-items: center; box-shadow: 0 8px 22px rgba(30, 53, 80, .28); cursor: pointer; }
 .sp-mic svg.i { width: 40px; height: 40px; }
@@ -183,3 +180,20 @@ details.sub > summary { font-size: 14px; font-weight: 600; color: var(--navy-2);
 .sp-h { margin: 0 0 4px; font-size: 17px; }
 .sp-chk { display: flex; align-items: center; gap: 8px; margin: 0; font-size: 16px; }
 .sp-chk input { width: 20px; height: 20px; }
+
+/* ---------- Menü (DOM-Logo) ---------- */
+.menu-bg { position: fixed; inset: 0; z-index: 80; background: rgba(15, 26, 40, 0); transition: background .2s; }
+.menu-bg.on { background: rgba(15, 26, 40, .45); }
+.menu { position: absolute; top: 0; right: 0; bottom: 0; width: min(84vw, 340px); background: var(--bg); box-shadow: -8px 0 24px rgba(0, 0, 0, .18);
+  transform: translateX(100%); transition: transform .22s ease; display: flex; flex-direction: column; gap: 8px; padding: 0 12px calc(env(safe-area-inset-bottom) + 16px); overflow-y: auto; }
+.menu-bg.on .menu { transform: none; }
+.menu-h { display: flex; align-items: center; justify-content: space-between; margin: 0 -12px 8px; padding: calc(env(safe-area-inset-top) + 14px) 14px 14px 18px; background: linear-gradient(180deg, var(--navy-ink) 0%, var(--navy) 100%); }
+.menu-h img { height: 24px; }
+.menu-h .icon-btn { color: #fff; background: rgba(255, 255, 255, .14); border: 0; }
+.menu-i { display: flex; align-items: center; gap: 14px; text-align: left; border: 0; background: #fff; border-radius: 16px; padding: 14px; box-shadow: 0 1px 3px rgba(20, 38, 59, .08); color: var(--text); cursor: pointer; }
+.menu-i > span:last-child { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.menu-i b { font-size: 16px; }
+.menu-i > span:last-child span { font-size: 13px; color: var(--muted); }
+.menu-ic { flex: none; width: 42px; height: 42px; border-radius: 12px; background: #eef1f5; color: var(--navy); display: grid; place-items: center; }
+.menu-ic svg.i { width: 22px; height: 22px; }
+.menu-v { margin: auto 0 0; padding-top: 12px; text-align: center; font-size: 12px; color: var(--muted); }

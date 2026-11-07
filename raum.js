@@ -269,4 +269,3 @@ function bindResultButtons(p) {
   $$('[data-redoeve]').forEach((b) => (b.onclick = () => runEvening(p, pk(b.dataset.redoeve), +b.dataset.view)));
 }
 
-// Kalender-Symbol oben: immer erreichbar
