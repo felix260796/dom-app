@@ -98,3 +98,7 @@ span.x { background: none; }
 .psum b { text-align: right; }
 .d-t .warn { color: var(--brass); font-weight: 600; }
 #angebot-settings > .card > h2:first-child, #sync-settings > .card > h2:first-child, #backup-settings > .card > h2:first-child { display: none; }
+
+/* ---------- Vorschläge aus den Kundenwünschen ---------- */
+.check.wv { align-items: flex-start; gap: 10px; padding: 8px 0; border-bottom: 1px solid var(--line); }
+.check.wv > span { display: flex; flex-direction: column; gap: 2px; }

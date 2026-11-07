@@ -352,7 +352,11 @@ window.Projekt = (() => {
       $('#dBau').onclick = () => window.Baumappe?.view(w);
       $('#dAngebot').onclick = async () => {
         if (list.length === 1) return raumAngebot(list[0], w);
-        const id = await sheet('Angebot für welchen Raum?', list.map((r) => ({ label: r.room || roomType(r.roomType).name, sub: r.angebot?.nr ? `Angebot Nr. ${r.angebot.nr}` : roomType(r.roomType).name, icon: roomIcon(r.roomType), value: r.id })));
+        const mitPos = list.filter((r) => r.angebot?.positionen?.length);
+        const id = await sheet('Angebot', [
+          ...(mitPos.length > 1 ? [{ label: 'Gesamtangebot senden', sub: `Alle ${mitPos.length} Räume in einem PDF${w.gesamtAngebot?.nr ? ` · Nr. ${w.gesamtAngebot.nr}` : ''}`, icon: icon('file'), value: '__gesamt' }] : []),
+          ...list.map((r) => ({ label: r.room || roomType(r.roomType).name, sub: r.angebot?.nr ? `Angebot Nr. ${r.angebot.nr}` : 'Positionen bearbeiten', icon: roomIcon(r.roomType), value: r.id }))]);
+        if (id === '__gesamt') return gesamtAngebot(w, mitPos).catch((e) => toast('PDF-Fehler: ' + e.message, 5000));
         if (id) raumAngebot(rooms.get(id), w);
       };
       $('#wDel').onclick = async () => {
@@ -384,6 +388,42 @@ window.Projekt = (() => {
       ${zugesagt(st) ? `<button class="doc stk-doc" id="wAuftrag"><span class="d-ico ${w.auftrag ? 'navy' : 'grey'}">${icon('file')}</span><span class="d-t"><b>Unterschriebenes Angebot</b><span>${w.auftrag ? `Abgelegt am ${esc(new Date(w.auftrag.t).toLocaleDateString('de-DE'))}` : 'Noch nicht abgelegt, tippen zum Ablegen'}</span></span>${icon('chevron', 'pc-chev')}</button>` : ''}
       ${allesErledigt ? `<p class="stk-tipp">${icon('check')} Alle Schritte sind abgehakt. Jetzt abschließen?</p>` : ''}
       ${knoepfe}</div>`;
+  }
+  /** Angebot wurde gesendet (B6): Status auf „versendet“, Datum fürs Nachfassen merken. */
+  async function angebotVersendet(wid) {
+    const w = wid && (await kvGet(key(wid)));
+    if (!w || !['besichtigung', 'entwurf'].includes(norm(w.status))) return;
+    w.status = 'angebot'; w.versendetAm = heuteIso(); (w.verlauf ??= []).push({ st: 'angebot', t: Date.now() });
+    await save(w);
+    if (state.wohnung?.id === w.id) Object.assign(state.wohnung, { status: w.status, versendetAm: w.versendetAm, verlauf: w.verlauf });
+    toast('Status: Angebot versendet');
+  }
+  /** B4: ein Angebot über alle Räume. Baut aus den Raum-Angeboten ein gemeinsames und nutzt das normale Angebots-PDF. */
+  async function gesamtAngebot(w, raeume) {
+    const A = window.Angebot._intern;
+    await A.preisliste();
+    toast('Gesamtangebot wird erstellt …', 8000);
+    const erst = raeume[0], mehrere = new Set(raeume.map((r) => r.room)).size > 1;
+    const allg = new Map(), pos = [];
+    for (const r of raeume) for (const x of r.angebot.positionen) {
+      if (!x.raum) { const v = allg.get(x.nr); if (!v || v.menge < x.menge) allg.set(x.nr, { ...x }); continue; } // Allgemeines (z. B. Baustelleneinrichtung) nur einmal
+      pos.push({ ...x, raum: mehrere ? `${r.room || 'Raum'}: ${x.raum}` : x.raum });
+    }
+    w.gesamtAngebot ??= {};
+    if (!w.gesamtAngebot.nr) w.gesamtAngebot.nr = await A.naechsteNummer();
+    const g = w.gesamtAngebot;
+    const syn = { ...erst, _gesamt: true, id: 'gesamt-' + w.id, wohnungId: w.id, customer: w.customer, address: w.address, kundeId: w.kundeId, projektNr: w.nr || '',
+      photos: [], results: {}, aufmass: { ...(erst.aufmass || {}), raeume: raeume.flatMap((r) => (r.aufmass?.raeume || []).map((a) => ({ ...a, name: mehrere ? `${r.room || 'Raum'}: ${a.name}` : a.name }))) },
+      angebot: { ...erst.angebot, nr: g.nr, versionen: g.versionen || [], titel: g.titel || `Sanierung ${w.titel || raeume.map((r) => r.room).join(', ')}`, positionen: [...allg.values(), ...pos], mitBild: false } };
+    const doc = await A.baueAngebotPdf(syn);
+    g.versionen = syn.angebot.versionen; await save(w);
+    const name = `Angebot_${g.nr}_${(w.customer || 'Kunde').replace(/[^\wäöüÄÖÜß-]+/g, '_')}.pdf`;
+    const blob = doc.output('blob'), file = new File([blob], name, { type: 'application/pdf' });
+    $('#toast').hidden = true;
+    if (navigator.canShare?.({ files: [file] })) { try { await navigator.share({ files: [file], title: name, text: A.mailText(syn) }); return angebotVersendet(w.id); } catch (e) { if (e.name === 'AbortError') return; } }
+    const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name; a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 60000);
+    angebotVersendet(w.id);
   }
   const NACHFASSEN = 7;
   const ABSAGE = ['Zu teuer', 'Anderer Anbieter', 'Macht es selbst', 'Kein Bedarf mehr', 'Zeitpunkt passt nicht', 'Keine Rückmeldung', 'Sonstiges'];
@@ -549,7 +589,7 @@ window.Projekt = (() => {
   }
 
   const forget = (id) => rooms.delete(id);
-  return { automatik, NACHFASSEN, seitTagen, STATUS, ANGEBOT, ALLE, PHASEN, phase, farbe, pill, norm, zugesagt, statusName, statusKurz, raumAngebot, forget, neu, neuFuer, kundeUebernehmen, oeffnen, view, mappeView, moodboardView, migrate, raum, raeume, raumGespeichert, raumEntfernt, save, wahl, PKG_IDS, _intern: { titel, addRoom } };
+  return { automatik, angebotVersendet, NACHFASSEN, seitTagen, STATUS, ANGEBOT, ALLE, PHASEN, phase, farbe, pill, norm, zugesagt, statusName, statusKurz, raumAngebot, forget, neu, neuFuer, kundeUebernehmen, oeffnen, view, mappeView, moodboardView, migrate, raum, raeume, raumGespeichert, raumEntfernt, save, wahl, PKG_IDS, _intern: { titel, addRoom } };
 })();
 // Ältere Aufrufe (PR „Wohnungen“) laufen weiter
 window.Wohnung = { neu: () => Projekt.neu(), oeffnen: (id) => Projekt.oeffnen(id), view: () => Projekt.view(), raumGespeichert: (p) => Projekt.raumGespeichert(p), raumEntfernt: (p) => Projekt.raumEntfernt(p) };
