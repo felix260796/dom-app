@@ -310,7 +310,7 @@ window.Sync = (() => {
       else if (document.getElementById('pNew')) window.Partner?.listeView();
     }
     // Finanzen-Übersicht mit neuen Eingangsrechnungen neu zeichnen
-    if (!typing && state.finanzen && !state.beleg && document.getElementById('fNeu') && [...changed].some((k) => k.startsWith('beleg:'))) window.Finanzen?.view();
+    if (!typing && state.tab === 'rechnungen' && !state.kalender && !state.beleg && document.getElementById('fNeu') && [...changed].some((k) => k.startsWith('beleg:'))) window.Finanzen?.view();
     if (state.project && changed.has('project:' + state.project.id)) toast('Dieses Projekt wurde auf einem anderen Gerät geändert. Zum Aktualisieren Projekt neu öffnen.', 5000);
     else toast(`${changed.size} Änderung(en) vom anderen Gerät übernommen`);
   }

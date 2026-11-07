@@ -10,21 +10,21 @@ Die Oberfläche ist auf Deutsch. Der Nutzer ist Felix (Dom Projektmanagement Gmb
 | Bereich | Dateien | Inhalt |
 |---|---|---|
 | Gemeinsame Helfer | `core.js` | Speicher (IndexedDB `kvGet/kvSet`), `$`, `esc`, `toast`, KI-Aufrufe (Gemini), Bildfunktionen, Bildschirmhöhe `--voll` |
-| Navigation, Leiste, Raum-Ansicht | `app.js`, `index.html` | Kopfzeile, Reiter unten (`switchTab`), Auswahlfenster `sheet`, Projektliste (Bereiche Angebot/Auftrag/Abrechnung/Erledigt), Raum: Fotos, Pakete, Ergebnis. `APP_VERSION` |
+| Navigation, Leiste, Raum-Ansicht | `app.js`, `index.html` | Kopfzeile (oben rechts Kalender und Einstellungen), Reiter unten Kunden/Subunternehmer/Projekte/Angebote/Rechnungen (`switchTab`), Auswahlfenster `sheet`, Projektliste (Bereiche Angebot/Auftrag/Abrechnung/Erledigt), Raum: Fotos, Pakete, Ergebnis. `APP_VERSION` |
 | Kunden | `kunden.js`, `kontakt.js` | Kundenkarte, Objekte (Anschriften), Nummern ab 1001, Anrede/Briefanrede |
 | Subunternehmer | `partner.js` | Subunternehmer und Lieferanten, Dokumente |
 | Projekte | `projekt.js` | Projekt = Kunde + Objekt + Räume; **Status-Ablauf** (`ALLE`, `PHASEN`, `WEITER`), Statuskarte |
 | Baufortschritt | `fortschritt.js` | Arbeitsschritte zum Abhaken, Vorlagen |
 | Angebot (je Raum) | `angebot.js`, `data/preisliste.json` | Aufmaß, Positionen, Summen, PDF, Bauzeitenplan, Excel-Import der Preisliste |
 | Angebote-Reiter | `angebote.js`, `schnell.js` | Liste aller Angebote (Offen/Zugesagt/Abgesagt), Schnellangebot |
-| Finanzen | `finanzen.js` | €-Symbol oben neben dem Kalender: Abzurechnen, offene Rechnungen, Eingangsrechnungen (`beleg:<id>`, Datei in `bdatei:<id>`, KI liest aus), Kalkulation Soll/Ist mit Ampel (auch im Projekt und beim Subunternehmer); geplant: Rechnungen an Kunden, Abschläge |
+| Rechnungen (Finanzen) | `finanzen.js` | Reiter „Rechnungen“ unten (`rechnungen`): Abzurechnen, offene Rechnungen, Eingangsrechnungen (`beleg:<id>`, Datei in `bdatei:<id>`, KI liest aus), Kalkulation Soll/Ist mit Ampel (auch im Projekt und beim Subunternehmer); geplant: Rechnungen an Kunden, Abschläge |
 | Kalender & Terminmails | `kalender.js`, `supabase/functions/termin-mail/index.ts` | Termine, Geburtstage, Mails an Team/Kunde/Subunternehmer, Erinnerungen (Cron in Supabase) |
 | Fotos & Doku | `bilder.js` | Ordner je Objekt/Projekt |
 | KI-Visualisierung | `core.js` (KI-Teil), `rooms.js`, `moodboards.js` (oberer Teil), `garten.js` | Raumtypen, Moodboards Basic/Standard/Premium, Wärmepumpe im Garten |
 | Gespräch vor Ort | `voice.js` | Sprachaufnahme, Transkript, Kundenwünsche |
 | Unterlagen (PDF) | `pdf.js`, `baumappe.js` | Kundenmappe, Baumappe für Subunternehmer |
 | Karte | `karte.js`, `vendor/leaflet` | Baustellen auf der Karte |
-| Einstellungen | `moodboards.js` (ab `EINST`) | Liste der Einstellungsseiten: Firma, KI, Preisliste, E-Mail-Automatisierung, Baufortschritt, Cloud, Sicherung |
+| Einstellungen | `moodboards.js` (ab `EINST`) | Symbol oben rechts, kein Reiter. Liste der Einstellungsseiten: Firma, KI, Preisliste, E-Mail-Automatisierung, Baufortschritt, Cloud, Sicherung |
 | Cloud-Abgleich & Sicherung | `sync.js`, `backup.js` | Supabase-Abgleich (Ordner „team“, feldweise Zusammenführung), Datei-Sicherung |
 | Marketing (stillgelegt) | `social.js` | Vorher-Nachher-Video, Instagram. Nicht mehr eingebunden, wird nicht gebraucht |
 | Design | `style.css` | Ein Stylesheet, Abschnitte mit `/* ---------- Name ---------- */` |

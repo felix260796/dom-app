@@ -176,7 +176,8 @@ function einstellungInfo(k) {
 }
 function viewEinstellungen() {
   state.editPkg = null;
-  header('Einstellungen', state.settings.company || '');
+  const v = window.__vorEinst || { tab: 'kunden', s: {} };
+  header('Einstellungen', state.settings.company || '', { label: 'Zurück', fn: () => switchTab(v.tab, v.s) });
   const warn = (k) => (k === 'ki' && !state.settings.apiKey) || (k === 'cloud' && !window.Sync?.active());
   main().innerHTML = `<div class="docs">${EINST.map(([k, t, ic, col]) => `
     <button class="doc" data-einst="${k}"><span class="d-ico ${col}">${icon(ic)}</span>

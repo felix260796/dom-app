@@ -6,7 +6,7 @@
  * Kern-Funktionen (Speicher, KI, Bilder) stehen in core.js. */
 
 // ---------- Symbole (einfache Linien-Icons) ----------
-const APP_VERSION = '52';
+const APP_VERSION = '53';
 const ICONS = {
   plus: '<path d="M12 5v14M5 12h14"/>',
   camera: '<path d="M3 8.5A2 2 0 0 1 5 6.5h2l1.6-2h6.8l1.6 2h2a2 2 0 0 1 2 2V18a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><circle cx="12" cy="13" r="3.6"/>',
@@ -90,6 +90,8 @@ new MutationObserver(() => {
 // Jeder Reiter merkt sich, wo man zuletzt war (Kunde, Projekt, Raum)
 const tabState = {};
 function switchTab(tab, restore) {
+  // Einstellungen sind kein Reiter unten: merken, woher man kam, damit „Zurück“ dorthin führt
+  if (tab === 'einstellungen' && state.tab !== 'einstellungen') window.__vorEinst = { tab: state.tab, s: { project: state.project, wohnung: state.wohnung, kunde: state.kunde, objekt: state.objekt, partner: state.partner } };
   if (state.tab !== tab || restore) {
     tabState[state.tab] = { project: state.project, wohnung: state.wohnung, kunde: state.kunde, objekt: state.objekt, partner: state.partner };
     const s = restore || tabState[tab] || {};
@@ -99,7 +101,7 @@ function switchTab(tab, restore) {
   $$('.tabbar button').forEach((b) => b.classList.toggle('active', b.dataset.tab === tab));
   window.scrollTo(0, 0);
   if (tab === 'einstellungen') state.editPkg = null;
-  ({ kunden: viewProjekt, partner: () => Partner.start(), projekt: viewProjekt, angebote: viewProjekt, einstellungen: viewEinstellungen })[tab]();
+  ({ kunden: viewProjekt, partner: () => Partner.start(), projekt: viewProjekt, angebote: viewProjekt, rechnungen: () => Finanzen.view(), einstellungen: viewEinstellungen })[tab]();
 }
 /** Reiter wechseln und dort direkt etwas öffnen, z. B. openTab('kunden', { kunde }). */
 window.openTab = (tab, s) => switchTab(tab, s);
@@ -454,7 +456,8 @@ function bindResultButtons(p) {
 
 // Kalender-Symbol oben: immer erreichbar
 $('#calBtn').onclick = () => { if (state.kalender) return; state.finanzen = false; Kalender.view(); window.scrollTo(0, 0); };
-$('#finBtn').onclick = () => { if (state.finanzen) return; Finanzen.view(); window.scrollTo(0, 0); };
+// Einstellungen oben rechts; „Zurück“ führt in den Reiter, aus dem man kam
+$('#setBtn').onclick = () => switchTab('einstellungen');
 
 // ---------- Start ----------
 (async () => {

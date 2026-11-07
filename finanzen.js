@@ -1,5 +1,5 @@
 'use strict';
-/* DOM – Finanzen (€-Symbol oben neben dem Kalender): alles Finanzielle an einem Ort.
+/* DOM – Reiter „Rechnungen“ (Finanzen): alles Finanzielle an einem Ort.
  * - Übersicht: abzurechnende Projekte, offene Rechnungen an Kunden (aus dem Projektstatus)
  * - Eingangsrechnungen (B14): Rechnung von Subunternehmer oder Lieferant als Foto/PDF, KI liest die Daten aus,
  *   Zuordnung zu Projekt und Subunternehmer, Status offen/bezahlt, Fälligkeit (überfällig = rot)
@@ -7,10 +7,10 @@
  * Speicher: 'beleg:<id>' { id, kind:'beleg', projektId, partnerId, von, nr, datum, netto, satz, gewerk, faellig,
  *   bezahlt ('JJJJ-MM-TT' oder ''), notiz, datei: { typ, name } | null, created, updated }
  *   Die Datei selbst liegt getrennt unter 'bdatei:<id>' (Data-URL), damit die Liste klein bleibt.
- * Legt sich wie der Kalender über den aktuellen Reiter; „Zurück“ führt dorthin, wo man war.
+ * Eigener Reiter „Rechnungen“ unten in der Leiste.
  * Baut auf app.js (state, header, main, icon, sheet, switchTab), projekt.js, kunden.js, partner.js, angebot.js auf. */
 window.Finanzen = (() => {
-  let vorher = null, alleZeigen = false;
+  let alleZeigen = false;
   const belege = new Map();
   const MAX_MB = 6;
   const GEWERKE_EXTRA = ['Material', 'Entsorgung', 'Sonstiges'];
@@ -106,13 +106,12 @@ window.Finanzen = (() => {
 
   // ---------- Übersicht ----------
   async function view() {
-    if (!state.finanzen) vorher = { tab: state.tab, s: { project: state.project, wohnung: state.wohnung, kunde: state.kunde, objekt: state.objekt, partner: state.partner } };
-    state.kalender = false; state.finanzen = true; state.beleg = null;
-    const zurueck = () => { state.finanzen = false; const v = vorher || { tab: state.tab, s: {} }; vorher = null; switchTab(v.tab, v.s); };
-    header('Finanzen', 'Rechnungen, Zahlungen, Kalkulation', { label: 'Zurück', fn: zurueck });
+    state.beleg = null;
+    const hier = () => state.tab === 'rechnungen' && !state.kalender;
+    header('Rechnungen', 'Eingang, Zahlungen, Kalkulation');
     const idx = await projectIndex(); window.__fIdx = idx;
     await laden();
-    if (!state.finanzen) return;
+    if (!hier()) return;
     const abrechnen = idx.filter((x) => Projekt.norm(x.status) === 'fertig');
     const offen = idx.filter((x) => Projekt.norm(x.status) === 'rechnung');
     const ein = liste(), einOffen = ein.filter((b) => !b.bezahlt), einUeber = einOffen.filter(ueberfaellig);
@@ -126,7 +125,7 @@ window.Finanzen = (() => {
     const kalkP = idx.filter((x) => Projekt.zugesagt(x.status));
     const kalk = await Promise.all(kalkP.map(async (x) => { const w = await kvGet('wohnung:' + x.id); return w ? { x, k: await kalkulation(w) } : null; }));
     const kalkShown = kalk.filter((e) => e && (e.k.soll.netto || e.k.ist.netto));
-    if (!state.finanzen) return;
+    if (!hier()) return;
     main().innerHTML = `
       <div class="phasen drei">
         <div class="fz"><b>${abrechnen.length}</b><span>Abzurechnen</span></div>
@@ -156,7 +155,7 @@ window.Finanzen = (() => {
     $$('[data-fa]').forEach((b) => (b.onclick = () => { alleZeigen = b.dataset.fa === '1'; view(); }));
     $('#fNeu').onclick = () => erfassen(neu(), () => view());
     $$('[data-beleg]').forEach((b) => (b.onclick = () => erfassen(belege.get(b.dataset.beleg), () => view())));
-    $$('[data-fp]').forEach((b) => (b.onclick = () => { state.finanzen = false; vorher = null; switchTab('projekt', { wohnung: null }); Projekt.oeffnen(b.dataset.fp); }));
+    $$('[data-fp]').forEach((b) => (b.onclick = () => { switchTab('projekt', { wohnung: null }); Projekt.oeffnen(b.dataset.fp); }));
   }
 
   // ---------- KI: Rechnung auslesen ----------
