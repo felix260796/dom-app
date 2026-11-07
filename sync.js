@@ -299,12 +299,12 @@ window.Sync = (() => {
     if (!typing && document.getElementById('kNew') && state.tab === 'kunden') window.Kunden?.listeView();
     // Offene Kundenkarte bzw. offenes Objekt mit dem neuen Stand neu zeichnen, damit nicht mit altem Stand weitergearbeitet wird
     // (nur wenn Kundenkarte bzw. Objektseite wirklich zu sehen ist, nicht unter Kalender, Bildern oder einem Projekt)
-    else if (!typing && state.tab === 'kunden' && state.kunde && !state.kalender && !state.wohnung && (document.getElementById('kAct') || document.getElementById('oAct')) && changed.has('kunde:' + state.kunde.id)) {
+    else if (!typing && state.tab === 'kunden' && state.kunde && !state.kalender && !state.finanzen && !state.wohnung && (document.getElementById('kAct') || document.getElementById('oAct')) && changed.has('kunde:' + state.kunde.id)) {
       const k = window.Kunden?.byId(state.kunde.id), y = window.scrollY;
       if (k) { const o = state.objekt && window.Kunden.objekt(k, state.objekt); await (o ? window.Kunden.objektView(k, o) : window.Kunden.detail(k)); window.scrollTo(0, y); }
     }
     // Subunternehmer: Liste bzw. offene Karte neu zeichnen (die Karte hält sonst den alten Stand und würde ihn zurückschreiben)
-    if (!typing && !state.kalender && state.tab === 'partner' && [...changed].some((k) => k.startsWith('partner:'))) {
+    if (!typing && !state.kalender && !state.finanzen && state.tab === 'partner' && [...changed].some((k) => k.startsWith('partner:'))) {
       const y = window.scrollY;
       if (state.partner && document.getElementById('pAct')) { const p = window.Partner?.byId(state.partner.id); if (p) { window.Partner.detail(p); window.scrollTo(0, y); } }
       else if (document.getElementById('pNew')) window.Partner?.listeView();

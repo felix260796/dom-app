@@ -547,7 +547,7 @@ body.recording main { padding-bottom: 150px; }
 .gv-bar input { background: rgba(255,255,255,.1); color: #fff; border-color: rgba(255,255,255,.2); }
 
 /* Kalender-Symbol oben */
-.titles { position: relative; padding-right: 52px; }
+.titles { position: relative; padding-right: 104px; }
 .calbtn { position: absolute; right: 0; top: 50%; transform: translateY(-50%); width: 42px; height: 42px; border-radius: 13px; border: 0; background: rgba(255,255,255,.12); color: #fff; display: flex; align-items: center; justify-content: center; }
 .calbtn svg.i { width: 23px; height: 23px; }
 .calbtn i { position: absolute; top: 7px; right: 7px; width: 9px; height: 9px; border-radius: 50%; background: var(--brass); box-shadow: 0 0 0 2px var(--navy); }
@@ -731,3 +731,11 @@ input.bad { border-color: var(--danger) !important; background: var(--danger-sof
 .notice.plain { background: #fff; border-color: var(--line); color: var(--text); }
 .notice.plain svg.i { color: var(--navy); }
 .phasen.drei { grid-template-columns: repeat(3, 1fr); }
+
+/* Finanzen */
+.calbtn.finbtn { right: 52px; }
+.phasen.zwei { grid-template-columns: 1fr 1fr; }
+.phasen .fz { border: 1.5px solid var(--line); background: #fff; border-radius: 12px; padding: 10px 4px 9px; display: flex; flex-direction: column; align-items: center; color: var(--muted); }
+.phasen .fz b { font-size: 22px; color: var(--navy); line-height: 1.1; }
+.phasen .fz span { font-size: 13px; font-weight: 650; }
+.doc.off { opacity: .6; }

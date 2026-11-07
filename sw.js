@@ -1,6 +1,6 @@
 // Offline-Cache für die App-Dateien. Bei Änderungen VERSION erhöhen.
-const VERSION = 'v50';
-const FILES = ['./', 'index.html', 'style.css', 'rooms.js', 'core.js', 'voice.js', 'moodboards.js', 'backup.js', 'sync.js', 'social.js', 'angebot.js', 'garten.js', 'pdf.js', 'baumappe.js', 'kontakt.js', 'kunden.js', 'partner.js', 'kalender.js', 'schnell.js', 'bilder.js', 'projekt.js', 'karte.js', 'fortschritt.js', 'angebote.js', 'app.js', 'vendor/leaflet/leaflet.js', 'vendor/leaflet/leaflet.css',
+const VERSION = 'v51';
+const FILES = ['./', 'index.html', 'style.css', 'rooms.js', 'core.js', 'voice.js', 'moodboards.js', 'backup.js', 'sync.js', 'social.js', 'angebot.js', 'garten.js', 'pdf.js', 'baumappe.js', 'kontakt.js', 'kunden.js', 'partner.js', 'kalender.js', 'schnell.js', 'bilder.js', 'projekt.js', 'karte.js', 'fortschritt.js', 'angebote.js', 'finanzen.js', 'app.js', 'vendor/leaflet/leaflet.js', 'vendor/leaflet/leaflet.css',
   'data/preisliste.json', 'vendor/xlsx.mini.min.js', 'vendor/jspdf.umd.min.js', 'manifest.webmanifest',
   'icons/icon-180.png', 'icons/icon-192.png', 'icons/icon-512.png', 'assets/dom_logo.png', 'assets/dom_logo_weiss.png'];
 self.addEventListener('install', (e) => { e.waitUntil(caches.open(VERSION).then((c) => c.addAll(FILES))); self.skipWaiting(); });

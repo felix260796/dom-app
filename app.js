@@ -6,7 +6,7 @@
  * Kern-Funktionen (Speicher, KI, Bilder) stehen in core.js. */
 
 // ---------- Symbole (einfache Linien-Icons) ----------
-const APP_VERSION = '50';
+const APP_VERSION = '51';
 const ICONS = {
   plus: '<path d="M12 5v14M5 12h14"/>',
   camera: '<path d="M3 8.5A2 2 0 0 1 5 6.5h2l1.6-2h6.8l1.6 2h2a2 2 0 0 1 2 2V18a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><circle cx="12" cy="13" r="3.6"/>',
@@ -95,7 +95,7 @@ function switchTab(tab, restore) {
     const s = restore || tabState[tab] || {};
     state.project = s.project || null; state.wohnung = s.wohnung || null; state.kunde = s.kunde || null; state.objekt = s.objekt || null; state.partner = s.partner || null;
   }
-  state.tab = tab; state.kalender = false;
+  state.tab = tab; state.kalender = false; state.finanzen = false;
   $$('.tabbar button').forEach((b) => b.classList.toggle('active', b.dataset.tab === tab));
   window.scrollTo(0, 0);
   if (tab === 'einstellungen') state.editPkg = null;
@@ -105,7 +105,7 @@ function switchTab(tab, restore) {
 window.openTab = (tab, s) => switchTab(tab, s);
 $$('.tabbar button').forEach((b) => (b.onclick = () => {
   // Erneutes Tippen auf den aktiven Reiter führt zurück zur Liste
-  if (b.dataset.tab === state.tab && !state.kalender) { state.project = null; state.wohnung = null; state.kunde = null; state.objekt = null; state.partner = null; }
+  if (b.dataset.tab === state.tab && !state.kalender && !state.finanzen) { state.project = null; state.wohnung = null; state.kunde = null; state.objekt = null; state.partner = null; }
   switchTab(b.dataset.tab);
 }));
 
@@ -453,7 +453,8 @@ function bindResultButtons(p) {
 }
 
 // Kalender-Symbol oben: immer erreichbar
-$('#calBtn').onclick = () => { if (state.kalender) return; Kalender.view(); window.scrollTo(0, 0); };
+$('#calBtn').onclick = () => { if (state.kalender) return; state.finanzen = false; Kalender.view(); window.scrollTo(0, 0); };
+$('#finBtn').onclick = () => { if (state.finanzen) return; Finanzen.view(); window.scrollTo(0, 0); };
 
 // ---------- Start ----------
 (async () => {

@@ -17,6 +17,7 @@ Die Oberfläche ist auf Deutsch. Der Nutzer ist Felix (Dom Projektmanagement Gmb
 | Baufortschritt | `fortschritt.js` | Arbeitsschritte zum Abhaken, Vorlagen |
 | Angebot (je Raum) | `angebot.js`, `data/preisliste.json` | Aufmaß, Positionen, Summen, PDF, Bauzeitenplan, Excel-Import der Preisliste |
 | Angebote-Reiter | `angebote.js`, `schnell.js` | Liste aller Angebote (Offen/Zugesagt/Abgesagt), Schnellangebot |
+| Finanzen | `finanzen.js` | €-Symbol oben neben dem Kalender: Abzurechnen, offene Rechnungen; geplant: Eingangsrechnungen je Projekt, Rechnungen an Kunden, Kalkulation Soll/Ist |
 | Kalender & Terminmails | `kalender.js`, `supabase/functions/termin-mail/index.ts` | Termine, Geburtstage, Mails an Team/Kunde/Subunternehmer, Erinnerungen (Cron in Supabase) |
 | Fotos & Doku | `bilder.js` | Ordner je Objekt/Projekt |
 | KI-Visualisierung | `core.js` (KI-Teil), `rooms.js`, `moodboards.js` (oberer Teil), `garten.js` | Raumtypen, Moodboards Basic/Standard/Premium, Wärmepumpe im Garten |
