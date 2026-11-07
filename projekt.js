@@ -20,12 +20,13 @@ window.Projekt = (() => {
     ['rechnung', 'Rechnung gestellt', '#d2691e', 'Rechnung'],
     ['bezahlt', 'Bezahlt', '#1b5e3a', 'Bezahlt'],
   ];
-  // Die vier Bereiche in „Projekte“
+  // Die vier Bereiche im Reiter „Projekte“ (nur zugesagte Aufträge; Offenes und Abgesagtes steht unter „Angebote“,
+  // Rechnungen unter „Rechnungen“). „Einzuplanen“ = zugesagt ohne Baustart, „Eingeplant“ = mit Baustart.
   const PHASEN = [
-    ['angebot', 'Angebot', ['besichtigung', 'entwurf', 'angebot']],
-    ['auftrag', 'Auftrag', ['geplant', '']],
-    ['abrechnung', 'Abrechnung', ['fertig', 'rechnung']],
-    ['erledigt', 'Erledigt', ['bezahlt', 'abgesagt']],
+    ['einplanen', 'Einzu\u00adplanen'],
+    ['eingeplant', 'Eingeplant'],
+    ['laufend', 'In Durch\u00adführung'],
+    ['abgeschlossen', 'Abge\u00adschlossen'],
   ];
   // Der nächste Schritt als großer Knopf im Projekt
   const WEITER = {
@@ -42,7 +43,14 @@ window.Projekt = (() => {
   const statusName = (st) => info(st)[1];
   const statusKurz = (st) => info(st)[3];
   const farbe = (st) => info(st)[2];
-  const phase = (st) => PHASEN.find((p) => p[2].includes(norm(st)))[0];
+  /** Bereich eines Projekts (Eintrag aus projectIndex oder Projekt): 'angebot' für alles vor der Zusage und Abgesagtes. */
+  const phase = (x) => {
+    const st = norm(typeof x === 'object' ? x?.status : x);
+    if (st === 'geplant') return typeof x === 'object' && x.baustart ? 'eingeplant' : 'einplanen';
+    if (st === '') return 'laufend';
+    if (['fertig', 'rechnung', 'bezahlt'].includes(st)) return 'abgeschlossen';
+    return 'angebot';
+  };
   const zugesagt = (st) => ['geplant', '', 'fertig', 'rechnung', 'bezahlt'].includes(norm(st));
   const pill = (st) => `<span class="st-pill" style="--c:${farbe(st)}">${esc(statusKurz(st))}</span>`;
   // Für ältere Teile der App
@@ -221,6 +229,7 @@ window.Projekt = (() => {
       if (!fertig.length) return `<span class="st">${r.photos.length} ${r.photos.length === 1 ? 'Foto' : 'Fotos'} · noch nicht visualisiert</span>`;
       return `<span class="dots">${fertig.map((id) => `<i style="--c:${pkgOf(r, id)?.color || PKG_META[id][1]}" title="${esc(pkgOf(r, id)?.name || '')}"></i>`).join('')}</span><span class="st">${fertig.map((id) => esc(pkgOf(r, id)?.name || PKG_META[id][0])).join(', ')}</span>`;
     };
+    const auftragBtn = zugesagt(w.status) ? `<button class="doc" id="wAuftrag"><span class="d-ico ${w.auftrag ? 'navy' : 'grey'}">${icon('check')}</span><span class="d-t"><b>Unterschriebenes Angebot</b><span>${w.auftrag ? `Abgelegt am ${esc(new Date(w.auftrag.t).toLocaleDateString('de-DE'))}` : 'Noch nicht abgelegt, tippen zum Ablegen'}</span></span>${icon('chevron', 'pc-chev')}</button>` : '';
     main().innerHTML = `
       <div class="card kunde">
         ${k ? `<button class="kline" id="wKunde"><span class="av sm">${esc(Kunden.initialen(k))}</span><span class="kl-t"><b>${esc(Kunden.name(k) || 'Ohne Namen')}</b><small>${esc([k.telefon, k.email].filter(Boolean).join(' · ') || 'Kundenkarte öffnen')}</small></span>${icon('chevron', 'pc-chev')}</button>
@@ -277,10 +286,11 @@ window.Projekt = (() => {
         <button class="doc" id="dAngebot">
           <span class="d-ico grey">${icon('euro')}</span>
           <span class="d-t"><b>Angebot</b><span>${list.length > 1 ? 'Aufmaß, Positionen und Bauzeit je Raum' : 'Aufmaß, Positionen und Bauzeitenplan'}</span></span>${icon('chevron', 'pc-chev')}</button>
+        ${auftragBtn}
       </div>
       ${anyResult ? '' : '<p class="hint center">Kunden- und Baumappe gibt es, sobald ein Raum visualisiert ist.</p>'}
       <div id="wTermine"></div>
-      <button class="link-danger" id="wDel">${icon('trash')} Projekt löschen</button>` : ''}`;
+      <button class="link-danger" id="wDel">${icon('trash')} Projekt löschen</button>` : (auftragBtn ? `<div class="sec-h"><h2>Unterlagen</h2></div><div class="docs">${auftragBtn}</div>` : '')}`;
     if ($('#wKosten')) window.Finanzen?.projektAbschnitt($('#wKosten'), w);
     if ($('#wRech')) window.Rechnung?.projektAbschnitt($('#wRech'), w);
     if ($('#wBau')) window.Baustelle?.abschnitt($('#wBau'), w, list);
@@ -397,7 +407,6 @@ window.Projekt = (() => {
       ${st === 'angebot' && tage >= nachfassen() ? `<p class="stk-tipp warn">${icon('phone')} Seit ${tage} Tagen beim Kunden. Zeit zum Nachfassen.</p>` : ''}
       ${st === 'angebot' && w.versendetAm && tage < nachfassen() ? `<p class="hint" style="margin:0 0 10px">Versendet am ${esc(datumText(w.versendetAm))}</p>` : ''}
       ${st === 'abgesagt' && w.absage?.grund ? `<p class="hint" style="margin:0 0 10px">Grund: ${esc(w.absage.grund)} · ${esc(new Date(w.absage.t).toLocaleDateString('de-DE'))}</p>` : ''}
-      ${zugesagt(st) ? `<button class="doc stk-doc" id="wAuftrag"><span class="d-ico ${w.auftrag ? 'navy' : 'grey'}">${icon('file')}</span><span class="d-t"><b>Unterschriebenes Angebot</b><span>${w.auftrag ? `Abgelegt am ${esc(new Date(w.auftrag.t).toLocaleDateString('de-DE'))}` : 'Noch nicht abgelegt, tippen zum Ablegen'}</span></span>${icon('chevron', 'pc-chev')}</button>` : ''}
       ${allesErledigt ? `<p class="stk-tipp">${icon('check')} Alle Schritte sind abgehakt. Jetzt abschließen?</p>` : ''}
       ${knoepfe}</div>`;
   }

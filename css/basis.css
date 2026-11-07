@@ -24,7 +24,7 @@ svg.i { width: 22px; height: 22px; flex: none; fill: none; stroke: currentColor;
 .brand-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; min-height: 34px; }
 .brand { position: relative; display: flex; align-items: center; margin-left: auto; opacity: .96; border: 0; background: none; color: #fff; padding: 4px 0 4px 8px; cursor: pointer; }
 .brand-logo { display: flex; flex-direction: column; align-items: flex-end; }
-.brand #calDot { position: absolute; top: 0; right: -6px; width: 8px; height: 8px; border-radius: 50%; background: var(--brass); box-shadow: 0 0 0 2px var(--navy-ink); }
+
 .brand img { height: 22px; width: auto; display: block; }
 .brand small { font-size: 6.3px; line-height: 1; font-weight: 600; letter-spacing: .02em; color: rgba(255,255,255,.82); margin-top: 3px; white-space: nowrap; }
 .topback { display: inline-flex; align-items: center; gap: 2px; border: 0; background: rgba(255,255,255,.12); color: #fff; font-size: 15px; font-weight: 600;
@@ -145,7 +145,8 @@ details.sub > summary { font-size: 14px; font-weight: 600; color: var(--navy-2);
 #aBack, #soBack, #vBack { display: none; }
 
 /* Kalender-Symbol oben */
-.titles { position: relative; padding-right: 52px; }
+.titles { position: relative; padding-right: 100px; }
+#calBtn { right: 50px; }
 .calbtn { position: absolute; right: 0; top: 50%; transform: translateY(-50%); width: 42px; height: 42px; border-radius: 13px; border: 0; background: rgba(255,255,255,.12); color: #fff; display: flex; align-items: center; justify-content: center; }
 .calbtn svg.i { width: 23px; height: 23px; }
 .calbtn i { position: absolute; top: 7px; right: 7px; width: 9px; height: 9px; border-radius: 50%; background: var(--brass); box-shadow: 0 0 0 2px var(--navy); }

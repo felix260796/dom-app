@@ -81,13 +81,14 @@ window.Karte = (() => {
   }
 
   // ---------- Eigene Seite (Menü › Karte) ----------
-  let bereich = 'auftrag';
+  let bereich = 'auftraege';
+  const BEREICHE = [['angebote', 'Angebote', (x) => Projekt.phase(x) === 'angebot' && Projekt.norm(x.status) !== 'abgesagt'], ['auftraege', 'Aufträge', (x) => ['einplanen', 'eingeplant', 'laufend'].includes(Projekt.phase(x))], ['alle', 'Alle', () => true]];
   async function view() {
     header('Karte', 'Baustellen an der Objektanschrift');
     const idx = await projectIndex();
-    const B = [...Projekt.PHASEN, ['alle', 'Alle']];
-    const shown = bereich === 'alle' ? idx : idx.filter((x) => Projekt.phase(x.status) === bereich);
-    main().innerHTML = `<div class="phasen">${B.map(([id, n]) => `<button data-kb="${id}" class="${bereich === id ? 'on' : ''}"><b>${id === 'alle' ? idx.length : idx.filter((x) => Projekt.phase(x.status) === id).length}</b><span>${n}</span></button>`).join('')}</div>
+    const passt = (BEREICHE.find((b) => b[0] === bereich) || BEREICHE[1])[2];
+    const shown = idx.filter(passt);
+    main().innerHTML = `<div class="phasen drei">${BEREICHE.map(([id, n, f]) => `<button data-kb="${id}" class="${bereich === id ? 'on' : ''}"><b>${idx.filter(f).length}</b><span>${n}</span></button>`).join('')}</div>
       <div class="pmap" id="pmap"></div><p class="hint pmap-info" id="pmapInfo">Karte wird geladen …</p>`;
     $$('[data-kb]').forEach((b) => (b.onclick = () => { bereich = b.dataset.kb; view(); }));
     zeigen($('#pmap'), shown, $('#pmapInfo'), (id) => { switchTab('projekt', { wohnung: null }); Projekt.oeffnen(id); });

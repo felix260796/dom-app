@@ -6,7 +6,7 @@
  * Kern-Funktionen (Speicher, KI, Bilder) stehen in core.js. */
 
 // ---------- Symbole (einfache Linien-Icons) ----------
-const APP_VERSION = '65';
+const APP_VERSION = '66';
 const ICONS = {
   plus: '<path d="M12 5v14M5 12h14"/>',
   camera: '<path d="M3 8.5A2 2 0 0 1 5 6.5h2l1.6-2h6.8l1.6 2h2a2 2 0 0 1 2 2V18a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><circle cx="12" cy="13" r="3.6"/>',
@@ -144,25 +144,21 @@ function objektZeile(x) {
   const k = Kunden.byId(x.kundeId), o = k && Kunden.objekt(k, x.objektId);
   return [o && o.name.trim(), x.address || (o && Kunden.einzeilig(o.adresse))].filter(Boolean).join(' · ');
 }
-let listFilter = '', listStatus = 'auftrag';
+let listFilter = '', listStatus = 'laufend';
 async function viewProjektListe() {
-  // Vier Bereiche: Angebot · Auftrag · Abrechnung · Erledigt (siehe Projekt.PHASEN)
+  // Nur zugesagte Projekte, vier Bereiche: Einzuplanen · Eingeplant · In Durchführung · Abgeschlossen (Projekt.PHASEN)
   header('Projekte', state.settings.company || '');
   const alleP = await projectIndex();
   const reihe = Projekt.ALLE.map((s) => s[0]);
-  const idx = alleP.filter((x) => Projekt.phase(x.status) === listStatus).sort((a, b) => reihe.indexOf(Projekt.norm(a.status)) - reihe.indexOf(Projekt.norm(b.status)) || (b.updated || 0) - (a.updated || 0));
+  const auftraege = alleP.filter((x) => Projekt.phase(x) !== 'angebot');
+  const idx = auftraege.filter((x) => Projekt.phase(x) === listStatus).sort((a, b) => reihe.indexOf(Projekt.norm(a.status)) - reihe.indexOf(Projekt.norm(b.status)) || (b.updated || 0) - (a.updated || 0));
   const q = listFilter.trim().toLowerCase();
   const hay = (x) => { const k = Kunden.byId(x.kundeId); return `${x.nr || ''} ${x.titel || ''} ${x.customer} ${x.address || ''} ${x.room || ''} ${k ? `${k.nr} ${k.telefon} ${k.email} ${k.privat}` : ''}`.toLowerCase(); };
   const shown = q ? idx.filter((x) => q.split(/\s+/).every((t) => hay(x).includes(t))) : idx;
   main().innerHTML = `
-    <button class="cta slim" id="new">
-      <span class="cta-ico">${icon('plus')}</span>
-      <span class="cta-t"><b>Neues Projekt</b></span>
-      ${icon('chevron', 'cta-chev')}
-    </button>
     ${state.settings.apiKey || (window.Sync?.fest() && !window.Sync.active()) ? '' : `<button class="notice" id="toSet">${icon('gear')}<span><b>KI noch nicht eingerichtet.</b> Einmalig den Google-Schlüssel in den Einstellungen eintragen.</span>${icon('chevron')}</button>`}
     <div id="backupHint"></div>
-    ${alleP.length ? `<div class="phasen">${Projekt.PHASEN.map(([id, n]) => `<button data-ls="${id}" class="${listStatus === id ? 'on' : ''}"><b>${alleP.filter((x) => Projekt.phase(x.status) === id).length}</b><span>${n}</span></button>`).join('')}</div>` : ''}
+    <div class="phasen">${Projekt.PHASEN.map(([id, n]) => `<button data-ls="${id}" class="${listStatus === id ? 'on' : ''}"><b>${auftraege.filter((x) => Projekt.phase(x) === id).length}</b><span>${n}</span></button>`).join('')}</div>
     ${idx.length ? `
       <label class="search">${icon('search')}<input type="search" id="q" value="${esc(listFilter)}" placeholder="Kunde, Adresse, Raum oder Nummer" autocomplete="off"></label>
       <div class="plist">${shown.map((x) => `
@@ -174,9 +170,8 @@ async function viewProjektListe() {
             ${x.fort && Projekt.zugesagt(x.status) ? `<span class="bf-mini">${Fortschritt.balken(x.fort)}</span>` : ''}</span>
           ${icon('chevron', 'pc-chev')}
         </button>`).join('') || '<p class="empty">Nichts gefunden.</p>'}</div>` : `
-      <div class="empty-state">${icon('home')}<b>${{ angebot: 'Keine offenen Angebote', auftrag: 'Gerade keine Aufträge', abrechnung: 'Nichts abzurechnen', erledigt: 'Noch nichts erledigt' }[listStatus]}</b><span>${alleP.length ? 'Den Status stellst du im Projekt direkt unter dem Kunden ein.' : 'Tippe auf „Neues Projekt“, gib den Kunden ein und füge die Räume hinzu.'}</span></div>`}`;
+      <div class="empty-state">${icon('home')}<b>${{ einplanen: 'Nichts einzuplanen', eingeplant: 'Kein Baustart geplant', laufend: 'Gerade keine Baustelle', abgeschlossen: 'Noch nichts abgeschlossen' }[listStatus]}</b><span>Hier stehen die zugesagten Aufträge. Offene und abgesagte Angebote findest du unter „Angebote“, sobald eins zugesagt ist, erscheint es hier.</span></div>`}`;
   $$('[data-ls]').forEach((b) => (b.onclick = () => { listStatus = b.dataset.ls; viewProjektListe(); }));
-  $('#new').onclick = () => Projekt.neu();
   if ($('#toSet')) $('#toSet').onclick = () => { switchTab('einstellungen'); einstellungSeite('ki'); };
   if ($('#q')) $('#q').oninput = debounce((e) => { listFilter = e.target.value; viewProjektListe().then(() => { const i = $('#q'); if (i) { i.focus(); i.setSelectionRange(i.value.length, i.value.length); } }); }, 250);
   $$('[data-open]').forEach((el) => (el.onclick = async () => {
@@ -198,7 +193,7 @@ const MENUE = [
   ['karte', 'Karte', 'map', () => 'Alle Baustellen auf der Karte', () => switchTab('karte')],
   ['auswertung', 'Auswertung', 'chart', () => 'Umsatz, Zusagen, Marge, Kundenquellen', () => switchTab('auswertung')],
   ['preisliste', 'Preisliste', 'euro', () => 'Positionen, Lohn, Material, Aufschläge', () => { switchTab('einstellungen'); einstellungSeite('preisliste'); }],
-  ['unterlagen', 'Unterlagen', 'file', () => 'Firmenordner, Rechnungen, Protokolle', () => switchTab('unterlagen')],
+  ['unterlagen', 'Unterlagen', 'file', () => 'Firmenordner und Vorlagen', () => switchTab('unterlagen')],
   ['hilfe', 'Wie geht das?', 'sparkle', () => 'Frag, wo du was findest', () => switchTab('hilfe')],
   ['einstellungen', 'Einstellungen', 'sliders', () => 'Firma, Angebote, Rechnungen, Abläufe, Technik', () => switchTab('einstellungen')],
 ];
@@ -238,6 +233,8 @@ function menue() {
   requestAnimationFrame(() => el.classList.add('on'));
 }
 $('#brandBtn').onclick = menue;
+// Kalender oben neben dem Mikrofon
+$('#calBtn').onclick = () => { if (state.kalender) return; state.finanzen = false; Kalender.view(); window.scrollTo(0, 0); };
 // Mikrofon oben: Kunde, Projekt und Termin per Sprache anlegen (sprache.js)
 $('#micBtn').onclick = () => { const t = state.tab; Sprache.view(() => switchTab(t)); };
 

@@ -120,7 +120,7 @@
 .phasen { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin: 14px 0 4px; }
 .phasen button { border: 1.5px solid var(--line); background: #fff; border-radius: 12px; padding: 8px 4px 7px; display: flex; flex-direction: column; align-items: center; gap: 1px; color: var(--muted); }
 .phasen button b { font-size: 19px; color: var(--navy); line-height: 1.1; }
-.phasen button span { font-size: 12.5px; font-weight: 650; }
+.phasen button span { font-size: 12.5px; font-weight: 650; text-align: center; line-height: 1.2; }
 .phasen button.on { background: var(--navy); border-color: var(--navy); color: rgba(255,255,255,.8); }
 .phasen button.on b { color: #fff; }
 .ang-sum { font-weight: 700; color: var(--navy); font-size: 14px; }
