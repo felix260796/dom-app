@@ -223,6 +223,7 @@ window.Projekt = (() => {
       </div>
       ${statusKarte(w)}
       ${['geplant', '', 'fertig'].includes(norm(w.status)) ? '<div id="wFort"></div>' : ''}
+      ${['geplant', '', 'fertig'].includes(norm(w.status)) && !w.isNew ? '<div id="wBau"></div>' : ''}
       ${zugesagt(w.status) && !w.isNew ? '<div id="wRech"></div><div id="wKosten"></div>' : ''}
       ${k ? `<div class="docs" style="margin-top:12px"><button class="doc" id="wBilder"><span class="d-ico brass">${icon('camera')}</span>
         <span class="d-t"><b>Bilder & Dokumentation</b><span>${nFotos ? `${nFotos} ${nFotos === 1 ? 'Bild' : 'Bilder'} in diesem Projekt` : 'Bestand, Baufortschritt, Abnahme, eigene Ordner'}</span></span>${icon('chevron', 'pc-chev')}</button></div>` : ''}
@@ -272,6 +273,7 @@ window.Projekt = (() => {
       <button class="link-danger" id="wDel">${icon('trash')} Projekt löschen</button>` : ''}`;
     if ($('#wKosten')) window.Finanzen?.projektAbschnitt($('#wKosten'), w);
     if ($('#wRech')) window.Rechnung?.projektAbschnitt($('#wRech'), w);
+    if ($('#wBau')) window.Baustelle?.abschnitt($('#wBau'), w, list);
     if ($('#wFort')) window.Fortschritt?.abschnitt($('#wFort'), w, list, () => save(w));
     if (k && $('#wTermine')) window.Kalender?.abschnitt($('#wTermine'), { kundeId: k.id, objektId: w.objektId, projektId: w.id, zurueck: () => view() });
     const setzen = async (v) => {

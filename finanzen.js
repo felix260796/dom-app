@@ -41,8 +41,10 @@ window.Finanzen = (() => {
   // ---------- Kalkulation ----------
   /** Soll aus den Raum-Angeboten des Projekts: netto gesamt und je Gewerk. */
   async function soll(w) {
-    const out = { netto: 0, gewerke: {} };
+    const out = { netto: 0, gewerke: {}, plan: 0, mitPreis: 0, zeilen: 0 };
     const A = window.Angebot?._intern;
+    // B5: günstigster hinterlegter Subunternehmer-Preis je Position = geplante Kosten
+    const subEp = (nr) => { const ps = (window.Partner?.liste() || []).map((p) => p.preise?.[nr]).filter((x) => x > 0); return ps.length ? Math.min(...ps) : 0; };
     if (!A || !w?.rooms?.length) return out;
     try { await A.preisliste(); } catch { return out; }
     for (const id of w.rooms) {
@@ -51,7 +53,10 @@ window.Finanzen = (() => {
       try {
         const S = A.summen(r.angebot.positionen);
         out.netto += S.netto;
-        for (const z of S.zeilen) { const g = z.it?.gewerk || 'Sonstiges'; out.gewerke[g] = (out.gewerke[g] || 0) + z.gp; }
+        for (const z of S.zeilen) {
+          const g = z.it?.gewerk || 'Sonstiges'; out.gewerke[g] = (out.gewerke[g] || 0) + z.gp;
+          const ep = subEp(z.nr); out.zeilen++; if (ep) { out.mitPreis++; out.plan += z.menge * ep; }
+        }
       } catch {}
     }
     // Nachträge zählen zum Auftrag
@@ -82,6 +87,7 @@ window.Finanzen = (() => {
     const balken = k.soll.netto ? Math.min(100, (k.ist.netto / k.soll.netto) * 100) : 100;
     return `<div class="kalk">
       <div class="kalk-z"><span>Angebot netto (Soll)</span><b>${eur0(k.soll.netto)}</b></div>
+      ${k.soll.mitPreis ? `<div class="kalk-z"><span>Geplante Kosten (Preise der Subunternehmer, ${k.soll.mitPreis} von ${k.soll.zeilen} Positionen)</span><b>${eur0(k.soll.plan)}</b></div>` : ''}
       <div class="kalk-z"><span>Kosten netto (Ist)</span><b>${eur0(k.ist.netto)}</b></div>
       <div class="kalk-bar"><i style="width:${balken}%;background:${k.ampel[1]}"></i></div>
       <div class="kalk-z big" style="--c:${k.ampel[1]}"><span>Marge</span><b>${eur0(k.marge)}${k.soll.netto ? ` · ${k.proz.toLocaleString('de-DE', { maximumFractionDigits: 0 })} %` : ''}</b></div>
@@ -324,10 +330,28 @@ Datum als JJJJ-MM-TT. faellig = Fälligkeitsdatum, falls angegeben (oder Datum +
     el.innerHTML = `<div class="sec-h"><h2>Rechnungen dieser Firma</h2>${liste.length ? `<span class="count">${eur0(summe)} netto</span>` : ''}</div>
       ${liste.length ? `${offen.length ? `<p class="hint" style="margin-top:-4px">${offen.length} offen, ${eur0(offen.reduce((s, b) => s + brutto(b), 0))} brutto</p>` : ''}<div class="plist">${liste.map((b) => belegZeile(b)).join('')}</div>`
         : '<p class="hint" style="margin-top:-4px">Noch keine Eingangsrechnung von dieser Firma.</p>'}
-      <button class="add-room" id="pBelegNeu" style="width:100%;margin-top:8px">${icon('plus')} Rechnung dieser Firma erfassen</button>`;
+      <button class="add-room" id="pBelegNeu" style="width:100%;margin-top:8px">${icon('plus')} Rechnung dieser Firma erfassen</button>
+      <div class="sec-h" style="margin-top:18px"><h2>Preise je Position</h2>${Object.keys(p.preise || {}).length ? `<span class="count">${Object.keys(p.preise).length}</span>` : ''}</div>
+      <p class="hint" style="margin-top:-4px">Was diese Firma pro Einheit verlangt. Die Kalkulation rechnet damit die geplanten Kosten aus.</p>
+      <div class="card kform" id="pPreise"></div>`;
+    await preiseRender($('#pPreise', el), p);
     const zurueck = () => Partner.detail(p);
     $('#pBelegNeu', el).onclick = () => erfassen(neu({ partnerId: p.id }), zurueck);
     $$('[data-beleg]', el).forEach((b) => (b.onclick = () => erfassen(belege.get(b.dataset.beleg), zurueck)));
+  }
+
+  async function preiseRender(box, p) {
+    let PL; try { PL = await window.Angebot._intern.preisliste(); } catch { return; }
+    const pos = (nr) => PL.positionen.find((x) => x.nr === nr);
+    const eintraege = Object.entries(p.preise || {}).filter(([nr]) => pos(nr));
+    const gew = [...new Set(PL.positionen.map((x) => x.gewerk))];
+    box.innerHTML = `${eintraege.map(([nr, ep]) => { const it = pos(nr); return `<div class="prow-sub"><span><b>${esc(it.text)}</b><span class="muted">${esc(nr)} · Angebot ${eur(window.Angebot._intern.ep(it))}/${esc(it.einheit)}</span></span>
+        <input type="text" inputmode="decimal" data-sp="${esc(nr)}" value="${String(ep).replace('.', ',')}"><span class="muted">€/${esc(it.einheit)}</span><button class="icon-btn" data-spdel="${esc(nr)}" aria-label="Entfernen">${icon('trash')}</button></div>`; }).join('')}
+      <select id="spNeu" style="margin-top:${eintraege.length ? 10 : 0}px"><option value="">Position hinzufügen …</option>${gew.map((g) => `<optgroup label="${esc(g)}">${PL.positionen.filter((x) => x.gewerk === g && !(p.preise || {})[x.nr]).map((x) => `<option value="${esc(x.nr)}">${esc(x.nr)} ${esc(x.text)}</option>`).join('')}</optgroup>`).join('')}</select>`;
+    const sichern = async () => { p.updated = Date.now(); await kvSet('partner:' + p.id, p); await window.Partner?.laden(); };
+    $$('[data-sp]', box).forEach((x) => (x.onchange = async () => { p.preise[x.dataset.sp] = r2(num(x.value)); await sichern(); toast('Gespeichert'); }));
+    $$('[data-spdel]', box).forEach((x) => (x.onclick = async () => { delete p.preise[x.dataset.spdel]; await sichern(); preiseRender(box, p); }));
+    $('#spNeu', box).onchange = async (e) => { if (!e.target.value) return; (p.preise ??= {})[e.target.value] = 0; await sichern(); await preiseRender(box, p); $(`[data-sp="${e.target.value}"]`, box)?.focus(); };
   }
 
   return { view, laden, liste, fuerProjekt, kalkulation, projektAbschnitt, partnerAbschnitt, erfassen };
