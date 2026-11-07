@@ -21,7 +21,7 @@ window.Angebote = (() => {
     let s = 0;
     for (const id of w.rooms) {
       const r = await kvGet('project:' + id);
-      if (r?.angebot?.positionen?.length) { try { s += A.summen(r.angebot.positionen).brutto; } catch {} }
+      if (r?.angebot?.positionen?.length) { try { s += A.summen(r.angebot.positionen, r.angebot.kalk).brutto; } catch {} }
     }
     return s;
   }
@@ -44,7 +44,7 @@ window.Angebote = (() => {
           ${x.thumb ? `<img src="${x.thumb}" alt="">` : `<span class="pc-ph">${icon('euro')}</span>`}
           <span class="pc-t"><b>${esc(x.titel || x.room || 'Projekt')}</b>${Projekt.pill(x.status)}
             ${Kunden.name(Kunden.byId(x.kundeId)) || x.customer ? `<span class="muted pc-wer">${icon('user')}${esc(Kunden.name(Kunden.byId(x.kundeId)) || x.customer)}</span>` : ''}
-            ${Projekt.norm(x.status) === 'angebot' && Projekt.seitTagen(x.versendetAm) >= Projekt.NACHFASSEN ? `<span class="nachfassen">Seit ${Projekt.seitTagen(x.versendetAm)} Tagen beim Kunden, nachfassen</span>` : ''}
+            ${Projekt.norm(x.status) === 'angebot' && Projekt.seitTagen(x.versendetAm) >= Projekt.nachfassen() ? `<span class="nachfassen">Seit ${Projekt.seitTagen(x.versendetAm)} Tagen beim Kunden, nachfassen</span>` : ''}
             ${x.absage ? `<span class="muted">Grund: ${esc(x.absage)}</span>` : ''}
             <span class="ang-sum">${summen[i] ? eur(summen[i]) + ' brutto' : '<span class="muted">noch keine Positionen</span>'}</span></span>
           ${icon('chevron', 'pc-chev')}

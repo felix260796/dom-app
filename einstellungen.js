@@ -3,42 +3,87 @@
  * Baut auf app.js (header, main, icon, sheet), core.js und moodboards.js auf. */
 
 // ---------- Ansicht: Einstellungen ----------
-// Übersicht als Liste (wie „Standard-Moodboards“), jede Rubrik öffnet ihre eigene Seite.
+// Übersicht in Gruppen. Jede Zeile sagt, was man dort einstellt. Oben eine Suche über alle Felder, dazu „KI fragen“.
+// [id, Titel, Symbol, Farbe, Gruppe, was man dort einstellt]
 const EINST = [
-  ['moodboards', 'Standard-Moodboards', 'palette', 'brass'],
-  ['firma', 'Firma & Logo', 'home', 'navy'],
-  ['ki', 'KI-Bildbearbeitung', 'sparkle', 'navy'],
-  ['preise', 'Preisliste & Angebot', 'euro', 'grey'],
-  ['team', 'E-Mail-Automatisierung', 'mail', 'navy'],
-  ['bau', 'Baufortschritt', 'check', 'brass'],
-  ['cloud', 'Cloud-Abgleich', 'refresh', 'brass'],
-  ['sicherung', 'Datensicherung', 'download', 'grey'],
+  ['firma', 'Firma & Logo', 'home', 'navy', 'Firma', 'Name, Logo, Anschrift, Bank, Steuernummer auf Angebot und Rechnung'],
+  ['preisliste', 'Preisliste', 'euro', 'navy', 'Angebote', 'Jede Position: Lohn, Material, eigener Aufschlag, neue Positionen'],
+  ['kalkulation', 'Aufschläge & Angebotstexte', 'euro', 'brass', 'Angebote', 'Aufschläge auf Lohn und Material, Wagnis, MwSt., Gültigkeit, Texte im Angebot'],
+  ['pakete', 'Pakete & Excel-Import', 'clipboard', 'grey', 'Angebote', 'Was in Basic, Standard, Premium gehört, Excel-Angebotstool laden'],
+  ['moodboards', 'Standard-Moodboards', 'palette', 'brass', 'Angebote', 'Bilder und Produkte je Raumtyp und Paket'],
+  ['rechnungen', 'Rechnungen & Mahnungen', 'file', 'navy', 'Rechnungen', 'Zahlungsziel, Abschläge (30/40/30), Mahnfrist, alle Rechnungs- und Mahntexte, Begleittexte'],
+  ['ablauf', 'Abläufe & Listen', 'check', 'brass', 'Abläufe', 'Nachfassen nach Tagen, Absagegründe, Kundenquellen, Marge-Ampel, Gewerke, Abnahmetext'],
+  ['team', 'Terminmails & Team', 'mail', 'navy', 'Abläufe', 'Personen, Terminmails an Team, Kunde und Subunternehmer, Texte, Erinnerungen'],
+  ['bau', 'Baufortschritt', 'check', 'grey', 'Abläufe', 'Vorlagen der Arbeitsschritte je Raumtyp'],
+  ['ki', 'KI', 'sparkle', 'navy', 'Technik', 'Schlüssel und Modell für Bilder und Texte'],
+  ['cloud', 'Cloud-Abgleich', 'refresh', 'brass', 'Technik', 'Anmelden, Abgleich mit dem Kollegen'],
+  ['sicherung', 'Datensicherung', 'download', 'grey', 'Technik', 'Sicherung als Datei'],
 ];
+const EINST_ALT = { preise: 'pakete' }; // alte Seitennamen
 function einstellungInfo(k) {
   const S = state.settings;
-  if (k === 'moodboards') {
-    const n = ROOM_TYPES.filter((r) => state.boards?.[r.id]?.some((p) => p.images?.length || p.products?.length)).length;
-    return `Basic, Standard und Premium je Raumtyp${n ? ` · ${n} mit Bildern` : ''}`;
-  }
   if (k === 'firma') return [S.company, S.logo ? 'mit Logo' : 'ohne Logo'].filter(Boolean).join(' · ');
   if (k === 'ki') return S.apiKey ? `Eingerichtet · ${(S.modelList || []).find((m) => m.id === S.model)?.label || S.model}` : 'Noch nicht eingerichtet';
-  if (k === 'preise') return 'Excel-Angebotstool, Aufschläge, Paket-Vorlagen';
   if (k === 'team') return `${S.mailAktiv ? 'Terminmails an' : 'Terminmails aus'} · ${(window.Kalender?.team() || []).map((p) => p.name).join(', ')}`;
   if (k === 'cloud') return window.Sync?.active() ? 'Verbunden, gleicht automatisch ab' : 'Nicht verbunden';
-  if (k === 'bau') return 'Vorlagen für Bad, Küche und alle anderen Räume';
-  if (k === 'sicherung') return window.Sync?.active() ? 'Notfall-Export als Datei' : 'Sicherung als Datei, z. B. in OneDrive';
+  if (k === 'rechnungen') return `Zahlungsziel ${vorgabe('zahlungsziel')} Tage · Abschläge ${vorgabe('abschlagPlan').join(' / ')} %`;
   return '';
 }
-function viewEinstellungen() {
+function viewEinstellungen(suche = '') {
   state.editPkg = null;
   const v = window.__vorEinst || { tab: 'kunden', s: {} };
   header('Einstellungen', state.settings.company || '', { label: 'Zurück', fn: () => switchTab(v.tab, v.s) });
   const warn = (k) => (k === 'ki' && !state.settings.apiKey) || (k === 'cloud' && !window.Sync?.active());
-  main().innerHTML = `<div class="docs">${EINST.map(([k, t, ic, col]) => `
-    <button class="doc" data-einst="${k}"><span class="d-ico ${col}">${icon(ic)}</span>
-      <span class="d-t"><b>${esc(t)}</b><span class="${warn(k) ? 'warn' : ''}">${esc(einstellungInfo(k))}</span></span>${icon('chevron', 'pc-chev')}</button>`).join('')}</div>
+  const gruppen = [...new Set(EINST.map((e) => e[4]))];
+  main().innerHTML = `<div class="einst-such"><input type="search" id="eQ" value="${esc(suche)}" placeholder="Suchen, z. B. Mahnung, Aufschlag, Logo" autocomplete="off"></div>
+    <div id="eTreffer"></div>
+    <div id="eListe">${gruppen.map((g) => `<div class="sec-h"><h2>${esc(g)}</h2></div><div class="docs">${EINST.filter((e) => e[4] === g).map(([k, t, ic, col, , was]) => `
+      <button class="doc" data-einst="${k}"><span class="d-ico ${col}">${icon(ic)}</span>
+        <span class="d-t"><b>${esc(t)}</b><span class="${warn(k) ? 'warn' : ''}">${esc(einstellungInfo(k) ? einstellungInfo(k) : was)}</span>${einstellungInfo(k) ? `<span class="muted e-was">${esc(was)}</span>` : ''}</span>${icon('chevron', 'pc-chev')}</button>`).join('')}</div>`).join('')}</div>
     <p class="hint center" style="margin-top:18px">App-Version ${APP_VERSION} · <a href="diag.html">Bildschirm-Test</a></p>`;
   $$('[data-einst]').forEach((b) => (b.onclick = () => { einstellungSeite(b.dataset.einst); window.scrollTo(0, 0); }));
+  const suchen = () => {
+    const q = $('#eQ').value.trim().toLowerCase();
+    $('#eListe').hidden = !!q;
+    if (!q) { $('#eTreffer').innerHTML = ''; return; }
+    const worte = q.split(/\s+/);
+    const titel = (k) => EINST.find((e) => e[0] === k)?.[1] || k;
+    const alle = [...Vorgaben.index(), ...EINST.map(([k, t, , , g, was]) => [k, t, `${g} ${was}`, ''])];
+    // zuerst im Feldnamen suchen, dann in Stichworten, zuletzt im Seitennamen
+    const passt = (text) => (e) => worte.every((x) => text(e).toLowerCase().includes(x));
+    let treffer = alle.filter(passt(([, l]) => l));
+    if (treffer.length < 3) treffer = [...new Set([...treffer, ...alle.filter(passt(([, l, w]) => `${l} ${w}`))])];
+    if (!treffer.length) treffer = alle.filter(passt(([s, l, w]) => `${l} ${w} ${titel(s)}`));
+    treffer = treffer.slice(0, 25);
+    $('#eTreffer').innerHTML = `<div class="docs">${treffer.map(([s, l, , feld]) => `<button class="doc" data-ziel="${s}" data-feld="${esc(feld)}"><span class="d-t"><b>${esc(l)}</b><span>${esc(titel(s))}</span></span>${icon('chevron', 'pc-chev')}</button>`).join('')}</div>
+      ${treffer.length ? '' : '<p class="hint">Nichts gefunden.</p>'}
+      ${state.settings.apiKey ? `<button class="notice plain" id="eFrage">${icon('sparkle')}<span><b>KI fragen:</b> „${esc($('#eQ').value.trim())}“</span>${icon('chevron')}</button><div id="eAntwort"></div>` : ''}`;
+    $$('[data-ziel]').forEach((b) => (b.onclick = () => zuFeld(b.dataset.ziel, b.dataset.feld)));
+    if ($('#eFrage')) $('#eFrage').onclick = () => einstellungFrage($('#eQ').value.trim());
+  };
+  $('#eQ').oninput = debounce(suchen, 200);
+  if (suche) suchen();
+}
+/** Seite öffnen und zum gesuchten Feld springen, kurz hervorheben. */
+async function zuFeld(seite, feld) {
+  await einstellungSeite(seite);
+  if (!feld) return window.scrollTo(0, 0);
+  const [art, k] = feld.split(':');
+  const sel = { vg: `[data-vg="${k}"]`, ple: `[data-ple="${k}"]`, plt: `[data-plt="${k}"]`, plf: `[data-plf="${k}"]` }[art];
+  for (let i = 0; i < 20; i++) { const el = sel && document.querySelector(sel); if (el) { el.scrollIntoView({ block: 'center' }); el.classList.add('vg-hl'); setTimeout(() => el.classList.remove('vg-hl'), 2400); return; } await new Promise((r) => setTimeout(r, 100)); }
+}
+/** Frage in eigenen Worten: Die KI sucht die passenden Einstellungen heraus und erklärt kurz. */
+async function einstellungFrage(frage) {
+  const box = $('#eAntwort'); if (!box) return;
+  box.innerHTML = '<p class="hint">KI sucht …</p>';
+  const idx = Vorgaben.index().map(([s, l, w, f], i) => `${i} | ${EINST.find((e) => e[0] === s)?.[1] || s} | ${l} | ${w}`).join('\n');
+  try {
+    const txt = await geminiText([{ text: `Du hilfst in einer Handwerker-App (Sanierung). Der Nutzer fragt: „${frage}“.\nHier alle Einstellungen (nr | Seite | Feld | Stichworte):\n${idx}\n\nAntworte kurz auf Deutsch, du-Form, ohne Emojis. antwort = 1–2 Sätze, wo und wie er es einstellt (oder dass es das nicht gibt). treffer = Nummern der passenden Einstellungen (höchstens 4).` }], true, {
+      responseSchema: { type: 'OBJECT', properties: { antwort: { type: 'STRING' }, treffer: { type: 'ARRAY', items: { type: 'INTEGER' } } } } });
+    const j = JSON.parse(txt), I = Vorgaben.index();
+    box.innerHTML = `<div class="card"><p style="margin:0">${esc(j.antwort || '')}</p></div><div class="docs">${(j.treffer || []).map((n) => I[n]).filter(Boolean).map(([s, l, , feld]) => `<button class="doc" data-ziel="${s}" data-feld="${esc(feld)}"><span class="d-t"><b>${esc(l)}</b><span>${esc(EINST.find((e) => e[0] === s)?.[1] || s)}</span></span>${icon('chevron', 'pc-chev')}</button>`).join('')}</div>`;
+    $$('[data-ziel]', box).forEach((b) => (b.onclick = () => zuFeld(b.dataset.ziel, b.dataset.feld)));
+  } catch (e) { box.innerHTML = `<p class="hint">Die KI konnte nicht antworten (${esc(e.message)}).</p>`; }
 }
 /** Beispiel einer Terminmail für einen Empfänger (r = team | kunde | partner). Gleicher Aufbau wie in supabase/functions/termin-mail. */
 function mailVorschau(r, satz) {
@@ -62,13 +107,17 @@ function mailVorschau(r, satz) {
   const zu = () => bg.remove();
   bg.onclick = (e) => { if (e.target === bg || e.target.closest('[data-zu]')) zu(); };
 }
-function einstellungSeite(k) {
+async function einstellungSeite(k) {
+  k = EINST_ALT[k] || k;
   if (k === 'moodboards') { state.editPkg = null; return viewPakete(); }
+  if (k === 'preisliste') return Vorgaben.preisliste('');
   const S = state.settings;
   const [, titel] = EINST.find((x) => x[0] === k) || [];
   header(titel || 'Einstellungen', '', { label: 'Einstellungen', fn: () => { viewEinstellungen(); window.scrollTo(0, 0); } });
   const save = debounce(saveSettings, 300);
   if (k === 'bau') return Fortschritt.einstellungen();
+  if (k === 'rechnungen' || k === 'ablauf') return Vorgaben.seite(k);
+  if (k === 'kalkulation') { main().innerHTML = '<div id="plKarten"></div>'; return Vorgaben.preisKarten($('#plKarten')); }
   if (k === 'team') {
     // Personen für den Kalender (Termine je Person, oben im Kalender umschaltbar)
     if (!Array.isArray(S.team) || !S.team.length) S.team = JSON.parse(JSON.stringify(Kalender.team()));
@@ -152,6 +201,8 @@ function einstellungSeite(k) {
       S.logo = await resize(await fileToDataUrl(f), 800, 'image/png'); await saveSettings(); einstellungSeite('firma');
     };
     if ($('#nologo')) $('#nologo').onclick = async () => { S.logo = ''; await saveSettings(); einstellungSeite('firma'); };
+    main().insertAdjacentHTML('beforeend', '<div id="plFirma"></div>');
+    await Vorgaben.firmaKarte($('#plFirma'));
   } else if (k === 'ki') {
     main().innerHTML = `
     <div class="card">
@@ -189,9 +240,9 @@ function einstellungSeite(k) {
         toast(`Verbunden. ${imgModels.length} Bild-Modell(e) gefunden, ausgewählt: ${sel.selectedOptions[0].textContent}`, 6000);
       } catch (e) { toast('' + e.message, 6000); }
     };
-  } else if (k === 'preise') {
+  } else if (k === 'pakete') {
     main().innerHTML = '<div id="angebot-settings"></div>';
-    window.Angebot?.einstellungenKarte();
+    await window.Angebot?.einstellungenKarte();
   } else if (k === 'cloud') {
     main().innerHTML = '<div id="sync-settings"></div>';
     window.Sync?.einstellungenKarte($('#sync-settings'));

@@ -161,7 +161,7 @@ window.Baustelle = (() => {
     y += 3;
     if (a.vorbehalt) { ueber('Vorbehalte und Hinweise'); const l = doc.splitTextToSize(a.vorbehalt, R - M); t(l, M, y); y += 5.2 * l.length + 3; }
     doc.setFontSize(9.5); doc.setTextColor(60);
-    const txt = doc.splitTextToSize(`Die oben genannten Leistungen wurden am ${tag(a.datum)} gemeinsam begangen und ${a.maengel.some((m) => !m.erledigt) ? 'mit den aufgeführten Mängeln' : 'ohne Mängel'} abgenommen. Mit der Abnahme beginnt die Gewährleistungsfrist. Aufgeführte Mängel beseitigt der Auftragnehmer innerhalb der genannten Fristen.`, R - M);
+    const txt = doc.splitTextToSize(vorgabeText('textAbnahme', { datum: tag(a.datum), ergebnis: a.maengel.some((m) => !m.erledigt) ? 'mit den aufgeführten Mängeln' : 'ohne Mängel' }), R - M);
     t(txt, M, y); y += 5 * txt.length + 10;
     if (y > H - 70) { doc.addPage(); y = 30; }
     const sig = async (img, x, label) => { if (img) await addFit(doc, img, x, y, 70, 26, 'PNG'); doc.setDrawColor(120); doc.line(x, y + 28, x + 70, y + 28); doc.setFontSize(8); doc.setTextColor(110); t(label, x, y + 32); };

@@ -13,7 +13,6 @@ window.Finanzen = (() => {
   let alleZeigen = false;
   const belege = new Map();
   const MAX_MB = 6;
-  const GEWERKE_EXTRA = ['Material', 'Entsorgung', 'Sonstiges'];
   const num = (v) => { const n = parseFloat(String(v ?? '').replace(/\s/g, '').replace(/\.(?=\d{3}(\D|$))/g, '').replace(',', '.')); return Number.isFinite(n) ? n : 0; };
   const r2 = (x) => Math.round((x + Number.EPSILON) * 100) / 100;
   const eur = (x) => x.toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' €';
@@ -51,7 +50,7 @@ window.Finanzen = (() => {
       const r = await kvGet('project:' + id);
       if (!r?.angebot?.positionen?.length) continue;
       try {
-        const S = A.summen(r.angebot.positionen);
+        const S = A.summen(r.angebot.positionen, r.angebot.kalk);
         out.netto += S.netto;
         for (const z of S.zeilen) {
           const g = z.it?.gewerk || 'Sonstiges'; out.gewerke[g] = (out.gewerke[g] || 0) + z.gp;
@@ -74,8 +73,8 @@ window.Finanzen = (() => {
     out.netto = r2(out.netto);
     return out;
   }
-  /** Ampel nach Marge in Prozent vom Angebot: ab 20 % grün, ab 10 % gelb, darunter rot. */
-  const ampel = (proz) => (proz >= 20 ? ['gut', '#2f8a57'] : proz >= 10 ? ['knapp', '#c99a2e'] : ['kritisch', '#c0392b']);
+  /** Ampel nach Marge in Prozent vom Angebot, Grenzen in den Einstellungen (Abläufe & Listen). */
+  const ampel = (proz) => (proz >= +vorgabe('ampelGut') ? ['gut', '#2f8a57'] : proz >= +vorgabe('ampelKnapp') ? ['knapp', '#c99a2e'] : ['kritisch', '#c0392b']);
   async function kalkulation(w) {
     const s = await soll(w), i = ist(w.id);
     const marge = r2(s.netto - i.netto), proz = s.netto ? (marge / s.netto) * 100 : 0;
@@ -184,8 +183,8 @@ window.Finanzen = (() => {
         : '<p class="hint">Sobald ein zugesagtes Projekt ein Angebot und Eingangsrechnungen hat, steht hier die Marge.</p>'}
 
       ${auswertung(idx, kalk.filter(Boolean), aus.alle)}
-      ${Rechnung.einstellungenHtml()}`;
-    Rechnung.einstellungenBinden();
+      <button class="notice plain" id="fEinst">${icon('sliders')}<span><b>Einstellungen für Rechnungen</b> · Zahlungsziel, Abschläge, Mahntexte</span>${icon('chevron')}</button>`;
+    $('#fEinst').onclick = () => { switchTab('einstellungen'); einstellungSeite('rechnungen'); window.scrollTo(0, 0); };
     $$('[data-rech]').forEach((b) => (b.onclick = async () => { await Rechnung.laden(); Rechnung.detail(Rechnung.liste().find((r) => r.id === b.dataset.rech), () => view()); }));
     $$('[data-fa]').forEach((b) => (b.onclick = () => { alleZeigen = b.dataset.fa === '1'; view(); }));
     $('#fNeu').onclick = () => erfassen(neu(), () => view());
@@ -208,7 +207,7 @@ Datum als JJJJ-MM-TT. faellig = Fälligkeitsdatum, falls angegeben (oder Datum +
     return JSON.parse(txt);
   }
   function gewerke() {
-    return [...new Set([...(window.__plGewerke || []), ...GEWERKE_EXTRA])];
+    return [...new Set([...(window.__plGewerke || []), ...vorgabe('gewerkeExtra')])];
   }
   async function gewerkeLaden() {
     try { const PL = await window.Angebot._intern.preisliste(); window.__plGewerke = [...new Set(PL.positionen.map((x) => x.gewerk).filter((g) => g && !/eigenleistung/i.test(g)))]; } catch { window.__plGewerke = []; }

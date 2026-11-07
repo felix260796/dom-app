@@ -157,3 +157,10 @@ details.sub > summary { font-size: 14px; font-weight: 600; color: var(--navy-2);
 .cta.slim .cta-ico { width: 34px; height: 34px; border-radius: 10px; }
 .cta.slim .cta-ico svg.i { width: 21px; height: 21px; }
 .cta.slim .cta-t b { font-size: 16.5px; }
+
+/* ---------- Einstellungen: Suche, Vorgaben ---------- */
+.einst-such input { width: 100%; }
+.doc .d-t .e-was { display: block; font-size: 12.5px; margin-top: 2px; }
+.vg-l { display: flex; align-items: flex-end; justify-content: space-between; gap: 8px; }
+.vg-std { border: 0; background: none; color: var(--brass); font-weight: 650; font-size: 13px; padding: 0 0 4px; }
+.vg-hl { outline: 3px solid var(--brass); outline-offset: 2px; transition: outline .3s; }

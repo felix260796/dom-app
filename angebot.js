@@ -35,14 +35,16 @@ const Angebot = (() => {
   }
   const pos = (nr) => PL.positionen.find((x) => x.nr === nr);
   /** Einheitspreis Kunde netto wie im Excel (Preisliste Spalte H). */
-  function ep(it) {
-    const S = PL.einstellungen, eigen = it.auf !== null && it.auf !== undefined;
-    return r2((it.lohn * (1 + (eigen ? it.auf : S.aufLohn)) + it.mat * (1 + S.aufMat)) * (1 + (eigen ? 0 : S.wagnis)));
+  // k = Nachkalkulation eines Angebots { aufLohn, aufMat, wagnis } (leer = Standard aus den Einstellungen)
+  const satz = (k, n) => (k && k[n] !== null && k[n] !== undefined && k[n] !== '' ? k[n] : PL.einstellungen[n]);
+  function ep(it, k) {
+    const eigen = it.auf !== null && it.auf !== undefined;
+    return r2((it.lohn * (1 + (eigen ? it.auf : satz(k, 'aufLohn'))) + it.mat * (1 + satz(k, 'aufMat'))) * (1 + (eigen ? 0 : satz(k, 'wagnis'))));
   }
   /** Lohnanteil je Einheit netto (Preisliste Spalte L, für § 35a EStG). */
-  function lohnEp(it) {
-    const S = PL.einstellungen, eigen = it.auf !== null && it.auf !== undefined;
-    return r2(it.lohn * (1 + (eigen ? it.auf : S.aufLohn)) * (1 + (eigen ? 0 : S.wagnis)));
+  function lohnEp(it, k) {
+    const eigen = it.auf !== null && it.auf !== undefined;
+    return r2(it.lohn * (1 + (eigen ? it.auf : satz(k, 'aufLohn'))) * (1 + (eigen ? 0 : satz(k, 'wagnis'))));
   }
 
   // Excel-Angebotstool einlesen (Blätter „Preisliste“ und „Einstellungen“)
@@ -202,9 +204,14 @@ const Angebot = (() => {
     return { positionen: out, fehler };
   }
 
-  function summen(positionen) {
+  /** Summen eines Angebots. k = Nachkalkulation; x.epFix = von Hand gesetzter Einzelpreis (Lohnanteil anteilig). */
+  function summen(positionen, k) {
     const S = PL.einstellungen;
-    const zeilen = positionen.map((x, i) => { const it = pos(x.nr); if (!it) return null; const e = ep(it); return { ...x, i, it, ep: e, gp: r2(x.menge * e), lohn: r2(x.menge * lohnEp(it)) }; }).filter(Boolean);
+    const zeilen = positionen.map((x, i) => {
+      const it = pos(x.nr); if (!it) return null;
+      const std = ep(it, k), e = x.epFix > 0 ? x.epFix : std, l = lohnEp(it, k) * (std ? e / std : 1);
+      return { ...x, i, it, ep: e, fix: x.epFix > 0, gp: r2(x.menge * e), lohn: r2(x.menge * l) };
+    }).filter(Boolean);
     const netto = r2(zeilen.reduce((s, z) => s + z.gp, 0));
     const mwst = r2(netto * S.mwst), brutto = r2(netto + mwst);
     return { zeilen, netto, mwst, brutto, lohnBrutto: r2(zeilen.reduce((s, z) => s + z.lohn, 0) * (1 + S.mwst)),
@@ -519,9 +526,9 @@ Gib Länge (längere Seite) und Breite der Grundfläche, Raumhöhe, Anzahl und G
   function angebotView(p) {
     const A = p.angebot, body = $('#aBody');
     // Vergleich aller Pakete (Preisrichtung für das Gespräch vor Ort)
-    const vergleich = pakete(p).map((pk) => ({ pk, s: summen(erzeuge(p, pk.id).positionen) }));
+    const vergleich = pakete(p).map((pk) => ({ pk, s: summen(erzeuge(p, pk.id).positionen, p.angebot.kalk) }));
     if (!A.positionen || !A.geaendert) { const g = erzeuge(p, A.paket); A.positionen = g.positionen; A.fehler = g.fehler; }
-    const S = summen(A.positionen), pk = pakete(p).find((x) => x.id === A.paket) || pakete(p)[0];
+    const S = summen(A.positionen, A.kalk), pk = pakete(p).find((x) => x.id === A.paket) || pakete(p)[0];
     const raeume = [...new Set(A.positionen.map((x) => x.raum))];
     const gewerke = [...new Set(PL.positionen.map((x) => x.gewerk))];
     body.innerHTML = `
@@ -544,7 +551,7 @@ Gib Länge (längere Seite) und Breite der Grundfläche, Raumhöhe, Anzahl und G
           const i = z.i;
           return `<div class="posrow"><div class="pt"><b>${esc(z.it.text)}</b><span class="muted">${esc(z.nr)}${z.bem ? ' · ' + esc(z.bem) : ''}</span></div>
             <div class="pm">${numIn(`data-menge="${i}"`, z.menge)}<span class="muted">${esc(z.it.einheit)}</span></div>
-            <div class="pg">${fmtEur(z.gp)}<span class="muted">${fmtEur(z.ep)}</span></div><button class="x" data-delpos="${i}" aria-label="Entfernen">✕</button></div>`;
+            <button class="pg" data-epfix="${i}" title="Einzelpreis ändern">${fmtEur(z.gp)}<span class="${z.fix ? 'fixp' : 'muted'}">${fmtEur(z.ep)}${z.fix ? ' fest' : ''}</span></button><button class="x" data-delpos="${i}" aria-label="Entfernen">✕</button></div>`;
         }).join('')}`).join('')}
         <h3>Position hinzufügen</h3>
         <select id="aNeu"><option value="">Position aus Preisliste wählen …</option>${gewerke.map((g) => `<optgroup label="${esc(g)}">${PL.positionen.filter((x) => x.gewerk === g).map((x) => `<option value="${esc(x.nr)}">${esc(x.nr)} ${esc(x.text)} (${esc(x.einheit)})</option>`).join('')}</optgroup>`).join('')}</select>
@@ -552,6 +559,11 @@ Gib Länge (längere Seite) und Breite der Grundfläche, Raumhöhe, Anzahl und G
           ${numIn('id="aNeuMenge"', '', 'Menge')}<button class="btn small" id="aAdd" style="flex:none">＋</button></div>
         ${state.settings.apiKey && (p.wishes?.trim() || p.otherNotes?.trim()) ? `<button class="btn secondary block" id="aWunsch" style="margin-top:12px">${icon('sparkle')} Positionen aus den Kundenwünschen vorschlagen</button>` : ''}
         <button class="btn secondary block" id="aNeuBerechnen" style="margin-top:12px">↻ Neu berechnen aus Aufmaß</button>
+      </div>
+      <div class="card kform"><h2>Nachkalkulation dieses Angebots</h2>
+        <p class="muted">Leer lassen = Standard aus den Einstellungen. Einzelpreise änderst du, indem du auf den Preis einer Position tippst.</p>
+        <div class="row">${[['aufLohn', 'Lohn %'], ['aufMat', 'Material %'], ['wagnis', 'Wagnis %']].map(([n, l]) => `<div><label>${l}</label><input type="text" inputmode="decimal" data-nk="${n}" value="${A.kalk?.[n] !== undefined && A.kalk?.[n] !== null && A.kalk?.[n] !== '' ? String(Math.round(A.kalk[n] * 1000) / 10).replace('.', ',') : ''}" placeholder="${String(Math.round(PL.einstellungen[n] * 1000) / 10).replace('.', ',')}"></div>`).join('')}</div>
+        ${A.kalk && Object.values(A.kalk).some((v) => v !== null && v !== '') || A.positionen.some((x) => x.epFix > 0) ? '<button class="btn secondary block" id="nkReset" style="margin-top:10px">Alles auf Standard zurück</button>' : ''}
       </div>
       <div class="card"><h2>Summe</h2>
         <div class="tot"><span>Summe netto</span><b>${fmtEur(S.netto)}</b></div>
@@ -587,6 +599,21 @@ Gib Länge (längere Seite) und Breite der Grundfläche, Raumhöhe, Anzahl und G
     };
     if ($('#aWunsch')) $('#aWunsch').onclick = () => wunschVorschlaege(p, re).catch((e) => toast('Vorschläge gingen nicht: ' + e.message, 5000));
     $('#aNeuBerechnen').onclick = () => { if (A.geaendert && !confirm('Eigene Änderungen an den Positionen gehen verloren. Neu berechnen?')) return; A.positionen = null; A.geaendert = false; re(); };
+    $$('[data-nk]').forEach((el) => (el.onchange = () => {
+      const v = el.value.trim(); A.kalk ??= {};
+      if (v === '') delete A.kalk[el.dataset.nk]; else { const n = num(v); if (!Number.isFinite(n)) return toast('Bitte eine Zahl eintragen.'); A.kalk[el.dataset.nk] = n / 100; }
+      re();
+    }));
+    if ($('#nkReset')) $('#nkReset').onclick = () => { delete A.kalk; A.positionen.forEach((x) => delete x.epFix); re(); };
+    $$('[data-epfix]').forEach((b) => (b.onclick = async () => {
+      const x = A.positionen[+b.dataset.epfix], it = pos(x.nr);
+      const std = ep(it, A.kalk);
+      const v = await sheet(`Einzelpreis netto: ${it.text}`, [{ label: `Standard verwenden (${fmtEur(std)})`, value: '__std' }], { text: 'Eigener Preis in €', value: x.epFix ? String(x.epFix).replace('.', ',') : '' });
+      if (v === null) return;
+      if (v === '__std') delete x.epFix;
+      else { const n = num(v.text); if (!(n > 0)) return toast('Bitte einen Preis eintragen.'); x.epFix = r2(n); }
+      A.geaendert = true; re();
+    }));
     $('#aMitBz').onchange = (e) => { A.mitBauzeit = e.target.checked; persist(p); };
     $('#aMitBild').onchange = (e) => { A.mitBild = e.target.checked; persist(p); };
     $('#aPdf').onclick = () => teilePdf(p).catch((e) => toast('PDF-Fehler: ' + e.message, 5000));
@@ -645,7 +672,7 @@ Gib Länge (längere Seite) und Breite der Grundfläche, Raumhöhe, Anzahl und G
 
   // ---------- PDF ----------
   async function baueAngebotPdf(p) {
-    const A = p.angebot, E = PL.einstellungen, S = summen(A.positionen);
+    const A = p.angebot, E = PL.einstellungen, S = summen(A.positionen, A.kalk);
     const pk = pakete(p).find((x) => x.id === A.paket) || pakete(p)[0];
     if (!A.nr) { A.nr = await naechsteNummer(); if (!p._gesamt) await saveProject(p); }
     // Versionen (B8): jede geänderte Fassung bekommt „Änderung n“, damit man sieht, was der Kunde bekommen hat
@@ -835,7 +862,7 @@ Gib Länge (längere Seite) und Breite der Grundfläche, Raumhöhe, Anzahl und G
       A.geaendert = true; zu(); fertig(); toast('Übernommen');
     };
   }
-  const mailText = (p) => `${p.angebot.anrede || anredeDefault(p)}\n\nvielen Dank für das angenehme Gespräch. Anbei erhalten Sie unser Angebot Nr. ${p.angebot.nr}. Bei Fragen melden Sie sich gerne.\n\nFreundliche Grüße\n${PL.einstellungen.firma || ''}`;
+  const mailText = (p) => vorgabeText('mailAngebot', { anrede: p.angebot.anrede || anredeDefault(p), nr: p.angebot.nr, firma: PL.einstellungen.firma || '' });
   async function teilePdf(p) {
     toast('Angebot wird erstellt …', 8000);
     const doc = await baueAngebotPdf(p);
@@ -857,13 +884,13 @@ Gib Länge (längere Seite) und Breite der Grundfläche, Raumhöhe, Anzahl und G
     await preisliste();
     const E = PL.einstellungen, pct = (x) => Math.round(x * 100) + ' %';
     el.innerHTML = `<div class="card"><h2>Preisliste & Angebot</h2>
-      <p class="muted">Preise, Aufschläge und Texte kommen aus deinem <b>Excel-Angebotstool</b>. Lade die Datei hier hoch, wenn sich etwas ändert. Die Preise bleiben nur auf diesem Gerät.</p>
+      <p class="muted">Du kannst dein <b>Excel-Angebotstool</b> laden. Einzelne Preise, Aufschläge und Texte änderst du danach direkt in der App (Einstellungen › Preisliste und › Aufschläge & Angebotstexte).</p>
       <div class="tot"><span class="muted">Quelle</span><span>${esc(PL.quelle || '')}</span></div>
       <div class="tot"><span class="muted">Stand</span><span>${esc(PL.stand || '')}</span></div>
       <div class="tot"><span class="muted">Positionen</span><span>${PL.positionen.length}${PL.positionen.some((x) => x.status === 'geschätzt') ? ` (${PL.positionen.filter((x) => x.status === 'geschätzt').length} geschätzt)` : ''}</span></div>
       <div class="tot"><span class="muted">Aufschlag Lohn / Material / Wagnis</span><span>${pct(E.aufLohn)} / ${pct(E.aufMat)} / ${pct(E.wagnis)}</span></div>
       <div class="tot"><span class="muted">Firma</span><span style="text-align:right">${esc(E.firma)}<br>${esc(E.strasse)}, ${esc(E.ort)}</span></div>
-      ${/0000|Muster/.test(E.telefon + E.strasse) ? '<p class="muted">Adresse und Telefon sind noch Platzhalter. Im Excel-Blatt „Einstellungen“ ändern und neu laden.</p>' : ''}
+      ${/0000|Muster/.test(E.telefon + E.strasse) ? '<p class="muted">Adresse und Telefon sind noch Platzhalter. Unter Einstellungen › Firma & Logo ändern.</p>' : ''}
       <button class="btn block" id="plImport" style="margin-top:10px">Excel-Angebotstool laden</button>
       <div class="row" style="margin-top:10px"><button class="btn secondary" id="plVorl">Paket-Vorlagen</button><button class="btn danger" id="plReset">Standard</button></div>
     </div>`;

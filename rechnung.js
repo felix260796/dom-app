@@ -18,8 +18,9 @@ window.Rechnung = (() => {
   const heute = () => iso(new Date());
   const plusTage = (s, n) => { const d = new Date(s + 'T12:00'); d.setDate(d.getDate() + n); return iso(d); };
   const tag = (s) => (s ? new Date(s + 'T12:00').toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' }) : '');
-  const ziel = () => +state.settings.zahlungsziel || 14;
-  const plan = () => (Array.isArray(state.settings.abschlagPlan) && state.settings.abschlagPlan.length ? state.settings.abschlagPlan : [30, 40, 30]);
+  const ziel = () => +vorgabe('zahlungsziel') || 0;
+  /** Abschlagsplan: eigener Plan des Projekts, sonst aus den Einstellungen. */
+  const plan = (w) => (Array.isArray(w?.abschlagPlan) && w.abschlagPlan.length ? w.abschlagPlan : vorgabe('abschlagPlan'));
   const brutto = (r) => r2(r.netto * (1 + (r.satz ?? 19) / 100));
   /** Zahlbetrag: bei der Schlussrechnung abzüglich der Abschläge. */
   const zahlbetrag = (r) => r2(brutto(r) - (r.abzuege || []).reduce((s, a) => s + a.brutto, 0));
@@ -53,7 +54,7 @@ window.Rechnung = (() => {
     for (const id of w.rooms || []) {
       const r = await kvGet('project:' + id);
       if (!r?.angebot?.positionen?.length) continue;
-      const S = A.summen(r.angebot.positionen);
+      const S = A.summen(r.angebot.positionen, r.angebot.kalk);
       for (const z of S.zeilen) zeilen.push({ raum: z.raum || r.room || '', text: z.it.text + (z.bem ? ' – ' + z.bem : ''), menge: z.menge, einheit: z.it.einheit, ep: z.ep, gp: z.gp, gewerk: z.it.gewerk });
       lohn += S.zeilen.reduce((s, z) => s + z.lohn, 0);
     }
@@ -70,7 +71,7 @@ window.Rechnung = (() => {
     if (!el.isConnected) return;
     const re = fuerProjekt(w.id);
     const abschl = re.filter((r) => r.art === 'abschlag'), schluss = re.find((r) => r.art === 'schluss');
-    const P = plan(), naechster = abschl.length + 1;
+    const P = plan(w), naechster = abschl.length + 1;
     const kannAbschlag = !schluss && naechster < P.length && a.netto > 0;
     const offen = re.filter((r) => !r.bezahlt);
     el.innerHTML = `<div class="sec-h"><h2>Rechnungen an den Kunden</h2>${re.length ? `<span class="count">${re.length}</span>` : ''}</div>
@@ -82,6 +83,8 @@ window.Rechnung = (() => {
         ${a.netto ? '' : '<p class="hint" style="margin:6px 0 0">Noch kein Angebot mit Positionen. Rechnungen entstehen aus dem Angebot.</p>'}
       </div>
       <div class="plist">${re.map(zeile).join('')}</div>
+      ${schluss ? '' : `<label class="rplan">Abschläge in diesem Projekt <input type="text" id="rPlanW" value="${esc(P.join(' / '))}"></label>
+      <p class="hint" style="margin:2px 0 0">${Array.isArray(w.abschlagPlan) && w.abschlagPlan.length ? 'Eigener Plan für dieses Projekt. Leeren für den Standard aus den Einstellungen.' : 'Standard aus den Einstellungen. Hier änderbar nur für dieses Projekt.'}</p>`}
       <div class="rbtns">
         ${kannAbschlag ? `<button class="btn" id="rAb">${icon('plus')} ${naechster}. Abschlag (${P[naechster - 1]} %)</button>` : ''}
         ${!schluss && a.netto ? `<button class="btn ${kannAbschlag ? 'secondary' : ''}" id="rSchluss">${icon('file')} Schlussrechnung</button>` : ''}
@@ -91,6 +94,12 @@ window.Rechnung = (() => {
         <span class="pc-t"><b>${esc(n.text || 'Nachtrag')}</b><span class="muted">${esc(String(n.menge).replace('.', ','))} ${esc(n.einheit)} × ${eur(n.ep)}${n.datum ? ' · ' + tag(n.datum) : ''}</span><span class="ang-sum">${eur(r2(n.menge * n.ep))} netto</span></span>${icon('chevron', 'pc-chev')}</button>`).join('')}</div>
       ${schluss ? '' : `<button class="add-room" id="rNt" style="width:100%;margin-top:8px">${icon('plus')} Nachtrag (Zusatzleistung)</button>`}`;
     const zurueck = () => Projekt.view();
+    if ($('#rPlanW', el)) $('#rPlanW', el).onchange = async (e) => {
+      if (!e.target.value.trim()) { delete w.abschlagPlan; await Projekt.save(w); toast('Standard-Plan'); return projektAbschnitt(el, w); }
+      const p = planLesen(e.target.value);
+      if (!p) return toast('Die Anteile müssen zusammen 100 % ergeben.', 4000);
+      w.abschlagPlan = p; await Projekt.save(w); toast('Plan für dieses Projekt gespeichert'); projektAbschnitt(el, w);
+    };
     if ($('#rAb', el)) $('#rAb', el).onclick = () => erstellen(w, 'abschlag', zurueck);
     if ($('#rSchluss', el)) $('#rSchluss', el).onclick = () => erstellen(w, 'schluss', zurueck);
     if ($('#rNt', el)) $('#rNt', el).onclick = () => nachtrag(w, null, zurueck);
@@ -138,7 +147,7 @@ window.Rechnung = (() => {
   async function erstellen(w, art, fertig) {
     const a = await auftrag(w);
     const re = fuerProjekt(w.id), abschl = re.filter((r) => r.art === 'abschlag');
-    const P = plan(), stufe = abschl.length + 1;
+    const P = plan(w), stufe = abschl.length + 1;
     const r = { id: uid(), kind: 'rechnung', projektId: w.id, nr: '', art, stufe, prozent: art === 'abschlag' ? P[stufe - 1] : 100, titel: w.titel || 'Sanierung',
       zeitraum: [w.baustart && tag(w.baustart), art === 'schluss' ? tag(heute()) : ''].filter(Boolean).join(' bis ') || '', datum: heute(), faellig: plusTage(heute(), ziel()),
       netto: 0, satz: 19, positionen: [], nachtraege: [], abzuege: [], lohn: 0, bezahlt: '', mahnungen: [], notiz: '', created: Date.now() };
@@ -248,9 +257,8 @@ window.Rechnung = (() => {
     const blob = doc.output('blob');
     const file = new File([blob], name, { type: 'application/pdf' });
     const anrede = k ? Kunden.briefAnrede(k) : 'Sehr geehrte Damen und Herren,';
-    const text = mahnStufe == null
-      ? `${anrede}\n\nanbei erhalten Sie unsere ${artName(r)} Nr. ${r.nr} über ${eur(zahlbetrag(r))}. Bitte überweisen Sie den Betrag bis zum ${tag(r.faellig)}.\n\nVielen Dank und freundliche Grüße\n${state.settings.company || ''}`
-      : `${anrede}\n\nzu unserer Rechnung Nr. ${r.nr} vom ${tag(r.datum)} konnten wir noch keinen Zahlungseingang feststellen. Anbei unsere ${MAHN[mahnStufe]}.\n\nFreundliche Grüße\n${state.settings.company || ''}`;
+    const vars = { anrede, art: artName(r), nr: r.nr, betrag: eur(zahlbetrag(r)), faellig: tag(r.faellig), datum: tag(r.datum), stufe: mahnStufe == null ? '' : MAHN[mahnStufe], firma: state.settings.company || '' };
+    const text = vorgabeText(mahnStufe == null ? 'mailRechnung' : 'mailMahnung', vars);
     $('#toast').hidden = true;
     if (navigator.canShare?.({ files: [file] })) { try { await navigator.share({ files: [file], title: name, text }); return true; } catch (e) { if (e.name === 'AbortError') return false; } }
     const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name; a.click();
@@ -302,20 +310,16 @@ window.Rechnung = (() => {
     const absatz = async (s) => { for (const l of doc.splitTextToSize(s, R - M)) { await platz(5); t(l, M, y); y += 4.8; } y += 3; };
 
     if (mahnStufe != null) {
-      const frist = tag(plusTage(heute(), 7));
-      const erst = mahnStufe === 0
-        ? `sicher ist es Ihrer Aufmerksamkeit entgangen: Für unsere ${artName(r)} Nr. ${r.nr} vom ${tag(r.datum)}, fällig am ${tag(r.faellig)}, konnten wir bisher keinen Zahlungseingang feststellen.`
-        : `trotz unserer ${MAHN[mahnStufe - 1]} vom ${tag(r.mahnungen[mahnStufe - 1].datum)} ist der Betrag für unsere ${artName(r)} Nr. ${r.nr} vom ${tag(r.datum)} noch offen.`;
-      await absatz(erst);
-      await absatz(`Bitte überweisen Sie den offenen Betrag von ${eur(zahlbetrag(r))} bis zum ${frist}.`);
-      await absatz('Sollte sich Ihre Zahlung mit diesem Schreiben überschnitten haben, betrachten Sie es bitte als gegenstandslos.');
+      const frist = tag(plusTage(heute(), +vorgabe('mahnFrist') || 7));
+      const vars = { art: artName(r), nr: r.nr, datum: tag(r.datum), faellig: tag(r.faellig), betrag: eur(zahlbetrag(r)), frist, vorher: mahnStufe ? tag(r.mahnungen[mahnStufe - 1].datum) : '' };
+      await absatz(vorgabeText(['textErinnerung', 'textMahnung1', 'textMahnung2'][mahnStufe], vars));
+      await absatz(vorgabeText('textMahnFrist', vars));
+      await absatz(vorgabeText('textMahnSchluss', vars));
       await platz(30);
       doc.setFont('helvetica', 'bold'); t('Offener Betrag', M, y); t(eur(zahlbetrag(r)), R, y, { align: 'right' }); y += 5.5;
       doc.setFont('helvetica', 'normal'); t('Zahlbar bis', M, y); t(frist, R, y, { align: 'right' }); y += 10;
     } else {
-      await absatz(r.art === 'schluss'
-        ? 'vielen Dank für Ihren Auftrag. Für die ausgeführten Leistungen berechnen wir Ihnen:'
-        : `vielen Dank für Ihren Auftrag. Vereinbarungsgemäß berechnen wir Ihnen eine Abschlagszahlung von ${String(r.prozent).replace('.', ',')} % der Auftragssumme.`);
+      await absatz(vorgabeText(r.art === 'schluss' ? 'textRechnungSchluss' : 'textRechnungAbschlag', { prozent: String(r.prozent).replace('.', ','), nr: r.nr }));
       const C = { pos: M, txt: M + 11, menge: 136, einh: 139, ep: 172, gp: R };
       const tabKopf = () => {
         doc.setFillColor(...NAVY); doc.rect(M - 1, y - 4.2, R - M + 2, 6.2, 'F');
@@ -363,10 +367,10 @@ window.Rechnung = (() => {
       if (r.abzuege?.length) { doc.line(C.txt, y - 3.8, R, y - 3.8); doc.setTextColor(...NAVY); sumZ('Noch zu zahlen', eur(zahlbetrag(r)), true); doc.setTextColor(30); }
       if (r.art === 'schluss' && r.lohn) { doc.setFontSize(8.5); doc.setTextColor(90); sumZ('Darin enthaltener Lohnanteil brutto (§ 35a EStG)', eur(r.lohn)); doc.setTextColor(30); }
       y += 4; doc.setFontSize(10);
-      await absatz(`Bitte überweisen Sie den Betrag von ${eur(zahlbetrag(r))} bis zum ${tag(r.faellig)} unter Angabe der Rechnungsnummer ${r.nr}.`);
-      if (r.art === 'schluss') await absatz('Bitte bewahren Sie diese Rechnung zwei Jahre auf (§ 14b UStG).');
+      await absatz(vorgabeText('textZahlung', { betrag: eur(zahlbetrag(r)), faellig: tag(r.faellig), nr: r.nr }));
+      if (r.art === 'schluss' && vorgabe('textAufbewahrung')) await absatz(vorgabeText('textAufbewahrung'));
     }
-    await platz(16); doc.setFontSize(10); doc.setTextColor(30); t('Mit freundlichen Grüßen', M, y); y += 5; t(E.firma, M, y);
+    await platz(16); doc.setFontSize(10); doc.setTextColor(30); t(vorgabeText('textGruss'), M, y); y += 5; t(E.firma, M, y);
     const pages = doc.getNumberOfPages();
     for (let i = 1; i <= pages; i++) {
       doc.setPage(i);
@@ -389,22 +393,5 @@ window.Rechnung = (() => {
     return { offen, name, html: offen.map((r) => zeile(r).replace('<b>', `<b>${esc(name(r))} · `)).join('') };
   }
 
-  /** Einstellungen für Rechnungen (Zahlungsziel, Abschlagsplan). */
-  function einstellungenHtml() {
-    return `<details class="card kform rset"><summary>Zahlungsziel und Abschläge</summary>
-      <div class="row"><div><label>Zahlungsziel (Tage)</label><input type="text" inputmode="numeric" id="rsZiel" value="${ziel()}"></div>
-        <div><label>Abschläge in %</label><input type="text" id="rsPlan" value="${plan().join(' / ')}"></div></div>
-      <p class="hint" style="margin:6px 0 0">Beispiel 30 / 40 / 30: erster Abschlag 30 %, zweiter 40 %, der Rest kommt mit der Schlussrechnung.</p></details>`;
-  }
-  function einstellungenBinden() {
-    if (!$('#rsZiel')) return;
-    $('#rsZiel').onchange = async (e) => { state.settings.zahlungsziel = Math.max(0, parseInt(e.target.value, 10) || 14); await saveSettings(); toast('Gespeichert'); };
-    $('#rsPlan').onchange = async (e) => {
-      const p = e.target.value.split(/[^\d,.]+/).map(num).filter((x) => x > 0);
-      if (!p.length || Math.round(p.reduce((s, x) => s + x, 0)) !== 100) return toast('Die Anteile müssen zusammen 100 % ergeben.', 4000);
-      state.settings.abschlagPlan = p; await saveSettings(); toast('Gespeichert');
-    };
-  }
-
-  return { laden, liste, fuerProjekt, projektAbschnitt, uebersicht, detail, einstellungenHtml, einstellungenBinden, auftrag, zahlbetrag, ueberfaellig };
+  return { laden, liste, fuerProjekt, projektAbschnitt, uebersicht, detail, auftrag, zahlbetrag, ueberfaellig };
 })();

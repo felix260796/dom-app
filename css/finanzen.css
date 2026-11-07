@@ -41,3 +41,7 @@
 .aw-b { display: grid; grid-template-columns: 120px 1fr auto; align-items: center; gap: 8px; padding: 3px 0; font-size: 14px; }
 .aw-b i { display: block; height: 8px; border-radius: 4px; background: var(--brass); width: var(--w); min-width: 4px; }
 .aw-b small { color: var(--muted); font-weight: 500; }
+
+/* ---------- Abschlagsplan je Projekt ---------- */
+.rplan { display: flex; align-items: center; gap: 8px; margin-top: 12px; font-size: 14px; color: var(--muted); }
+.rplan input { flex: 1; }
