@@ -1,5 +1,5 @@
 'use strict';
-// Ganze Bildschirmhöhe als --voll (siehe style.css, Seitenaufbau): jede Seite ist etwas höher, damit iOS
+// Ganze Bildschirmhöhe als --voll (siehe css/basis.css, Seitenaufbau): jede Seite ist etwas höher, damit iOS
 // die Leiste unten ganz an den Rand setzt.
 (() => {
   const setz = () => {

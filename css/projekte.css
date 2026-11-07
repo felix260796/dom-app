@@ -1,0 +1,140 @@
+/* DOM – Projekte: Liste, Projektseite, Status, Baufortschritt, Karte. Reihenfolge der Dateien in index.html beachten (basis zuerst). */
+/* ---------- Projektliste ---------- */
+.cta { width: 100%; display: flex; align-items: center; gap: 14px; text-align: left; border: 0; border-radius: 20px; padding: 18px;
+  background: linear-gradient(135deg, var(--navy) 0%, var(--navy-2) 100%); color: #fff; box-shadow: 0 10px 26px rgba(30, 53, 80, .28); }
+.cta:active { transform: scale(.99); }
+.cta-ico { width: 48px; height: 48px; border-radius: 14px; background: var(--brass); display: flex; align-items: center; justify-content: center; flex: none; }
+.cta-ico svg.i { width: 26px; height: 26px; stroke-width: 2.4; }
+.cta-t { flex: 1; display: flex; flex-direction: column; }
+.cta-t b { font-size: 19px; }
+.cta-t span { font-size: 14px; color: rgba(255,255,255,.75); }
+.cta-chev { opacity: .7; }
+.notice { width: 100%; display: flex; gap: 12px; align-items: center; text-align: left; margin-top: 12px; border: 1px solid #ecd9b4; background: var(--brass-soft); border-radius: 16px; padding: 13px 14px; font-size: 14px; color: #5f4614; }
+.notice svg.i { color: var(--brass); }
+.notice span { flex: 1; }
+.search { display: flex; align-items: center; gap: 8px; background: #fff; border: 1px solid var(--line); border-radius: 14px; padding: 0 12px; margin: 0 0 12px; }
+.search svg.i { color: var(--muted); width: 19px; }
+.search input { border: 0; padding: 11px 0; box-shadow: none !important; }
+.plist, .rlist, .docs { display: flex; flex-direction: column; gap: 10px; }
+.pcard, .rcard, .doc { width: 100%; display: flex; align-items: center; gap: 13px; border: 0; background: var(--card); border-radius: 18px; padding: 10px 12px 10px 10px; text-align: left; box-shadow: var(--shadow); }
+.pcard:active, .rcard:active, .doc:active { transform: scale(.99); }
+.pcard img, .rcard img { width: 64px; height: 64px; border-radius: 13px; object-fit: cover; flex: none; background: #eee; }
+.pc-ph, .rc-ph { width: 64px; height: 64px; border-radius: 13px; flex: none; background: var(--soft); color: #a2a8b1; display: flex; align-items: center; justify-content: center; }
+.pc-ph svg.i, .rc-ph svg.i { width: 28px; height: 28px; }
+.pc-t, .rc-t, .d-t { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.pc-t b, .rc-t b, .d-t b { font-size: 16.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pc-t .muted { font-size: 13.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pc-meta { font-size: 12.5px; color: #9aa0a9; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pc-chev { color: #b9bec6; width: 18px; height: 18px; }
+.empty-state { text-align: center; padding: 40px 20px; color: var(--muted); display: flex; flex-direction: column; align-items: center; gap: 6px; }
+.empty-state svg.i { width: 44px; height: 44px; color: #c3c7cd; stroke-width: 1.4; margin-bottom: 6px; }
+.empty-state b { color: var(--text); font-size: 17px; }
+
+/* ---------- Projekt ---------- */
+.kunde { padding: 6px 14px; }
+.ic-field { display: flex; align-items: center; gap: 10px; margin: 0; padding: 4px 0; color: var(--muted); }
+.ic-field + .ic-field { border-top: 1px solid var(--line); }
+.ic-field input { border: 0; padding: 11px 0; font-size: 17px; font-weight: 600; color: var(--text); box-shadow: none !important; }
+.ic-field + .ic-field input { font-weight: 400; font-size: 16px; }
+.rc-s { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.rc-s .st { font-size: 13px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.rc-s .st.todo { color: var(--brass); font-weight: 600; }
+.dots { display: inline-flex; gap: 3px; flex: none; }
+.dots i { width: 9px; height: 9px; border-radius: 50%; background: var(--c); display: block; }
+.rcard .up { width: 32px; height: 32px; }
+.add-room { display: flex; align-items: center; justify-content: center; gap: 8px; border: 1.5px dashed #cfc9bd; background: transparent; color: var(--navy); font-weight: 650; border-radius: 18px; padding: 15px; }
+.add-room svg.i { width: 20px; height: 20px; stroke-width: 2.2; }
+.rtgrid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-top: 10px; }
+.rt { border: 0; background: var(--card); border-radius: 16px; padding: 14px 6px 12px; display: flex; flex-direction: column; align-items: center; gap: 7px; font-size: 13px; font-weight: 600; box-shadow: var(--shadow); color: var(--text); text-align: center; line-height: 1.2; }
+.rt svg.i { width: 30px; height: 30px; color: var(--navy); stroke-width: 1.6; }
+.rt:active { background: var(--brass-soft); }
+.d-ico { width: 48px; height: 48px; border-radius: 14px; display: flex; align-items: center; justify-content: center; flex: none; color: #fff; }
+.d-ico svg.i { width: 25px; height: 25px; }
+.d-ico.navy { background: var(--navy); } .d-ico.brass { background: var(--brass); } .d-ico.grey { background: #7a8795; }
+.doc { padding: 13px 12px; }
+.d-t span { font-size: 13px; color: var(--muted); line-height: 1.35; }
+.doc:disabled { opacity: .5; }
+
+/* Karte der Baustellen */
+.lk-row { display: flex; gap: 8px; align-items: center; margin-top: 12px; }
+.lk-row .search { flex: 1; margin: 0; }
+.lk-toggle { flex: none; display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--line); background: #fff; border-radius: 12px; padding: 10px 12px; font-weight: 650; font-size: 14.5px; color: var(--navy); }
+.lk-toggle.on { background: var(--navy); color: #fff; border-color: var(--navy); }
+.lk-toggle svg.i { width: 19px; height: 19px; }
+.pmap { position: relative; z-index: 0; isolation: isolate; height: calc(100dvh - 400px); min-height: 320px; border-radius: var(--radius); overflow: hidden; margin-top: 12px; box-shadow: var(--shadow); background: #e8e4dc; }
+.pmap-info { margin: 8px 2px 0; }
+.mpin { width: 30px; height: 30px; border-radius: 50% 50% 50% 0; transform: rotate(-45deg); background: var(--c, var(--navy)); border: 2.5px solid #fff; box-shadow: 0 2px 6px rgba(0,0,0,.35); }
+.mpin-wrap { background: none; border: 0; }
+.leaflet-popup-content { margin: 10px 12px; font: 14px/1.35 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+.mpop b { display: block; font-size: 15px; }
+.mpop span { display: block; color: var(--muted); font-size: 13px; }
+.mpop button { margin-top: 8px; width: 100%; border: 0; border-radius: 10px; background: var(--navy); color: #fff; font-weight: 650; padding: 8px 10px; }
+
+/* Projektstatus in zwei Stufen */
+.wstat-l { font-size: 12px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: var(--muted); margin: 12px 4px 5px; }
+.lstat button small { font-size: 12px; opacity: .75; margin-left: 2px; }
+.lstat button { padding: 9px 4px; font-size: 13px; }
+.st-pill { display: inline-block; vertical-align: 2px; font-size: 11px; font-weight: 700; color: #fff; background: #9a8f86; border-radius: 999px; padding: 1px 7px; margin-left: 4px; }
+
+/* Baufortschritt */
+.bf { padding: 6px 14px 12px; }
+.bf-z { display: flex; align-items: center; gap: 12px; padding: 9px 0; border-bottom: 1px solid var(--line); }
+.bf-ck { flex: none; width: 28px; height: 28px; border-radius: 50%; border: 2px solid #c9c3b8; background: #fff; color: #fff; display: flex; align-items: center; justify-content: center; padding: 0; }
+.bf-ck svg.i { width: 18px; height: 18px; stroke-width: 3; }
+.bf-z.ok .bf-ck { background: var(--ok); border-color: var(--ok); }
+.bf-t { flex: 1; min-width: 0; border: 0; background: none; text-align: left; padding: 0; display: flex; flex-direction: column; }
+.bf-t b { font-size: 15.5px; font-weight: 600; }
+.bf-z.ok .bf-t b { color: var(--muted); text-decoration: line-through; text-decoration-color: rgba(0,0,0,.25); }
+.bf-t small { font-size: 12.5px; color: var(--muted); }
+.bf-neu { display: flex; gap: 8px; margin-top: 10px; }
+.bf-neu input { flex: 1; }
+.bf-neu .btn { padding: 0 14px; }
+.bf-kopf { margin: -4px 4px 10px; }
+.bf-bar { display: block; height: 6px; border-radius: 3px; background: #e7e3db; overflow: hidden; }
+.bf-bar i { display: block; height: 100%; background: var(--ok); border-radius: 3px; }
+.bf-txt { display: block; font-size: 12.5px; color: var(--muted); margin-top: 4px; }
+.bf-mini { display: block; margin-top: 6px; max-width: 240px; }
+.bf-mini .bf-bar { height: 4px; }
+.bf-mini .bf-txt { font-size: 12px; margin-top: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+
+.pc-wo, .pc-wer { display: flex; align-items: center; gap: 5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pc-wo svg.i, .pc-wer svg.i { width: 15px; height: 15px; flex: none; opacity: .7; }
+
+/* ---------- Ablauf: Status ---------- */
+.st-pill { display: inline-flex; align-self: flex-start; width: max-content; margin: 3px 0 1px; vertical-align: 0; font-size: 11.5px; font-weight: 700; color: #fff; background: var(--c, #9a8f86); border-radius: 999px; padding: 2px 9px; letter-spacing: .01em; }
+.pc-t > b + .st-pill { margin-left: 0; }
+.stk { border-left: 5px solid var(--c); padding-top: 12px; }
+.stk-top { display: flex; align-items: center; gap: 10px; }
+.stk-dot { width: 12px; height: 12px; border-radius: 50%; background: var(--c); flex: none; box-shadow: 0 0 0 4px color-mix(in srgb, var(--c) 18%, transparent); }
+.stk-t { flex: 1; display: flex; flex-direction: column; line-height: 1.2; }
+.stk-t small { font-size: 12px; color: var(--muted); font-weight: 600; }
+.stk-t b { font-size: 18px; }
+.stk-alle { border: 1px solid var(--line); background: #fff; border-radius: 10px; padding: 6px 11px; font-size: 13.5px; font-weight: 650; color: var(--navy); }
+.stk-pfad { display: flex; gap: 4px; margin: 12px 0 12px; }
+.stk-pfad i { flex: 1; height: 6px; border-radius: 3px; background: #e7e3db; }
+.stk-pfad i.ok { background: var(--c); opacity: .55; }
+.stk-pfad i.jetzt { background: var(--c); }
+.stk-pfad i.ab { background: #c0392b; opacity: .55; }
+.stk .btn[style*="--c"] { background: var(--c); border-color: var(--c); color: #fff; }
+.stk-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.stk-2 .btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; }
+.si-dot { display: block; width: 14px; height: 14px; border-radius: 50%; background: var(--c); }
+
+/* Bereiche in Projekte */
+.phasen { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin: 14px 0 4px; }
+.phasen button { border: 1.5px solid var(--line); background: #fff; border-radius: 12px; padding: 8px 4px 7px; display: flex; flex-direction: column; align-items: center; gap: 1px; color: var(--muted); }
+.phasen button b { font-size: 19px; color: var(--navy); line-height: 1.1; }
+.phasen button span { font-size: 12.5px; font-weight: 650; }
+.phasen button.on { background: var(--navy); border-color: var(--navy); color: rgba(255,255,255,.8); }
+.phasen button.on b { color: #fff; }
+.ang-sum { font-weight: 700; color: var(--navy); font-size: 14px; }
+.notice.plain { background: #fff; border-color: var(--line); color: var(--text); }
+.notice.plain svg.i { color: var(--navy); }
+.phasen.drei { grid-template-columns: repeat(3, 1fr); }
+
+/* ---------- Nachfassen, Absage, unterschriebenes Angebot ---------- */
+.stk-tipp.warn { color: #b7791f; }
+.stk-doc { width: 100%; margin: 0 0 10px; }
+.nachfassen { display: block; color: #b7791f; font-size: 13px; font-weight: 650; }
+.stk-doc .d-t b { white-space: normal; }
