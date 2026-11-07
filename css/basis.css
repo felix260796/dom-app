@@ -190,10 +190,16 @@ details.sub > summary { font-size: 14px; font-weight: 600; color: var(--navy-2);
 .menu-h { display: flex; align-items: center; justify-content: space-between; margin: 0 -12px 8px; padding: calc(env(safe-area-inset-top) + 14px) 14px 14px 18px; background: linear-gradient(180deg, var(--navy-ink) 0%, var(--navy) 100%); }
 .menu-h img { height: 24px; }
 .menu-h .icon-btn { color: #fff; background: rgba(255, 255, 255, .14); border: 0; }
-.menu-i { display: flex; align-items: center; gap: 14px; text-align: left; border: 0; background: #fff; border-radius: 16px; padding: 14px; box-shadow: 0 1px 3px rgba(20, 38, 59, .08); color: var(--text); cursor: pointer; }
+.menu-i { display: flex; align-items: center; gap: 14px; text-align: left; border: 0; background: #fff; border-radius: 16px; padding: 11px 14px; box-shadow: 0 1px 3px rgba(20, 38, 59, .08); color: var(--text); cursor: pointer; }
 .menu-i > span:last-child { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 .menu-i b { font-size: 16px; }
 .menu-i > span:last-child span { font-size: 13px; color: var(--muted); }
-.menu-ic { flex: none; width: 42px; height: 42px; border-radius: 12px; background: #eef1f5; color: var(--navy); display: grid; place-items: center; }
+.menu-ic { flex: none; width: 38px; height: 38px; border-radius: 12px; background: #eef1f5; color: var(--navy); display: grid; place-items: center; }
 .menu-ic svg.i { width: 22px; height: 22px; }
 .menu-v { margin: auto 0 0; padding-top: 12px; text-align: center; font-size: 12px; color: var(--muted); }
+.menu-fuss { margin-top: auto; padding-top: 12px; display: flex; flex-direction: column; gap: 10px; }
+.menu-wer > span { display: block; font-size: 12px; color: var(--muted); margin: 0 2px 6px; }
+.menu-sync { display: flex; align-items: center; gap: 8px; border: 0; background: none; padding: 4px 2px; text-align: left; font-size: 12.5px; color: var(--muted); cursor: pointer; }
+.menu-sync svg.i { width: 18px; height: 18px; flex: none; }
+.menu-v { margin: 0; padding-top: 0; }
+.su-feld { margin-bottom: 4px; }

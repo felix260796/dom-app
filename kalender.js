@@ -353,5 +353,5 @@ window.Kalender = (() => {
   /** Punkt am Kalender-Symbol, wenn heute etwas ansteht. */
   function punkt() { const d = $('#calDot'); if (d) d.hidden = !eintraege(heute(), heute()).length; }
 
-  return { _heute: heute, laden, view, kachel, abschnitt, bearbeiten, eintraege, punkt, team, ARTEN, MAILTEXTE, mailTexte };
+  return { _heute: heute, team, wer, werSetzen, laden, view, kachel, abschnitt, bearbeiten, eintraege, punkt, team, ARTEN, MAILTEXTE, mailTexte };
 })();

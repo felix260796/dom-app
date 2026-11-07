@@ -133,6 +133,17 @@ window.Finanzen = (() => {
       ${gruende.length ? `<div class="card aw"><b class="aw-h">Warum abgesagt?</b>${balken(gruende, ab || 1)}</div>` : ''}`;
   }
 
+  // ---------- Eigene Seite (Menü › Auswertung) ----------
+  async function auswertungView() {
+    header('Auswertung', String(new Date().getFullYear()));
+    const idx = await projectIndex();
+    await Promise.all([laden(), Rechnung.laden()]);
+    const kalk = await Promise.all(idx.filter((x) => Projekt.zugesagt(x.status)).map(async (x) => { const w = await kvGet('wohnung:' + x.id); return w ? { x, k: await kalkulation(w) } : null; }));
+    if (state.tab !== 'auswertung') return;
+    main().innerHTML = auswertung(idx, kalk.filter(Boolean), Rechnung.liste()).replace(/^<div class="sec-h">.*?<\/div>/, '')
+      + `<p class="hint">Umsatz zählt die Rechnungen dieses Jahres, Zahlungseingang die bezahlten. Die Marge kommt aus der Kalkulation je Projekt (Angebot gegen Eingangsrechnungen).</p>`;
+  }
+
   // ---------- Übersicht ----------
   async function view() {
     state.beleg = null;
@@ -182,8 +193,9 @@ window.Finanzen = (() => {
           ${icon('chevron', 'pc-chev')}</button>`).join('')}</div>`
         : '<p class="hint">Sobald ein zugesagtes Projekt ein Angebot und Eingangsrechnungen hat, steht hier die Marge.</p>'}
 
-      ${auswertung(idx, kalk.filter(Boolean), aus.alle)}
+      <button class="notice plain" id="fAusw">${icon('chart')}<span><b>Auswertung</b> · Umsatz, Zusagen, Marge, Kundenquellen</span>${icon('chevron')}</button>
       <button class="notice plain" id="fEinst">${icon('sliders')}<span><b>Einstellungen für Rechnungen</b> · Zahlungsziel, Abschläge, Mahntexte</span>${icon('chevron')}</button>`;
+    $('#fAusw').onclick = () => switchTab('auswertung');
     $('#fEinst').onclick = () => { switchTab('einstellungen'); einstellungSeite('rechnungen'); window.scrollTo(0, 0); };
     $$('[data-rech]').forEach((b) => (b.onclick = async () => { await Rechnung.laden(); Rechnung.detail(Rechnung.liste().find((r) => r.id === b.dataset.rech), () => view()); }));
     $$('[data-fa]').forEach((b) => (b.onclick = () => { alleZeigen = b.dataset.fa === '1'; view(); }));
@@ -377,5 +389,5 @@ Datum als JJJJ-MM-TT. faellig = Fälligkeitsdatum, falls angegeben (oder Datum +
     $('#spNeu', box).onchange = async (e) => { if (!e.target.value) return; (p.preise ??= {})[e.target.value] = 0; await sichern(); await preiseRender(box, p); $(`[data-sp="${e.target.value}"]`, box)?.focus(); };
   }
 
-  return { view, laden, liste, fuerProjekt, kalkulation, projektAbschnitt, partnerAbschnitt, erfassen };
+  return { view, auswertungView, laden, liste, fuerProjekt, kalkulation, projektAbschnitt, partnerAbschnitt, erfassen };
 })();

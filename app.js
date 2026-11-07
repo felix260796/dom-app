@@ -6,13 +6,15 @@
  * Kern-Funktionen (Speicher, KI, Bilder) stehen in core.js. */
 
 // ---------- Symbole (einfache Linien-Icons) ----------
-const APP_VERSION = '62';
+const APP_VERSION = '63';
 const ICONS = {
   plus: '<path d="M12 5v14M5 12h14"/>',
   camera: '<path d="M3 8.5A2 2 0 0 1 5 6.5h2l1.6-2h6.8l1.6 2h2a2 2 0 0 1 2 2V18a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><circle cx="12" cy="13" r="3.6"/>',
   image: '<rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="10" r="1.7"/><path d="M21 16l-5-5L6 20"/>',
   sparkle: '<path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9z"/><path d="M19 15l.8 2.2L22 18l-2.2.8L19 21l-.8-2.2L16 18l2.2-.8z"/>',
   file: '<path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5M9 13h6M9 17h4"/>',
+  chart: '<path d="M4 20V11M10 20V5M16 20v-8M21 20H3"/>',
+  cloud: '<path d="M7 18a4.5 4.5 0 0 1-.6-9 6 6 0 0 1 11.4 1.5A3.8 3.8 0 0 1 17.5 18z"/>',
   book: '<path d="M4 5a2 2 0 0 1 2-2h13v15H6a2 2 0 0 0-2 2z"/><path d="M4 20a2 2 0 0 0 2 2h13v-4M8 7h7"/>',
   clipboard: '<rect x="5" y="4" width="14" height="17" rx="2"/><path d="M9 4V3h6v1M9 10h6M9 14h6M9 18h3"/>',
   ruler: '<path d="M3 17L17 3l4 4L7 21z"/><path d="M7 13l2 2M10 10l2 2M13 7l2 2"/>',
@@ -101,7 +103,7 @@ function switchTab(tab, restore) {
   $$('.tabbar button').forEach((b) => b.classList.toggle('active', b.dataset.tab === tab));
   window.scrollTo(0, 0);
   if (tab === 'einstellungen') state.editPkg = null;
-  ({ kunden: viewProjekt, partner: () => Partner.start(), projekt: viewProjekt, angebote: viewProjekt, rechnungen: () => Finanzen.view(), heute: () => Heute.view(), einstellungen: viewEinstellungen })[tab]();
+  ({ kunden: viewProjekt, partner: () => Partner.start(), projekt: viewProjekt, angebote: viewProjekt, rechnungen: () => Finanzen.view(), heute: () => Heute.view(), suche: () => Suche.view(), karte: () => Karte.view(), auswertung: () => Finanzen.auswertungView(), einstellungen: viewEinstellungen })[tab]();
 }
 /** Reiter wechseln und dort direkt etwas öffnen, z. B. openTab('kunden', { kunde }). */
 window.openTab = (tab, s) => switchTab(tab, s);
@@ -141,7 +143,7 @@ function objektZeile(x) {
   const k = Kunden.byId(x.kundeId), o = k && Kunden.objekt(k, x.objektId);
   return [o && o.name.trim(), x.address || (o && Kunden.einzeilig(o.adresse))].filter(Boolean).join(' · ');
 }
-let listFilter = '', listStatus = 'auftrag', listKarte = false;
+let listFilter = '', listStatus = 'auftrag';
 async function viewProjektListe() {
   // Vier Bereiche: Angebot · Auftrag · Abrechnung · Erledigt (siehe Projekt.PHASEN)
   header('Projekte', state.settings.company || '');
@@ -161,9 +163,8 @@ async function viewProjektListe() {
     <div id="backupHint"></div>
     ${alleP.length ? `<div class="phasen">${Projekt.PHASEN.map(([id, n]) => `<button data-ls="${id}" class="${listStatus === id ? 'on' : ''}"><b>${alleP.filter((x) => Projekt.phase(x.status) === id).length}</b><span>${n}</span></button>`).join('')}</div>` : ''}
     ${idx.length ? `
-      <div class="lk-row"><label class="search">${icon('search')}<input type="search" id="q" value="${esc(listFilter)}" placeholder="Kunde, Adresse, Raum oder Nummer" autocomplete="off"></label>
-        <button class="lk-toggle ${listKarte ? 'on' : ''}" id="lkToggle">${icon(listKarte ? 'list' : 'map')}<span>${listKarte ? 'Liste' : 'Karte'}</span></button></div>
-      ${listKarte ? '<div class="pmap" id="pmap"></div><p class="hint pmap-info" id="pmapInfo">Karte wird geladen …</p>' : `<div class="plist">${shown.map((x) => `
+      <label class="search">${icon('search')}<input type="search" id="q" value="${esc(listFilter)}" placeholder="Kunde, Adresse, Raum oder Nummer" autocomplete="off"></label>
+      <div class="plist">${shown.map((x) => `
         <button class="pcard" data-open="${x.id}" data-kind="${x.kind || ''}">
           ${x.thumb ? `<img src="${x.thumb}" alt="">` : `<span class="pc-ph">${icon('home')}</span>`}
           <span class="pc-t"><b>${esc(x.titel || x.room || 'Projekt')}</b>${Projekt.pill(x.status)}
@@ -171,11 +172,9 @@ async function viewProjektListe() {
             ${projektKunde(x) ? `<span class="muted pc-wer">${icon('user')}${esc(projektKunde(x))}</span>` : ''}
             ${x.fort && Projekt.zugesagt(x.status) ? `<span class="bf-mini">${Fortschritt.balken(x.fort)}</span>` : ''}</span>
           ${icon('chevron', 'pc-chev')}
-        </button>`).join('') || '<p class="empty">Nichts gefunden.</p>'}</div>`}` : `
+        </button>`).join('') || '<p class="empty">Nichts gefunden.</p>'}</div>` : `
       <div class="empty-state">${icon('home')}<b>${{ angebot: 'Keine offenen Angebote', auftrag: 'Gerade keine Aufträge', abrechnung: 'Nichts abzurechnen', erledigt: 'Noch nichts erledigt' }[listStatus]}</b><span>${alleP.length ? 'Den Status stellst du im Projekt direkt unter dem Kunden ein.' : 'Tippe auf „Neues Projekt“, gib den Kunden ein und füge die Räume hinzu.'}</span></div>`}`;
   $$('[data-ls]').forEach((b) => (b.onclick = () => { listStatus = b.dataset.ls; viewProjektListe(); }));
-  if ($('#lkToggle')) $('#lkToggle').onclick = () => { listKarte = !listKarte; viewProjektListe(); };
-  if (listKarte && $('#pmap')) window.Karte?.zeigen($('#pmap'), shown, $('#pmapInfo'), (id) => Projekt.oeffnen(id));
   $('#new').onclick = () => Projekt.neu();
   if ($('#toSet')) $('#toSet').onclick = () => { switchTab('einstellungen'); einstellungSeite('ki'); };
   if ($('#q')) $('#q').oninput = debounce((e) => { listFilter = e.target.value; viewProjektListe().then(() => { const i = $('#q'); if (i) { i.focus(); i.setSelectionRange(i.value.length, i.value.length); } }); }, 250);
@@ -189,22 +188,46 @@ async function viewProjektListe() {
 }
 
 // ---------- Menü: Tippen aufs DOM-Logo, fährt rechts heraus ----------
-// Alles, was keinen Reiter unten hat: Heute, Kalender, Einstellungen (das Mikrofon sitzt direkt unter dem Logo). Neues hier in MENUE eintragen.
+// Alles, was keinen Reiter unten hat (das Mikrofon sitzt direkt unter dem Logo). Neues hier eintragen:
+// [id, Titel, Symbol, Untertitel (Funktion), Öffnen (Funktion)]
 const MENUE = [
+  ['suche', 'Suche', 'search', () => 'Kunden, Projekte, Angebote, Rechnungen, Termine', () => switchTab('suche')],
   ['heute', 'Heute', 'sun', () => 'Was heute dran ist', () => switchTab('heute')],
   ['kalender', 'Kalender', 'calendar', () => { const n = window.Kalender?.eintraege(Kalender._heute(), Kalender._heute()).length || 0; return n ? `Heute ${n} ${n === 1 ? 'Eintrag' : 'Einträge'}` : 'Termine, Geburtstage'; }, () => { state.finanzen = false; Kalender.view(); window.scrollTo(0, 0); }],
+  ['karte', 'Karte', 'map', () => 'Alle Baustellen auf der Karte', () => switchTab('karte')],
+  ['auswertung', 'Auswertung', 'chart', () => 'Umsatz, Zusagen, Marge, Kundenquellen', () => switchTab('auswertung')],
+  ['preisliste', 'Preisliste', 'euro', () => 'Positionen, Lohn, Material, Aufschläge', () => { switchTab('einstellungen'); einstellungSeite('preisliste'); }],
   ['einstellungen', 'Einstellungen', 'sliders', () => 'Firma, Angebote, Rechnungen, Abläufe, Technik', () => switchTab('einstellungen')],
 ];
+/** Zeile unten im Menü: angemeldet als … und letzter Cloud-Abgleich. */
+function syncText() {
+  const S = window.Sync;
+  if (!S?.active()) return 'Cloud-Abgleich nicht eingerichtet. Tippen zum Einrichten.';
+  const st = S.status(), mail = S.email?.() || '';
+  if (st.ok === false) return `${mail} · ${st.msg || 'Abgleich gestört'}`;
+  const t = st.last ? new Date(st.last) : null;
+  const wann = !t ? 'noch nicht abgeglichen' : t.toDateString() === new Date().toDateString() ? `zuletzt abgeglichen ${t.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' })} Uhr` : `zuletzt abgeglichen am ${t.toLocaleDateString('de-DE')}`;
+  return `${mail} · ${wann}`;
+}
 function menue() {
   if ($('.menu-bg')) return;
   const el = document.createElement('div');
   el.className = 'menu-bg';
   el.innerHTML = `<nav class="menu" aria-label="Menü"><div class="menu-h"><img src="assets/dom_logo_weiss.png" alt="DOM"><button class="icon-btn" data-x aria-label="Schließen">${icon('x')}</button></div>
     ${MENUE.map(([id, l, ic, sub]) => `<button class="menu-i" data-m="${id}"><span class="menu-ic">${icon(ic)}</span><span><b>${esc(l)}</b><span>${esc(sub())}</span></span></button>`).join('')}
-    <p class="menu-v">Version ${APP_VERSION}</p></nav>`;
+    <div class="menu-fuss">
+      ${window.Kalender ? `<div class="menu-wer"><span>Auf diesem Gerät</span><div class="seg2 full">${[...Kalender.team().map((p) => [p.id, p.name.split(' ')[0]]), ['', 'Beide']].map(([id, n]) => `<button data-mw="${esc(id)}" class="${Kalender.wer() === id ? 'on' : ''}">${esc(n)}</button>`).join('')}</div></div>` : ''}
+      <button class="menu-sync" data-m="cloud">${icon('cloud')}<span>${esc(syncText())}</span></button>
+      <p class="menu-v">Version ${APP_VERSION}</p></div></nav>`;
   const zu = () => { el.classList.remove('on'); setTimeout(() => el.remove(), 220); };
   el.onclick = (e) => { if (e.target === el || e.target.closest('[data-x]')) zu(); };
-  $$('[data-m]', el).forEach((b) => (b.onclick = () => { zu(); MENUE.find((m) => m[0] === b.dataset.m)[4](); }));
+  $$('[data-m]', el).forEach((b) => (b.onclick = () => {
+    zu();
+    if (b.dataset.m === 'cloud') { switchTab('einstellungen'); return einstellungSeite('cloud'); }
+    MENUE.find((m) => m[0] === b.dataset.m)[4]();
+  }));
+  // Wer nutzt dieses Gerät: filtert Kalender und „Heute“ (gemerkt auf dem Gerät)
+  $$('[data-mw]', el).forEach((b) => (b.onclick = () => { Kalender.werSetzen(b.dataset.mw); $$('[data-mw]', el).forEach((x) => x.classList.toggle('on', x === b)); Kalender.punkt(); if (state.tab === 'heute') Heute.view(); }));
   let x0 = null; // nach rechts wischen schließt
   el.addEventListener('touchstart', (e) => { x0 = e.touches[0].clientX; }, { passive: true });
   el.addEventListener('touchend', (e) => { if (x0 !== null && e.changedTouches[0].clientX - x0 > 60) zu(); x0 = null; });

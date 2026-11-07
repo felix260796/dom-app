@@ -80,5 +80,18 @@ window.Karte = (() => {
       (fehlt.length ? ` Nicht auf der Karte: ${fehlt.map((x) => x.titel || x.customer || 'Projekt').join(', ')} (${ohne.length && !nichtGefunden.length ? 'keine Objektanschrift' : 'Anschrift nicht gefunden'}).` : ''));
   }
 
-  return { zeigen, anschrift };
+  // ---------- Eigene Seite (Menü › Karte) ----------
+  let bereich = 'auftrag';
+  async function view() {
+    header('Karte', 'Baustellen an der Objektanschrift');
+    const idx = await projectIndex();
+    const B = [...Projekt.PHASEN, ['alle', 'Alle']];
+    const shown = bereich === 'alle' ? idx : idx.filter((x) => Projekt.phase(x.status) === bereich);
+    main().innerHTML = `<div class="phasen">${B.map(([id, n]) => `<button data-kb="${id}" class="${bereich === id ? 'on' : ''}"><b>${id === 'alle' ? idx.length : idx.filter((x) => Projekt.phase(x.status) === id).length}</b><span>${n}</span></button>`).join('')}</div>
+      <div class="pmap" id="pmap"></div><p class="hint pmap-info" id="pmapInfo">Karte wird geladen …</p>`;
+    $$('[data-kb]').forEach((b) => (b.onclick = () => { bereich = b.dataset.kb; view(); }));
+    zeigen($('#pmap'), shown, $('#pmapInfo'), (id) => { switchTab('projekt', { wohnung: null }); Projekt.oeffnen(id); });
+  }
+
+  return { zeigen, anschrift, view };
 })();

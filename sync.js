@@ -412,5 +412,5 @@ window.Sync = (() => {
     if (!r.ok) throw new Error(j.fehler || j.message || j.msg || `Fehler ${r.status}`);
     return j;
   }
-  return { changed, deleted, run, active, pending, einstellungenKarte, funktion, fest, status: () => status };
+  return { changed, deleted, run, active, pending, einstellungenKarte, funktion, fest, status: () => status, email: () => cfg?.email || '' };
 })();
