@@ -49,6 +49,10 @@ const VORGABEN = {
       { k: 'heuteStart', l: 'Beim Öffnen der App mit „Heute“ starten', t: 'janein', d: 'ja', h: 'Sonst startet die App bei den Kunden. „Heute“ erreichst du immer über das DOM-Logo oben.' },
       { k: 'heuteVorlauf', l: 'Fälliges so viele Tage vorher zeigen', t: 'zahl', d: 3 },
     ]],
+    ['Per Sprache anlegen (Mikrofon oben)', [
+      { k: 'spracheDauer', l: 'Termin dauert so viele Minuten, wenn keine Endzeit gesagt wird', t: 'zahl', d: 60 },
+      { k: 'spracheProjekt', l: 'Bei Kundenterminen gleich ein Projekt „Besichtigung“ vorschlagen', t: 'janein', d: 'ja' },
+    ]],
     ['Baustelle', [
       { k: 'textAbnahme', l: 'Text im Abnahmeprotokoll', t: 'text', d: 'Die oben genannten Leistungen wurden am {datum} gemeinsam begangen und {ergebnis} abgenommen. Mit der Abnahme beginnt die Gewährleistungsfrist. Aufgeführte Mängel beseitigt der Auftragnehmer innerhalb der genannten Fristen.' },
     ]],

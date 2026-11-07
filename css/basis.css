@@ -143,7 +143,9 @@ details.sub > summary { font-size: 14px; font-weight: 600; color: var(--navy-2);
 #aBack, #soBack, #vBack { display: none; }
 
 /* Kalender-Symbol oben */
-.titles { position: relative; padding-right: 104px; }
+.titles { position: relative; padding-right: 150px; }
+#calBtn { right: 50px; }
+#micBtn { right: 100px; }
 .calbtn { position: absolute; right: 0; top: 50%; transform: translateY(-50%); width: 42px; height: 42px; border-radius: 13px; border: 0; background: rgba(255,255,255,.12); color: #fff; display: flex; align-items: center; justify-content: center; }
 .calbtn svg.i { width: 23px; height: 23px; }
 .calbtn i { position: absolute; top: 7px; right: 7px; width: 9px; height: 9px; border-radius: 50%; background: var(--brass); box-shadow: 0 0 0 2px var(--navy); }
@@ -168,3 +170,16 @@ details.sub > summary { font-size: 14px; font-weight: 600; color: var(--navy-2);
 /* ---------- Startseite Heute ---------- */
 .brand { cursor: pointer; }
 .pcard.hz .pc-ph svg.i { width: 22px; height: 22px; }
+
+/* ---------- Per Sprache anlegen ---------- */
+.sp-start { margin-bottom: 18px; }
+.sp-start .pc-ph { background: var(--navy); color: #fff; }
+.sp-card { display: flex; flex-direction: column; align-items: center; text-align: center; gap: 10px; padding: 26px 18px; }
+.sp-mic { width: 96px; height: 96px; border-radius: 50%; border: 0; background: var(--navy); color: #fff; display: grid; place-items: center; box-shadow: 0 8px 22px rgba(30, 53, 80, .28); cursor: pointer; }
+.sp-mic svg.i { width: 40px; height: 40px; }
+.sp-mic.on { background: #c0392b; animation: spPuls 1.4s ease-in-out infinite; }
+@keyframes spPuls { 50% { box-shadow: 0 0 0 14px rgba(192, 57, 43, .15); } }
+.sp-zitat { font-style: italic; line-height: 1.45; }
+.sp-h { margin: 0 0 4px; font-size: 17px; }
+.sp-chk { display: flex; align-items: center; gap: 8px; margin: 0; font-size: 16px; }
+.sp-chk input { width: 20px; height: 20px; }

@@ -1,6 +1,5 @@
 /* DOM – Rechnungen: Übersicht, Eingangsrechnungen, Kalkulation. Reihenfolge der Dateien in index.html beachten (basis zuerst). */
 /* Finanzen */
-#calBtn { right: 52px; }
 .phasen.zwei { grid-template-columns: 1fr 1fr; }
 .phasen .fz { border: 1.5px solid var(--line); background: #fff; border-radius: 12px; padding: 10px 4px 9px; display: flex; flex-direction: column; align-items: center; color: var(--muted); }
 .phasen .fz b { font-size: 22px; color: var(--navy); line-height: 1.1; }

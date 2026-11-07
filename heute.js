@@ -45,7 +45,9 @@ window.Heute = (() => {
     // Laufende Baustellen
     block('Laufende Baustellen', idx.filter((x) => Projekt.norm(x.status) === '').map((x) => zeile('p:' + x.id, 'home', name(x), x.fort ? `${x.fort.fertig} von ${x.fort.n} Schritten${x.fort.naechster ? ' · als Nächstes: ' + x.fort.naechster : ''}` : 'Noch keine Arbeitsschritte')));
 
-    main().innerHTML = bloecke.join('') || `<div class="empty-state">${icon('check')}<b>Heute ist nichts offen</b><span>Termine, Nachfassen, Rechnungen und Baustellen erscheinen hier, sobald etwas ansteht.</span></div>`;
+    const mic = `<button class="pcard hz sp-start" id="hzMic"><span class="pc-ph">${icon('mic')}</span><span class="pc-t"><b>Per Sprache anlegen</b><span class="muted">Kunde, Projekt und Termin in einem Satz</span></span>${icon('chevron', 'pc-chev')}</button>`;
+    main().innerHTML = mic + (bloecke.join('') || `<div class="empty-state">${icon('check')}<b>Heute ist nichts offen</b><span>Termine, Nachfassen, Rechnungen und Baustellen erscheinen hier, sobald etwas ansteht.</span></div>`);
+    $('#hzMic').onclick = () => Sprache.view(() => switchTab('heute'));
     $$('[data-hz]').forEach((b) => (b.onclick = () => oeffnen(b.dataset.hz)));
   }
 
