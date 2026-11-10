@@ -113,3 +113,22 @@ button.pg { border: 0; background: none; text-align: right; font: inherit; color
 .asum-b { text-align: right; }
 .asum-b b { display: block; font-size: 24px; color: var(--navy); }
 .asum-b small { color: var(--muted); font-size: 12.5px; }
+/* ---------- Angebot als Tabelle ---------- */
+.tb-sum { position: sticky; top: calc(env(safe-area-inset-top) + 122px); z-index: 5; }
+.tb-masse > div { flex: 1; min-width: 0; }
+.tb-kopf { display: flex; gap: 8px; align-items: center; margin: 4px 0 10px; }
+.tb-kopf .search { flex: 1; margin: 0; }
+.tb-g { padding: 0; overflow: hidden; }
+.tb-g > summary { display: flex; align-items: center; justify-content: space-between; padding: 14px 16px; cursor: pointer; list-style: none; }
+.tb-g > summary::-webkit-details-marker { display: none; }
+.tb-z { display: grid; grid-template-columns: 1fr 64px 46px 78px; gap: 6px; align-items: center; padding: 8px 12px; border-top: 1px solid var(--line, #ece8e0); }
+.tb-z.an { background: rgba(184, 134, 47, .08); }
+.tb-t { display: flex; flex-direction: column; min-width: 0; }
+.tb-t b { font-size: 14px; font-weight: 600; line-height: 1.25; }
+.tb-t small { color: var(--muted); font-size: 12px; }
+.tb-z input { padding: 8px 6px; text-align: right; }
+.tb-e { font-size: 12.5px; color: var(--muted); }
+.tb-gp { border: 0; background: none; font: inherit; font-size: 13.5px; font-weight: 600; text-align: right; color: var(--navy); padding: 0; }
+.tb-fz { padding: 8px 0; border-bottom: 1px solid var(--line, #ece8e0); }
+.tb-fz .row { margin-top: 6px; align-items: center; }
+.tb-fz .row > div { flex: 1; min-width: 0; }

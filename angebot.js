@@ -208,7 +208,9 @@ const Angebot = (() => {
   function summen(positionen, k) {
     const S = PL.einstellungen;
     const zeilen = positionen.map((x, i) => {
-      const it = pos(x.nr); if (!it) return null;
+      // Eigene Position (nicht in der Preisliste): Text, Einheit und Preis stehen in der Position selbst
+      const it = pos(x.nr) || (x.frei ? { nr: x.nr, text: x.frei.text || 'Eigene Position', einheit: x.frei.einheit || 'Stück', gewerk: 'Eigene Positionen', lohn: 0, mat: 0, auf: 0 } : null);
+      if (!it) return null;
       const std = ep(it, k), e = x.epFix > 0 ? x.epFix : std, l = lohnEp(it, k) * (std ? e / std : 1);
       return { ...x, i, it, ep: e, fix: x.epFix > 0, gp: r2(x.menge * e), lohn: r2(x.menge * l) };
     }).filter(Boolean);
@@ -450,7 +452,7 @@ Gib Länge (längere Seite) und Breite der Grundfläche, Raumhöhe, Anzahl und G
       <div id="aBody"></div>`;
     
     $$('[data-atab]').forEach((b) => (b.onclick = () => { tab = b.dataset.atab; ansicht(p); }));
-    ({ aufmass: aufmassView, angebot: angebotView, material: materialView, bauzeit: bauzeitView })[tab](p);
+    ({ aufmass: aufmassView, angebot: angebotTabelle, material: materialView, bauzeit: bauzeitView })[tab](p);
     if (scrollTop) window.scrollTo(0, 0);
   }
   const persist = debounce((p) => saveProject(p), 400);
@@ -616,6 +618,181 @@ Gib Länge (längere Seite) und Breite der Grundfläche, Raumhöhe, Anzahl und G
     $('#aPdf').onclick = () => teilePdf(p).catch((e) => toast('PDF-Fehler: ' + e.message, 5000));
     $('#aExcel').onclick = async () => {
       const tsv = A.positionen.map((x) => [x.nr, x.raum || 'Allgemein', String(x.menge).replace('.', ','), x.bem].join('\t')).join('\n');
+      try { await navigator.clipboard.writeText(tsv); toast('Kopiert. In Excel „Eingabe“ ab B12 einfügen.'); } catch { toast('Kopieren nicht möglich.'); }
+    };
+  }
+
+  // ---------- Angebot als Tabelle (wie Excel, Wunsch Felix) ----------
+  // Alle Positionen der Preisliste untereinander, nach Gewerk. Menge eintippen (0, 1 oder m²), die Summe läuft oben mit.
+  // Darunter eigene Positionen mit Text, Einheit, Menge und Preis. Oben die Maße des Raums und „aus Paket vorbelegen“.
+  let nurGewaehlt = false, tabSuche = '';
+  function angebotTabelle(p) {
+    const A = p.angebot, body = $('#aBody');
+    if (!A.positionen) { const g = erzeuge(p, A.paket); A.positionen = g.positionen; A.fehler = g.fehler; }
+    const raumName = p.aufmass.raeume[0]?.name || p.room || '';
+    const pk = pakete(p).find((x) => x.id === A.paket) || pakete(p)[0];
+    const mengeVon = (nr) => A.positionen.filter((x) => x.nr === nr).reduce((s, x) => s + (+x.menge || 0), 0);
+    const r0 = p.aufmass.raeume[0], m0 = r0 ? masse(r0) : null;
+    const gewerke = [...new Set(PL.positionen.map((x) => x.gewerk))];
+    const frei = A.positionen.filter((x) => x.frei);
+    const zeileHtml = (it) => {
+      const q = mengeVon(it.nr), x = A.positionen.find((y) => y.nr === it.nr), e = x?.epFix > 0 ? x.epFix : ep(it, A.kalk);
+      return `<div class="tb-z ${q ? 'an' : ''}" data-tz="${esc(it.nr)}" data-such="${esc(`${it.nr} ${it.text} ${it.gewerk}`.toLowerCase())}">
+        <span class="tb-t"><b>${esc(it.text)}</b><small>${esc(it.nr)} · ${fmtEur(e)} je ${esc(it.einheit)}${x?.epFix > 0 ? ' (eigener Preis)' : ''}</small></span>
+        <input type="text" inputmode="decimal" data-q="${esc(it.nr)}" value="${q ? fmtIn(Math.round(q * 100) / 100) : ''}" placeholder="0" aria-label="Menge ${esc(it.text)}">
+        <span class="tb-e">${esc(it.einheit)}</span>
+        <button type="button" class="tb-gp" data-tp="${esc(it.nr)}" title="Preis ändern">${q ? fmtEur(r2(q * e)) : ''}</button></div>`;
+    };
+    body.innerHTML = `
+      <div class="card asum tb-sum">
+        <div class="asum-k"><span>Paket</span><select id="aPaket">${pakete(p).map((x) => `<option value="${x.id}" ${x.id === A.paket ? 'selected' : ''}>${esc(x.name)}</option>`).join('')}</select></div>
+        <div class="asum-b"><span>Gesamt brutto</span><b id="tbBrutto"></b><small id="tbNetto"></small></div>
+      </div>
+
+      <div class="card kform">
+        <div class="hv-h" style="margin-top:0">${icon('ruler')}<span>Maße ${esc(raumName)}</span></div>
+        <div class="row tb-masse"><div><label>Länge m</label><input type="text" inputmode="decimal" data-mass="l" value="${fmtIn(r0?.teile?.[0]?.l)}" placeholder="z. B. 3"></div>
+          <div><label>Breite m</label><input type="text" inputmode="decimal" data-mass="b" value="${fmtIn(r0?.teile?.[0]?.b)}" placeholder="z. B. 2"></div>
+          <div><label>Höhe m</label><input type="text" inputmode="decimal" data-mass="h" value="${fmtIn(r0?.h)}" placeholder="2,50"></div></div>
+        <p class="hint" style="margin:6px 0 0" id="tbMassInfo">${m0?.boden ? `${fmtNum(m0.boden)} m² Boden · ${fmtNum(m0.wand)} m² Wand` : 'Mit den Maßen rechnet „Aus Paket vorbelegen“ die Mengen aus.'}</p>
+        <div class="row" style="margin-top:10px">
+          ${state.settings.apiKey && (p.otherNotes?.trim() || p.wishes?.trim() || (state.wohnung?.gespraech?.transcript || '').trim()) ? `<button class="btn secondary small" id="tbMassKi">${icon('mic')} Maße aus dem Gespräch</button>` : ''}
+          <button class="btn secondary small" id="tbPaket">${icon('clipboard')} Aus Paket „${esc(pk?.name || '')}“ vorbelegen</button>
+        </div>
+      </div>
+
+      ${p.otherNotes?.trim() || p.wishes?.trim() ? `<details class="more card"><summary>${icon('mic')}<span>Aus dem Gespräch<small>Wünsche und Notizen zu diesem Raum</small></span>${icon('chevron', 'more-chev')}</summary>
+        <p class="muted" style="white-space:pre-line;margin:8px 0 0">${esc([p.wishes?.trim(), p.otherNotes?.trim()].filter(Boolean).join('\n'))}</p>
+        ${state.settings.apiKey ? `<button class="btn secondary block" id="aWunsch" style="margin-top:10px">${icon('sparkle')} Fehlende Positionen dazu vorschlagen</button>` : ''}</details>` : ''}
+
+      <div class="tb-kopf">
+        <label class="search">${icon('search')}<input type="search" id="tbQ" value="${esc(tabSuche)}" placeholder="Position suchen, z. B. Fliesen" autocomplete="off"></label>
+        <button type="button" class="qchip ${nurGewaehlt ? 'on' : ''}" id="tbNur">${icon('check')} Nur gewählte</button>
+      </div>
+      <div id="tbListe">${gewerke.map((g) => {
+        const its = PL.positionen.filter((x) => x.gewerk === g);
+        const n = its.filter((it) => mengeVon(it.nr) > 0).length;
+        return `<details class="card tb-g" data-gw="${esc(g)}" ${n ? 'open' : ''}><summary><b>${esc(g)}</b><span class="count" data-gn>${n || ''}</span></summary>${its.map(zeileHtml).join('')}</details>`;
+      }).join('')}</div>
+
+      <div class="sec-h"><h2>Eigene Positionen</h2>${frei.length ? `<span class="count">${frei.length}</span>` : ''}</div>
+      <div class="card tb-frei">${frei.map((x) => `<div class="tb-fz" data-fz="${esc(x.nr)}">
+          <input type="text" data-ff="text" value="${esc(x.frei.text || '')}" placeholder="Leistung, z. B. Nische mit LED" autocomplete="off">
+          <div class="row"><div><input type="text" inputmode="decimal" data-ff="menge" value="${fmtIn(x.menge)}" placeholder="Menge"></div>
+            <div><input type="text" data-ff="einheit" value="${esc(x.frei.einheit || '')}" placeholder="Einheit"></div>
+            <div><input type="text" inputmode="decimal" data-ff="preis" value="${fmtIn(x.epFix)}" placeholder="€ netto je Einh."></div>
+            <button type="button" class="icon-btn" data-fdel aria-label="Entfernen">${icon('trash')}</button></div></div>`).join('') || '<p class="hint" style="margin:0">Alles, was nicht in der Preisliste steht, mit eigenem Preis.</p>'}
+        <button type="button" class="link-add" id="tbFrei" style="margin-top:8px">${icon('plus')} Eigene Position hinzufügen</button>
+      </div>
+
+      <div class="card">
+        <button class="btn big block" id="aPdf">${icon('file')} Angebot als PDF senden</button>
+        <label class="check" style="margin-top:10px"><input type="checkbox" id="aMitBz" ${A.mitBauzeit ? 'checked' : ''}>Bauzeitenplan anhängen</label>
+        ${A.versionen?.length ? `<p class="muted" style="margin:8px 0 0">${A.versionen.map((v, i) => `${i ? `Änderung ${i}` : 'Erste Fassung'} vom ${fmtDate(new Date(v.t))}: ${fmtEur(v.brutto)}`).join('<br>')}</p>` : ''}
+      </div>
+      <details class="more card"><summary>${icon('sliders')}<span>Weitere Einstellungen<small>Nummer, Betreff, Anrede, Aufschläge, Excel</small></span>${icon('chevron', 'more-chev')}</summary>
+        <div class="kform">
+        <div class="row"><div><label>Angebotsnummer</label><input type="text" id="aNr" value="${esc(A.nr)}" placeholder="wird beim PDF vergeben"></div>
+          <div><label>Ansprechpartner</label><select id="aAnspr">${ansprechpartner().map((x) => `<option ${x === (A.anspr || ansprechpartner()[0]) ? 'selected' : ''}>${esc(x)}</option>`).join('')}</select></div></div>
+        <label>Betreff</label><input type="text" id="aTitel" value="${esc(A.titel)}" placeholder="${esc(titelDefault(p, pk))}">
+        <label>Anrede</label><input type="text" id="aAnrede" value="${esc(A.anrede)}" placeholder="${esc(anredeDefault(p))}">
+        <label>Aufschläge nur für dieses Angebot (leer = Standard)</label>
+        <div class="row">${[['aufLohn', 'Lohn %'], ['aufMat', 'Material %'], ['wagnis', 'Wagnis %']].map(([n, l]) => `<div><label>${l}</label><input type="text" inputmode="decimal" data-nk="${n}" value="${A.kalk?.[n] !== undefined && A.kalk?.[n] !== null && A.kalk?.[n] !== '' ? String(Math.round(A.kalk[n] * 1000) / 10).replace('.', ',') : ''}" placeholder="${String(Math.round(PL.einstellungen[n] * 1000) / 10).replace('.', ',')}"></div>`).join('')}</div>
+        </div>
+        <button class="btn secondary block" id="tbLeeren" style="margin-top:12px">${icon('x')} Alle Mengen auf 0</button>
+        <button class="btn secondary block" id="aExcel" style="margin-top:10px">Positionen fürs Excel-Tool kopieren</button>
+      </details>`;
+
+    // ----- Summe oben ohne Neuzeichnen aktualisieren -----
+    const summe = () => {
+      const S = summen(A.positionen, A.kalk);
+      $('#tbBrutto').textContent = fmtEur(S.brutto);
+      $('#tbNetto').textContent = `netto ${fmtEur(S.netto)} · ${S.zeilen.length} Positionen`;
+      $$('.tb-g', body).forEach((d) => { const n = $$('.tb-z.an', d).length; $('[data-gn]', d).textContent = n || ''; });
+    };
+    const speichern = debounce(() => saveProject(p), 500);
+    const neu = () => { saveProject(p); const y = window.scrollY; angebotTabelle(p); window.scrollTo(0, y); };
+    const filtern = () => {
+      const w = tabSuche.trim().toLowerCase().split(/\s+/).filter(Boolean);
+      $$('.tb-z', body).forEach((z) => { z.hidden = (nurGewaehlt && !z.classList.contains('an')) || (w.length && !w.every((x) => z.dataset.such.includes(x))); });
+      $$('.tb-g', body).forEach((d) => { const sicht = $$('.tb-z', d).some((z) => !z.hidden); d.hidden = !sicht; if ((w.length || nurGewaehlt) && sicht) d.open = true; });
+    };
+    summe(); filtern();
+    // Menge eintippen: eine Zeile je Position (Raum = dieser Raum, Allgemeines ohne Raum)
+    $$('[data-q]', body).forEach((inp) => (inp.oninput = () => {
+      const nr = inp.dataset.q, it = pos(nr), q = num(inp.value), alt = A.positionen.find((x) => x.nr === nr);
+      A.positionen = A.positionen.filter((x) => x.nr !== nr);
+      if (q > 0) A.positionen.push({ nr, raum: it.gewerk === 'Allgemein' ? '' : raumName, menge: q, bem: alt?.bem || '', ...(alt?.epFix > 0 ? { epFix: alt.epFix } : {}) });
+      A.geaendert = true;
+      const z = inp.closest('.tb-z'), e = alt?.epFix > 0 ? alt.epFix : ep(it, A.kalk);
+      z.classList.toggle('an', q > 0); $('.tb-gp', z).textContent = q > 0 ? fmtEur(r2(q * e)) : '';
+      summe(); speichern();
+    }));
+    // Preis einer Zeile ändern
+    $$('[data-tp]', body).forEach((b) => (b.onclick = async () => {
+      const nr = b.dataset.tp, it = pos(nr), x = A.positionen.find((y) => y.nr === nr);
+      if (!x) return toast('Zuerst eine Menge eintragen.');
+      const v = await sheet(`Einzelpreis netto: ${it.text}`, [{ label: `Standard verwenden (${fmtEur(ep(it, A.kalk))})`, value: '__std' }], { text: 'Eigener Preis in €', value: x.epFix ? fmtIn(x.epFix) : '' });
+      if (v === null) return;
+      if (v === '__std') delete x.epFix; else { const n = num(v.text); if (!(n > 0)) return toast('Bitte einen Preis eintragen.'); x.epFix = r2(n); }
+      A.geaendert = true; neu();
+    }));
+    $('#tbQ').oninput = (e) => { tabSuche = e.target.value; filtern(); };
+    $('#tbNur').onclick = () => { nurGewaehlt = !nurGewaehlt; $('#tbNur').classList.toggle('on', nurGewaehlt); filtern(); };
+    // Maße
+    $$('[data-mass]', body).forEach((inp) => (inp.onchange = () => {
+      const r = p.aufmass.raeume[0] || (p.aufmass.raeume[0] = neuerRaum(p.room || 'Raum'));
+      r.teile ??= [{ l: '', b: '' }]; r.teile[0] ??= { l: '', b: '' };
+      if (inp.dataset.mass === 'h') r.h = inp.value.trim(); else r.teile[0][inp.dataset.mass] = inp.value.trim();
+      p.masse = { l: r.teile[0].l, b: r.teile[0].b, h: r.h };
+      const m = masse(r); $('#tbMassInfo').textContent = m.boden ? `${fmtNum(m.boden)} m² Boden · ${fmtNum(m.wand)} m² Wand` : '';
+      speichern();
+    }));
+    $('#tbPaket').onclick = () => {
+      if (!m0?.boden && !(num($('[data-mass="l"]').value) && num($('[data-mass="b"]').value))) return toast('Bitte zuerst Länge und Breite eintragen.');
+      if (A.positionen.length && !confirm(`Die Mengen werden aus dem Paket „${pk?.name || ''}“ und den Maßen neu berechnet. Eigene Positionen bleiben. Weiter?`)) return;
+      const eigene = A.positionen.filter((x) => x.frei);
+      const g = erzeuge(p, A.paket); A.positionen = [...g.positionen, ...eigene]; A.fehler = g.fehler; A.geaendert = true; neu();
+    };
+    if ($('#tbMassKi')) $('#tbMassKi').onclick = async () => {
+      toast('KI sucht die Maße im Gespräch …', 15000);
+      try {
+        const j = JSON.parse(await geminiText([{ text: `Im Gespräch wurde der Raum „${raumName}“ besprochen. Welche Maße wurden genannt? laenge und breite in Metern (Grundfläche), hoehe in Metern (Raumhöhe). 0, wenn nicht genannt.\n\nNOTIZEN:\n${p.otherNotes || ''}\n${p.wishes || ''}\n\nGESPRÄCH:\n${(state.wohnung?.gespraech?.transcript || '').slice(0, 30000)}` }], true,
+          { responseSchema: { type: 'OBJECT', properties: { laenge: { type: 'NUMBER' }, breite: { type: 'NUMBER' }, hoehe: { type: 'NUMBER' } } } }));
+        $('#toast').hidden = true;
+        if (!(j.laenge > 0 && j.breite > 0)) return toast('Im Gespräch wurden keine Maße für diesen Raum gefunden.', 4000);
+        const r = p.aufmass.raeume[0] || (p.aufmass.raeume[0] = neuerRaum(p.room || 'Raum'));
+        r.teile = [{ l: fmtIn(j.laenge), b: fmtIn(j.breite) }]; if (j.hoehe > 0) r.h = fmtIn(j.hoehe);
+        p.masse = { l: r.teile[0].l, b: r.teile[0].b, h: r.h };
+        toast(`Übernommen: ${fmtIn(j.laenge)} × ${fmtIn(j.breite)} m${j.hoehe > 0 ? `, ${fmtIn(j.hoehe)} m hoch` : ''}`, 4000); neu();
+      } catch (e) { toast('Maße nicht gefunden: ' + e.message, 5000); }
+    };
+    // Eigene Positionen
+    $('#tbFrei').onclick = () => { A.positionen.push({ nr: 'FREI-' + uid(), frei: { text: '', einheit: 'Stück' }, raum: raumName, menge: 1, bem: '', epFix: 0 }); A.geaendert = true; neu(); setTimeout(() => $$('[data-fz] [data-ff="text"]').pop()?.focus(), 50); };
+    $$('[data-fz]', body).forEach((row) => {
+      const x = A.positionen.find((y) => y.nr === row.dataset.fz);
+      $$('[data-ff]', row).forEach((inp) => (inp.oninput = () => {
+        const f = inp.dataset.ff;
+        if (f === 'text' || f === 'einheit') x.frei[f] = inp.value; else if (f === 'menge') x.menge = num(inp.value); else x.epFix = r2(num(inp.value));
+        A.geaendert = true; summe(); speichern();
+      }));
+      $('[data-fdel]', row).onclick = () => { if (!loeschFrage('Eigene Position entfernen?')) return; A.positionen = A.positionen.filter((y) => y !== x); neu(); };
+    });
+    // Rest wie bisher
+    $('#aPaket').onchange = (e) => { A.paket = e.target.value; saveProject(p); toast('Paket geändert. Mit „Aus Paket vorbelegen“ werden die Mengen neu berechnet.', 4000); neu(); };
+    for (const [id, k] of [['aNr', 'nr'], ['aTitel', 'titel'], ['aAnrede', 'anrede']]) $('#' + id).oninput = (e) => { A[k] = e.target.value; persist(p); };
+    $('#aAnspr').onchange = (e) => { A.anspr = e.target.value; persist(p); };
+    $$('[data-nk]', body).forEach((el) => (el.onchange = () => {
+      const v = el.value.trim(); A.kalk ??= {};
+      if (v === '') delete A.kalk[el.dataset.nk]; else { const n = num(v); if (!Number.isFinite(n)) return toast('Bitte eine Zahl eintragen.'); A.kalk[el.dataset.nk] = n / 100; }
+      neu();
+    }));
+    $('#tbLeeren').onclick = () => { if (!confirm('Alle Mengen auf 0 setzen? Eigene Positionen bleiben.')) return; A.positionen = A.positionen.filter((x) => x.frei); A.geaendert = true; neu(); };
+    if ($('#aWunsch')) $('#aWunsch').onclick = () => wunschVorschlaege(p, neu).catch((e) => toast('Vorschläge gingen nicht: ' + e.message, 5000));
+    $('#aMitBz').onchange = (e) => { A.mitBauzeit = e.target.checked; persist(p); };
+    $('#aPdf').onclick = () => { if (!summen(A.positionen, A.kalk).zeilen.length) return toast('Bitte zuerst Mengen eintragen.'); teilePdf(p).catch((e) => toast('PDF-Fehler: ' + e.message, 5000)); };
+    $('#aExcel').onclick = async () => {
+      const tsv = A.positionen.filter((x) => !x.frei).map((x) => [x.nr, x.raum || 'Allgemein', String(x.menge).replace('.', ','), x.bem].join('\t')).join('\n');
       try { await navigator.clipboard.writeText(tsv); toast('Kopiert. In Excel „Eingabe“ ab B12 einfügen.'); } catch { toast('Kopieren nicht möglich.'); }
     };
   }
