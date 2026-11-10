@@ -139,3 +139,24 @@ canvas.sig { display: block; width: 100%; height: 140px; border: 1.5px dashed #c
 .mangel { border-bottom: 1px solid var(--line); padding-bottom: 10px; margin-bottom: 10px; }
 .mangel textarea { margin-top: 4px; }
 .bf-nr { color: var(--muted); font-weight: 650; margin-right: 2px; }
+
+/* ---------- Angebotsablauf (Vor Ort → Büro → Senden → Nachfassen) ---------- */
+.ab-schritte { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin: 0 0 12px; }
+.ab-schritte span { display: flex; flex-direction: column; align-items: center; gap: 4px; font-size: 12px; font-weight: 600; color: var(--muted); text-align: center; }
+.ab-schritte i { width: 28px; height: 28px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-style: normal; font-weight: 700; background: var(--soft); color: var(--muted); }
+.ab-schritte i svg.i { width: 16px; height: 16px; }
+.ab-schritte .ok i { background: var(--navy); color: #fff; }
+.ab-schritte .ok { color: var(--navy); }
+.ab-schritte .jetzt i { background: var(--brass); color: #fff; }
+.ab-schritte .jetzt { color: var(--ink, inherit); }
+.ab-h { display: flex; align-items: center; gap: 10px; margin: 22px 0 8px; }
+.ab-h > span:last-child { display: flex; flex-direction: column; }
+.ab-h b { font-size: 18px; }
+.ab-h small { color: var(--muted); font-size: 13px; }
+.ab-n { flex: none; width: 30px; height: 30px; border-radius: 50%; background: var(--navy); color: #fff; display: flex; align-items: center; justify-content: center; font-weight: 700; }
+.ab-adr { width: 100%; text-align: left; background: none; border: 0; font: inherit; color: inherit; cursor: pointer; }
+.ab-adr > span { display: flex; flex-direction: column; }
+.ab-adr small, .ab-l { color: var(--muted); font-size: 12px; }
+.ab-l { flex: none; }
+.ab-schnell { display: flex; gap: 8px; align-items: flex-start; margin: 10px 0 0; padding: 9px 10px; border-radius: 12px; background: var(--soft); font-size: 14px; }
+.ab-schnell svg.i { flex: none; width: 18px; height: 18px; margin-top: 1px; color: var(--brass); }

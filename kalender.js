@@ -201,7 +201,9 @@ window.Kalender = (() => {
     const render = () => {
       const k = Kunden.byId(t.kundeId), p = window.Partner?.byId(t.partnerId);
       header(isNeu ? 'Neuer Termin' : t.titel || 'Termin', tagLang(t.datum), { label: 'Zurück', fn: zurueck });
+      const vorOrt = !isNeu && k && t.art === 'kunde';
       main().innerHTML = `
+        ${vorOrt ? `<button class="cta slim" id="tVorOrt" style="margin-bottom:12px"><span class="cta-ico">${icon('camera')}</span><span class="cta-t"><b>Angebot vor Ort</b><span>${t.projektId ? 'Weitermachen: Gespräch, Fotos, Mappe' : 'Starten: Gespräch, Fotos, Mappe'}</span></span>${icon('chevron', 'cta-chev')}</button>` : ''}
         <div class="card kform">
           <label style="margin-top:0">Was?</label><input type="text" id="tTitel" value="${esc(t.titel)}" autocomplete="off" placeholder="z. B. Aufmaß Bad, Besprechung Fliesen">
           <div class="chips tart">${ARTEN.filter((a) => !a[0].startsWith('geb')).map(([id, n, c]) => `<button type="button" class="qchip ${t.art === id ? 'on' : ''}" data-ta="${id}" style="--c:${c}"><i></i>${esc(n.replace('termine', 'termin'))}</button>`).join('')}</div>
@@ -296,6 +298,15 @@ window.Kalender = (() => {
         zurueck();
       };
       $('#tIcs').onclick = () => ics(t);
+      if ($('#tVorOrt')) $('#tVorOrt').onclick = async () => {
+        if (!t.projektId || !(await kvGet('wohnung:' + t.projektId))) {
+          if (!t.objektId) { const oid = await Kunden.objektWaehlen(k, 'Wo ist die Baustelle?'); if (oid === null) return; t.objektId = oid; }
+          t.projektId = await Projekt.anlegen(t.kundeId, t.objektId, /^Kundentermin\b/.test(t.titel) ? '' : t.titel);
+          t.kontext = kontext(t); await kvSet('termin:' + t.id, t); alle.set(t.id, t);
+        }
+        const w = await kvGet('wohnung:' + t.projektId); w.mappe ??= {};
+        switchTab('angebote', { wohnung: w });
+      };
       if ($('#tDel')) $('#tDel').onclick = async () => {
         if (!confirm('Termin löschen?')) return;
         if (t.mailGesendet && t.mailAn?.length && window.Sync?.active() && confirm('Absage per E-Mail an die Beteiligten senden?')) {

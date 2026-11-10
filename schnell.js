@@ -77,7 +77,9 @@ window.Schnell = (() => {
         <div id="sPos"></div>
       </details>
 
-      <button class="btn big block" id="sProjekt" style="margin-top:16px">${icon('user')} Als Projekt beim Kunden anlegen</button>
+      <button class="btn big block" id="sMerken" style="margin-top:16px">${icon('user')} Beim Kunden merken</button>
+      <p class="hint center">Der genannte Preis steht dann in der Kundenkarte und beim Termin vor Ort.</p>
+      <button class="btn secondary block" id="sProjekt" style="margin-top:10px">${icon('plus')} Gleich als Angebot beim Kunden anlegen</button>
       <p class="hint center">Räume, Flächen und Positionen werden übernommen. Danach Fotos machen und Maße genau aufnehmen.</p>
       <button class="link-danger" id="sReset">${icon('refresh')} Neu beginnen</button>`;
 
@@ -101,6 +103,13 @@ window.Schnell = (() => {
       setTimeout(() => { const i = $$('[data-xm]').pop(); i?.focus(); i?.select(); }, 80);
     }));
     $('#sProjekt').onclick = alsProjekt;
+    $('#sMerken').onclick = async () => {
+      const e = eintrag(); if (!e) return toast('Bitte zuerst eine Fläche eintragen oder einen Punkt wählen.');
+      const k = await Kunden.waehlen('Für welchen Kunden?'); if (!k) return;
+      await merken(k, e);
+      toast(`Gemerkt: ca. ${eur(e.von)} – ${eur(e.bis)} bei ${Kunden.name(k) || 'Kunde'}`, 4000);
+      Kunden.oeffnen(k.id);
+    };
     $('#sReset').onclick = () => { if (!confirm('Schnellangebot leeren und neu beginnen?')) return; S = leer(); kvSet(KEY, S); rerender(); };
     rechnen();
   }
@@ -176,6 +185,14 @@ window.Schnell = (() => {
     }));
   }
 
+  /** Was am Telefon genannt wurde, für die Kundenkarte: { t, von, bis, brutto, text }. */
+  function eintrag() {
+    const { alle } = positionen(); if (!alle.length) return null;
+    const s = A().summen(alle), nm = namen();
+    const raeume = S.raeume.map((r, i) => (num(r.qm) > 0 ? `${nm[i]} ${mg(num(r.qm))} m²` : '')).filter(Boolean);
+    return { id: uid(), t: Date.now(), von: s.von, bis: s.bis, brutto: s.brutto, text: [raeume.join(', '), S.paket ? PKG_META[S.paket]?.[0] : ''].filter(Boolean).join(' · ') };
+  }
+  async function merken(k, e) { k.schnell = [...(Array.isArray(k.schnell) ? k.schnell : []), e]; await Kunden.speichern(k); }
   /** Als Projekt beim Kunden anlegen: je Raum ein Projektraum mit Aufmaß und den Positionen. */
   async function alsProjekt() {
     const nm = namen();
@@ -185,10 +202,11 @@ window.Schnell = (() => {
     if (!k) return;
     const oid = await Kunden.objektWaehlen(k);
     if (oid === null) return;
+    const e = eintrag(); if (e) await merken(k, e);
     const { gen } = positionen();
     const aus = new Set(S.aus);
     const o = Kunden.objekt(k, oid);
-    const w = { id: uid(), kind: 'wohnung', created: Date.now(), kundeId: k.id, objektId: oid || '', customer: Kunden.name(k), address: Kunden.einzeilig(o?.adresse || ''), rooms: [], mappe: {}, pdfProducts: true, pdfPrices: false, pdfEvening: true };
+    const w = { id: uid(), kind: 'wohnung', created: Date.now(), status: 'besichtigung', kundeId: k.id, objektId: oid || '', customer: Kunden.name(k), address: Kunden.einzeilig(o?.adresse || ''), rooms: [], mappe: {}, pdfProducts: true, pdfPrices: false, pdfEvening: true };
     const list = raeume.length ? raeume : [{ r: { rt: 'sonstiges', qm: '' }, name: roomType('sonstiges').name }];
     for (const [i, { r, name }] of list.entries()) {
       const am = aufmassRaum(r, name);
