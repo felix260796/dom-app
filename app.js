@@ -6,7 +6,7 @@
  * Kern-Funktionen (Speicher, KI, Bilder) stehen in core.js. */
 
 // ---------- Symbole (einfache Linien-Icons) ----------
-const APP_VERSION = '71';
+const APP_VERSION = '72';
 const ICONS = {
   plus: '<path d="M12 5v14M5 12h14"/>',
   camera: '<path d="M3 8.5A2 2 0 0 1 5 6.5h2l1.6-2h6.8l1.6 2h2a2 2 0 0 1 2 2V18a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><circle cx="12" cy="13" r="3.6"/>',
@@ -78,7 +78,13 @@ function header(title, sub = '', back = null) {
   const tb = $('#topback');
   if (back) { tb.innerHTML = `${icon('back')}<span>${esc(back.label)}</span>`; tb.hidden = false; tb.onclick = back.fn; }
   else { tb.hidden = true; tb.onclick = null; }
+  // Schnellzugriff: Auf den Übersichtsseiten führt ein Tipp auf den Titel direkt zu den passenden Einstellungen
+  const ziel = !back && SCHNELL_EINST[title];
+  const h = $('#title'); h.classList.toggle('einst-link', !!ziel);
+  h.onclick = ziel ? () => { switchTab('einstellungen'); einstellungSeite(ziel); window.scrollTo(0, 0); } : null;
 }
+// Titel der Übersichtsseite → Einstellungsseite
+const SCHNELL_EINST = { Kunden: 'kundenEinst', Partner: 'partnerEinst', Projekte: 'projektEinst', Angebote: 'kalkulation', Rechnungen: 'rechnungen' };
 const setTitle = (t) => { $('#title').textContent = t; $('#subtitle').hidden = true; };
 // Ansichten aus angebot.js / social.js haben eigene Zurück-Knöpfe (#aBack, #soBack, #vBack). Sie werden oben gespiegelt.
 const LEGACY_BACK = '#aBack, #vBack, #soBack';

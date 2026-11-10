@@ -41,7 +41,9 @@ window.Kalender = (() => {
     });
     alle.clear();
     for (const t of list) if (t?.id) alle.set(t.id, t);
+    try { projIdx = await projectIndex(); } catch {}
   }
+  let projIdx = [];
   let aus;
   const ausgeblendet = () => {
     if (!aus) { try { aus = new Set(JSON.parse(localStorage.getItem('dom.kal.aus') || '[]')); } catch { aus = new Set(); } }
@@ -83,6 +85,19 @@ window.Kalender = (() => {
         }
       }
     }
+    // Nachfassen: verschickte Angebote erscheinen am Tag, an dem nachgefasst werden soll (Tage: Abläufe & Listen)
+    if (vorgabe('nachfassenKalender') !== 'nein') {
+      const tage = +vorgabe('nachfassenTage') || 7;
+      for (const x of projIdx) {
+        if (window.Projekt?.norm(x.status) !== 'angebot' || !x.versendetAm) continue;
+        const d = new Date(ausIso(x.versendetAm)); d.setDate(d.getDate() + tage);
+        let ds = iso(d); if (ds < heute()) ds = heute(); // überfällig: bleibt auf heute stehen, bis Zusage oder Absage
+        if (ds < von || ds > bis) continue;
+        if (w && !team().some((p) => p.id === w)) continue;
+        out.push({ typ: 'nachf', art: 'kunde', id: 'nf-' + x.id, projektId: x.id, kundeId: x.kundeId, datum: ds, ganztag: true,
+          titel: `Nachfassen: ${Kunden.name(Kunden.byId(x.kundeId)) || x.customer || 'Angebot'}`, sub: `Angebot ${x.nr || ''} seit ${tagKurz(x.versendetAm)} beim Kunden` });
+      }
+    }
     const h = ausgeblendet();
     return out.filter((e) => !filter || !h.has(e.art)).sort((a, b) => a.datum.localeCompare(b.datum) || (a.ganztag ? -1 : b.ganztag ? 1 : (a.von || '').localeCompare(b.von || '')));
   }
@@ -91,14 +106,15 @@ window.Kalender = (() => {
     return [k && Kunden.name(k), o && Kunden.objLabel(o)].filter(Boolean).join(' · ');
   };
   const zeile = (e) => `<button class="tz" data-e="${esc(e.id)}" style="--c:${art(e.art)[2]}">
-      <span class="tz-z">${e.ganztag ? (e.typ === 'geb' ? icon('cake') : 'ganztags') : `${esc(e.von || '')}${e.bis ? `<small>${esc(e.bis)}</small>` : ''}`}</span>
-      <span class="tz-t"><b>${esc(e.titel || art(e.art)[1])}</b><span>${esc(e.typ === 'geb' ? e.sub || '' : [werText(e), zuKunde(e), e.ort].filter(Boolean).join(' · ') || art(e.art)[1])}</span></span>
+      <span class="tz-z">${e.ganztag ? (e.typ === 'geb' ? icon('cake') : e.typ === 'nachf' ? icon('phone') : 'ganztags') : `${esc(e.von || '')}${e.bis ? `<small>${esc(e.bis)}</small>` : ''}`}</span>
+      <span class="tz-t"><b>${esc(e.titel || art(e.art)[1])}</b><span>${esc(e.typ === 'geb' || e.typ === 'nachf' ? e.sub || '' : [werText(e), zuKunde(e), e.ort].filter(Boolean).join(' · ') || art(e.art)[1])}</span></span>
       ${icon('chevron', 'pc-chev')}</button>`;
   /** Klick auf einen Eintrag: Termin bearbeiten bzw. Kunde/Subunternehmer öffnen. */
   function bindZeilen(el, list, zurueck) {
     $$('[data-e]', el).forEach((b) => (b.onclick = () => {
       const e = list.find((x) => x.id === b.dataset.e); if (!e) return;
       if (e.typ === 'termin') return bearbeiten(alle.get(e.id), zurueck);
+      if (e.typ === 'nachf') { state.kalender = false; return kvGet('wohnung:' + e.projektId).then((w) => { if (w) { w.mappe ??= {}; switchTab('angebote', { wohnung: w }); } }); }
       if (e.kundeId) return Kunden.oeffnen(e.kundeId);
       if (e.partnerId) window.Partner?.oeffnen(e.partnerId);
     }));

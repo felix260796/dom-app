@@ -9,8 +9,8 @@ window.Partner = (() => {
   const alle = new Map();
   const key = (id) => 'partner:' + id;
   const ARTEN = [['sub', 'Subunternehmer'], ['lief', 'Lieferant'], ['aussen', 'Außendienst'], ['sonst', 'Sonstige']];
-  // Eigene Einstufung wie beim Moodboard (Basic, Standard, Premium)
-  const STUFEN = [['', 'Keine Einstufung'], ['basic', 'Basic'], ['standard', 'Standard'], ['premium', 'Premium']];
+  // Qualitätseinstufung der Arbeit (Mehrfachauswahl, Stufen in Einstellungen › Partner)
+  const STUFEN = () => vorgabe('partnerStufen') || ['Basic', 'Standard', 'Premium'];
   const MAX_MB = 15;
 
   const norm = (p) => {
@@ -19,6 +19,8 @@ window.Partner = (() => {
     p.weitere = Kontakt.norm(p.weitere);
     p.geburtstage = (Array.isArray(p.geburtstage) ? p.geburtstage : []).filter(Boolean).map((g) => ({ id: g.id || uid(), name: String(g.name ?? ''), bez: String(g.bez ?? ''), datum: String(g.datum ?? ''), art: String(g.art ?? '') }));
     p.dokumente = (Array.isArray(p.dokumente) ? p.dokumente : []).filter(Boolean);
+    // früher eine Stufe (basic/standard/premium), jetzt mehrere Namen
+    if (!Array.isArray(p.stufen)) p.stufen = p.stufe ? [p.stufe.charAt(0).toUpperCase() + p.stufe.slice(1)] : [];
     return p;
   };
   async function laden() {
@@ -74,7 +76,7 @@ window.Partner = (() => {
         const g = p.geburtstage.map((x) => ({ x, n: Kontakt.bisTag(x.datum) })).filter((y) => y.n !== null && y.n <= 14).sort((a, b) => a.n - b.n)[0];
         return `<button class="pcard kcard" data-p="${p.id}"><span class="av">${esc(initialen(p))}</span>
           <span class="pc-t"><b>${esc(titel(p) || 'Ohne Namen')}</b><span class="muted">${esc([p.gewerk, p.inhaber].filter(Boolean).join(' · ') || ARTEN.find((a) => a[0] === p.art)[1])}</span>
-            <span class="pc-meta">${esc(ARTEN.find((a) => a[0] === p.art)[1])}${p.stufe ? ' · ' + esc(STUFEN.find((s) => s[0] === p.stufe)?.[1] || '') : ''}${p.dokumente.length ? ` · ${p.dokumente.length} ${p.dokumente.length === 1 ? 'Dokument' : 'Dokumente'}` : ''}${g ? ` · <span class="geb">${esc(g.x.name || 'Geburtstag')} ${Kontakt.tageText(g.n)}</span>` : ''}</span></span>
+            <span class="pc-meta">${esc(ARTEN.find((a) => a[0] === p.art)[1])}${p.stufen.length ? ' · ' + esc(p.stufen.join(', ')) : ''}${p.dokumente.length ? ` · ${p.dokumente.length} ${p.dokumente.length === 1 ? 'Dokument' : 'Dokumente'}` : ''}${g ? ` · <span class="geb">${esc(g.x.name || 'Geburtstag')} ${Kontakt.tageText(g.n)}</span>` : ''}</span></span>
           ${icon('chevron', 'pc-chev')}</button>`;
       }).join('') || '<p class="empty">Nichts gefunden.</p>';
       $$('[data-p]', el).forEach((b) => (b.onclick = () => { detail(byId(b.dataset.p)); window.scrollTo(0, 0); }));
@@ -98,13 +100,13 @@ window.Partner = (() => {
         <label>Firma</label><input type="text" id="pFirma" value="${esc(p.firma)}" autocomplete="off" placeholder="z. B. Fliesen Kaya GmbH">
         <label>Gewerk bzw. Sortiment</label><input type="text" id="pGewerk" value="${esc(p.gewerk)}" autocomplete="off" placeholder="z. B. Fliesen, Sanitär, Elektro">
         <label>Inhaber bzw. Ansprechpartner</label><input type="text" id="pInhaber" value="${esc(p.inhaber)}" autocomplete="off" placeholder="z. B. Mehmet Kaya">
-        <label>Telefon</label><input type="tel" id="pTel" value="${esc(p.telefon)}" autocomplete="off" placeholder="0711 …">
+        <label>Telefon</label>${Kontakt.telInput('pTel', p.telefon)}
         <label>E-Mail</label><input type="email" id="pMail" value="${esc(p.email)}" autocomplete="off" inputmode="email" placeholder="info@…">
         <div id="pWeitere">${Kontakt.weitereHtml()}</div>
         <label>Anschrift</label><div class="adr"><input type="text" id="pAdr" value="${esc(p.anschrift)}" autocomplete="off" placeholder="Straße Nr., der Ort wird ergänzt"></div>
         <label>Webseite</label><input type="url" id="pWeb" value="${esc(p.web)}" autocomplete="off" inputmode="url" placeholder="www.…">
         <div id="pLiefBox" ${p.art === 'lief' ? '' : 'hidden'}><label>Unsere Kundennummer bei dieser Firma</label><input type="text" id="pKdnr" value="${esc(p.kdnr)}" autocomplete="off" placeholder="z. B. 204711"></div>
-        <label>Einstufung</label><div class="seg2 full" id="pStufe">${STUFEN.map(([id, n]) => `<button type="button" data-stufe="${id}" class="${(p.stufe || '') === id ? 'on' : ''}">${id ? n : '–'}</button>`).join('')}</div>
+        <label>Qualitätseinstufung der Arbeit <span class="muted">(mehrere möglich)</span></label><div class="chips" id="pStufe">${[...new Set([...STUFEN(), ...p.stufen])].map((n) => `<button type="button" class="qchip ${p.stufen.includes(n) ? 'on' : ''}" data-stufe="${esc(n)}">${icon('check')}${esc(n)}</button>`).join('')}</div>
       </div>
       ${p.isNew ? '' : `<button class="notice plain" id="pRech">${icon('euro')}<span><b>Rechnungen dieser Firma</b> · Eingangsrechnungen ansehen</span>${icon('chevron')}</button>`}
 
@@ -131,14 +133,15 @@ window.Partner = (() => {
       $('#pAct').innerHTML = A.html; A.binden($('#pAct'));
     };
     actions();
-    const felder = { pFirma: 'firma', pGewerk: 'gewerk', pInhaber: 'inhaber', pTel: 'telefon', pMail: 'email', pAdr: 'anschrift', pWeb: 'web', pKond: 'konditionen', pNotiz: 'notiz', pKdnr: 'kdnr' };
+    const felder = { pFirma: 'firma', pGewerk: 'gewerk', pInhaber: 'inhaber', pMail: 'email', pAdr: 'anschrift', pWeb: 'web', pKond: 'konditionen', pNotiz: 'notiz', pKdnr: 'kdnr' };
     for (const [id, f] of Object.entries(felder)) $('#' + id).oninput = (e) => {
       p[f] = e.target.value; persist(); actions();
       $('#title').textContent = titel(p) || 'Neuer Subunternehmer';
       const s = $('#subtitle'); s.textContent = p.gewerk; s.hidden = !p.gewerk;
     };
     $$('#pArt [data-art]').forEach((b) => (b.onclick = () => { p.art = b.dataset.art; persist(); $$('#pArt [data-art]').forEach((x) => x.classList.toggle('on', x === b)); $('#pLiefBox').hidden = p.art !== 'lief'; }));
-    $$('#pStufe [data-stufe]').forEach((b) => (b.onclick = () => { p.stufe = b.dataset.stufe; persist(); $$('#pStufe [data-stufe]').forEach((x) => x.classList.toggle('on', x === b)); }));
+    $$('#pStufe [data-stufe]').forEach((b) => (b.onclick = () => { const n = b.dataset.stufe; p.stufen = p.stufen.includes(n) ? p.stufen.filter((x) => x !== n) : [...p.stufen, n]; persist(); b.classList.toggle('on', p.stufen.includes(n)); }));
+    Kontakt.telBinden($('#pTel'), (v) => { p.telefon = v; persist(); actions(); });
     if ($('#pRech')) $('#pRech').onclick = () => { const z = $('#pBelege'); if (z) window.scrollTo({ top: z.getBoundingClientRect().top + window.scrollY - 110, behavior: 'smooth' }); };
     Kontakt.weitereBinden($('#pWeitere'), p.weitere, () => { persist(); actions(); });
     Kunden.adressVorschlaege($('#pAdr'));

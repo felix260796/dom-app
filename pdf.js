@@ -283,7 +283,7 @@ window.Mappe = (() => {
       tag: allPk.length > 1 && sel.every((x) => x.pkgs.length > 1) ? 'Visualisierung · Ausstattungsvarianten' : 'Visualisierung Ihrer Sanierung',
       title: one ? (first.r.room || roomType(first.r.roomType).name) : 'Ihre Sanierung',
       sub: one ? (first.pkgs.length > 1 ? `in ${first.pkgs.length} Ausstattungsvarianten` : `Paket ${heroPk.name}`) : sel.map((x) => x.r.room || roomType(x.r.roomType).name).join(' · '),
-      meta: [['Für', w.customer], ['Objekt', objektZeile(w)], ['Datum', new Date().toLocaleDateString('de-DE', { day: '2-digit', month: 'long', year: 'numeric' })]],
+      meta: [['Für', w.customer], ['Objekt', objektZeile(w)], ...(window.Kunden?.byId(w.kundeId)?.nr ? [['Kunden-Nr.', Kunden.byId(w.kundeId).nr]] : []), ...(w.nr ? [['Projekt-Nr.', w.nr]] : []), ['Datum', new Date().toLocaleDateString('de-DE', { day: '2-digit', month: 'long', year: 'numeric' })]],
       hero: firstResult(first.r, heroPk.id),
       chips: allPk.map((id) => { const p = sel.map((x) => x.pkgs.find((y) => y.id === id)).find(Boolean); return [p.name, hexRgb(p.color)]; }),
     });
@@ -382,7 +382,7 @@ window.Mappe = (() => {
       tag: one ? 'Präsentation Ihres neuen Raums' : 'Präsentation Ihrer neuen Räume',
       title: one ? (first.r.room || roomType(first.r.roomType).name) : 'Ihre Sanierung',
       sub: one ? (first.pkgs.length > 1 ? `in ${first.pkgs.length} Ausstattungsvarianten` : `Paket ${heroPk.name}`) : sel.map((x) => x.r.room || roomType(x.r.roomType).name).join(' · '),
-      meta: [['Für', w.customer], ['Objekt', objektZeile(w)], ['Datum', new Date().toLocaleDateString('de-DE', { day: '2-digit', month: 'long', year: 'numeric' })]],
+      meta: [['Für', w.customer], ['Objekt', objektZeile(w)], ...(window.Kunden?.byId(w.kundeId)?.nr ? [['Kunden-Nr.', Kunden.byId(w.kundeId).nr]] : []), ...(w.nr ? [['Projekt-Nr.', w.nr]] : []), ['Datum', new Date().toLocaleDateString('de-DE', { day: '2-digit', month: 'long', year: 'numeric' })]],
       hero: firstResult(first.r, heroPk.id),
       chips: allPk.map((id) => { const p = sel.map((x) => x.pkgs.find((y) => y.id === id)).find(Boolean); return [p.name, hexRgb(p.color)]; }),
     });

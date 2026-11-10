@@ -369,6 +369,20 @@ window.Projekt = (() => {
     if ($('#wSenden')) $('#wSenden').onclick = async () => { const b = $('#wSenden'); b.disabled = true; try { await sendenMitMappe(w, list); } catch (e) { console.error(e); toast('PDF-Fehler: ' + e.message, 6000); } b.disabled = false; };
     if ($('#wAnpassen')) $('#wAnpassen').onclick = () => $('#dAngebot')?.click();
     if ($('#dAngPdf')) $('#dAngPdf').onclick = async () => dateiZeigen(await kvGet('angpdf:' + w.id), w.angebotPdf);
+    if ($('#wAngAnsehen')) $('#wAngAnsehen').onclick = async () => dateiZeigen(await kvGet('angpdf:' + w.id), w.angebotPdf);
+    // Angebot außerhalb der App erstellt (z. B. Excel): PDF ablegen; auf Wunsch gleich als verschickt markieren (Nachfassen läuft)
+    if ($('#wAngUpload')) $('#wAngUpload').onclick = async () => {
+      const [f] = await pickFiles({ accept: 'application/pdf' });
+      if (!f) return;
+      if (f.size > 12e6) return toast('Die Datei ist zu groß (höchstens 12 MB).', 4000);
+      await kvSet('angpdf:' + w.id, await fileToDataUrl(f));
+      w.angebotPdf = { name: f.name || 'Angebot.pdf', typ: 'application/pdf', t: Date.now(), extern: true };
+      if (w.isNew) delete w.isNew;
+      await save(w);
+      if (norm(w.status) !== 'angebot' && confirm('Angebot abgelegt. Ist es schon beim Kunden? Dann markiere ich es als verschickt, und das Nachfassen läuft.')) await angebotVersendet(w.id);
+      else toast('Angebot-PDF abgelegt');
+      const y = window.scrollY; await view(); window.scrollTo(0, y);
+    };
     $$('[data-angraum]').forEach((b) => (b.onclick = () => raumAngebot(rooms.get(b.dataset.angraum), w)));
     if ($('#wZeigen')) $('#wZeigen').onclick = () => (anyResult ? mappeView(w) : toast('Zuerst einen Raum visualisieren, dann gibt es die Mappe.', 4000));
     $$('[data-room]').forEach((el) => (el.onclick = (e) => { if (e.target.closest('[data-up]')) return; raumOeffnen(rooms.get(el.dataset.room), w); }));
@@ -463,6 +477,8 @@ window.Projekt = (() => {
       ${kopf(3, 'Senden', mitPos.length ? `Angebot${anyResult ? ' und Mappe' : ''} als PDF per Mail oder WhatsApp` : 'Zuerst das Angebot ausarbeiten')}
       <button class="btn big block" id="wSenden" ${mitPos.length ? '' : 'disabled'}>${icon('mail')} ${anyResult ? 'Senden mit Mappe' : 'Angebot senden'}</button>
       ${w.versendetAm ? `<p class="hint center">Zuletzt versendet am ${esc(datumText(w.versendetAm))}</p>` : ''}
+      <button class="btn secondary block" id="wAngUpload" style="margin-top:8px">${icon('upload')} Angebot-PDF hochladen (z. B. aus Excel)</button>
+      ${w.angebotPdf ? `<button class="link-add" id="wAngAnsehen" style="margin-top:4px">${icon('file')} ${esc(w.angebotPdf.name)} ansehen</button>` : ''}
 
       ${kopf(4, 'Nachfassen und Rückmeldung')}
       ${statusKarte(w)}

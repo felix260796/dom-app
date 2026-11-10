@@ -56,26 +56,18 @@ const VORGABEN = {
       { k: 'vorlageArten', l: 'Arten von Vorlagen (eine Zeile je Art)', t: 'liste', d: ['Abnahmeprotokoll', 'Regiebericht', 'Mängelanzeige', 'Bauzeitenplan', 'Checkliste Baustelle', 'Auftragsbestätigung', 'Sonstiges'] },
       { k: 'firmaDokWarnTage', l: 'Auf „Heute“ warnen, so viele Tage bevor ein Dokument abläuft', t: 'zahl', d: 30 },
     ]],
-    ['Kunden', [
-      { k: 'kundenQuellen', l: 'Wie kommen Kunden zu uns? (eine Zeile je Quelle)', t: 'liste', d: ['Empfehlung', 'Google / Internet', 'Bauschild', 'Hausverwaltung', 'Stammkunde', 'Flyer / Anzeige', 'Sonstiges'] },
-    ]],
     ['Kalkulation', [
       { k: 'ampelGut', l: 'Marge grün ab %', t: 'zahl', d: 20 },
       { k: 'ampelKnapp', l: 'Marge gelb ab % (darunter rot)', t: 'zahl', d: 10 },
-      { k: 'gewerkeExtra', l: 'Zusätzliche Gewerke für Eingangsrechnungen (neben denen der Preisliste)', t: 'liste', d: ['Material', 'Entsorgung', 'Sonstiges'] },
     ]],
     ['Kalender und Geburtstage', [
       { k: 'kalKW', l: 'Kalenderwoche (KW) im Kalender links anzeigen', t: 'janein', d: 'ja' },
-      { k: 'gespraechArten', l: 'Arten der Gesprächsaufnahme (eine Zeile je Art)', t: 'liste', d: ['Vor-Ort-Besichtigung', 'Abnahmegespräch', 'Krisengespräch', 'Baubesprechung'] },
       { k: 'terminVorlagen', l: 'Termin-Vorlagen (eine Zeile je Vorlage: Titel | Art | Notiz)', t: 'liste', d: [
         'Erstgespräch | kunde | Wünsche und Budget klären, Fotos machen, Termin für Vor-Ort-Besichtigung vereinbaren',
         'Vor-Ort-Termin | kunde | Gespräch aufnehmen, alle Räume fotografieren, Maße nehmen, Anschriften prüfen',
         'Bauabnahme | baustelle | Abnahmeprotokoll mit Unterschrift, Mängel mit Frist festhalten, Fotos machen',
         'Begehung | baustelle | Baufortschritt prüfen, Fotos machen, offene Punkte mit Subunternehmer klären',
       ], h: 'Art: kunde, baustelle, buero oder privat. Die Vorlagen stehen beim neuen Termin klein unter dem Titel.' },
-      { k: 'gebArtStandard', l: 'Geburtstag: Standard für Kontakte, bei denen nichts gewählt ist', t: 'wahl', o: [['gratulieren', 'Nur gratulieren'], ['geschenk', 'Mit Geschenk']], d: 'gratulieren', h: 'Beim einzelnen Kunden oder Subunternehmer kannst du es jederzeit umstellen.' },
-      { k: 'gebGeschenkTage', l: '„Geschenk besorgen“ so viele Tage vorher', t: 'zahl', d: 14 },
-      { k: 'gebPruefTage', l: '„Geschenk wirklich besorgt?“ so viele Tage vorher', t: 'zahl', d: 3 },
     ]],
     ['Startseite „Heute“', [
       { k: 'heuteStart', l: 'Beim Öffnen der App mit „Heute“ starten', t: 'janein', d: 'ja', h: 'Sonst startet die App bei den Kunden. „Heute“ erreichst du immer über das Menü (DOM-Logo oben).' },
@@ -87,6 +79,32 @@ const VORGABEN = {
     ]],
     ['Baustelle', [
       { k: 'textAbnahme', l: 'Text im Abnahmeprotokoll', t: 'text', d: 'Die oben genannten Leistungen wurden am {datum} gemeinsam begangen und {ergebnis} abgenommen. Mit der Abnahme beginnt die Gewährleistungsfrist. Aufgeführte Mängel beseitigt der Auftragnehmer innerhalb der genannten Fristen.' },
+    ]],
+  ],
+  // Bereichs-Einstellungen (Schnellzugriff: Tipp auf den Titel der Übersichtsseite)
+  kundenEinst: [
+    ['Kunden', [
+      { k: 'kundenQuellen', l: 'Wie kommen Kunden zu uns? (eine Zeile je Quelle)', t: 'liste', d: ['Empfehlung', 'Google / Internet', 'Bauschild', 'Hausverwaltung', 'Stammkunde', 'Flyer / Anzeige', 'Sonstiges'] },
+    ]],
+    ['Geburtstage', [
+      { k: 'gebArtStandard', l: 'Geburtstag: Standard für Kontakte, bei denen nichts gewählt ist', t: 'wahl', o: [['gratulieren', 'Nur gratulieren'], ['geschenk', 'Mit Geschenk']], d: 'gratulieren', h: 'Beim einzelnen Kunden oder Subunternehmer kannst du es jederzeit umstellen.' },
+      { k: 'gebGeschenkTage', l: '„Geschenk besorgen“ so viele Tage vorher', t: 'zahl', d: 14 },
+      { k: 'gebPruefTage', l: '„Geschenk wirklich besorgt?“ so viele Tage vorher', t: 'zahl', d: 3 },
+    ]],
+  ],
+  partnerEinst: [
+    ['Partner (Subunternehmer, Lieferanten, Außendienst)', [
+      { k: 'partnerStufen', l: 'Qualitätseinstufung der Arbeit (eine Zeile je Stufe)', t: 'liste', d: ['Basic', 'Standard', 'Premium'], h: 'Beim Partner kannst du mehrere Stufen ankreuzen, z. B. Standard und Premium.' },
+      { k: 'gewerkeExtra', l: 'Zusätzliche Gewerke für Eingangsrechnungen (neben denen der Preisliste)', t: 'liste', d: ['Elektro', 'Material', 'Entsorgung', 'Sonstiges'] },
+    ]],
+  ],
+  projektEinst: [
+    ['Projektnummer', [
+      { k: 'projektNrFormat', l: 'Aufbau der Projektnummer', t: 'zeile', d: 'P{jahr}-{nr}', h: '{jahr} = Jahr der Zusage (z. B. 2026), {nr} = laufende Nummer dreistellig (001, 002 …). Die Nummer wird bei der Zusage einmal vergeben und ändert sich danach nicht mehr.' },
+    ]],
+    ['Gespräche und Nachfassen', [
+      { k: 'gespraechArten', l: 'Arten der Gesprächsaufnahme (eine Zeile je Art)', t: 'liste', d: ['Vor-Ort-Besichtigung', 'Abnahmegespräch', 'Krisengespräch', 'Baubesprechung'] },
+      { k: 'nachfassenKalender', l: 'Nachfassen als Eintrag in den Kalender', t: 'janein', d: 'ja', h: 'Am Tag, an dem nachgefasst werden soll (Tage siehe Abläufe & Listen), steht ein Eintrag im Kalender.' },
     ]],
   ],
   // KI-Anweisungen (Prompts). Englisch, weil die Bild-KI Englisch am genauesten umsetzt. Deutsche Erklärung jeweils darunter.
@@ -257,6 +275,7 @@ window.Vorgaben = (() => {
   // Zusätzlicher Bereich oben auf einer Seite (z. B. Mitteilungen: Gerät anmelden)
   const seiteKopf = {
     push: (el) => window.Push?.karte(el),
+    projektEinst: (el) => { el.innerHTML = `<div class="docs" style="margin-bottom:8px"><button class="doc" id="zuBau"><span class="d-ico grey">${icon('check')}</span><span class="d-t"><b>Vorlagen für den Baufortschritt</b><span>Arbeitsschritte je Raumtyp</span></span>${icon('chevron', 'pc-chev')}</button></div>`; $('#zuBau', el).onclick = () => { einstellungSeite('bau'); window.scrollTo(0, 0); }; },
     prompts: (el) => { el.innerHTML = '<p class="hint" style="margin-top:0">Das sind die Anweisungen, die die App an die Bild-KI schickt. Sie sind auf Englisch, weil die KI Englisch am genauesten umsetzt. Unter jedem Feld steht auf Deutsch, was es bewirkt. Wörter in geschweiften Klammern füllt die App selbst aus, die bitte stehen lassen. „Standard“ holt den ursprünglichen Text zurück.</p>'; },
   };
   function seite(id, kopf = seiteKopf[id]) {

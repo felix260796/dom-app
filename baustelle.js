@@ -146,6 +146,8 @@ window.Baustelle = (() => {
     const z = (l, v) => { if (!v) return; doc.setFont('helvetica', 'normal'); doc.setTextColor(110); t(l, M, y); doc.setTextColor(30); const lines = doc.splitTextToSize(String(v), R - M - 45); t(lines, M + 45, y); y += 5.5 * lines.length; };
     z('Auftraggeber', Kunden.name(k) || w.customer);
     z('Bauvorhaben', o ? Kunden.einzeilig(o.adresse) : w.address);
+    if (k?.nr) z('Kunden-Nr.', k.nr);
+    if (w.nr) z('Projekt-Nr.', w.nr);
     z('Projekt', [w.titel, w.nr && `Nr. ${w.nr}`].filter(Boolean).join(' · '));
     z('Auftragnehmer', E.firma);
     z('Datum der Abnahme', tag(a.datum));

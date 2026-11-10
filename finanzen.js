@@ -210,7 +210,7 @@ window.Finanzen = (() => {
     $('#fNeuR').onclick = async () => {
       const v = await sheet('Neue Rechnung', [
         { label: 'Eingangsrechnung erfassen', sub: 'Rechnung von Subunternehmer oder Lieferant, Foto genügt', icon: icon('camera'), value: 'ein' },
-        { label: 'Rechnung an einen Kunden', sub: 'Abschlag oder Schlussrechnung im Projekt', icon: icon('file'), value: 'aus' },
+        { label: 'Rechnung an einen Kunden', sub: 'Schlussrechnung im Projekt', icon: icon('file'), value: 'aus' },
       ]);
       if (v === 'ein') return erfassen(neu(), () => view());
       if (v !== 'aus') return;
@@ -254,7 +254,9 @@ Datum als JJJJ-MM-TT. faellig = Fälligkeitsdatum, falls angegeben (oder Datum +
     const zurueck = () => { state.beleg = null; fertig(); window.scrollTo(0, 0); };
     state.beleg = b;
     header(b.isNew ? 'Eingangsrechnung' : vonText(b), b.isNew ? 'Neu erfassen' : [b.nr && `Nr. ${b.nr}`, tagText(b.datum)].filter(Boolean).join(' · '), { label: 'Zurück', fn: zurueck });
-    const projName = (x) => [x.titel || x.room || 'Projekt', Kunden.name(Kunden.byId(x.kundeId)) || x.customer].filter(Boolean).join(' · ');
+    const projName = (x) => [x.titel || x.room || 'Projekt', Kunden.name(Kunden.byId(x.kundeId)) || x.customer, x.nr].filter(Boolean).join(' · ');
+    // Nach „Fertig“ gesperrt; Ändern nur absichtlich über „Bearbeiten“
+    let gesperrt = !b.isNew;
     const render = () => {
       main().innerHTML = `
         <div class="card">
@@ -264,10 +266,13 @@ Datum als JJJJ-MM-TT. faellig = Fälligkeitsdatum, falls angegeben (oder Datum +
              <p class="hint" style="margin:8px 0 0">${state.settings.apiKey ? 'Die KI liest Absender, Nummer, Datum und Betrag aus. Du prüfst nur noch.' : 'Ohne KI-Schlüssel trägst du die Daten selbst ein.'}</p>`}
           <p class="hint" id="bKiInfo" hidden></p>
         </div>
-        <div class="card kform">
+        ${gesperrt ? `<p class="notice" style="margin:0 0 10px">${icon('check')}<span><b>Fertig erfasst</b> · zum Ändern unten auf „Bearbeiten“ tippen</span></p>` : ''}
+        <fieldset class="kform card" id="bForm" ${gesperrt ? 'disabled' : ''} style="border:0;margin:0 0 14px">
           <label style="margin-top:0">Projekt</label>
+          <input type="search" class="fsuche" data-fs="bProj" placeholder="Kunde oder Projekt suchen" autocomplete="off">
           <select id="bProj"><option value="">Noch keinem Projekt zuordnen</option>${projekte.map((x) => `<option value="${x.id}" ${x.id === b.projektId ? 'selected' : ''}>${esc(projName(x))}</option>`).join('')}</select>
           <label>Von (Subunternehmer oder Lieferant)</label>
+          <input type="search" class="fsuche" data-fs="bPartner" placeholder="Partner oder Lieferant suchen" autocomplete="off">
           <select id="bPartner"><option value="">Anderer, Name eintragen</option>${partner.map((p) => `<option value="${p.id}" ${p.id === b.partnerId ? 'selected' : ''}>${esc([p.firma, p.inhaber].filter(Boolean).join(' · ') || 'Ohne Namen')}</option>`).join('')}</select>
           <input type="text" id="bVon" value="${esc(b.von)}" placeholder="z. B. Baustoffhandel Müller" autocomplete="off" ${b.partnerId ? 'hidden' : ''} style="margin-top:6px">
           <div class="row"><div><label>Rechnungsnummer</label><input type="text" id="bNr" value="${esc(b.nr)}" autocomplete="off"></div>
@@ -276,14 +281,14 @@ Datum als JJJJ-MM-TT. faellig = Fälligkeitsdatum, falls angegeben (oder Datum +
             <div><label>USt.</label><select id="bSatz">${[[19, '19 %'], [7, '7 %'], [0, '0 % (§ 13b)']].map(([v, n]) => `<option value="${v}" ${(b.satz ?? 19) === v ? 'selected' : ''}>${n}</option>`).join('')}</select></div></div>
           <p class="hint" id="bBrutto" style="margin:4px 0 0">Brutto ${eur(brutto(b))}</p>
           <label>Gewerk</label>
-          <select id="bGewerk"><option value="">Bitte wählen</option>${gewerke().map((g) => `<option ${g === b.gewerk ? 'selected' : ''}>${esc(g)}</option>`).join('')}</select>
+          <select id="bGewerk"><option value="">Bitte wählen</option>${[...new Set([...gewerke(), 'Elektro', ...(b.gewerk ? [b.gewerk] : [])])].map((g) => `<option ${g === b.gewerk ? 'selected' : ''}>${esc(g)}</option>`).join('')}<option value="__eigen">Eigenes Gewerk eingeben …</option></select>
           <div class="row"><div><label>Fällig am</label><input type="date" id="bFaellig" value="${esc(b.faellig)}"></div>
             <div><label>Bezahlt am</label><input type="date" id="bBezahlt" value="${esc(b.bezahlt)}"></div></div>
           ${b.bezahlt ? '' : `<button class="btn secondary block" id="bJetzt" style="margin-top:10px">${icon('check')} Heute bezahlt</button>`}
           <label>Notiz</label><textarea id="bNotiz" placeholder="z. B. Abschlag 1, Skonto 2 % bis …">${esc(b.notiz)}</textarea>
-        </div>
-        <button class="btn big block" id="bSave">${icon('check')} ${b.isNew ? 'Speichern' : 'Fertig'}</button>
-        ${b.isNew ? '' : `<button class="link-danger" id="bDel">${icon('trash')} Eingangsrechnung löschen</button>`}`;
+        </fieldset>
+        ${gesperrt ? `<button class="btn secondary big block" id="bEdit">${icon('edit')} Bearbeiten</button>` : `<button class="btn big block" id="bSave">${icon('check')} Fertig</button>`}
+        ${b.isNew || gesperrt ? '' : `<button class="link-danger" id="bDel">${icon('trash')} Eingangsrechnung löschen</button>`}`;
       binden();
     };
     const lesen = () => {
@@ -340,15 +345,29 @@ Datum als JJJJ-MM-TT. faellig = Fälligkeitsdatum, falls angegeben (oder Datum +
         setTimeout(() => URL.revokeObjectURL(url), 120000);
       };
       $('#bPartner').onchange = (e) => { $('#bVon').hidden = !!e.target.value; };
+      // Suchfelder über den Auswahllisten: Treffer filtern, der erste passende wird gewählt
+      $$('.fsuche').forEach((inp) => (inp.oninput = () => {
+        const sel = $('#' + inp.dataset.fs), w = inp.value.trim().toLowerCase().split(/\s+/).filter(Boolean);
+        let erster = null;
+        [...sel.options].forEach((o, i) => { const ok = !i || !w.length || w.every((x) => o.textContent.toLowerCase().includes(x)); o.hidden = !ok; if (ok && i && !erster) erster = o; });
+        if (w.length && erster) { sel.value = erster.value; sel.dispatchEvent(new Event('change')); }
+      }));
+      $('#bGewerk').onchange = (e) => {
+        if (e.target.value !== '__eigen') return;
+        const n = prompt('Welches Gewerk?', '')?.trim();
+        if (!n) { e.target.value = b.gewerk || ''; return; }
+        lesen(); b.gewerk = n; render();
+      };
+      if ($('#bEdit')) $('#bEdit').onclick = () => { gesperrt = false; render(); };
       const brut = () => { lesen(); $('#bBrutto').textContent = `Brutto ${eur(brutto(b))}`; };
       $('#bNetto').oninput = brut; $('#bSatz').onchange = brut;
       if ($('#bJetzt')) $('#bJetzt').onclick = () => { $('#bBezahlt').value = heute(); $('#bJetzt').remove(); };
-      $('#bSave').onclick = async () => {
+      if ($('#bSave')) $('#bSave').onclick = async () => {
         lesen();
         if (!b.netto) return toast('Bitte den Betrag eintragen.');
         if (!b.partnerId && !b.von) return toast('Bitte eintragen, von wem die Rechnung ist.');
         if (b._daten) { await kvSet('bdatei:' + b.id, b._daten); delete b._daten; }
-        const warNeu = b.isNew; delete b.isNew;
+        const warNeu = b.isNew; delete b.isNew; b.fertig = Date.now();
         await speichern(b);
         toast(warNeu ? 'Eingangsrechnung gespeichert' : 'Gespeichert');
         zurueck();
