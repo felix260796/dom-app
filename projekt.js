@@ -244,7 +244,7 @@ window.Projekt = (() => {
       return `<span class="dots">${fertig.map((id) => `<i style="--c:${pkgOf(r, id)?.color || PKG_META[id][1]}" title="${esc(pkgOf(r, id)?.name || '')}"></i>`).join('')}</span><span class="st">${fertig.map((id) => esc(pkgOf(r, id)?.name || PKG_META[id][0])).join(', ')}</span>`;
     };
     const auftragBtn = zugesagt(w.status) ? `<button class="doc" id="wAuftrag"><span class="d-ico ${w.auftrag ? 'navy' : 'grey'}">${icon('check')}</span><span class="d-t"><b>Unterschriebenes Angebot</b><span>${w.auftrag ? `Abgelegt am ${esc(new Date(w.auftrag.t).toLocaleDateString('de-DE'))}` : 'Noch nicht abgelegt, tippen zum Ablegen'}</span></span>${icon('chevron', 'pc-chev')}</button>` : '';
-    main().innerHTML = `
+    main().innerHTML = phase(w) === 'angebot' ? angebotSeite({ w, list, k, nFotos, anyResult, withPhotos, nBilder, stand }) : `
       <div class="card kunde">
         ${k ? `<button class="kline" id="wKunde"><span class="av sm">${esc(Kunden.initialen(k))}</span><span class="kl-t"><b>${esc(Kunden.name(k) || 'Ohne Namen')}</b><small>${esc([k.telefon, k.email].filter(Boolean).join(' · ') || 'Kundenkarte öffnen')}</small></span>${icon('chevron', 'pc-chev')}</button>
         <label class="ic-field">${icon('map')}<select id="wObjekt" aria-label="Objekt">
@@ -377,6 +377,13 @@ window.Projekt = (() => {
       await kundeUebernehmen(w.id); view();
     };
     window.Gespraech?.bind(w, list);
+    // Angebotsablauf: weitere Knöpfe
+    $$('[data-bilder]').forEach((b) => (b.onclick = () => $('#wBilder')?.click()));
+    if ($('#wRechAdr')) $('#wRechAdr').onclick = () => Kunden.oeffnen(k.id);
+    if ($('#wSenden')) $('#wSenden').onclick = async () => { const b = $('#wSenden'); b.disabled = true; try { await sendenMitMappe(w, list); } catch (e) { console.error(e); toast('PDF-Fehler: ' + e.message, 6000); } b.disabled = false; };
+    if ($('#wAnpassen')) $('#wAnpassen').onclick = () => $('#dAngebot')?.click();
+    $$('[data-angraum]').forEach((b) => (b.onclick = () => raumAngebot(rooms.get(b.dataset.angraum), w)));
+    if ($('#wZeigen')) $('#wZeigen').onclick = () => (anyResult ? mappeView(w) : toast('Zuerst einen Raum visualisieren, dann gibt es die Mappe.', 4000));
     $$('[data-room]').forEach((el) => (el.onclick = (e) => { if (e.target.closest('[data-up]')) return; raumOeffnen(rooms.get(el.dataset.room), w); }));
     $$('[data-up]').forEach((b) => (b.onclick = async () => { const i = +b.dataset.up; [w.rooms[i - 1], w.rooms[i]] = [w.rooms[i], w.rooms[i - 1]]; await save(w); view(); }));
     $$('[data-rt]').forEach((b) => (b.onclick = () => addRoom(w, b.dataset.rt)));
@@ -404,6 +411,120 @@ window.Projekt = (() => {
       };
     }
   }
+  // ---------- Angebotsablauf (bis zur Zusage): Vor Ort → Büro → Senden → Nachfassen ----------
+  // Gleiche Daten wie das Projekt, nur geordnet nach Felix' Ablauf. Element-IDs wie in der Projektansicht, damit die Knöpfe gleich funktionieren.
+  const SCHRITTE = [['vorort', 'Vor Ort'], ['buero', 'Büro'], ['senden', 'Senden'], ['nach', 'Nachfassen']];
+  function schrittVon(w) {
+    const st = norm(w.status);
+    return st === 'besichtigung' ? 0 : st === 'entwurf' ? 1 : st === 'angebot' ? 3 : -1;
+  }
+  const eurRund = (x) => (+x || 0).toLocaleString('de-DE', { maximumFractionDigits: 0 }) + ' €';
+  /** Letztes Schnellangebot des Kunden (z. B. am Telefon genannt). */
+  const schnellVon = (k) => (Array.isArray(k?.schnell) && k.schnell.length ? k.schnell[k.schnell.length - 1] : null);
+  function angebotSeite({ w, list, k, nFotos, anyResult, withPhotos, nBilder, stand }) {
+    const st = norm(w.status), s = schrittVon(w), sq = schnellVon(k);
+    const fertig = (i) => (s === -1 ? '' : i < s ? 'ok' : i === s ? 'jetzt' : '');
+    const mitPos = list.filter((r) => r.angebot?.positionen?.length);
+    const notizen = (r) => (r.otherNotes || '').split('\n').filter((l) => l.trim()).length + (r.wishes || '').split('\n').filter((l) => l.trim()).length;
+    const kopf = (n, t, sub = '') => `<div class="ab-h"><span class="ab-n">${n}</span><span><b>${t}</b>${sub ? `<small>${sub}</small>` : ''}</span></div>`;
+    return `
+      <div class="ab-schritte">${SCHRITTE.map(([id, n], i) => `<span class="${fertig(i)}"><i>${i < s && s !== -1 ? icon('check') : i + 1}</i>${n}</span>`).join('')}</div>
+      ${st === 'abgesagt' ? `<p class="notice" style="margin:0 0 10px">${icon('x')}<span><b>Abgesagt</b>${w.absage?.grund ? ` · ${esc(w.absage.grund)}` : ''}</span></p>` : ''}
+
+      <div class="card kunde">
+        ${k ? `<button class="kline" id="wKunde"><span class="av sm">${esc(Kunden.initialen(k))}</span><span class="kl-t"><b>${esc(Kunden.name(k) || 'Ohne Namen')}</b><small>${esc([k.telefon, k.email].filter(Boolean).join(' · ') || 'Kundenkarte öffnen')}</small></span>${icon('chevron', 'pc-chev')}</button>
+        <button class="ic-field ab-adr" id="wRechAdr">${icon('file')}<span><small>Rechnungsanschrift</small>${k.privat.trim() ? esc(Kunden.einzeilig(k.privat)) : '<span class="warn">fehlt noch, tippen zum Eintragen</span>'}</span></button>
+        <label class="ic-field">${icon('map')}<span class="ab-l">Objekt</span><select id="wObjekt" aria-label="Objektanschrift">
+          ${w.objektId && Kunden.objekt(k, w.objektId) ? '' : `<option value="" selected>${esc(w.address || 'Objekt wählen …')}</option>`}
+          ${k.objekte.map((o) => `<option value="${o.id}" ${o.id === w.objektId ? 'selected' : ''}>${esc(Kunden.objektText(o) || 'Objekt ohne Anschrift')}</option>`).join('')}
+          <option value="__neu">Andere Anschrift …</option></select></label>
+        <label class="ic-field">${icon('edit')}<input type="text" id="wTitel" value="${esc(w.titel || '')}" placeholder="Projektname, z. B. Badumbau" autocomplete="off" aria-label="Projektname"></label>
+        ${sq ? `<p class="ab-schnell">${icon('phone')}<span>Am Telefon genannt: <b>ca. ${eurRund(sq.von)} – ${eurRund(sq.bis)}</b> · ${esc(new Date(sq.t).toLocaleDateString('de-DE'))}${sq.text ? ` · ${esc(sq.text)}` : ''}</span></p>` : ''}`
+        : `<button class="kline" id="wKundeWahl">${icon('user')}<span class="kl-t"><b>${esc(w.customer || 'Kunde zuordnen')}</b><small>Kunde auswählen oder neu anlegen</small></span>${icon('chevron', 'pc-chev')}</button>`}
+      </div>
+
+      ${kopf(1, 'Vor Ort', 'Gespräch aufnehmen, Räume fotografieren, bei Bedarf visualisieren')}
+      ${window.Gespraech?.karte(w, list) || ''}
+      ${k ? `<div class="docs" style="margin-top:12px"><button class="doc" id="wBilder"><span class="d-ico brass">${icon('camera')}</span>
+        <span class="d-t"><b>Fotos aller Räume (Doku)</b><span>${nFotos ? `${nFotos} ${nFotos === 1 ? 'Bild' : 'Bilder'} in diesem Projekt` : 'So viele Fotos wie du willst, nach Ordnern sortiert'}</span></span>${icon('chevron', 'pc-chev')}</button></div>` : ''}
+      <div class="sec-h"><h2>Räume zum Visualisieren</h2>${list.length ? `<span class="count">${list.length}</span>` : ''}</div>
+      <div class="rlist">${list.map((r, i) => `
+        <div class="rcard" data-room="${r.id}" role="button" tabindex="0">
+          ${r.thumb ? `<img src="${r.thumb}" alt="">` : `<span class="rc-ph">${roomIcon(r.roomType)}</span>`}
+          <span class="rc-t"><b>${esc(r.room || roomType(r.roomType).name)}</b><span class="rc-s">${stand(r)}</span></span>
+          ${i > 0 ? `<button class="icon-btn up" data-up="${i}" aria-label="Nach oben">${icon('up')}</button>` : ''}
+          ${icon('chevron', 'pc-chev')}
+        </div>`).join('')}
+        ${list.length ? `<button class="add-room" id="wAdd">${icon('plus')} Raum hinzufügen</button>` : ''}
+      </div>
+      ${list.length ? '' : `
+        <p class="hint">Nur die Räume anlegen, die du visualisieren oder anbieten willst. Die übrigen Fotos kommen oben in „Fotos aller Räume“.</p>
+        <div class="rtgrid">${ROOM_TYPES.map((r) => `<button class="rt" data-rt="${r.id}">${roomIcon(r.id)}<span>${esc(r.name)}</span></button>`).join('')}</div>`}
+      ${list.length > 1 && withPhotos.length ? `
+        <button class="btn secondary block" id="wRun" ${running ? 'disabled' : ''}>${icon('sparkle')} ${running === w.id ? 'KI arbeitet …' : 'Alle Räume visualisieren'}</button>
+        <p class="hint center" id="wRunInfo">${running === w.id ? '' : `${nBilder} Bilder in ${withPhotos.length} Räumen`}</p>` : ''}
+      ${list.length ? `<button class="btn block" id="wZeigen" style="margin-top:12px" ${anyResult ? '' : 'disabled'}>${icon('book')} Mappe dem Kunden zeigen</button>
+        ${anyResult ? '' : '<p class="hint center">Die Mappe gibt es, sobald ein Raum visualisiert ist.</p>'}` : ''}
+
+      ${list.length ? `
+      ${kopf(2, 'Im Büro: Angebot ausarbeiten', 'Wünsche aus dem Gespräch stehen schon in jedem Raum')}
+      <div class="docs">${list.map((r) => `<button class="doc" data-angraum="${r.id}"><span class="d-ico ${r.angebot?.positionen?.length ? 'navy' : 'grey'}">${roomIcon(r.roomType)}</span>
+        <span class="d-t"><b>${esc(r.room || roomType(r.roomType).name)}</b><span>${r.angebot?.positionen?.length ? `${r.angebot.positionen.length} Positionen${r.angebot.nr ? ` · Nr. ${esc(r.angebot.nr)}` : ''}` : 'noch nicht ausgearbeitet'}${notizen(r) ? ` · ${notizen(r)} Punkte aus dem Gespräch` : ''}</span></span>${icon('chevron', 'pc-chev')}</button>`).join('')}
+        <button class="doc" data-bilder><span class="d-ico brass">${icon('camera')}</span><span class="d-t"><b>Baustellenfotos ansehen</b><span>Zum Nachschauen beim Kalkulieren</span></span>${icon('chevron', 'pc-chev')}</button>
+      </div>
+
+      ${kopf(3, 'Senden', mitPos.length ? `Angebot${anyResult ? ' und Mappe' : ''} als PDF per Mail oder WhatsApp` : 'Zuerst das Angebot ausarbeiten')}
+      <button class="btn big block" id="wSenden" ${mitPos.length ? '' : 'disabled'}>${icon('mail')} ${anyResult ? 'Senden mit Mappe' : 'Angebot senden'}</button>
+      ${w.versendetAm ? `<p class="hint center">Zuletzt versendet am ${esc(datumText(w.versendetAm))}</p>` : ''}
+
+      ${kopf(4, 'Nachfassen und Rückmeldung')}
+      ${statusKarte(w)}
+      ${st === 'angebot' ? `<button class="btn secondary block" id="wAnpassen">${icon('edit')} Angebot anpassen (neue Version)</button>` : ''}
+
+      <details class="more card" style="margin-top:16px"><summary>${icon('clipboard')}<span>Weiteres<small>Moodboard, Baumappe, Termine, Löschen</small></span>${icon('chevron', 'more-chev')}</summary>
+        <div class="docs">${[...new Set(list.map((r) => r.roomType))].map((rt) => `<button class="doc" data-board="${rt}"><span class="d-ico ${eigenes(w, rt) ? 'brass' : 'grey'}">${icon('palette')}</span>
+          <span class="d-t"><b>Moodboard ${esc(roomType(rt).name)}</b><span>${eigenes(w, rt) ? 'Für diesen Kunden angepasst' : 'Standard, tippen zum Anpassen'}</span></span>${icon('chevron', 'pc-chev')}</button>`).join('')}
+          <button class="doc" id="dMappe" ${anyResult ? '' : 'disabled'}><span class="d-ico navy">${icon('book')}</span><span class="d-t"><b>Kundenmappe einstellen</b><span>Welche Pakete je Raum, als PDF teilen</span></span>${icon('chevron', 'pc-chev')}</button>
+          <button class="doc" id="dBau" ${anyResult ? '' : 'disabled'}><span class="d-ico brass">${icon('clipboard')}</span><span class="d-t"><b>Baumappe</b><span>Für Subunternehmer, ohne Preise</span></span>${icon('chevron', 'pc-chev')}</button>
+          <button class="doc" id="dAngebot"><span class="d-ico grey">${icon('euro')}</span><span class="d-t"><b>Angebot öffnen</b><span>${list.length > 1 ? 'Raum wählen oder Gesamtangebot' : 'Aufmaß, Positionen, Bauzeit'}</span></span>${icon('chevron', 'pc-chev')}</button>
+        </div>
+        <div id="wTermine"></div>
+        <button class="link-danger" id="wDel">${icon('trash')} Projekt löschen</button>
+      </details>` : ''}`;
+  }
+  /** Angebot (ein Raum oder Gesamtangebot) und Kundenmappe zusammen teilen. Danach Status „versendet“. */
+  async function sendenMitMappe(w, list) {
+    const A = window.Angebot._intern;
+    await A.preisliste();
+    const mitPos = list.filter((r) => r.angebot?.positionen?.length);
+    if (!mitPos.length) return toast('Bitte zuerst das Angebot ausarbeiten.');
+    toast('Angebot und Mappe werden erstellt …', 15000);
+    let ang;
+    if (mitPos.length > 1) ang = await gesamtDoc(w, mitPos);
+    else {
+      const r = mitPos[0];
+      Object.assign(r, { customer: w.customer, address: w.address, kundeId: w.kundeId, projektNr: w.nr || '' });
+      A.init(r);
+      const doc = await A.baueAngebotPdf(r);
+      await saveProject(r);
+      ang = { doc, syn: r, name: `Angebot_${r.angebot.nr}_${(w.customer || 'Kunde').replace(/[^\wäöüÄÖÜß-]+/g, '_')}.pdf` };
+    }
+    const files = [new File([ang.doc.output('blob')], ang.name, { type: 'application/pdf' })];
+    const sel = list.filter(hasAnyResult).map((r) => ({ r, v: wahl(w, r) })).filter((x) => x.v !== '')
+      .map(({ r, v }) => ({ r, pkgs: (v === 'alle' ? PKG_IDS.filter((id) => done(r, id)) : [v]).map((id) => pkgOf(r, id)).filter(Boolean) })).filter((x) => x.pkgs.length);
+    if (sel.length && window.Mappe) {
+      const md = await window.Mappe.baueKunde(w, sel);
+      files.push(new File([md.output('blob')], `Kundenmappe_${window.Mappe.fileSafe(w.customer)}.pdf`, { type: 'application/pdf' }));
+    }
+    $('#toast').hidden = true;
+    if (navigator.canShare?.({ files })) {
+      try { await navigator.share({ files, title: ang.name, text: A.mailText(ang.syn) }); await angebotVersendet(w.id); return view(); }
+      catch (e) { if (e.name === 'AbortError') return; }
+    }
+    for (const f of files) { const a = document.createElement('a'); a.href = URL.createObjectURL(f); a.download = f.name; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 60000); }
+    await angebotVersendet(w.id); view();
+  }
+
   /** Statuskarte im Projekt: wo steht es, was kommt als Nächstes (ein großer Knopf). */
   function statusKarte(w) {
     const st = norm(w.status), i = PFAD.indexOf(st), nx = WEITER[st];
@@ -427,17 +548,30 @@ window.Projekt = (() => {
   /** Angebot wurde gesendet (B6): Status auf „versendet“, Datum fürs Nachfassen merken. */
   async function angebotVersendet(wid) {
     const w = wid && (await kvGet(key(wid)));
-    if (!w || !['besichtigung', 'entwurf'].includes(norm(w.status))) return;
-    w.status = 'angebot'; w.versendetAm = heuteIso(); (w.verlauf ??= []).push({ st: 'angebot', t: Date.now() });
+    if (!w || !['besichtigung', 'entwurf', 'angebot'].includes(norm(w.status))) return;
+    // Auch beim erneuten Senden (angepasstes Angebot) beginnt das Nachfassen von vorn
+    if (norm(w.status) !== 'angebot') (w.verlauf ??= []).push({ st: 'angebot', t: Date.now() });
+    w.status = 'angebot'; w.versendetAm = heuteIso();
     await save(w);
     if (state.wohnung?.id === w.id) Object.assign(state.wohnung, { status: w.status, versendetAm: w.versendetAm, verlauf: w.verlauf });
     toast('Status: Angebot versendet');
   }
   /** B4: ein Angebot über alle Räume. Baut aus den Raum-Angeboten ein gemeinsames und nutzt das normale Angebots-PDF. */
   async function gesamtAngebot(w, raeume) {
+    toast('Gesamtangebot wird erstellt …', 8000);
+    const { doc, name, syn } = await gesamtDoc(w, raeume);
+    const A = window.Angebot._intern;
+    const blob = doc.output('blob'), file = new File([blob], name, { type: 'application/pdf' });
+    $('#toast').hidden = true;
+    if (navigator.canShare?.({ files: [file] })) { try { await navigator.share({ files: [file], title: name, text: A.mailText(syn) }); return angebotVersendet(w.id); } catch (e) { if (e.name === 'AbortError') return; } }
+    const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name; a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 60000);
+    angebotVersendet(w.id);
+  }
+  /** PDF des Gesamtangebots über mehrere Räume: { doc, name, syn }. */
+  async function gesamtDoc(w, raeume) {
     const A = window.Angebot._intern;
     await A.preisliste();
-    toast('Gesamtangebot wird erstellt …', 8000);
     const erst = raeume[0], mehrere = new Set(raeume.map((r) => r.room)).size > 1;
     const allg = new Map(), pos = [];
     const PL = await A.preisliste();
@@ -457,12 +591,7 @@ window.Projekt = (() => {
     const doc = await A.baueAngebotPdf(syn);
     g.versionen = syn.angebot.versionen; await save(w);
     const name = `Angebot_${g.nr}_${(w.customer || 'Kunde').replace(/[^\wäöüÄÖÜß-]+/g, '_')}.pdf`;
-    const blob = doc.output('blob'), file = new File([blob], name, { type: 'application/pdf' });
-    $('#toast').hidden = true;
-    if (navigator.canShare?.({ files: [file] })) { try { await navigator.share({ files: [file], title: name, text: A.mailText(syn) }); return angebotVersendet(w.id); } catch (e) { if (e.name === 'AbortError') return; } }
-    const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name; a.click();
-    setTimeout(() => URL.revokeObjectURL(a.href), 60000);
-    angebotVersendet(w.id);
+    return { doc, name, syn };
   }
   const nachfassen = () => +vorgabe('nachfassenTage') || 7;
   const seitTagen = (iso) => (iso ? Math.floor((new Date(heuteIso() + 'T12:00') - new Date(iso + 'T12:00')) / 864e5) : -1);

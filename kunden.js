@@ -417,6 +417,8 @@ window.Kunden = (() => {
         </div>
       </div>`}
 
+      ${Array.isArray(k.schnell) && k.schnell.length ? `<div class="sec-h"><h2>Am Telefon genannt</h2><span class="count">${k.schnell.length}</span></div>
+      <div class="card">${k.schnell.slice().reverse().map((s) => `<div class="tot"><span>${esc(new Date(s.t).toLocaleDateString('de-DE'))}${s.text ? ` · ${esc(s.text)}` : ''}</span><b>ca. ${Math.round(s.von).toLocaleString('de-DE')} – ${Math.round(s.bis).toLocaleString('de-DE')} €</b></div>`).join('')}</div>` : ''}
       ${angebotePrj(idx, einfach ? () => '' : (x) => objLabel(objekt(k, x.objektId)) || 'Ohne Objekt')}
       <button class="btn big block" id="kProj" style="margin-top:12px">${icon('plus')} Neues Angebot für ${esc(name(k) || 'diesen Kunden')}</button>
       ${idx.length || k.isNew ? '' : `<button class="link-danger" id="kDel">${icon('trash')} Kunde löschen</button>`}`;
