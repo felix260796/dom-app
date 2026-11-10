@@ -232,8 +232,8 @@ window.Projekt = (() => {
     const k = Kunden.byId(w.kundeId);
     const nFotos = k ? await Bilder.anzahl(w.kundeId, w.objektId, w.id) : 0;
     if (state.wohnung !== w || state.project) return;
-    const zurueckLabel = state.tab === 'kunden' && state.kunde ? (state.objekt ? 'Objekt' : 'Kunde') : state.tab === 'rechnungen' ? 'Geld' : 'Aufträge';
-    header(w.customer || 'Neuer Auftrag', [w.nr && `Projekt-Nr. ${w.nr}`, w.address || (w.isNew ? 'Räume anlegen' : '')].filter(Boolean).join(' · '), { label: zurueckLabel, fn: leave });
+    const zurueckLabel = state.tab === 'kunden' && state.kunde ? (state.objekt ? 'Objekt' : 'Kunde') : state.tab === 'angebote' ? 'Angebote' : state.tab === 'rechnungen' ? 'Rechnungen' : 'Projekte';
+    header(w.customer || 'Neues Projekt', [w.nr && `Projekt-Nr. ${w.nr}`, w.address || (w.isNew ? 'Räume anlegen' : '')].filter(Boolean).join(' · '), { label: zurueckLabel, fn: leave });
     const anyResult = list.some(hasAnyResult);
     const withPhotos = list.filter((r) => r.photos.length);
     const nBilder = withPhotos.reduce((n, r) => n + viewCount(r) * r.selected.length, 0);

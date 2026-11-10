@@ -9,7 +9,7 @@ const EINST = [
   ['firma', 'Firma & Logo', 'home', 'navy', 'Firma', 'Name, Logo, Anschrift, Bank, Steuernummer auf Angebot und Rechnung'],
   ['kundenEinst', 'Kunden', 'user', 'navy', 'Bereiche', 'Kundenquellen, Geburtstage'],
   ['partnerEinst', 'Partner', 'wrench', 'brass', 'Bereiche', 'Qualitätseinstufung, Gewerke für Eingangsrechnungen'],
-  ['projektEinst', 'Aufträge', 'home', 'grey', 'Bereiche', 'Projektnummer, Gesprächsarten, Nachfassen im Kalender, Baufortschritt'],
+  ['projektEinst', 'Projekte', 'home', 'grey', 'Bereiche', 'Projektnummer, Gesprächsarten, Nachfassen im Kalender, Baufortschritt'],
   ['preisliste', 'Preisliste', 'euro', 'navy', 'Angebote', 'Jede Position: Lohn, Material, eigener Aufschlag, neue Positionen'],
   ['kalkulation', 'Aufschläge & Angebotstexte', 'euro', 'brass', 'Angebote', 'Aufschläge auf Lohn und Material, Wagnis, MwSt., Gültigkeit, Textfelder vor und nach den Positionen'],
   ['pakete', 'Pakete & Excel-Import', 'clipboard', 'grey', 'Angebote', 'Was in Basic, Standard, Premium gehört, Excel-Angebotstool laden'],
