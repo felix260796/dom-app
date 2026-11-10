@@ -13,7 +13,8 @@ window.Bilder = (() => {
     let d = await kvGet(listKey(kid, oid));
     if (Array.isArray(d)) d = { bilder: d };
     d = d || {};
-    d.ordner = Array.isArray(d.ordner) && d.ordner.length ? d.ordner : STANDARD.map(([id, name]) => ({ id, name }));
+    // Startet leer: nur eigene Ordner (früher vorgegebene Ordner bleiben nur, wenn Bilder darin liegen)
+    d.ordner = (Array.isArray(d.ordner) ? d.ordner : []).filter((o) => !STANDARD.some((s) => s[0] === o.id) || (d.bilder || []).some((b) => (b.ordner || b.phase) === o.id));
     for (const o of d.ordner) o.projektId ??= '';
     d.bilder = (d.bilder || []).map((b) => ({ ...b, ordner: b.ordner || b.phase || 'sonst', projektId: b.projektId || '' }));
     for (const b of d.bilder) if (!d.ordner.some((o) => o.id === b.ordner)) d.ordner.push({ id: b.ordner, name: (STANDARD.find((s) => s[0] === b.ordner) || [, 'Sonstiges'])[1] });
@@ -72,16 +73,16 @@ window.Bilder = (() => {
         <button class="fold" data-o="${o.id}">${deckel(l)}
           <b>${esc(o.name)}</b><span>${l.length} ${l.length === 1 ? 'Bild' : 'Bilder'}${l.length ? ' · ' + tag(l[0].t) : ''}</span>
         </button>`; }).join('')}
-        <button class="fold add" id="fNeu"><span class="f-cov"><span class="f-empty">${icon('plus')}</span></span><b>Neuer Ordner</b><span>z. B. Baufortschritt (10.11.2026)</span></button>
+        <button class="fold add" id="fNeu"><span class="f-cov"><span class="f-empty">${icon('plus')}</span></span><b>Neuer Ordner</b><span>Name frei wählbar</span></button>
       </div>
       ${rb.length ? `<details class="more card" style="margin-top:16px"><summary>${icon('sparkle')}<span>Aus den Räumen<small>${rb.length} Fotos und Visualisierungen</small></span>${icon('chevron', 'more-chev')}</summary>
         <div class="ggrid" style="margin-top:8px">${rb.map((x, i) => `<button class="gb" data-rb="${i}"><img src="${x.data}" alt="" loading="lazy"></button>`).join('')}</div></details>` : ''}`;
     $$('[data-o]').forEach((b) => (b.onclick = () => { ordnerView(ctx, b.dataset.o); window.scrollTo(0, 0); }));
     $('#fNeu').onclick = async () => {
       const heute = new Date().toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' });
-      const v = await sheet('Neuer Ordner', ['Bestand', 'Baufortschritt', 'Abnahme', 'Mängel'].map((n) => ({ label: `${n} (${heute})`, sub: 'Vorschlag mit heutigem Datum', icon: icon('image'), value: `${n} (${heute})` })), { text: 'Eigener Name, z. B. Estrich (12.11.2026)' });
-      if (!v) return;
-      const nm = typeof v === 'string' ? v : v.text;
+      const v = await sheet('Neuer Ordner', [], { text: `Name, z. B. Besichtigung (${heute})` });
+      if (!v?.text?.trim()) return;
+      const nm = v.text.trim();
       const dd = await laden(kid, oid);
       const o = { id: uid(), name: nm, projektId: pid && pid !== OHNE ? pid : '' }; // eigene Ordner gehören zum Projekt
       dd.ordner.push(o); await speichern(kid, oid, dd);
@@ -96,7 +97,7 @@ window.Bilder = (() => {
     const kacheln = [...pr.map((p) => ({ id: p.id, name: p.name, nr: p.nr })), { id: OHNE, name: 'Ohne Projekt', nr: '', frei: true }];
     main().innerHTML = `
       <div class="sec-h"><h2>Projekte</h2><span class="count">${kacheln.length}</span></div>
-      <p class="hint" style="margin-top:-4px">Die Bilder liegen beim jeweiligen Projekt, darin die Ordner Bestand, Baufortschritt, Abnahme und deine eigenen.</p>
+      <p class="hint" style="margin-top:-4px">Die Bilder liegen beim jeweiligen Projekt, darin deine eigenen Ordner.</p>
       <div class="fgrid">${kacheln.map((p) => { const l = d.bilder.filter((b) => passt(b, p.id)).sort((a, b) => b.t - a.t); return `
         <button class="fold ${p.frei && !l.length ? 'add' : ''}" data-pp="${p.id}">${p.frei && !l.length ? `<span class="f-cov"><span class="f-empty">${icon('plus')}</span></span>` : deckel(l)}
           <b>${esc(p.frei && !l.length ? 'Bilder ohne Projekt' : p.name)}</b><span>${p.frei && !l.length ? 'z. B. Besichtigung, Schäden, Zähler' : `${l.length} ${l.length === 1 ? 'Bild' : 'Bilder'}${p.nr ? ' · ' + esc(p.nr) : ''}`}</span>
@@ -160,7 +161,7 @@ window.Bilder = (() => {
       const dd = await laden(kid, oid); dd.ordner.find((x) => x.id === o.id).name = v.text; await speichern(kid, oid, dd); again();
     };
     if ($('#fDel')) $('#fDel').onclick = async () => {
-      if (!confirm(`Ordner „${o.name}“ löschen?`)) return;
+      if (!loeschFrage(`Ordner „${o.name}“ löschen?`)) return;
       const dd = await laden(kid, oid); dd.ordner = dd.ordner.filter((x) => x.id !== o.id); await speichern(kid, oid, dd); zurueck();
     };
   }
@@ -200,7 +201,7 @@ window.Bilder = (() => {
         $('#gvOrd', el).onchange = (e) => { own.ordner = e.target.value; upd(own.id, (b) => (b.ordner = own.ordner)); toast('In anderen Ordner verschoben'); };
         if ($('#gvPr', el)) $('#gvPr', el).onchange = (e) => { own.projektId = e.target.value; upd(own.id, (b) => (b.projektId = own.projektId)); };
         $('[data-del]', el).onclick = async () => {
-          if (!confirm('Dieses Bild löschen?')) return;
+          if (!loeschFrage('Dieses Bild löschen?')) return;
           const d = await laden(ctx.kundeId, ctx.objektId);
           d.bilder = d.bilder.filter((y) => y.id !== own.id); await speichern(ctx.kundeId, ctx.objektId, d);
           await kvDel('bild:' + own.id);
@@ -223,5 +224,16 @@ window.Bilder = (() => {
     show();
   }
 
-  return { view, anzahl };
+  /** Ein fertiges Bild in einen Ordner legen (Ordner wird angelegt, wenn es ihn noch nicht gibt). Für die Kamera oben. */
+  async function ablegen(kid, oid, data, ordnerName, projektId = '') {
+    const dd = await laden(kid, oid);
+    let o = dd.ordner.find((x) => x.name === ordnerName && (x.projektId || '') === projektId);
+    if (!o) { o = { id: uid(), name: ordnerName, projektId }; dd.ordner.push(o); }
+    const id = uid();
+    await kvSet('bild:' + id, data);
+    dd.bilder.push({ id, t: Date.now(), ordner: o.id, projektId, text: '', thumb: await resize(data, 320, 'image/jpeg', 0.7) });
+    await speichern(kid, oid, dd);
+    return o;
+  }
+  return { view, anzahl, ablegen };
 })();

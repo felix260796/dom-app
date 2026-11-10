@@ -66,6 +66,13 @@ const VORGABEN = {
     ]],
     ['Kalender und Geburtstage', [
       { k: 'kalKW', l: 'Kalenderwoche (KW) im Kalender links anzeigen', t: 'janein', d: 'ja' },
+      { k: 'gespraechArten', l: 'Arten der Gesprächsaufnahme (eine Zeile je Art)', t: 'liste', d: ['Vor-Ort-Besichtigung', 'Abnahmegespräch', 'Krisengespräch', 'Baubesprechung'] },
+      { k: 'terminVorlagen', l: 'Termin-Vorlagen (eine Zeile je Vorlage: Titel | Art | Notiz)', t: 'liste', d: [
+        'Erstgespräch | kunde | Wünsche und Budget klären, Fotos machen, Termin für Vor-Ort-Besichtigung vereinbaren',
+        'Vor-Ort-Termin | kunde | Gespräch aufnehmen, alle Räume fotografieren, Maße nehmen, Anschriften prüfen',
+        'Bauabnahme | baustelle | Abnahmeprotokoll mit Unterschrift, Mängel mit Frist festhalten, Fotos machen',
+        'Begehung | baustelle | Baufortschritt prüfen, Fotos machen, offene Punkte mit Subunternehmer klären',
+      ], h: 'Art: kunde, baustelle, buero oder privat. Die Vorlagen stehen beim neuen Termin klein unter dem Titel.' },
       { k: 'gebArtStandard', l: 'Geburtstag: Standard für Kontakte, bei denen nichts gewählt ist', t: 'wahl', o: [['gratulieren', 'Nur gratulieren'], ['geschenk', 'Mit Geschenk']], d: 'gratulieren', h: 'Beim einzelnen Kunden oder Subunternehmer kannst du es jederzeit umstellen.' },
       { k: 'gebGeschenkTage', l: '„Geschenk besorgen“ so viele Tage vorher', t: 'zahl', d: 14 },
       { k: 'gebPruefTage', l: '„Geschenk wirklich besorgt?“ so viele Tage vorher', t: 'zahl', d: 3 },
@@ -362,7 +369,7 @@ window.Vorgaben = (() => {
       await kvSet('preisliste', PL); toast('Gespeichert'); preisliste(filter);
     };
     if ($('#poDel')) $('#poDel').onclick = async () => {
-      if (!confirm(`Position ${p.nr} löschen? Bestehende Angebote mit dieser Position verlieren die Zeile.`)) return;
+      if (!loeschFrage(`Position ${p.nr} löschen? Bestehende Angebote mit dieser Position verlieren die Zeile.`)) return;
       PL.positionen = PL.positionen.filter((y) => y.nr !== p.nr); await kvSet('preisliste', PL); preisliste(filter);
     };
     window.scrollTo(0, 0);

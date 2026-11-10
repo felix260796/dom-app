@@ -38,6 +38,18 @@ window.Kontakt = (() => {
       inp.classList.remove('bad'); inp.value = de(v); set(v);
     });
   }
+  // ---------- Telefon mit Ländervorwahl (Standard +49) ----------
+  const VORWAHLEN = [['+49', 'DE +49'], ['+43', 'AT +43'], ['+41', 'CH +41'], ['+39', 'IT +39'], ['+33', 'FR +33'], ['+31', 'NL +31'], ['+32', 'BE +32'], ['+48', 'PL +48'], ['+420', 'CZ +420'], ['+36', 'HU +36'], ['+40', 'RO +40'], ['+385', 'HR +385'], ['+381', 'RS +381'], ['+387', 'BA +387'], ['+90', 'TR +90'], ['+30', 'GR +30'], ['+34', 'ES +34'], ['+44', 'GB +44']];
+  /** Gespeicherte Nummer in Vorwahl und Rest teilen. Ohne + gilt +49 (alte Einträge wie „0711 …“ bleiben, wie sie sind). */
+  const telTeilen = (s) => { const t = String(s || '').trim(); const v = VORWAHLEN.map((x) => x[0]).sort((a, b) => b.length - a.length).find((x) => t.startsWith(x)); return v ? [v, t.slice(v.length).trim()] : ['+49', t]; };
+  const telInput = (id, wert) => { const [v, r] = telTeilen(wert); return `<div class="tel-in" id="${id}"><select data-tv aria-label="Ländervorwahl">${VORWAHLEN.map(([x, l]) => `<option value="${x}" ${x === v ? 'selected' : ''}>${l}</option>`).join('')}</select><input type="tel" data-tn value="${esc(r)}" autocomplete="off" placeholder="711 123456"></div>`; };
+  /** Ergebnis z. B. „+49 711 123456“; die führende 0 fällt weg. Leeres Feld = leer. */
+  function telBinden(el, set) {
+    if (!el) return;
+    const lesen = () => { const n = $('[data-tn]', el).value.trim().replace(/^0+/, ''); return n ? `${$('[data-tv]', el).value} ${n}` : ''; };
+    $('[data-tn]', el).oninput = () => set(lesen());
+    $('[data-tv]', el).onchange = () => set(lesen());
+  }
   const datumInput = (id, iso, ph = 'TT.MM.JJJJ') => `<input type="text" id="${id}" data-iso="${esc(iso || '')}" inputmode="numeric" autocomplete="off" placeholder="${ph}" maxlength="10">`;
 
   /** Tage bis zum nächsten Jahrestag (0 = heute) oder null. */
@@ -118,5 +130,5 @@ window.Kontakt = (() => {
   /** Auswahl „Nur gratulieren“ / „Mit Geschenk“ für einen Geburtstag. Leer = Standard aus den Einstellungen. */
   const gebArt = (v) => v || vorgabe('gebArtStandard') || 'gratulieren';
   const gebArtSelect = (v, id = '') => `<select data-gebart ${id ? `id="${id}"` : ''}>${[['gratulieren', 'Nur gratulieren'], ['geschenk', 'Mit Geschenk (Erinnerung vorher)']].map(([x, n]) => `<option value="${x}" ${gebArt(v) === x ? 'selected' : ''}>${esc(n)}</option>`).join('')}</select>`;
-  return { gebArt, gebArtSelect, de, lesen, datumFeld, datumInput, bisTag, alter, tageText, norm, weitereHtml, weitereBinden, aktionen, telLink, mapLink };
+  return { telInput, telBinden, gebArt, gebArtSelect, de, lesen, datumFeld, datumInput, bisTag, alter, tageText, norm, weitereHtml, weitereBinden, aktionen, telLink, mapLink };
 })();

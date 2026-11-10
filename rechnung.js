@@ -117,10 +117,18 @@ window.Rechnung = (() => {
   // ---------- Nachtrag ----------
   async function nachtrag(w, n, fertig) {
     const neu = !n;
-    n = n ? { ...n } : { id: uid(), text: '', menge: 1, einheit: 'pauschal', ep: 0, lohn: true, datum: heute() };
+    n = n ? { ...n } : { id: uid(), text: '', menge: 1, einheit: 'pauschal', ep: 0, lohn: true, datum: heute(), stunden: '', beschreibung: '' };
+    let foto = n.foto ? await kvGet('ntfoto:' + n.id) : null;
     header(neu ? 'Nachtrag' : 'Nachtrag bearbeiten', w.titel || '', { label: 'Zurück', fn: fertig });
-    main().innerHTML = `<div class="card kform">
+    main().innerHTML = `<div class="card">
+        ${foto ? `<img src="${foto}" alt="" style="width:100%;border-radius:12px;margin-bottom:8px">` : ''}
+        <div class="row"><button class="btn secondary" id="nFoto">${icon('camera')} ${foto ? 'Anderes Foto' : 'Foto vom Nachtrag'}</button>${foto ? `<button class="btn secondary" id="nFotoWeg">${icon('x')} Foto entfernen</button>` : ''}</div>
+        <p class="hint" style="margin:8px 0 0">${state.settings.apiKey ? 'Z. B. der Zettel vom Subunternehmer. Die KI liest Leistung, Stunden und Betrag aus, du prüfst nur noch.' : 'Z. B. der Zettel vom Subunternehmer.'}</p>
+      </div>
+      <div class="card kform">
         <label style="margin-top:0">Leistung</label><textarea id="nText" placeholder="z. B. Zusätzliche Steckdose im Bad, Leitungen erneuert">${esc(n.text)}</textarea>
+        <label>Beschreibung (für das PDF, optional)</label><textarea id="nBeschr" placeholder="z. B. Auf Wunsch des Kunden wurde …">${esc(n.beschreibung || '')}</textarea>
+        <label>Stunden (optional)</label><input type="text" inputmode="decimal" id="nStd" value="${esc(String(n.stunden || '').replace('.', ','))}" placeholder="z. B. 3,5">
         <div class="row"><div><label>Menge</label><input type="text" inputmode="decimal" id="nMenge" value="${esc(String(n.menge).replace('.', ','))}"></div>
           <div><label>Einheit</label><select id="nEinh">${['pauschal', 'Stück', 'm²', 'lfm', 'Std.'].map((e) => `<option ${e === n.einheit ? 'selected' : ''}>${e}</option>`).join('')}</select></div></div>
         <div class="row"><div><label>Einzelpreis netto</label><input type="text" inputmode="decimal" id="nEp" value="${n.ep ? String(n.ep).replace('.', ',') : ''}" placeholder="0,00"></div>
@@ -129,18 +137,86 @@ window.Rechnung = (() => {
         <p class="hint" id="nSum" style="margin:6px 0 0"></p>
       </div>
       <button class="btn big block" id="nSave">${icon('check')} Speichern</button>
+      <button class="btn secondary block" id="nPdf" style="margin-top:10px">${icon('file')} Nachtrag als PDF (mit Logo)</button>
       ${neu ? '' : `<button class="link-danger" id="nDel">${icon('trash')} Nachtrag löschen</button>`}`;
-    const lesen = () => { n.text = $('#nText').value.trim(); n.menge = num($('#nMenge').value) || 1; n.einheit = $('#nEinh').value; n.ep = r2(num($('#nEp').value)); n.datum = $('#nDatum').value; n.lohn = $('#nLohn').checked; };
+    const lesen = () => { n.text = $('#nText').value.trim(); n.beschreibung = $('#nBeschr').value.trim(); n.stunden = num($('#nStd').value) || ''; n.menge = num($('#nMenge').value) || 1; n.einheit = $('#nEinh').value; n.ep = r2(num($('#nEp').value)); n.datum = $('#nDatum').value; n.lohn = $('#nLohn').checked; };
+    const sichern = async () => {
+      if (foto) { await kvSet('ntfoto:' + n.id, foto); n.foto = true; } else { if (n.foto) await kvDel('ntfoto:' + n.id); delete n.foto; }
+      w.nachtraege = (w.nachtraege || []).filter((x) => x.id !== n.id).concat(n);
+      await Projekt.save(w);
+    };
+    $('#nFoto').onclick = async () => {
+      const [f] = await pickFiles({ camera: true, accept: 'image/*' }); if (!f) return;
+      lesen();
+      foto = await resize(await fileToDataUrl(f), 1800, 'image/jpeg', 0.85);
+      if (state.settings.apiKey) {
+        toast('KI liest den Nachtrag …', 15000);
+        try {
+          const j = JSON.parse(await geminiText([{ text: 'Das ist ein Nachtrag bzw. eine Zusatzleistung auf einer Baustelle (z. B. Zettel vom Subunternehmer). Lies aus: leistung (kurz), beschreibung (1–3 Sätze), stunden (Zahl oder 0), betrag (netto in Euro, Zahl oder 0). Deutsch.' }, { inline_data: { mime_type: 'image/jpeg', data: foto.split(',')[1] } }], true,
+            { responseSchema: { type: 'OBJECT', properties: { leistung: { type: 'STRING' }, beschreibung: { type: 'STRING' }, stunden: { type: 'NUMBER' }, betrag: { type: 'NUMBER' } } } }));
+          if (j.leistung && !n.text) n.text = j.leistung;
+          if (j.beschreibung && !n.beschreibung) n.beschreibung = j.beschreibung;
+          if (j.stunden > 0 && !n.stunden) n.stunden = j.stunden;
+          if (j.betrag > 0 && !n.ep) { n.ep = r2(j.betrag); n.menge = 1; n.einheit = 'pauschal'; }
+          toast('Ausgelesen, bitte prüfen', 3000);
+        } catch (e) { toast('Konnte nicht ausgelesen werden: ' + e.message, 4000); }
+      }
+      await sichern(); nachtrag(w, n, fertig);
+    };
+    if ($('#nFotoWeg')) $('#nFotoWeg').onclick = async () => { if (!loeschFrage('Foto vom Nachtrag entfernen?')) return; lesen(); foto = null; await sichern(); nachtrag(w, n, fertig); };
+    $('#nPdf').onclick = async () => {
+      lesen();
+      if (!n.text) return toast('Bitte zuerst die Leistung eintragen.');
+      await sichern();
+      try { await nachtragPdf(w, n, foto); } catch (e) { toast('PDF-Fehler: ' + e.message, 5000); }
+    };
     const summe = () => { lesen(); $('#nSum').textContent = `Summe ${eur(r2(n.menge * n.ep))} netto. Kommt mit der Schlussrechnung zum Kunden.`; };
     $('#nMenge').oninput = summe; $('#nEp').oninput = summe; summe();
     $('#nSave').onclick = async () => {
       lesen();
       if (!n.text || !n.ep) return toast('Bitte Leistung und Preis eintragen.');
-      w.nachtraege = (w.nachtraege || []).filter((x) => x.id !== n.id).concat(n);
-      await Projekt.save(w); toast('Nachtrag gespeichert'); fertig();
+      await sichern(); toast('Nachtrag gespeichert'); fertig();
     };
-    if ($('#nDel')) $('#nDel').onclick = async () => { if (!confirm('Nachtrag löschen?')) return; w.nachtraege = w.nachtraege.filter((x) => x.id !== n.id); await Projekt.save(w); fertig(); };
+    if ($('#nDel')) $('#nDel').onclick = async () => { if (!loeschFrage('Nachtrag löschen?')) return; w.nachtraege = w.nachtraege.filter((x) => x.id !== n.id); await Projekt.save(w); fertig(); };
     window.scrollTo(0, 0);
+  }
+
+  /** Nachtrag als eigenes, sauberes PDF: Logo, Kunde, Bauvorhaben, Leistung, Beschreibung, Stunden, Betrag, Unterschrift. */
+  async function nachtragPdf(w, n, foto) {
+    const PL = await window.Angebot._intern.preisliste();
+    const E = PL.einstellungen;
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF({ unit: 'mm', format: 'a4' });
+    const M = 20, R = 192, NAVY = [30, 53, 80];
+    const t = (s, x, y, o) => doc.text(Array.isArray(s) ? s : String(s ?? ''), x, y, o);
+    const logo = state.settings.logo;
+    if (logo) await addFit(doc, logo, R - 55, 10, 55, 22, mimeOf(logo) === 'image/png' ? 'PNG' : 'JPEG');
+    else { doc.setFont('helvetica', 'bold'); doc.setFontSize(14); doc.setTextColor(...NAVY); t(E.firma, R, 20, { align: 'right' }); }
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(7.5); doc.setTextColor(120); t([E.firma, E.strasse, E.ort].filter(Boolean).join(' · '), M, 47);
+    const kd = Kunden.byId(w.kundeId);
+    doc.setFontSize(10.5); doc.setTextColor(30);
+    (kd ? Kunden.postanschrift(kd) : [w.customer]).filter(Boolean).forEach((l, i) => t(l, M, 55 + i * 5));
+    doc.setFontSize(9); let my = 55;
+    for (const [k, v] of [['Datum', tag(n.datum || heute())], ...(w.nr ? [['Projekt-Nr.', w.nr]] : []), ...(kd?.nr ? [['Kunden-Nr.', kd.nr]] : [])]) { doc.setTextColor(120); t(k, 128, my); doc.setTextColor(30); t(String(v), 160, my); my += 4.6; }
+    let y = 92;
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(14); doc.setTextColor(...NAVY); t('Nachtrag', M, y); y += 7;
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(9.5); doc.setTextColor(110); if (w.address) { t('Bauvorhaben: ' + w.address, M, y); y += 8; }
+    doc.setTextColor(30); doc.setFontSize(11); doc.setFont('helvetica', 'bold');
+    const lt = doc.splitTextToSize(n.text, R - M); t(lt, M, y); y += 5.5 * lt.length + 2;
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(10);
+    if (n.beschreibung) { const b = doc.splitTextToSize(n.beschreibung, R - M); t(b, M, y); y += 5 * b.length + 4; }
+    const gp = r2(n.menge * n.ep), satz = E.mwst ?? 0.19;
+    const zeilen = [...(n.stunden ? [['Stunden', `${String(n.stunden).replace('.', ',')} Std.`]] : []), ['Menge', `${String(n.menge).replace('.', ',')} ${n.einheit}`], ['Einzelpreis netto', eur(n.ep)], ['Betrag netto', eur(gp)], [`zzgl. ${Math.round(satz * 100)} % MwSt.`, eur(r2(gp * satz))], ['Betrag brutto', eur(r2(gp * (1 + satz)))]];
+    doc.setDrawColor(220); doc.line(M, y, R, y); y += 6;
+    for (const [k, v] of zeilen) { const fett = k === 'Betrag brutto'; doc.setFont('helvetica', fett ? 'bold' : 'normal'); t(k, M, y); t(v, R, y, { align: 'right' }); y += 6; }
+    y += 4;
+    if (foto && y < 200) { try { await addFit(doc, foto, M, y, R - M, 270 - y - 30, 'JPEG'); y = 240; } catch {} }
+    doc.setFontSize(9); doc.setTextColor(90);
+    t('Der Nachtrag wird mit der Schlussrechnung abgerechnet. Mit Ihrer Unterschrift beauftragen Sie diese Zusatzleistung.', M, 262);
+    doc.setDrawColor(150); doc.line(M, 280, M + 70, 280); doc.line(R - 70, 280, R, 280);
+    t('Ort, Datum', M, 284); t('Unterschrift Auftraggeber', R - 70, 284);
+    const name = `Nachtrag_${(w.customer || 'Kunde').replace(/[^\wäöüÄÖÜß-]+/g, '_')}_${(n.datum || heute())}.pdf`;
+    await window.Mappe.teilen(doc, name);
   }
 
   // ---------- Rechnung erstellen ----------
@@ -242,7 +318,7 @@ window.Rechnung = (() => {
       await speichern(r); detail(r, fertig);
     };
     $('#rDel').onclick = async () => {
-      if (!confirm(`Rechnung ${r.nr} löschen? Die Nummer wird nicht neu vergeben.`)) return;
+      if (!loeschFrage(`Rechnung ${r.nr} löschen? Die Nummer wird nicht neu vergeben.`)) return;
       alle.delete(r.id); await kvDel('rechnung:' + r.id); fertig();
     };
     window.scrollTo(0, 0);

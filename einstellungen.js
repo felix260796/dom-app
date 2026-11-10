@@ -187,7 +187,7 @@ async function einstellungSeite(k) {
       $$('[data-tp]').forEach((c) => {
         const p = S.team[+c.dataset.tp];
         $$('[data-tf]', c).forEach((inp) => (inp.oninput = () => { p[inp.dataset.tf] = inp.value.trim(); save(); }));
-        if ($('[data-tdel]', c)) $('[data-tdel]', c).onclick = async () => { if (!confirm(`${p.name || 'Person'} entfernen?`)) return; S.team.splice(+c.dataset.tp, 1); await saveSettings(); render(); };
+        if ($('[data-tdel]', c)) $('[data-tdel]', c).onclick = async () => { if (!loeschFrage(`${p.name || 'Person'} entfernen?`)) return; S.team.splice(+c.dataset.tp, 1); await saveSettings(); render(); };
       });
       $('#tpAdd').onclick = async () => { S.team.push({ id: uid(), name: '', email: '' }); await saveSettings(); render(); $$('[data-tf="name"]').pop()?.focus(); };
     };

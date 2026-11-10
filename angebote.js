@@ -5,11 +5,12 @@
  * Baut auf app.js, projekt.js, kunden.js, angebot.js und schnell.js auf. */
 window.Angebote = (() => {
   const GRUPPEN = [
-    ['offen', 'Offen', ['besichtigung', 'entwurf', 'angebot']],
+    ['arbeit', 'In Arbeit', ['besichtigung', 'entwurf']],
+    ['verschickt', 'Verschickt', ['angebot']],
     ['zugesagt', 'Zugesagt', ['geplant', '', 'fertig', 'rechnung', 'bezahlt']],
     ['abgesagt', 'Abgesagt', ['abgesagt']],
   ];
-  let gruppe = 'offen';
+  let gruppe = 'arbeit', suche = '';
   const eur = (x) => x.toLocaleString('de-DE', { maximumFractionDigits: 0 }) + ' €';
   const gruppeVon = (st) => GRUPPEN.find((g) => g[2].includes(Projekt.norm(st)))[0];
 
@@ -32,13 +33,17 @@ window.Angebote = (() => {
     const alle = await projectIndex();
     try { await window.Angebot._intern.preisliste(); } catch {}
     const reihe = Projekt.ALLE.map((s) => s[0]);
-    const liste = alle.filter((x) => gruppeVon(x.status) === gruppe)
+    const q = suche.trim().toLowerCase();
+    const hay = (x) => { const k = Kunden.byId(x.kundeId); return `${x.nr || ''} ${x.titel || ''} ${x.customer || ''} ${x.address || ''} ${x.room || ''} ${k ? `${k.nr} ${k.telefon} ${k.email} ${k.privat}` : ''}`.toLowerCase(); };
+    const passt = (x) => !q || q.split(/\s+/).every((t) => hay(x).includes(t));
+    const liste = alle.filter((x) => gruppeVon(x.status) === gruppe && passt(x))
       .sort((a, b) => reihe.indexOf(Projekt.norm(a.status)) - reihe.indexOf(Projekt.norm(b.status)) || (b.updated || 0) - (a.updated || 0));
     const summen = await Promise.all(liste.map(summe));
     main().innerHTML = `
+      <label class="search big">${icon('search')}<input type="search" id="aq" value="${esc(suche)}" placeholder="Kunde, Adresse, Raum oder Nummer" autocomplete="off"></label>
       <button class="cta slim" id="aNeu"><span class="cta-ico">${icon('plus')}</span><span class="cta-t"><b>Neues Angebot</b></span>${icon('chevron', 'cta-chev')}</button>
       <button class="notice plain" id="aSchnell">${icon('euro')}<span><b>Schnellangebot</b> · grober Preis ohne Kunde, z. B. am Telefon</span>${icon('chevron')}</button>
-      ${alle.length ? `<div class="phasen drei">${GRUPPEN.map(([id, n]) => `<button data-ag="${id}" class="${gruppe === id ? 'on' : ''}"><b>${alle.filter((x) => gruppeVon(x.status) === id).length}</b><span>${n}</span></button>`).join('')}</div>` : ''}
+      ${alle.length ? `<div class="phasen">${GRUPPEN.map(([id, n]) => `<button data-ag="${id}" class="${gruppe === id ? 'on' : ''}"><b>${alle.filter((x) => gruppeVon(x.status) === id).length}</b><span>${n}</span></button>`).join('')}</div>` : ''}
       ${liste.length ? `<div class="plist">${liste.map((x, i) => `
         <button class="pcard" data-ang="${x.id}">
           ${x.thumb ? `<img src="${x.thumb}" alt="">` : `<span class="pc-ph">${icon('euro')}</span>`}
@@ -49,7 +54,8 @@ window.Angebote = (() => {
             <span class="ang-sum">${summen[i] ? eur(summen[i]) + ' brutto' : '<span class="muted">noch keine Positionen</span>'}</span></span>
           ${icon('chevron', 'pc-chev')}
         </button>`).join('')}</div>`
-        : `<div class="empty-state">${icon('euro')}<b>${{ offen: 'Keine offenen Angebote', zugesagt: 'Noch keine Zusage', abgesagt: 'Keine Absagen' }[gruppe]}</b><span>${gruppe === 'offen' ? 'Tippe auf „Neues Angebot“. Ein Angebot gehört immer zu einem Kunden und seinem Projekt.' : ''}</span></div>`}`;
+        : `<div class="empty-state">${icon('euro')}<b>${q ? 'Nichts gefunden' : { arbeit: 'Nichts in Arbeit', verschickt: 'Nichts verschickt', zugesagt: 'Noch keine Zusage', abgesagt: 'Keine Absagen' }[gruppe]}</b><span>${gruppe === 'arbeit' && !q ? 'Tippe auf „Neues Angebot“ und wähle den Kunden.' : ''}</span></div>`}`;
+    $('#aq').oninput = debounce((e) => { suche = e.target.value; view().then(() => { const i = $('#aq'); if (i) { i.focus(); i.setSelectionRange(i.value.length, i.value.length); } }); }, 250);
     $$('[data-ag]').forEach((b) => (b.onclick = () => { gruppe = b.dataset.ag; view(); }));
     $('#aSchnell').onclick = () => { Schnell.view(); window.scrollTo(0, 0); };
     $('#aNeu').onclick = () => neu(alle);
@@ -57,32 +63,15 @@ window.Angebote = (() => {
   }
 
   /** Neues Angebot: für ein Projekt in der Angebotsphase oder ein neues Projekt. */
-  async function neu(alle) {
-    const offen = alle.filter((x) => ['besichtigung', 'entwurf'].includes(Projekt.norm(x.status)));
-    const v = offen.length ? await sheet('Angebot für welches Projekt?', [
-      { label: 'Neues Projekt anlegen', sub: 'Kunde wählen, dann Räume aufnehmen', icon: icon('plus'), value: '__neu' },
-      ...offen.map((x) => ({ label: x.titel || x.room || 'Projekt', sub: [Kunden.name(Kunden.byId(x.kundeId)) || x.customer, Projekt.statusKurz(x.status)].filter(Boolean).join(' · '), icon: icon('home'), value: x.id })),
-    ]) : '__neu';
-    if (!v) return;
-    if (v === '__neu') return Projekt.neu();
-    oeffnen(v);
-  }
+  async function neu() { return Projekt.neu(); } // Kunde wählen, dann Objekt; Projekt entsteht erst mit der Zusage
 
-  /** Angebot eines Projekts öffnen: bei einem Raum direkt, sonst Raum wählen. Ohne Raum: das Projekt. */
+  /** Angebot öffnen: immer die Angebotsseite mit den 4 Schritten (Zurück führt wieder hierher). */
   async function oeffnen(id) {
     const w = await kvGet('wohnung:' + id);
     if (!w) return toast('Projekt nicht gefunden.');
     w.mappe ??= {};
     state.project = null; state.wohnung = w;
-    const raeume = (await Promise.all((w.rooms || []).map((rid) => Projekt.raum(rid)))).filter(Boolean);
-    if (!raeume.length) { Projekt.view(); window.scrollTo(0, 0); toast('Zuerst einen Raum aufnehmen, dann das Angebot erstellen.', 4000); return; }
-    let r = raeume[0];
-    if (raeume.length > 1) {
-      const rid = await sheet('Angebot für welchen Raum?', raeume.map((x) => ({ label: x.room || roomType(x.roomType).name, sub: x.angebot?.nr ? `Angebot Nr. ${x.angebot.nr}` : roomType(x.roomType).name, icon: roomIcon(x.roomType), value: x.id })));
-      if (!rid) { state.wohnung = null; return; }
-      r = raeume.find((x) => x.id === rid);
-    }
-    Projekt.raumAngebot(r, w);
+    Projekt.view(); window.scrollTo(0, 0);
   }
 
   return { view, oeffnen };

@@ -58,3 +58,9 @@ input.bad { border-color: var(--danger) !important; background: var(--danger-sof
 .kal-f { margin-top: 4px; padding-top: 6px; gap: 2px 10px; }
 .kal-f button { font-size: 11.5px; padding: 2px 0; }
 .kal-wer button[data-wer=""] { flex: .55; }
+
+/* ---------- Termin-Vorlagen (dezent) und Mail-Empfänger ---------- */
+.tvorl { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.tvorl button { border: 1px solid var(--line, #e3dfd6); background: none; border-radius: 999px; padding: 4px 10px; font: inherit; font-size: 12.5px; color: var(--muted); }
+.tempf .chk { display: flex; align-items: flex-start; gap: 8px; margin: 6px 0; }
+.tempf .chk small { display: block; color: var(--muted); font-size: 12.5px; }

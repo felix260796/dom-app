@@ -353,7 +353,9 @@ ${g.transcript}` }], true, { temperature: 0.2 });
 async function auswertenAudio(owner, blob, fromStore) {
   if (!fromStore) await audioStore(owner.id, blob); // Aufnahme sichern, damit sie bei einem Fehler nicht verloren ist
   const t = await transcribeAudio(blob, voiceStatus);
-  const join = (a) => [a?.trim(), t].filter(Boolean).join('\n\n--- weitere Aufnahme ---\n\n');
+  // Art des Gesprächs (Vor-Ort-Besichtigung, Abnahmegespräch …) als Überschrift über jeder Aufnahme
+  const ueber = `--- ${voice.art || 'Gespräch'} · ${new Date().toLocaleDateString('de-DE')} ---`;
+  const join = (a) => [a?.trim(), `${ueber}\n${t}`].filter(Boolean).join('\n\n');
   if (owner.projekt) {
     const w = await wohnungVon(owner.id);
     if (!w) throw new Error('Projekt nicht gefunden.');
@@ -460,6 +462,8 @@ window.Gespraech = {
       <div class="sec-h"><h2>Gespräch vor Ort</h2></div>
       <div class="card voice-p">
         <p class="hint" style="margin-top:0">Einmal starten und laufen lassen. Währenddessen Räume anlegen und fotografieren. Am Ende ordnet die KI alles den richtigen Räumen zu, auch wenn ihr über einen Raum mehrmals sprecht. Kunden vorher um Erlaubnis fragen.</p>
+        <label style="margin-top:0">Was für ein Gespräch?</label>
+        <select id="vArt">${[...new Set([...vorgabe('gespraechArten'), ...(voice.art ? [voice.art] : [])])].map((a) => `<option ${a === (voice.art || (window.Projekt?.zugesagt(w.status) ? '' : vorgabe('gespraechArten')[0])) ? 'selected' : ''}>${esc(a)}</option>`).join('')}<option value="__eigen">Eigene Bezeichnung …</option></select>
         ${recButtons(owner)}
         ${g.transcript ? `
           <div class="vp-list">${list.map((r) => `<div class="vp-r"><b>${esc(r.room || roomType(r.roomType).name)}</b><span>${g.zugeordnet?.includes(r.id) ? `${count(r.wishes)} Wünsche fürs Bild · ${count(r.otherNotes)} fürs Angebot` : 'noch nicht zugeordnet'}</span></div>`).join('')}</div>
@@ -475,6 +479,14 @@ window.Gespraech = {
     if (!$('#vrec')) return;
     const owner = { id: w.id, projekt: true }, g = w.gespraech || {};
     bindRecButtons(owner, [w.customer, w.address].filter(Boolean).join(' · ') || 'Projekt');
+    const art = $('#vArt');
+    if (art) {
+      voice.art = art.value === '__eigen' ? voice.art : art.value;
+      art.onchange = () => {
+        if (art.value === '__eigen') { const n = prompt('Wie heißt das Gespräch?', ''); if (n?.trim()) { voice.art = n.trim(); voiceRefresh(w.id); } else art.value = voice.art || art.options[0].value; return; }
+        voice.art = art.value;
+      };
+    }
     // Aufnahmen aus der älteren Version (je Raum gespeichert, Auswertung war fehlgeschlagen) fürs Projekt auswerten
     (async () => {
       if (pendingFor(w.id) || voice.rec) return;

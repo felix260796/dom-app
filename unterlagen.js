@@ -105,7 +105,7 @@ window.Unterlagen = (() => {
     $('#ufZeigen').onclick = async () => { const f = await datei(x); if (f) ansehen(f); };
     $('#ufTeilen').onclick = () => teilen(x);
     $('#ufDel').onclick = async () => {
-      if (!confirm(`„${x.name}“ löschen?`)) return;
+      if (!loeschFrage(`„${x.name}“ löschen?`)) return;
       await kvDel('fdatei:' + x.id); await kvDel('firmadok:' + x.id); alle.delete(x.id); view();
     };
   }
