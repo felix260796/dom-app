@@ -15,7 +15,7 @@ window.Partner = (() => {
     for (const f of ['firma', 'gewerk', 'inhaber', 'telefon', 'email', 'anschrift', 'web', 'konditionen', 'notiz']) p[f] = String(p[f] ?? '');
     p.art = ARTEN.some((a) => a[0] === p.art) ? p.art : 'sub';
     p.weitere = Kontakt.norm(p.weitere);
-    p.geburtstage = (Array.isArray(p.geburtstage) ? p.geburtstage : []).filter(Boolean).map((g) => ({ id: g.id || uid(), name: String(g.name ?? ''), bez: String(g.bez ?? ''), datum: String(g.datum ?? '') }));
+    p.geburtstage = (Array.isArray(p.geburtstage) ? p.geburtstage : []).filter(Boolean).map((g) => ({ id: g.id || uid(), name: String(g.name ?? ''), bez: String(g.bez ?? ''), datum: String(g.datum ?? ''), art: String(g.art ?? '') }));
     p.dokumente = (Array.isArray(p.dokumente) ? p.dokumente : []).filter(Boolean);
     return p;
   };
@@ -40,7 +40,7 @@ window.Partner = (() => {
   const initialen = (p) => (titel(p).split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0]).join('') || '?').toUpperCase();
   async function speichern(p) { delete p.isNew; p.updated = Date.now(); alle.set(p.id, p); await kvSet(key(p.id), p); }
   /** Für den Kalender: [{ datum, titel, sub, partnerId }] */
-  const geburtstage = () => liste().flatMap((p) => p.geburtstage.filter((g) => g.datum).map((g) => ({ datum: g.datum, titel: `Geburtstag ${g.name || 'ohne Namen'}`, sub: [g.bez, titel(p)].filter(Boolean).join(' · '), partnerId: p.id })));
+  const geburtstage = () => liste().flatMap((p) => p.geburtstage.filter((g) => g.datum).map((g) => ({ datum: g.datum, wer: g.name || 'ohne Namen', gebArt: g.art, titel: `Geburtstag ${g.name || 'ohne Namen'}`, sub: [g.bez, titel(p)].filter(Boolean).join(' · '), partnerId: p.id })));
 
   async function waehlen() {
     const v = await sheet('Welcher Subunternehmer?', liste().map((p) => ({ label: titel(p) || 'Ohne Namen', sub: [p.gewerk, p.inhaber].filter(Boolean).join(' · '), icon: `<span class="av sm">${esc(initialen(p))}</span>`, value: p.id })), { text: 'Neu, z. B. Fliesen Kaya GmbH' });
@@ -96,8 +96,8 @@ window.Partner = (() => {
         <label>Firma</label><input type="text" id="pFirma" value="${esc(p.firma)}" autocomplete="off" placeholder="z. B. Fliesen Kaya GmbH">
         <label>Gewerk bzw. Sortiment</label><input type="text" id="pGewerk" value="${esc(p.gewerk)}" autocomplete="off" placeholder="z. B. Fliesen, Sanitär, Elektro">
         <label>Inhaber bzw. Ansprechpartner</label><input type="text" id="pInhaber" value="${esc(p.inhaber)}" autocomplete="off" placeholder="z. B. Mehmet Kaya">
-        <div class="row"><div><label>Telefon</label><input type="tel" id="pTel" value="${esc(p.telefon)}" autocomplete="off" placeholder="0711 …"></div>
-          <div><label>E-Mail</label><input type="email" id="pMail" value="${esc(p.email)}" autocomplete="off" inputmode="email" placeholder="info@…"></div></div>
+        <label>Telefon</label><input type="tel" id="pTel" value="${esc(p.telefon)}" autocomplete="off" placeholder="0711 …">
+        <label>E-Mail</label><input type="email" id="pMail" value="${esc(p.email)}" autocomplete="off" inputmode="email" placeholder="info@…">
         <div id="pWeitere">${Kontakt.weitereHtml()}</div>
         <label>Anschrift</label><div class="adr"><input type="text" id="pAdr" value="${esc(p.anschrift)}" autocomplete="off" placeholder="Straße Nr., der Ort wird ergänzt"></div>
         <label>Webseite</label><input type="url" id="pWeb" value="${esc(p.web)}" autocomplete="off" inputmode="url" placeholder="www.…">
@@ -117,6 +117,7 @@ window.Partner = (() => {
         <button type="button" class="link-add" id="pGebAdd">${icon('cake')} Geburtstag hinzufügen</button>
         <label>Notizen</label><textarea id="pNotiz" placeholder="z. B. Sohn Emre spielt Fußball, mag Rotwein, zuverlässig bei Kleinaufträgen">${esc(p.notiz)}</textarea>
       </div>
+      ${p.isNew ? '' : '<div id="pBelege"></div>'}
       ${p.isNew ? '' : `<button class="link-danger" id="pDel">${icon('trash')} Löschen</button>`}`;
 
     const persist = debounce(() => speichern(p), 400);
@@ -135,6 +136,7 @@ window.Partner = (() => {
     Kontakt.weitereBinden($('#pWeitere'), p.weitere, () => { persist(); actions(); });
     Kunden.adressVorschlaege($('#pAdr'));
     if (p.isNew) setTimeout(() => $('#pFirma')?.focus(), 50);
+    if ($('#pBelege')) window.Finanzen?.partnerAbschnitt($('#pBelege'), p);
 
     // Geburtstage
     const gebRender = () => {
@@ -142,11 +144,13 @@ window.Partner = (() => {
         <input type="text" data-gf="name" value="${esc(g.name)}" placeholder="Name, z. B. Mehmet" autocomplete="off">
         <input type="text" data-gf="bez" value="${esc(g.bez)}" placeholder="z. B. Inhaber, Sohn" autocomplete="off">
         ${Kontakt.datumInput('g-' + g.id, g.datum)}
-        <button type="button" class="icon-btn" data-gdel aria-label="Entfernen">${icon('x')}</button></div>`).join('');
+        <button type="button" class="icon-btn" data-gdel aria-label="Entfernen">${icon('x')}</button>
+        ${Kontakt.gebArtSelect(g.art)}</div>`).join('');
       $$('[data-g]').forEach((row) => {
         const g = p.geburtstage.find((x) => x.id === row.dataset.g);
         $$('[data-gf]', row).forEach((inp) => (inp.oninput = () => { g[inp.dataset.gf] = inp.value; persist(); }));
         Kontakt.datumFeld($('#g-' + g.id), (v) => { g.datum = v; persist(); });
+        $('[data-gebart]', row).onchange = (e) => { g.art = e.target.value; persist(); };
         $('[data-gdel]', row).onclick = () => { p.geburtstage = p.geburtstage.filter((x) => x !== g); persist(); gebRender(); };
       });
     };

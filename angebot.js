@@ -35,14 +35,16 @@ const Angebot = (() => {
   }
   const pos = (nr) => PL.positionen.find((x) => x.nr === nr);
   /** Einheitspreis Kunde netto wie im Excel (Preisliste Spalte H). */
-  function ep(it) {
-    const S = PL.einstellungen, eigen = it.auf !== null && it.auf !== undefined;
-    return r2((it.lohn * (1 + (eigen ? it.auf : S.aufLohn)) + it.mat * (1 + S.aufMat)) * (1 + (eigen ? 0 : S.wagnis)));
+  // k = Nachkalkulation eines Angebots { aufLohn, aufMat, wagnis } (leer = Standard aus den Einstellungen)
+  const satz = (k, n) => (k && k[n] !== null && k[n] !== undefined && k[n] !== '' ? k[n] : PL.einstellungen[n]);
+  function ep(it, k) {
+    const eigen = it.auf !== null && it.auf !== undefined;
+    return r2((it.lohn * (1 + (eigen ? it.auf : satz(k, 'aufLohn'))) + it.mat * (1 + satz(k, 'aufMat'))) * (1 + (eigen ? 0 : satz(k, 'wagnis'))));
   }
   /** Lohnanteil je Einheit netto (Preisliste Spalte L, für § 35a EStG). */
-  function lohnEp(it) {
-    const S = PL.einstellungen, eigen = it.auf !== null && it.auf !== undefined;
-    return r2(it.lohn * (1 + (eigen ? it.auf : S.aufLohn)) * (1 + (eigen ? 0 : S.wagnis)));
+  function lohnEp(it, k) {
+    const eigen = it.auf !== null && it.auf !== undefined;
+    return r2(it.lohn * (1 + (eigen ? it.auf : satz(k, 'aufLohn'))) * (1 + (eigen ? 0 : satz(k, 'wagnis'))));
   }
 
   // Excel-Angebotstool einlesen (Blätter „Preisliste“ und „Einstellungen“)
@@ -202,9 +204,14 @@ const Angebot = (() => {
     return { positionen: out, fehler };
   }
 
-  function summen(positionen) {
+  /** Summen eines Angebots. k = Nachkalkulation; x.epFix = von Hand gesetzter Einzelpreis (Lohnanteil anteilig). */
+  function summen(positionen, k) {
     const S = PL.einstellungen;
-    const zeilen = positionen.map((x, i) => { const it = pos(x.nr); if (!it) return null; const e = ep(it); return { ...x, i, it, ep: e, gp: r2(x.menge * e), lohn: r2(x.menge * lohnEp(it)) }; }).filter(Boolean);
+    const zeilen = positionen.map((x, i) => {
+      const it = pos(x.nr); if (!it) return null;
+      const std = ep(it, k), e = x.epFix > 0 ? x.epFix : std, l = lohnEp(it, k) * (std ? e / std : 1);
+      return { ...x, i, it, ep: e, fix: x.epFix > 0, gp: r2(x.menge * e), lohn: r2(x.menge * l) };
+    }).filter(Boolean);
     const netto = r2(zeilen.reduce((s, z) => s + z.gp, 0));
     const mwst = r2(netto * S.mwst), brutto = r2(netto + mwst);
     return { zeilen, netto, mwst, brutto, lohnBrutto: r2(zeilen.reduce((s, z) => s + z.lohn, 0) * (1 + S.mwst)),
@@ -519,9 +526,9 @@ Gib Länge (längere Seite) und Breite der Grundfläche, Raumhöhe, Anzahl und G
   function angebotView(p) {
     const A = p.angebot, body = $('#aBody');
     // Vergleich aller Pakete (Preisrichtung für das Gespräch vor Ort)
-    const vergleich = pakete(p).map((pk) => ({ pk, s: summen(erzeuge(p, pk.id).positionen) }));
+    const vergleich = pakete(p).map((pk) => ({ pk, s: summen(erzeuge(p, pk.id).positionen, p.angebot.kalk) }));
     if (!A.positionen || !A.geaendert) { const g = erzeuge(p, A.paket); A.positionen = g.positionen; A.fehler = g.fehler; }
-    const S = summen(A.positionen), pk = pakete(p).find((x) => x.id === A.paket) || pakete(p)[0];
+    const S = summen(A.positionen, A.kalk), pk = pakete(p).find((x) => x.id === A.paket) || pakete(p)[0];
     const raeume = [...new Set(A.positionen.map((x) => x.raum))];
     const gewerke = [...new Set(PL.positionen.map((x) => x.gewerk))];
     body.innerHTML = `
@@ -544,13 +551,19 @@ Gib Länge (längere Seite) und Breite der Grundfläche, Raumhöhe, Anzahl und G
           const i = z.i;
           return `<div class="posrow"><div class="pt"><b>${esc(z.it.text)}</b><span class="muted">${esc(z.nr)}${z.bem ? ' · ' + esc(z.bem) : ''}</span></div>
             <div class="pm">${numIn(`data-menge="${i}"`, z.menge)}<span class="muted">${esc(z.it.einheit)}</span></div>
-            <div class="pg">${fmtEur(z.gp)}<span class="muted">${fmtEur(z.ep)}</span></div><button class="x" data-delpos="${i}" aria-label="Entfernen">✕</button></div>`;
+            <button class="pg" data-epfix="${i}" title="Einzelpreis ändern">${fmtEur(z.gp)}<span class="${z.fix ? 'fixp' : 'muted'}">${fmtEur(z.ep)}${z.fix ? ' fest' : ''}</span></button><button class="x" data-delpos="${i}" aria-label="Entfernen">✕</button></div>`;
         }).join('')}`).join('')}
         <h3>Position hinzufügen</h3>
         <select id="aNeu"><option value="">Position aus Preisliste wählen …</option>${gewerke.map((g) => `<optgroup label="${esc(g)}">${PL.positionen.filter((x) => x.gewerk === g).map((x) => `<option value="${esc(x.nr)}">${esc(x.nr)} ${esc(x.text)} (${esc(x.einheit)})</option>`).join('')}</optgroup>`).join('')}</select>
         <div class="row" style="margin-top:8px"><select id="aNeuRaum">${['', ...p.aufmass.raeume.map((r) => r.name)].map((r) => `<option value="${esc(r)}">${esc(r || 'Allgemein')}</option>`).join('')}</select>
           ${numIn('id="aNeuMenge"', '', 'Menge')}<button class="btn small" id="aAdd" style="flex:none">＋</button></div>
+        ${state.settings.apiKey && (p.wishes?.trim() || p.otherNotes?.trim()) ? `<button class="btn secondary block" id="aWunsch" style="margin-top:12px">${icon('sparkle')} Positionen aus den Kundenwünschen vorschlagen</button>` : ''}
         <button class="btn secondary block" id="aNeuBerechnen" style="margin-top:12px">↻ Neu berechnen aus Aufmaß</button>
+      </div>
+      <div class="card kform"><h2>Nachkalkulation dieses Angebots</h2>
+        <p class="muted">Leer lassen = Standard aus den Einstellungen. Einzelpreise änderst du, indem du auf den Preis einer Position tippst.</p>
+        <div class="row">${[['aufLohn', 'Lohn %'], ['aufMat', 'Material %'], ['wagnis', 'Wagnis %']].map(([n, l]) => `<div><label>${l}</label><input type="text" inputmode="decimal" data-nk="${n}" value="${A.kalk?.[n] !== undefined && A.kalk?.[n] !== null && A.kalk?.[n] !== '' ? String(Math.round(A.kalk[n] * 1000) / 10).replace('.', ',') : ''}" placeholder="${String(Math.round(PL.einstellungen[n] * 1000) / 10).replace('.', ',')}"></div>`).join('')}</div>
+        ${A.kalk && Object.values(A.kalk).some((v) => v !== null && v !== '') || A.positionen.some((x) => x.epFix > 0) ? '<button class="btn secondary block" id="nkReset" style="margin-top:10px">Alles auf Standard zurück</button>' : ''}
       </div>
       <div class="card"><h2>Summe</h2>
         <div class="tot"><span>Summe netto</span><b>${fmtEur(S.netto)}</b></div>
@@ -562,7 +575,8 @@ Gib Länge (längere Seite) und Breite der Grundfläche, Raumhöhe, Anzahl und G
       <div class="card">
         <label class="check"><input type="checkbox" id="aMitBz" ${A.mitBauzeit ? 'checked' : ''}>Bauzeitenplan anhängen</label>
         <label class="check"><input type="checkbox" id="aMitBild" ${A.mitBild ? 'checked' : ''} ${firstResult(p, A.paket) ? '' : 'disabled'}>Visualisierung „${esc(pk.name)}“ anhängen${firstResult(p, A.paket) ? '' : ' (noch nicht erstellt)'}</label>
-        <button class="btn block" id="aPdf" ${S.zeilen.length ? '' : 'disabled'}>Angebot als PDF</button>
+        <button class="btn block" id="aPdf" ${S.zeilen.length ? '' : 'disabled'}>Angebot senden (PDF)</button>
+        ${A.versionen?.length ? `<p class="muted" style="margin:8px 0 0">${A.versionen.map((v, i) => `${i ? `Änderung ${i}` : 'Erste Fassung'} vom ${fmtDate(new Date(v.t))}: ${fmtEur(v.brutto)}`).join('<br>')}</p>` : ''}
         <button class="btn secondary block" id="aExcel" style="margin-top:10px" ${S.zeilen.length ? '' : 'disabled'}>Positionen fürs Excel-Tool kopieren</button>
         <p class="muted">Kopiert Nr, Raum, Menge und Bemerkung. In Excel im Blatt „Eingabe“ ab Zelle B12 einfügen.</p>
       </div>`;
@@ -583,7 +597,23 @@ Gib Länge (längere Seite) und Breite der Grundfläche, Raumhöhe, Anzahl und G
       if (!(menge > 0)) return toast('Bitte eine Menge eintragen.');
       A.positionen.push({ nr, raum: $('#aNeuRaum').value, menge, bem: '' }); A.geaendert = true; re();
     };
+    if ($('#aWunsch')) $('#aWunsch').onclick = () => wunschVorschlaege(p, re).catch((e) => toast('Vorschläge gingen nicht: ' + e.message, 5000));
     $('#aNeuBerechnen').onclick = () => { if (A.geaendert && !confirm('Eigene Änderungen an den Positionen gehen verloren. Neu berechnen?')) return; A.positionen = null; A.geaendert = false; re(); };
+    $$('[data-nk]').forEach((el) => (el.onchange = () => {
+      const v = el.value.trim(); A.kalk ??= {};
+      if (v === '') delete A.kalk[el.dataset.nk]; else { const n = num(v); if (!Number.isFinite(n)) return toast('Bitte eine Zahl eintragen.'); A.kalk[el.dataset.nk] = n / 100; }
+      re();
+    }));
+    if ($('#nkReset')) $('#nkReset').onclick = () => { delete A.kalk; A.positionen.forEach((x) => delete x.epFix); re(); };
+    $$('[data-epfix]').forEach((b) => (b.onclick = async () => {
+      const x = A.positionen[+b.dataset.epfix], it = pos(x.nr);
+      const std = ep(it, A.kalk);
+      const v = await sheet(`Einzelpreis netto: ${it.text}`, [{ label: `Standard verwenden (${fmtEur(std)})`, value: '__std' }], { text: 'Eigener Preis in €', value: x.epFix ? String(x.epFix).replace('.', ',') : '' });
+      if (v === null) return;
+      if (v === '__std') delete x.epFix;
+      else { const n = num(v.text); if (!(n > 0)) return toast('Bitte einen Preis eintragen.'); x.epFix = r2(n); }
+      A.geaendert = true; re();
+    }));
     $('#aMitBz').onchange = (e) => { A.mitBauzeit = e.target.checked; persist(p); };
     $('#aMitBild').onchange = (e) => { A.mitBild = e.target.checked; persist(p); };
     $('#aPdf').onclick = () => teilePdf(p).catch((e) => toast('PDF-Fehler: ' + e.message, 5000));
@@ -642,9 +672,14 @@ Gib Länge (längere Seite) und Breite der Grundfläche, Raumhöhe, Anzahl und G
 
   // ---------- PDF ----------
   async function baueAngebotPdf(p) {
-    const A = p.angebot, E = PL.einstellungen, S = summen(A.positionen);
+    const A = p.angebot, E = PL.einstellungen, S = summen(A.positionen, A.kalk);
     const pk = pakete(p).find((x) => x.id === A.paket) || pakete(p)[0];
-    if (!A.nr) { A.nr = await naechsteNummer(); await saveProject(p); }
+    if (!A.nr) { A.nr = await naechsteNummer(); if (!p._gesamt) await saveProject(p); }
+    // Versionen (B8): jede geänderte Fassung bekommt „Änderung n“, damit man sieht, was der Kunde bekommen hat
+    const sig = JSON.stringify(A.positionen.map((x) => [x.nr, x.raum, x.menge]));
+    A.versionen ??= [];
+    if (A.versionen[A.versionen.length - 1]?.sig !== sig) { A.versionen.push({ t: Date.now(), brutto: S.brutto, sig }); if (!p._gesamt) await saveProject(p); }
+    const nrText = A.nr + (A.versionen.length > 1 ? ` (Änderung ${A.versionen.length - 1})` : '');
     const { jsPDF } = window.jspdf;
     const doc = new jsPDF({ unit: 'mm', format: 'a4' });
     const W = 210, H = 297, M = 20, R = W - 18;
@@ -672,7 +707,7 @@ Gib Länge (längere Seite) und Breite der Grundfläche, Raumhöhe, Anzahl und G
     const bauvorhaben = p.address && post && !adr.join(', ').toLowerCase().includes(Kunden.einzeilig(p.address).toLowerCase()) ? Kunden.einzeilig(p.address) : '';
     adr.forEach((l, i) => t(l, M, 55 + i * 5));
     doc.setFontSize(9);
-    const meta = [['Angebot Nr.', A.nr], ...(kd?.nr ? [['Kunden-Nr.', kd.nr]] : []), ...(p.projektNr ? [['Projekt-Nr.', p.projektNr]] : []), ['Datum', fmtDate(heute)], ['Gültig bis', fmtDate(gueltig)], ['Ansprechpartner', A.anspr || ansprechpartner()[0]], ['Telefon', E.telefon], ['E-Mail', E.email]];
+    const meta = [['Angebot Nr.', nrText], ...(kd?.nr ? [['Kunden-Nr.', kd.nr]] : []), ...(p.projektNr ? [['Projekt-Nr.', p.projektNr]] : []), ['Datum', fmtDate(heute)], ['Gültig bis', fmtDate(gueltig)], ['Ansprechpartner', A.anspr || ansprechpartner()[0]], ['Telefon', E.telefon], ['E-Mail', E.email]];
     let my = 52;
     for (const [k, v] of meta) { doc.setTextColor(120); t(k, 128, my); doc.setTextColor(30); const lines = doc.splitTextToSize(String(v), R - 158); t(lines, 158, my); my += 4.6 * lines.length; }
     y = Math.max(92, my + 8);
@@ -739,7 +774,7 @@ Gib Länge (längere Seite) und Breite der Grundfläche, Raumhöhe, Anzahl und G
     await platz(40);
     doc.setFont('helvetica', 'bold'); doc.setFontSize(10); doc.setTextColor(...NAVY); t('Auftragserteilung', M, y); y += 5;
     doc.setFont('helvetica', 'normal'); doc.setFontSize(9); doc.setTextColor(40);
-    t(doc.splitTextToSize(`${E.textAuftrag} (Angebot Nr. ${A.nr} vom ${fmtDate(heute)}, ${fmtEur(S.brutto)} brutto)`, R - M), M, y); y += 20;
+    t(doc.splitTextToSize(`${E.textAuftrag} (Angebot Nr. ${nrText} vom ${fmtDate(heute)}, ${fmtEur(S.brutto)} brutto)`, R - M), M, y); y += 20;
     doc.setDrawColor(120); doc.line(M, y, M + 60, y); doc.line(M + 80, y, R, y);
     doc.setFontSize(8); doc.setTextColor(120); t('Ort, Datum', M, y + 4); t('Unterschrift Auftraggeber', M + 80, y + 4);
 
@@ -799,6 +834,35 @@ Gib Länge (längere Seite) und Breite der Grundfläche, Raumhöhe, Anzahl und G
   }
   function isoKw(d) { const x = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate())); const day = x.getUTCDay() || 7; x.setUTCDate(x.getUTCDate() + 4 - day); const y0 = new Date(Date.UTC(x.getUTCFullYear(), 0, 1)); return Math.ceil(((x - y0) / 864e5 + 1) / 7); }
 
+  /** B3: Die KI schlägt aus den Kundenwünschen Positionen der Preisliste vor, die noch fehlen. Du hakst an, was rein soll. */
+  async function wunschVorschlaege(p, fertig) {
+    const A = p.angebot;
+    toast('KI sucht passende Positionen …', 20000);
+    const katalog = PL.positionen.map((x) => `${x.nr} | ${x.text} | ${x.einheit}`).join('\n');
+    const vorhanden = A.positionen.map((x) => x.nr).join(', ');
+    const raeume = p.aufmass.raeume.map((r) => r.name);
+    const txt = await geminiText([{ text: `Du kalkulierst ein Sanierungsangebot. Kundenwünsche:\n${p.wishes || ''}\n${p.otherNotes || ''}\n\nRäume im Aufmaß: ${raeume.join(', ') || 'keine'}\nSchon im Angebot: ${vorhanden || 'nichts'}\n\nPreisliste (nr | text | einheit):\n${katalog}\n\nSchlage nur Positionen aus der Preisliste vor, die für die Wünsche nötig sind und noch fehlen. Menge realistisch schätzen. grund = welcher Wunsch, kurz.` }], true, {
+      responseSchema: { type: 'ARRAY', items: { type: 'OBJECT', properties: { nr: { type: 'STRING' }, menge: { type: 'NUMBER' }, raum: { type: 'STRING' }, grund: { type: 'STRING' } }, required: ['nr', 'menge'] } } });
+    $('#toast').hidden = true;
+    const vor = (() => { try { const j = JSON.parse(txt); return Array.isArray(j) ? j : []; } catch { return []; } })().map((v) => ({ ...v, it: pos(v.nr) })).filter((v) => v.it && v.menge > 0);
+    if (!vor.length) return toast('Keine fehlenden Positionen gefunden.', 4000);
+    const bg = document.createElement('div');
+    bg.className = 'sheet-bg';
+    bg.innerHTML = `<div class="sheet" style="overflow:auto"><div class="sheet-h"><b>Vorschläge aus den Wünschen</b></div>
+      ${vor.map((v, i) => `<label class="check wv"><input type="checkbox" data-wv="${i}" checked><span><b>${esc(v.it.text)}</b><span class="muted">${fmtNum(v.menge, v.menge % 1 ? 1 : 0)} ${esc(v.it.einheit)}${v.grund ? ' · ' + esc(v.grund) : ''}</span></span></label>`).join('')}
+      <button class="btn block" data-ok style="margin-top:12px">Ausgewählte übernehmen</button><button class="btn secondary block" data-zu style="margin-top:8px">Abbrechen</button></div>`;
+    document.body.appendChild(bg);
+    requestAnimationFrame(() => bg.classList.add('on'));
+    const zu = () => bg.remove();
+    bg.onclick = (e) => { if (e.target === bg) zu(); };
+    $('[data-zu]', bg).onclick = zu;
+    $('[data-ok]', bg).onclick = () => {
+      const raumOk = (r) => (raeume.includes(r) ? r : raeume[0] || '');
+      for (const el of $$('[data-wv]', bg)) if (el.checked) { const v = vor[+el.dataset.wv]; A.positionen.push({ nr: v.nr, raum: v.it.gewerk === 'Allgemein' ? '' : raumOk(v.raum), menge: STUECK.test(v.it.einheit) ? Math.ceil(v.menge) : Math.round(v.menge * 10) / 10, bem: '' }); }
+      A.geaendert = true; zu(); fertig(); toast('Übernommen');
+    };
+  }
+  const mailText = (p) => vorgabeText('mailAngebot', { anrede: p.angebot.anrede || anredeDefault(p), nr: p.angebot.nr, firma: PL.einstellungen.firma || '' });
   async function teilePdf(p) {
     toast('Angebot wird erstellt …', 8000);
     const doc = await baueAngebotPdf(p);
@@ -807,9 +871,11 @@ Gib Länge (längere Seite) und Breite der Grundfläche, Raumhöhe, Anzahl und G
     const file = new File([blob], name, { type: 'application/pdf' });
     $('#toast').hidden = true;
     if ($('#aNr')) $('#aNr').value = p.angebot.nr;
-    if (navigator.canShare?.({ files: [file] })) { try { await navigator.share({ files: [file], title: name }); return; } catch (e) { if (e.name === 'AbortError') return; } }
+    const fertig = () => window.Projekt?.angebotVersendet?.(p.wohnungId);
+    if (navigator.canShare?.({ files: [file] })) { try { await navigator.share({ files: [file], title: name, text: mailText(p) }); return fertig(); } catch (e) { if (e.name === 'AbortError') return; } }
     const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name; a.click();
     setTimeout(() => URL.revokeObjectURL(a.href), 60000);
+    fertig();
   }
 
   // ---------- Einstellungen ----------
@@ -818,13 +884,13 @@ Gib Länge (längere Seite) und Breite der Grundfläche, Raumhöhe, Anzahl und G
     await preisliste();
     const E = PL.einstellungen, pct = (x) => Math.round(x * 100) + ' %';
     el.innerHTML = `<div class="card"><h2>Preisliste & Angebot</h2>
-      <p class="muted">Preise, Aufschläge und Texte kommen aus deinem <b>Excel-Angebotstool</b>. Lade die Datei hier hoch, wenn sich etwas ändert. Die Preise bleiben nur auf diesem Gerät.</p>
+      <p class="muted">Du kannst dein <b>Excel-Angebotstool</b> laden. Einzelne Preise, Aufschläge und Texte änderst du danach direkt in der App (Einstellungen › Preisliste und › Aufschläge & Angebotstexte).</p>
       <div class="tot"><span class="muted">Quelle</span><span>${esc(PL.quelle || '')}</span></div>
       <div class="tot"><span class="muted">Stand</span><span>${esc(PL.stand || '')}</span></div>
       <div class="tot"><span class="muted">Positionen</span><span>${PL.positionen.length}${PL.positionen.some((x) => x.status === 'geschätzt') ? ` (${PL.positionen.filter((x) => x.status === 'geschätzt').length} geschätzt)` : ''}</span></div>
       <div class="tot"><span class="muted">Aufschlag Lohn / Material / Wagnis</span><span>${pct(E.aufLohn)} / ${pct(E.aufMat)} / ${pct(E.wagnis)}</span></div>
       <div class="tot"><span class="muted">Firma</span><span style="text-align:right">${esc(E.firma)}<br>${esc(E.strasse)}, ${esc(E.ort)}</span></div>
-      ${/0000|Muster/.test(E.telefon + E.strasse) ? '<p class="muted">Adresse und Telefon sind noch Platzhalter. Im Excel-Blatt „Einstellungen“ ändern und neu laden.</p>' : ''}
+      ${/0000|Muster/.test(E.telefon + E.strasse) ? '<p class="muted">Adresse und Telefon sind noch Platzhalter. Unter Einstellungen › Firma & Logo ändern.</p>' : ''}
       <button class="btn block" id="plImport" style="margin-top:10px">Excel-Angebotstool laden</button>
       <div class="row" style="margin-top:10px"><button class="btn secondary" id="plVorl">Paket-Vorlagen</button><button class="btn danger" id="plReset">Standard</button></div>
     </div>`;
@@ -872,6 +938,6 @@ Gib Länge (längere Seite) und Breite der Grundfläche, Raumhöhe, Anzahl und G
     $('#vReset').onclick = async () => { if (!confirm('Alle Paket-Vorlagen zurücksetzen?')) return; await kvDel('angebotVorlagen'); VORL = null; vorlagenView(pkgId, grp); };
   }
 
-  return { projektKarte, ansicht, einstellungenKarte, _intern: { gruppe, materialliste, uebernimmSchaetzung, masse, rechne, erzeuge, summen, bauzeit, ep, lohnEp, preisliste, vorlagen, neuerRaum, baueAngebotPdf, importExcel } };
+  return { projektKarte, ansicht, einstellungenKarte, _intern: { gruppe, materialliste, uebernimmSchaetzung, masse, rechne, erzeuge, summen, bauzeit, ep, lohnEp, preisliste, vorlagen, neuerRaum, baueAngebotPdf, importExcel, naechsteNummer, mailText } };
 })();
 window.Angebot = Angebot;

@@ -1,18 +1,21 @@
 'use strict';
-/* DOM – Oberfläche: Kopfzeile, Navigation, Projektliste und Raum-Ansicht.
+/* DOM – Oberfläche: Kopfzeile, Navigation, Auswahlfenster, Projektliste und Start. Raum-Ansicht in raum.js.
  * Aufbau der App (bewusst flach):
  *   Projekte (Liste)  →  Projekt (Kunde, Räume, Unterlagen)  →  Raum (Fotos, Pakete, Ergebnis)
  * Ein Projekt hat einen oder mehrere Räume. Kundenmappe und Baumappe entstehen im Projekt.
  * Kern-Funktionen (Speicher, KI, Bilder) stehen in core.js. */
 
 // ---------- Symbole (einfache Linien-Icons) ----------
-const APP_VERSION = '49';
+const APP_VERSION = '68';
 const ICONS = {
   plus: '<path d="M12 5v14M5 12h14"/>',
   camera: '<path d="M3 8.5A2 2 0 0 1 5 6.5h2l1.6-2h6.8l1.6 2h2a2 2 0 0 1 2 2V18a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><circle cx="12" cy="13" r="3.6"/>',
   image: '<rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="10" r="1.7"/><path d="M21 16l-5-5L6 20"/>',
   sparkle: '<path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9z"/><path d="M19 15l.8 2.2L22 18l-2.2.8L19 21l-.8-2.2L16 18l2.2-.8z"/>',
   file: '<path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5M9 13h6M9 17h4"/>',
+  chart: '<path d="M4 20V11M10 20V5M16 20v-8M21 20H3"/>',
+  cloud: '<path d="M7 18a4.5 4.5 0 0 1-.6-9 6 6 0 0 1 11.4 1.5A3.8 3.8 0 0 1 17.5 18z"/>',
+  bell: '<path d="M6 16V11a6 6 0 0 1 12 0v5l1.5 2h-15z"/><path d="M10 20.5a2 2 0 0 0 4 0"/>',
   book: '<path d="M4 5a2 2 0 0 1 2-2h13v15H6a2 2 0 0 0-2 2z"/><path d="M4 20a2 2 0 0 0 2 2h13v-4M8 7h7"/>',
   clipboard: '<rect x="5" y="4" width="14" height="17" rx="2"/><path d="M9 4V3h6v1M9 10h6M9 14h6M9 18h3"/>',
   ruler: '<path d="M3 17L17 3l4 4L7 21z"/><path d="M7 13l2 2M10 10l2 2M13 7l2 2"/>',
@@ -90,22 +93,24 @@ new MutationObserver(() => {
 // Jeder Reiter merkt sich, wo man zuletzt war (Kunde, Projekt, Raum)
 const tabState = {};
 function switchTab(tab, restore) {
+  // Einstellungen sind kein Reiter unten: merken, woher man kam, damit „Zurück“ dorthin führt
+  if (tab === 'einstellungen' && state.tab !== 'einstellungen') window.__vorEinst = { tab: state.tab, s: { project: state.project, wohnung: state.wohnung, kunde: state.kunde, objekt: state.objekt, partner: state.partner } };
   if (state.tab !== tab || restore) {
     tabState[state.tab] = { project: state.project, wohnung: state.wohnung, kunde: state.kunde, objekt: state.objekt, partner: state.partner };
     const s = restore || tabState[tab] || {};
     state.project = s.project || null; state.wohnung = s.wohnung || null; state.kunde = s.kunde || null; state.objekt = s.objekt || null; state.partner = s.partner || null;
   }
-  state.tab = tab; state.kalender = false;
+  state.tab = tab; state.kalender = false; state.finanzen = false;
   $$('.tabbar button').forEach((b) => b.classList.toggle('active', b.dataset.tab === tab));
   window.scrollTo(0, 0);
   if (tab === 'einstellungen') state.editPkg = null;
-  ({ kunden: viewProjekt, partner: () => Partner.start(), projekt: viewProjekt, schnell: () => Schnell.view(), einstellungen: viewEinstellungen })[tab]();
+  ({ kunden: viewProjekt, partner: () => Partner.start(), projekt: viewProjekt, angebote: viewProjekt, rechnungen: () => Finanzen.view(), heute: () => Heute.view(), suche: () => Suche.view(), karte: () => Karte.view(), auswertung: () => Finanzen.auswertungView(), unterlagen: () => Unterlagen.view(), hilfe: () => Hilfe.view(), einstellungen: viewEinstellungen })[tab]();
 }
 /** Reiter wechseln und dort direkt etwas öffnen, z. B. openTab('kunden', { kunde }). */
 window.openTab = (tab, s) => switchTab(tab, s);
 $$('.tabbar button').forEach((b) => (b.onclick = () => {
   // Erneutes Tippen auf den aktiven Reiter führt zurück zur Liste
-  if (b.dataset.tab === state.tab && !state.kalender) { state.project = null; state.wohnung = null; state.kunde = null; state.objekt = null; state.partner = null; }
+  if (b.dataset.tab === state.tab && !state.kalender && !state.finanzen) { state.project = null; state.wohnung = null; state.kunde = null; state.objekt = null; state.partner = null; }
   switchTab(b.dataset.tab);
 }));
 
@@ -139,44 +144,36 @@ function objektZeile(x) {
   const k = Kunden.byId(x.kundeId), o = k && Kunden.objekt(k, x.objektId);
   return [o && o.name.trim(), x.address || (o && Kunden.einzeilig(o.adresse))].filter(Boolean).join(' · ');
 }
-let listFilter = '', listStatus = '', listKarte = false;
+let listFilter = '', listStatus = 'laufend';
 async function viewProjektListe() {
-  // Reiter: Angebote (versendet und abgesagt) · Eingeplant · Läuft · Fertig
-  const GR = [['angebot', 'Angebote', Projekt.ANGEBOT[0][2]], ['geplant', 'Eingeplant', Projekt.STATUS[0][2]], ['', 'Läuft', Projekt.STATUS[1][2]], ['fertig', 'Fertig', Projekt.STATUS[2][2]]];
-  header({ '': 'Laufende Projekte', angebot: 'Angebote', geplant: 'Eingeplante Projekte', fertig: 'Abgeschlossene Projekte' }[listStatus], state.settings.company || '');
+  // Nur zugesagte Projekte, vier Bereiche: Einzuplanen · Eingeplant · In Durchführung · Abgeschlossen (Projekt.PHASEN)
+  header('Projekte', state.settings.company || '');
   const alleP = await projectIndex();
-  const stOf = (x) => (Projekt.ALLE.some((s) => s[0] === x.status) ? x.status : '');
-  const grOf = (x) => (stOf(x) === 'abgesagt' ? 'angebot' : stOf(x));
-  const idx = alleP.filter((x) => grOf(x) === listStatus).sort((a, b) => (stOf(a) === 'abgesagt') - (stOf(b) === 'abgesagt'));
+  const reihe = Projekt.ALLE.map((s) => s[0]);
+  const auftraege = alleP.filter((x) => Projekt.phase(x) !== 'angebot');
+  const idx = auftraege.filter((x) => Projekt.phase(x) === listStatus).sort((a, b) => reihe.indexOf(Projekt.norm(a.status)) - reihe.indexOf(Projekt.norm(b.status)) || (b.updated || 0) - (a.updated || 0));
   const q = listFilter.trim().toLowerCase();
   const hay = (x) => { const k = Kunden.byId(x.kundeId); return `${x.nr || ''} ${x.titel || ''} ${x.customer} ${x.address || ''} ${x.room || ''} ${k ? `${k.nr} ${k.telefon} ${k.email} ${k.privat}` : ''}`.toLowerCase(); };
   const shown = q ? idx.filter((x) => q.split(/\s+/).every((t) => hay(x).includes(t))) : idx;
   main().innerHTML = `
-    <button class="cta slim" id="new">
-      <span class="cta-ico">${icon('plus')}</span>
-      <span class="cta-t"><b>Neues Projekt</b></span>
-      ${icon('chevron', 'cta-chev')}
-    </button>
     ${state.settings.apiKey || (window.Sync?.fest() && !window.Sync.active()) ? '' : `<button class="notice" id="toSet">${icon('gear')}<span><b>KI noch nicht eingerichtet.</b> Einmalig den Google-Schlüssel in den Einstellungen eintragen.</span>${icon('chevron')}</button>`}
     <div id="backupHint"></div>
-    ${alleP.length ? `<div class="seg2 full wstatus lstat" style="margin-top:14px">${GR.map(([id, n, c]) => `<button data-ls="${id}" class="${listStatus === id ? 'on' : ''}" style="--c:${c}">${n} <small>${alleP.filter((x) => grOf(x) === id).length}</small></button>`).join('')}</div>` : ''}
+    <button class="cta slim" id="pNeu"><span class="cta-ico">${icon('plus')}</span><span class="cta-t"><b>Neues Projekt</b><span>direkt als Auftrag, ohne Angebot</span></span>${icon('chevron', 'cta-chev')}</button>
+    <div class="phasen">${Projekt.PHASEN.map(([id, n]) => `<button data-ls="${id}" class="${listStatus === id ? 'on' : ''}"><b>${auftraege.filter((x) => Projekt.phase(x) === id).length}</b><span>${n}</span></button>`).join('')}</div>
     ${idx.length ? `
-      <div class="lk-row"><label class="search">${icon('search')}<input type="search" id="q" value="${esc(listFilter)}" placeholder="Kunde, Adresse, Raum oder Nummer" autocomplete="off"></label>
-        <button class="lk-toggle ${listKarte ? 'on' : ''}" id="lkToggle">${icon(listKarte ? 'list' : 'map')}<span>${listKarte ? 'Liste' : 'Karte'}</span></button></div>
-      ${listKarte ? '<div class="pmap" id="pmap"></div><p class="hint pmap-info" id="pmapInfo">Karte wird geladen …</p>' : `<div class="plist">${shown.map((x) => `
+      <label class="search">${icon('search')}<input type="search" id="q" value="${esc(listFilter)}" placeholder="Kunde, Adresse, Raum oder Nummer" autocomplete="off"></label>
+      <div class="plist">${shown.map((x) => `
         <button class="pcard" data-open="${x.id}" data-kind="${x.kind || ''}">
           ${x.thumb ? `<img src="${x.thumb}" alt="">` : `<span class="pc-ph">${icon('home')}</span>`}
-          <span class="pc-t"><b>${esc(x.titel || x.room || 'Projekt')}${stOf(x) === 'abgesagt' ? ' <span class="st-pill">Abgesagt</span>' : ''}</b>
+          <span class="pc-t"><b>${esc(x.titel || x.room || 'Projekt')}</b>${Projekt.pill(x.status)}
             ${projektOrt(x) ? `<span class="muted pc-wo">${icon('map')}${esc(projektOrt(x))}</span>` : ''}
             ${projektKunde(x) ? `<span class="muted pc-wer">${icon('user')}${esc(projektKunde(x))}</span>` : ''}
             ${x.fort && Projekt.zugesagt(x.status) ? `<span class="bf-mini">${Fortschritt.balken(x.fort)}</span>` : ''}</span>
           ${icon('chevron', 'pc-chev')}
-        </button>`).join('') || '<p class="empty">Nichts gefunden.</p>'}</div>`}` : `
-      <div class="empty-state">${icon('home')}<b>${{ '': 'Keine laufenden Projekte', angebot: 'Keine offenen Angebote', geplant: 'Nichts eingeplant', fertig: 'Noch nichts abgeschlossen' }[listStatus]}</b><span>${alleP.length ? 'Den Status stellst du im Projekt direkt unter dem Kunden ein.' : 'Tippe auf „Neues Projekt“, gib den Kunden ein und füge die Räume hinzu.'}</span></div>`}`;
+        </button>`).join('') || '<p class="empty">Nichts gefunden.</p>'}</div>` : `
+      <div class="empty-state">${icon('home')}<b>${{ einplanen: 'Nichts einzuplanen', eingeplant: 'Kein Baustart geplant', laufend: 'Gerade keine Baustelle', abgeschlossen: 'Noch nichts abgeschlossen' }[listStatus]}</b><span>Hier stehen die zugesagten Aufträge. Offene und abgesagte Angebote findest du unter „Angebote“, sobald eins zugesagt ist, erscheint es hier.</span></div>`}`;
   $$('[data-ls]').forEach((b) => (b.onclick = () => { listStatus = b.dataset.ls; viewProjektListe(); }));
-  if ($('#lkToggle')) $('#lkToggle').onclick = () => { listKarte = !listKarte; viewProjektListe(); };
-  if (listKarte && $('#pmap')) window.Karte?.zeigen($('#pmap'), shown, $('#pmapInfo'), (id) => Projekt.oeffnen(id));
-  $('#new').onclick = () => Projekt.neu();
+  $('#pNeu').onclick = () => { listStatus = 'einplanen'; Projekt.neuDirekt(); };
   if ($('#toSet')) $('#toSet').onclick = () => { switchTab('einstellungen'); einstellungSeite('ki'); };
   if ($('#q')) $('#q').oninput = debounce((e) => { listFilter = e.target.value; viewProjektListe().then(() => { const i = $('#q'); if (i) { i.focus(); i.setSelectionRange(i.value.length, i.value.length); } }); }, 250);
   $$('[data-open]').forEach((el) => (el.onclick = async () => {
@@ -188,283 +185,79 @@ async function viewProjektListe() {
   window.Backup?.hinweis($('#backupHint'));
 }
 
-// ---------- Raum ----------
-const uiOpen = { more: false };
-async function viewProjekt() {
-  const p = normalizeProject(state.project);
-  if (!p) return state.wohnung ? Projekt.view() : state.tab === 'kunden' ? Kunden.start() : viewProjektListe();
-  const w = state.wohnung;
-  const rt = roomType(p.roomType);
-  const backToProject = () => { state.project = null; viewProjekt(); window.scrollTo(0, 0); };
-  header(p.room || rt.name, [w?.customer || p.customer, rt.name].filter(Boolean).join(' · '), { label: w ? 'Projekt' : state.tab === 'kunden' ? 'Kunde' : 'Projekte', fn: backToProject });
-  const pkgs = roomPackages(p);
-  const full = p.photos.length >= MAX_PHOTOS;
-  const visible = pkgs.filter((x) => firstResult(p, x.id) || Object.keys(p.status || {}).some((k) => k.startsWith(x.id + ':') && (p.status[k].loading || p.status[k].error)));
-  const nImg = viewCount(p) * p.selected.length;
-  const marks = window.Baumappe?.anzahl(p) || 0;
-  const am = p.aufmass?.raeume || [], qm = am.reduce((s, r) => s + (window.Angebot?._intern.masse(r).boden || 0), 0);
-  main().innerHTML = `
-    <div class="card room-head">
-      <span class="rh-ico">${roomIcon(rt.id)}</span>
-      <div class="rh-f">
-        <input type="text" id="room" class="title-in" value="${esc(p.room)}" placeholder="${esc(rt.name)}" aria-label="Raumtitel">
-        <select id="roomType" aria-label="Raumtyp">${ROOM_TYPES.map((r) => `<option value="${r.id}" ${r.id === p.roomType ? 'selected' : ''}>${esc(r.name)}</option>`).join('')}</select>
-      </div>
-    </div>
-
-    <section class="step">
-      <div class="step-h"><span class="num">1</span><h2>Fotos</h2><span class="step-x">${p.photos.length} von ${MAX_PHOTOS}</span></div>
-      <div class="card">
-        <div class="photos">${p.photos.map((ph, i) => `
-          <div class="ph ${renderIdx(p).includes(i) ? '' : 'ph-off'}"><img src="${ph}" alt="Ansicht ${i + 1}"><span class="ph-n">${i + 1}</span><button class="ph-x" data-delphoto="${i}" aria-label="Foto entfernen">${icon('x')}</button>
-            ${p.photos.length > 1 ? `<button class="ph-view" data-view="${i}">${renderIdx(p).includes(i) ? `${icon('check')} Nachher` : 'nur Info'}</button>` : ''}</div>`).join('')}
-          ${full ? '' : `<button class="ph-add" id="cam">${icon('camera')}<span>Kamera</span></button><button class="ph-add" id="gal">${icon('image')}<span>Fotos</span></button>`}
-        </div>
-        <p class="hint">${p.photos.length > 1 ? 'Die KI nutzt alle Fotos, um den Raum zu verstehen. Ein Nachher-Bild gibt es nur für die Fotos mit Haken. Tippe unten aufs Foto, um das zu ändern.' : p.photos.length ? 'Weitere Blickwinkel helfen der KI, den Raum zu verstehen.' : 'Am besten quer und aus den Ecken fotografieren, bis zu 4 Blickwinkel.'}</p>
-        ${p.photos.length && !rt.outdoor && rt.id !== 'garten' ? `<label class="toggle"><input type="checkbox" id="withTop" ${wantsTop(p) ? 'checked' : ''}><span class="tg"></span><span>Draufsicht: der neue Raum von oben</span></label>` : ''}
-        ${rt.outdoor ? '' : `<div id="masseBox"><label>Raummaße in Metern (damit die KI weiß, wie groß der Raum ist)</label>
-        <div class="row masse-row">${[['l', 'Länge'], ['b', 'Breite'], ['h', 'Höhe']].map(([k, l]) => `<input type="text" inputmode="decimal" data-mass="${k}" placeholder="${l}" aria-label="${l} in m" value="${esc(p.masse?.[k] || '')}">`).join('')}</div>
-        ${aufmassText(p) && !raumMasse(p) ? '<p class="hint">Maße aus dem Aufmaß werden verwendet.</p>' : ''}</div>`}
-      </div>
-    </section>
-
-    <section class="step">
-      <div class="step-h"><span class="num">2</span><h2>Pakete</h2></div>
-      <div class="card">
-        <div class="chips">${pkgs.map((x) => `<button class="chip ${p.selected.includes(x.id) ? 'on' : ''}" data-sel="${x.id}" style="--c:${x.color}">${icon('check', 'chip-ck')}${esc(x.name)}</button>`).join('')}</div>
-        <button class="btn secondary block small" id="raumBoard" style="margin:2px 0 10px">${icon('palette')} ${p.boards?.length && p.boardsType === p.roomType ? 'Moodboard dieses Raums (angepasst)' : 'Moodboard für diesen Raum anpassen'}</button>
-        <label class="toggle"><input type="checkbox" id="withEvening" ${p.withEvening ? 'checked' : ''}><span class="tg"></span><span>${icon('moon')} Zusätzlich Abendstimmung</span></label>
-        <details class="more" id="more" ${uiOpen.more ? 'open' : ''}>
-          <summary>${icon('mic')}<span>Hinweise & Kundenwünsche<small>${[p.note?.trim() && 'Hinweis', p.wishes?.trim() && 'Wünsche', p.transcript?.trim() && 'Gespräch'].filter(Boolean).join(' · ') || 'optional'}</small></span>${icon('chevron', 'more-chev')}</summary>
-          <label>Hinweis für die KI</label><textarea id="note" placeholder="${esc(rt.id === 'garten' ? 'z. B. Terrasse vergrößern, Wärmepumpe links neben die Tür' : 'z. B. Badewanne raus, dafür große Dusche')}">${esc(p.note)}</textarea>
-          ${p.bestand?.text && !window.Garten?.zustaendig(p) ? `<label>So hat die KI den Raum erkannt</label><p class="hint" style="margin-top:0">Daran hält sich die Visualisierung. Stimmt etwas nicht (z. B. Maße, WC vorhanden ja/nein), hier korrigieren.</p><textarea id="bestand" style="min-height:140px">${esc(p.bestand.text)}</textarea>` : ''}
-          ${voiceCard(p)}
-        </details>
-        <div id="garten-card"></div>
-        <button class="btn big block" id="go" ${p.photos.length && p.selected.length ? '' : 'disabled'}>${icon('sparkle')} Visualisieren</button>
-        <p class="hint center" id="goInfo">${p.photos.length ? `${nImg} ${nImg === 1 ? 'Bild' : 'Bilder'}${p.withEvening ? ' + Abendstimmung' : ''} · ca. 10–30 Sekunden pro Bild` : 'Zuerst ein Foto machen.'}</p>
-      </div>
-    </section>
-
-    <section class="step">
-      <div class="step-h"><span class="num">3</span><h2>Ergebnis</h2></div>
-      <div id="results">${visible.length ? visible.map(resultCard).join('') : `<div class="card empty-res">${icon('sparkle')}<span>Hier erscheinen die Nachher-Bilder. Mit dem Regler vergleichst du Vorher und Nachher.</span></div>`}</div>
-      <button class="btn secondary block" id="toMappe" ${hasAnyResult(p) && w ? '' : 'hidden'}>${icon('book')} Zur Kundenmappe</button>
-    </section>
-
-    <section class="step">
-      <div class="step-h"><span class="num">4</span><h2>Weiter mit diesem Raum</h2></div>
-      <div class="tiles">
-        <button class="tile" id="toAngebot"><span class="t-ico">${icon('ruler')}</span><b>Aufmaß & Angebot</b><span>${qm ? `${qm.toLocaleString('de-DE', { maximumFractionDigits: 1 })} m²${p.angebot?.nr ? ' · Nr. ' + esc(p.angebot.nr) : ''}` : 'Maße, Preise, Bauzeit'}</span></button>
-        <button class="tile" id="toMarks" ${hasAnyResult(p) ? '' : 'disabled'}><span class="t-ico">${icon('pin')}</span><b>Markierungen</b><span>${marks ? `${marks} für die Baumappe` : 'Nummern für die Baumappe'}</span></button>
-        <button class="tile" id="social" ${hasAnyResult(p) ? '' : 'disabled'}><span class="t-ico">${icon('film')}</span><b>Instagram</b><span>Video & Post</span></button>
-      </div>
-    </section>
-    <button class="link-danger" id="del">${icon('trash')} Raum löschen</button>`;
-
-  const persist = debounce(() => saveProject(p), 400);
-  const rerender = async () => { await saveProject(p); const y = window.scrollY; await viewProjekt(); window.scrollTo(0, y); };
-  const addPhotos = async (camera) => {
-    const files = await pickFiles({ camera, multiple: !camera });
-    if (!files.length) return;
-    const free = MAX_PHOTOS - p.photos.length;
-    for (const f of files.slice(0, free)) p.photos.push(await resize(await fileToDataUrl(f), 1600));
-    if (files.length > free) toast(`Maximal ${MAX_PHOTOS} Fotos pro Raum.`);
-    p.thumb = await resize(p.photos[0], 240);
-    rerender();
-  };
-  if ($('#cam')) { $('#cam').onclick = () => addPhotos(true); $('#gal').onclick = () => addPhotos(false); }
-  $$('[data-delphoto]').forEach((b) => (b.onclick = async () => {
-    const i = +b.dataset.delphoto;
-    if (Object.values(p.results).some((a) => a[i]) && !confirm('Foto mit den zugehörigen Nachher-Bildern entfernen?')) return;
-    p.photos.splice(i, 1);
-    if (Array.isArray(p.views?.on)) p.views.on = p.views.on.filter((k) => k !== i).map((k) => (k > i ? k - 1 : k));
-    for (const k of Object.keys(p.results)) p.results[k].splice(i, 1);
-    for (const k of Object.keys(p.evening || {})) p.evening[k].splice(i, 1);
-    window.Baumappe?.fotoEntfernt(p, i);
-    p.thumb = p.photos[0] ? await resize(p.photos[0], 240) : '';
-    rerender();
+// ---------- Menü: Tippen aufs DOM-Logo, fährt rechts heraus ----------
+// Alles, was keinen Reiter unten hat (das Mikrofon sitzt direkt unter dem Logo). Neues hier eintragen:
+// [id, Titel, Symbol, Untertitel (Funktion), Öffnen (Funktion)]
+const MENUE = [
+  ['suche', 'Suche', 'search', () => 'Kunden, Projekte, Angebote, Rechnungen, Termine', () => switchTab('suche')],
+  ['heute', 'Heute', 'sun', () => 'Was heute dran ist', () => switchTab('heute')],
+  ['kalender', 'Kalender', 'calendar', () => { const n = window.Kalender?.eintraege(Kalender._heute(), Kalender._heute()).length || 0; return n ? `Heute ${n} ${n === 1 ? 'Eintrag' : 'Einträge'}` : 'Termine, Geburtstage'; }, () => { state.finanzen = false; Kalender.view(); window.scrollTo(0, 0); }],
+  ['karte', 'Karte', 'map', () => 'Alle Baustellen auf der Karte', () => switchTab('karte')],
+  ['auswertung', 'Auswertung', 'chart', () => 'Umsatz, Zusagen, Marge, Kundenquellen', () => switchTab('auswertung')],
+  ['preisliste', 'Preisliste', 'euro', () => 'Positionen, Lohn, Material, Aufschläge', () => { switchTab('einstellungen'); einstellungSeite('preisliste'); }],
+  ['unterlagen', 'Unterlagen', 'file', () => 'Firmenordner und Vorlagen', () => switchTab('unterlagen')],
+  ['hilfe', 'Wie geht das?', 'sparkle', () => 'Frag, wo du was findest', () => switchTab('hilfe')],
+  ['einstellungen', 'Einstellungen', 'sliders', () => 'Firma, Angebote, Rechnungen, Abläufe, Technik', () => switchTab('einstellungen')],
+];
+/** Zeile unten im Menü: angemeldet als … und letzter Cloud-Abgleich. */
+function syncText() {
+  const S = window.Sync;
+  if (!S?.active()) return 'Cloud-Abgleich nicht eingerichtet. Tippen zum Einrichten.';
+  const st = S.status(), mail = S.email?.() || '';
+  if (st.ok === false) return `${mail} · ${st.msg || 'Abgleich gestört'}`;
+  const t = st.last ? new Date(st.last) : null;
+  const wann = !t ? 'noch nicht abgeglichen' : t.toDateString() === new Date().toDateString() ? `zuletzt abgeglichen ${t.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' })} Uhr` : `zuletzt abgeglichen am ${t.toLocaleDateString('de-DE')}`;
+  return `${mail} · ${wann}`;
+}
+function menue() {
+  if ($('.menu-bg')) return;
+  const el = document.createElement('div');
+  el.className = 'menu-bg';
+  el.innerHTML = `<nav class="menu" aria-label="Menü"><div class="menu-h"><img src="assets/dom_logo_weiss.png" alt="DOM"><button class="icon-btn" data-x aria-label="Schließen">${icon('x')}</button></div>
+    ${MENUE.map(([id, l, ic, sub]) => `<button class="menu-i" data-m="${id}"><span class="menu-ic">${icon(ic)}</span><span><b>${esc(l)}</b><span>${esc(sub())}</span></span></button>`).join('')}
+    <div class="menu-fuss">
+      ${window.Kalender ? `<div class="menu-wer"><span>Auf diesem Gerät</span><div class="seg2 full">${[...Kalender.team().map((p) => [p.id, p.name.split(' ')[0]]), ['', 'Beide']].map(([id, n]) => `<button data-mw="${esc(id)}" class="${Kalender.wer() === id ? 'on' : ''}">${esc(n)}</button>`).join('')}</div></div>` : ''}
+      <button class="menu-sync" data-m="cloud">${icon('cloud')}<span>${esc(syncText())}</span></button>
+      <p class="menu-v">Version ${APP_VERSION}</p></div></nav>`;
+  const zu = () => { el.classList.remove('on'); setTimeout(() => el.remove(), 220); };
+  el.onclick = (e) => { if (e.target === el || e.target.closest('[data-x]')) zu(); };
+  $$('[data-m]', el).forEach((b) => (b.onclick = () => {
+    zu();
+    if (b.dataset.m === 'cloud') { switchTab('einstellungen'); return einstellungSeite('cloud'); }
+    MENUE.find((m) => m[0] === b.dataset.m)[4]();
   }));
-  $('#room').oninput = (e) => { p.room = e.target.value; persist(); $('#title').textContent = p.room || rt.name; };
-  $('#roomType').onchange = async (e) => {
-    const old = roomType(p.roomType).name;
-    p.roomType = e.target.value;
-    delete p.boards; delete p.boardsType;
-    if (!p.room || p.room === old) p.room = roomType(p.roomType).name;
-    p.selected = roomPackages(p).map((x) => x.id);
-    rerender();
-  };
-  $('#note').oninput = (e) => { p.note = e.target.value; persist(); };
-  $$('[data-mass]').forEach((inp) => (inp.oninput = () => { p.masse = { ...(p.masse || {}), [inp.dataset.mass]: inp.value.trim() }; persist(); }));
-  if ($('#bestand')) $('#bestand').oninput = (e) => { Object.assign(p.bestand, { text: e.target.value, manual: true, photos: p.photos.length, masse: masseText(p) }); persist(); };
-  $('#more').ontoggle = (e) => { uiOpen.more = e.target.open; };
-  const updGoInfo = () => {
-    const n = viewCount(p) * p.selected.length;
-    $('#go').disabled = !n;
-    if (p.photos.length) $('#goInfo').textContent = n ? `${n} ${n === 1 ? 'Bild' : 'Bilder'}${p.withEvening ? ' + Abendstimmung' : ''} · ca. 10–30 Sekunden pro Bild` : 'Bitte mindestens ein Paket wählen.';
-  };
-  $('#raumBoard').onclick = () => { viewRaumMoodboard(p); window.scrollTo(0, 0); };
-  $('#withEvening').onchange = (e) => { p.withEvening = e.target.checked; persist(); updGoInfo(); };
-  if ($('#withTop')) $('#withTop').onchange = (e) => { p.views = { ...(p.views || {}), top: e.target.checked }; persist(); updGoInfo(); };
-  $$('[data-view]').forEach((b) => (b.onclick = () => {
-    const i = +b.dataset.view, on = new Set(renderIdx(p));
-    on.has(i) ? on.delete(i) : on.add(i);
-    if (!on.size) return toast('Mindestens ein Foto braucht ein Nachher-Bild.');
-    p.views = { ...(p.views || {}), on: [...on].sort() };
-    rerender();
-  }));
-  $$('[data-sel]').forEach((c) => (c.onclick = () => {
-    c.classList.toggle('on');
-    p.selected = $$('[data-sel]').filter((x) => x.classList.contains('on')).map((x) => x.dataset.sel);
-    persist(); updGoInfo();
-  }));
-  bindVoice(p, persist);
-  $('#go').onclick = async () => {
-    if (!state.settings.apiKey) return toast('Bitte zuerst in den Einstellungen den API-Schlüssel eintragen.', 4000);
-    const done = roomPackages(p).filter((x) => p.selected.includes(x.id) && firstResult(p, x.id));
-    if (!rt.outdoor && !raumMasse(p) && !aufmassText(p) && !p.masseSkip) {
-      if (confirm('Noch keine Raummaße eingetragen. Mit Länge, Breite und Höhe hält sich die KI viel besser an die echte Raumgröße.\n\nOK = Maße jetzt eingeben\nAbbrechen = ohne Maße weiter')) {
-        $('#masseBox')?.scrollIntoView({ behavior: 'smooth', block: 'center' }); setTimeout(() => $('[data-mass="l"]')?.focus(), 300); return;
-      }
-      p.masseSkip = true; persist();
-    }
-    if (done.length && !confirm(`${done.map((x) => x.name).join(', ')} ${done.length === 1 ? 'ist' : 'sind'} schon fertig und ${done.length === 1 ? 'wird' : 'werden'} neu erstellt. Weiter?`)) return;
-    setTimeout(() => $('#results')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 150);
-    runAll(p);
-  };
-  $('#toMappe').onclick = () => w && Projekt.mappeView(w);
-  $('#toAngebot').onclick = () => { state.angebotAusProjekt = false; window.Angebot?.ansicht(p); };
-  $('#toMarks').onclick = () => window.Baumappe?.markierungen(p);
-  $('#social').onclick = () => viewSocial(p).catch((e) => toast('Fehler: ' + e.message, 5000));
-  $('#del').onclick = async () => {
-    if (!confirm(`Raum „${p.room || rt.name}“ mit Fotos und Visualisierungen löschen?`)) return;
-    await deleteProject(p.id);
-    if (p.wohnungId) await window.Projekt?.raumEntfernt(p);
-    backToProject();
-  };
-  bindResultButtons(p);
-  window.Garten?.projektKarte(p, persist);
+  // Wer nutzt dieses Gerät: filtert Kalender und „Heute“ (gemerkt auf dem Gerät)
+  $$('[data-mw]', el).forEach((b) => (b.onclick = () => { Kalender.werSetzen(b.dataset.mw); window.Push?.abgleich(); $$('[data-mw]', el).forEach((x) => x.classList.toggle('on', x === b)); Kalender.punkt(); if (state.tab === 'heute') Heute.view(); }));
+  let x0 = null; // nach rechts wischen schließt
+  el.addEventListener('touchstart', (e) => { x0 = e.touches[0].clientX; }, { passive: true });
+  el.addEventListener('touchend', (e) => { if (x0 !== null && e.changedTouches[0].clientX - x0 > 60) zu(); x0 = null; });
+  document.body.appendChild(el);
+  requestAnimationFrame(() => el.classList.add('on'));
 }
+$('#brandBtn').onclick = menue;
+// Kalender oben neben dem Mikrofon
+$('#calBtn').onclick = () => { if (state.kalender) return; state.finanzen = false; Kalender.view(); window.scrollTo(0, 0); };
+// Mikrofon oben: Kunde, Projekt und Termin per Sprache anlegen (sprache.js)
+$('#micBtn').onclick = () => { const t = state.tab; Sprache.view(() => switchTab(t)); };
 
-// ---------- Moodboard nur für diesen Raum ----------
-const raumEigenes = (p) => (Array.isArray(p.boards) && p.boards.length && p.boardsType === p.roomType ? p.boards : null);
-/** Kopie anlegen, sobald im Raum etwas geändert wird (Vorlage: Projekt-Moodboard bzw. allgemeines). */
-function raumKopie(p) {
-  if (!raumEigenes(p)) { p.boards = JSON.parse(JSON.stringify(packagesFor(p.roomType))); p.boardsType = p.roomType; }
-  return p.boards;
+function zielOeffnen(z) {
+  if (z === 'kalender') { switchTab('heute'); Kalender.view(); return; }
+  switchTab(['kunden', 'heute', 'projekt', 'angebote', 'rechnungen', 'partner'].includes(z) ? z : 'heute');
 }
-function viewRaumMoodboard(p) {
-  const own = raumEigenes(p), pkgs = roomPackages(p), rn = p.room || roomType(p.roomType).name;
-  const kunde = state.wohnung?.customer || p.customer;
-  const back = () => { viewProjekt(); window.scrollTo(0, 0); };
-  header('Moodboard', [kunde, rn].filter(Boolean).join(' · '), { label: rn, fn: back });
-  main().innerHTML = `
-    <div class="card intro"><p>${own
-      ? `Dieses Moodboard gilt <b>nur für ${esc(rn)}</b>${kunde ? ` bei ${esc(kunde)}` : ''}. Visualisierung, Kundenmappe, Baumappe und Angebot dieses Raums nutzen es.`
-      : `Hier steht noch das Moodboard ${state.wohnung?.boards?.[p.roomType]?.length ? 'des Projekts' : 'aus deinen Standard-Moodboards'}. Tippe auf ein Paket und ändere Texte, Bilder oder Produkte. Die Änderung gilt <b>nur für ${esc(rn)}</b>.`}</p></div>
-    <div class="pkgs">${pkgs.map((x) => `
-      <button class="pkgcard" data-edit="${x.id}" style="--c:${x.color}">
-        <span class="pk-thumbs">${x.images.slice(0, 3).map((im) => `<img src="${im.data}" alt="">`).join('') || `<span class="pk-empty">${icon('palette')}</span>`}</span>
-        <span class="pk-t"><b><i></i>${esc(x.name)}</b><span>${esc(x.fields.beschreibung || '')}</span>
-          <small>${x.images.length} ${x.images.length === 1 ? 'Bild' : 'Bilder'} · ${x.products.length} ${x.products.length === 1 ? 'Produkt' : 'Produkte'}</small></span>
-        ${icon('chevron', 'pc-chev')}
-      </button>`).join('')}</div>
-    ${own ? `<p class="hint">Nach einer Änderung den Raum neu visualisieren, damit die Bilder zum Moodboard passen.</p>
-      <button class="link-danger" id="rbReset">${icon('refresh')} Anpassungen dieses Raums verwerfen</button>` : ''}`;
-  $$('[data-edit]').forEach((el) => (el.onclick = () => {
-    const list = raumKopie(p);
-    viewPaketEdit(el.dataset.edit, {
-      rt: p.roomType, list, save: () => saveProject(p), saveSoon: debounce(() => saveProject(p), 500),
-      sub: `${rn} · nur für diesen Raum`, backLabel: 'Moodboard',
-      banner: `<div class="notice" style="margin:0 0 12px">${icon('palette')}<span>Änderungen gelten nur für <b>${esc(rn)}</b>${kunde ? ` bei ${esc(kunde)}` : ''}. Andere Räume und deine Standard-Moodboards bleiben, wie sie sind.</span></div>`,
-      back: async () => { await saveProject(p); viewRaumMoodboard(p); window.scrollTo(0, 0); },
-    });
-    window.scrollTo(0, 0);
-  }));
-  if ($('#rbReset')) $('#rbReset').onclick = async () => {
-    if (!confirm(`Die Moodboard-Anpassungen für ${rn} verwerfen?`)) return;
-    delete p.boards; delete p.boardsType; await saveProject(p); viewRaumMoodboard(p);
-  };
-}
-
-// ---------- Ergebnis-Karten ----------
-function resultCard(pkg) {
-  const p = state.project;
-  const shown = p.photos.map((_, i) => i).filter((i) => p.results[pkg.id]?.[i] || p.status?.[`${pkg.id}:${i}`]?.loading || p.status?.[`${pkg.id}:${i}`]?.error);
-  const multi = shown.length > 1 || !!(topOf(p, pkg.id) || p.status?.[`${pkg.id}:top`]);
-  const views = shown.map((i) => {
-    const key = `${pkg.id}:${i}`;
-    const st = p.status?.[key], res = p.results[pkg.id]?.[i];
-    const eve = eveningOf(p, pkg.id, i), est = p.status?.[key + ':abend'];
-    const mood = moodSel[`${p.id}:${key}`] === 'abend' && (eve || est?.loading || est?.error) ? 'abend' : 'tag';
-    let body;
-    if (st?.loading) body = `<div class="status"><div class="spinner"></div>KI gestaltet „${esc(pkg.name)}“${multi ? `, Ansicht ${i + 1}` : ''} …</div>`;
-    else if (st?.error) body = `<div class="status err">${esc(st.error)}</div>`;
-    else if (res) {
-      if (mood === 'abend' && est?.loading) body = `<div class="status"><div class="spinner"></div>KI setzt das Licht auf Abend …</div>`;
-      else if (mood === 'abend' && est?.error && !eve) body = `<div class="status err">${esc(est.error)}</div>`;
-      else body = beforeAfter(p.photos[i], mood === 'abend' ? eve : res, `Nachher ${pkg.name}`);
-    } else body = '<div class="status">Noch nicht erstellt</div>';
-    const moodBar = res && !st?.loading ? `<div class="mood"><button data-mood="tag" data-pkg="${pkg.id}" data-view="${i}" class="${mood === 'tag' ? 'on' : ''}">${icon('sun')} Tag</button><button data-mood="abend" data-pkg="${pkg.id}" data-view="${i}" class="${mood === 'abend' ? 'on' : ''}">${icon('moon')} Abend${eve || est?.loading ? '' : ' +'}</button></div>` : '<span></span>';
-    const actions = [mood === 'abend' && (eve || est?.error) && !est?.loading ? `<button class="mini" data-redoeve="${pkg.id}" data-view="${i}">Abend neu</button>` : '',
-      (res || st?.error) && !st?.loading ? `<button class="mini" data-redo="${pkg.id}" data-view="${i}">${icon('refresh')} Neu</button>` : ''].join('');
-    return `<div class="rview">${multi ? `<div class="rv-n">Ansicht ${i + 1}</div>` : ''}<div class="rv-body">${body}</div><div class="rv-bar">${moodBar}<span class="rv-act">${actions}</span></div></div>`;
-  }).join('') + topCard(p, pkg);
-  return `<div class="result" id="res-${pkg.id}" style="--c:${pkg.color}">
-    <div class="r-head"><span class="r-name"><i></i>${esc(pkg.name)}</span><span class="r-desc">${esc(pkg.fields?.beschreibung || '')}</span></div>
-    ${views}
-  </div>`;
-}
-function topCard(p, pkg) {
-  const st = p.status?.[`${pkg.id}:top`], img = topOf(p, pkg.id);
-  if (!img && !st?.loading && !st?.error) return '';
-  const body = st?.loading ? `<div class="status"><div class="spinner"></div>KI zeichnet die Draufsicht …</div>`
-    : st?.error ? `<div class="status err">${esc(st.error)}</div>`
-    : `<img class="top-img" src="${img}" alt="Draufsicht ${esc(pkg.name)}">`;
-  return `<div class="rview"><div class="rv-n">Draufsicht</div><div class="rv-body">${body}</div><div class="rv-bar"><span></span><span class="rv-act">${st?.loading ? '' : `<button class="mini" data-redotop="${pkg.id}">${icon('refresh')} Neu</button>`}</span></div></div>`;
-}
-function refreshResult(pkg) {
-  const p = state.project;
-  if (!$('#results')) return;
-  const el = $('#res-' + pkg.id);
-  $('.empty-res')?.remove();
-  if (!el) {
-    // in Paket-Reihenfolge einfügen
-    const order = roomPackages(p).map((x) => x.id);
-    const next = $$('#results .result').find((r) => order.indexOf(r.id.slice(4)) > order.indexOf(pkg.id));
-    if (next) next.insertAdjacentHTML('beforebegin', resultCard(pkg)); else $('#results').insertAdjacentHTML('beforeend', resultCard(pkg));
-  } else el.outerHTML = resultCard(pkg);
-  bindResultButtons(p);
-  const any = hasAnyResult(p);
-  if ($('#toMappe')) $('#toMappe').hidden = !any || !state.wohnung;
-  for (const id of ['#social', '#toMarks']) if ($(id)) $(id).disabled = !any;
-}
-function bindResultButtons(p) {
-  const pk = (id) => roomPackages(p).find((x) => x.id === id);
-  $$('[data-redo]').forEach((b) => (b.onclick = async () => { await window.voiceReady?.(p); runView(p, pk(b.dataset.redo), +b.dataset.view); }));
-  $$('[data-mood]').forEach((b) => (b.onclick = () => {
-    const pkg = pk(b.dataset.pkg), i = +b.dataset.view;
-    moodSel[`${p.id}:${pkg.id}:${i}`] = b.dataset.mood;
-    if (b.dataset.mood === 'abend' && !eveningOf(p, pkg.id, i) && !p.status?.[`${pkg.id}:${i}:abend`]?.loading) {
-      if (!state.settings.apiKey) return toast('Bitte zuerst in den Einstellungen den API-Schlüssel eintragen.', 4000);
-      runEvening(p, pkg, i);
-    } else refreshResult(pkg);
-  }));
-  $$('[data-redotop]').forEach((b) => (b.onclick = async () => { await window.voiceReady?.(p); runTop(p, pk(b.dataset.redotop)); }));
-  $$('[data-redoeve]').forEach((b) => (b.onclick = () => runEvening(p, pk(b.dataset.redoeve), +b.dataset.view)));
-}
-
-// Kalender-Symbol oben: immer erreichbar
-$('#calBtn').onclick = () => { if (state.kalender) return; Kalender.view(); window.scrollTo(0, 0); };
 
 // ---------- Start ----------
 (async () => {
   await loadAll();
-  try { await Projekt.migrate(); } catch (e) { console.error('Umstellung', e); }
+  try { await Projekt.migrate(); await Projekt.automatik(); } catch (e) { console.error('Umstellung', e); }
   try { await Kunden.laden(); await Kunden.migrate(); await Kunden.nummern(); } catch (e) { console.error('Kunden', e); }
   try { await Partner.laden(); await Kalender.laden(); Kalender.punkt(); } catch (e) { console.error('Kalender', e); }
   navigator.storage?.persist?.();
-  switchTab('kunden');
+  // Aus einer Mitteilung geöffnet: ?ziel=heute|kalender
+  const ziel = new URLSearchParams(location.search).get('ziel');
+  if (ziel) history.replaceState(null, '', location.pathname);
+  zielOeffnen(ziel || (vorgabe('heuteStart') === 'nein' ? 'kunden' : 'heute'));
+  navigator.serviceWorker?.addEventListener('message', (e) => { if (e.data?.ziel) zielOeffnen(e.data.ziel); });
+  setTimeout(() => window.Push?.abgleich(), 4000);
   if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost')) {
     // Neue Version sofort übernehmen: beim Öffnen und beim Zurückkehren in die App nachsehen, dann einmal neu laden
     const reg = await navigator.serviceWorker.register('sw.js', { updateViaCache: 'none' }).catch(() => null);

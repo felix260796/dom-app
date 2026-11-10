@@ -48,7 +48,7 @@ window.Karte = (() => {
     if (karte) { try { karte.remove(); } catch {} karte = null; }
     karte = L.map(el, { zoomControl: true, attributionControl: true }).setView([48.78, 9.18], 10);
     L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '© OpenStreetMap' }).addTo(karte);
-    const farbe = (st) => (Projekt.ALLE.find((s) => s[0] === (st || '')) || Projekt.STATUS[1])[2];
+    const farbe = (st) => Projekt.farbe(st);
     // Projekte am selben Objekt teilen sich einen Pin
     const orte = new Map(), ohne = [];
     for (const x of projekte) {
@@ -80,5 +80,19 @@ window.Karte = (() => {
       (fehlt.length ? ` Nicht auf der Karte: ${fehlt.map((x) => x.titel || x.customer || 'Projekt').join(', ')} (${ohne.length && !nichtGefunden.length ? 'keine Objektanschrift' : 'Anschrift nicht gefunden'}).` : ''));
   }
 
-  return { zeigen, anschrift };
+  // ---------- Eigene Seite (Menü › Karte) ----------
+  let bereich = 'auftraege';
+  const BEREICHE = [['angebote', 'Angebote', (x) => Projekt.phase(x) === 'angebot' && Projekt.norm(x.status) !== 'abgesagt'], ['auftraege', 'Aufträge', (x) => ['einplanen', 'eingeplant', 'laufend'].includes(Projekt.phase(x))], ['alle', 'Alle', () => true]];
+  async function view() {
+    header('Karte', 'Baustellen an der Objektanschrift');
+    const idx = await projectIndex();
+    const passt = (BEREICHE.find((b) => b[0] === bereich) || BEREICHE[1])[2];
+    const shown = idx.filter(passt);
+    main().innerHTML = `<div class="phasen drei">${BEREICHE.map(([id, n, f]) => `<button data-kb="${id}" class="${bereich === id ? 'on' : ''}"><b>${idx.filter(f).length}</b><span>${n}</span></button>`).join('')}</div>
+      <div class="pmap" id="pmap"></div><p class="hint pmap-info" id="pmapInfo">Karte wird geladen …</p>`;
+    $$('[data-kb]').forEach((b) => (b.onclick = () => { bereich = b.dataset.kb; view(); }));
+    zeigen($('#pmap'), shown, $('#pmapInfo'), (id) => { switchTab('projekt', { wohnung: null }); Projekt.oeffnen(id); });
+  }
+
+  return { zeigen, anschrift, view };
 })();
