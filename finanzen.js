@@ -269,11 +269,11 @@ Datum als JJJJ-MM-TT. faellig = Fälligkeitsdatum, falls angegeben (oder Datum +
         ${gesperrt ? `<p class="notice" style="margin:0 0 10px">${icon('check')}<span><b>Fertig erfasst</b> · zum Ändern unten auf „Bearbeiten“ tippen</span></p>` : ''}
         <fieldset class="kform card" id="bForm" ${gesperrt ? 'disabled' : ''} style="border:0;margin:0 0 14px">
           <label style="margin-top:0">Projekt</label>
-          <input type="search" class="fsuche" data-fs="bProj" placeholder="Kunde oder Projekt suchen" autocomplete="off">
-          <select id="bProj"><option value="">Noch keinem Projekt zuordnen</option>${projekte.map((x) => `<option value="${x.id}" ${x.id === b.projektId ? 'selected' : ''}>${esc(projName(x))}</option>`).join('')}</select>
+          <button type="button" class="kline pick" data-wahl="bProj">${icon('home')}<span class="kl-t"><b data-wahltext>${esc(b.projektId ? projName(projekte.find((x) => x.id === b.projektId) || {}) : 'Projekt wählen')}</b><small>Tippen und nach Kunde, Projekt oder Nummer suchen</small></span>${icon('chevron', 'pc-chev')}</button>
+          <select id="bProj" hidden><option value="">Noch keinem Projekt zuordnen</option>${projekte.map((x) => `<option value="${x.id}" ${x.id === b.projektId ? 'selected' : ''}>${esc(projName(x))}</option>`).join('')}</select>
           <label>Von (Subunternehmer oder Lieferant)</label>
-          <input type="search" class="fsuche" data-fs="bPartner" placeholder="Partner oder Lieferant suchen" autocomplete="off">
-          <select id="bPartner"><option value="">Anderer, Name eintragen</option>${partner.map((p) => `<option value="${p.id}" ${p.id === b.partnerId ? 'selected' : ''}>${esc([p.firma, p.inhaber].filter(Boolean).join(' · ') || 'Ohne Namen')}</option>`).join('')}</select>
+          <button type="button" class="kline pick" data-wahl="bPartner">${icon('wrench')}<span class="kl-t"><b data-wahltext>${esc(b.partnerId ? ([partner.find((p) => p.id === b.partnerId)?.firma, partner.find((p) => p.id === b.partnerId)?.inhaber].filter(Boolean).join(' · ') || 'Partner') : (b.von || 'Partner oder Lieferant wählen'))}</b><small>Tippen und nach Namen suchen</small></span>${icon('chevron', 'pc-chev')}</button>
+          <select id="bPartner" hidden><option value="">Anderer, Name eintragen</option>${partner.map((p) => `<option value="${p.id}" ${p.id === b.partnerId ? 'selected' : ''}>${esc([p.firma, p.inhaber].filter(Boolean).join(' · ') || 'Ohne Namen')}</option>`).join('')}</select>
           <input type="text" id="bVon" value="${esc(b.von)}" placeholder="z. B. Baustoffhandel Müller" autocomplete="off" ${b.partnerId ? 'hidden' : ''} style="margin-top:6px">
           <div class="row"><div><label>Rechnungsnummer</label><input type="text" id="bNr" value="${esc(b.nr)}" autocomplete="off"></div>
             <div><label>Rechnungsdatum</label><input type="date" id="bDatum" value="${esc(b.datum)}"></div></div>
@@ -345,12 +345,15 @@ Datum als JJJJ-MM-TT. faellig = Fälligkeitsdatum, falls angegeben (oder Datum +
         setTimeout(() => URL.revokeObjectURL(url), 120000);
       };
       $('#bPartner').onchange = (e) => { $('#bVon').hidden = !!e.target.value; };
-      // Suchfelder über den Auswahllisten: Treffer filtern, der erste passende wird gewählt
-      $$('.fsuche').forEach((inp) => (inp.oninput = () => {
-        const sel = $('#' + inp.dataset.fs), w = inp.value.trim().toLowerCase().split(/\s+/).filter(Boolean);
-        let erster = null;
-        [...sel.options].forEach((o, i) => { const ok = !i || !w.length || w.every((x) => o.textContent.toLowerCase().includes(x)); o.hidden = !ok; if (ok && i && !erster) erster = o; });
-        if (w.length && erster) { sel.value = erster.value; sel.dispatchEvent(new Event('change')); }
+      // Auswahl mit Suche: Tipp öffnet eine Liste mit Suchfeld oben (Kunde, Projekt, Nummer bzw. Firmenname)
+      $$('[data-wahl]').forEach((knopf) => (knopf.onclick = async () => {
+        const sel = $('#' + knopf.dataset.wahl), partnerWahl = knopf.dataset.wahl === 'bPartner';
+        const items = [...sel.options].map((o) => ({ label: o.textContent, value: o.value || '__leer', icon: icon(o.value ? (partnerWahl ? 'wrench' : 'home') : 'x') }));
+        const v = await sheet(partnerWahl ? 'Von wem ist die Rechnung?' : 'Zu welchem Projekt?', items, { suche: partnerWahl ? 'Firma oder Name suchen' : 'Kunde, Projekt oder Nummer suchen' });
+        if (v === null) return;
+        sel.value = v === '__leer' ? '' : v; sel.dispatchEvent(new Event('change'));
+        $('[data-wahltext]', knopf).textContent = v === '__leer' ? (partnerWahl ? 'Anderer, Name unten eintragen' : 'Keinem Projekt zugeordnet') : sel.selectedOptions[0].textContent;
+        if (partnerWahl && v === '__leer') setTimeout(() => $('#bVon')?.focus(), 50);
       }));
       $('#bGewerk').onchange = (e) => {
         if (e.target.value !== '__eigen') return;

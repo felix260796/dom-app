@@ -46,13 +46,15 @@ window.Unterlagen = (() => {
         const st = !x.gueltig ? '' : x.gueltig < h ? `<span class="u-warn" style="color:#c0392b">abgelaufen, bitte erneuern</span>` : x.gueltig <= warn ? `<span class="u-warn" style="color:#d2691e">läuft bald ab, bitte erneuern</span>` : '';
         return `<div class="drow"><button type="button" class="drow-b" data-uteil="${x.id}"><span class="d-ico ${x.typ === 'application/pdf' ? 'navy' : 'brass'}">${icon(x.typ === 'application/pdf' ? 'file' : 'image')}</span>
           <span class="d-t"><b>${esc(x.name)}</b>${st}<span>${esc([x.gueltig && `gültig bis ${tag(x.gueltig)}`, groesse(x.groesse || 0)].filter(Boolean).join(' · '))}</span></span></button>
+          <button type="button" class="icon-btn" data-uteilen="${x.id}" aria-label="Senden">${icon('mail')}</button>
           <button type="button" class="icon-btn" data-uedit="${x.id}" aria-label="Bearbeiten">${icon('edit')}</button></div>`;
       }).join('')}</div>`).join('') || (firma
         ? `<div class="empty-state">${icon('file')}<b>Noch keine Firmendokumente</b><span>Lege Gewerbeanmeldung, Versicherungsnachweis, Freistellungsbescheinigung und Co. einmal ab. Danach schickst du sie mit einem Tipp an Kunden und Hausverwaltungen.</span></div>`
         : `<div class="empty-state">${icon('file')}<b>Noch keine Vorlagen</b><span>Lege deine Muster ab, zum Beispiel Abnahmeprotokoll, Regiebericht oder Checkliste Baustelle. Dann hast du sie unterwegs immer dabei.</span></div>`)}
-      <p class="hint">Tippen zum Teilen (WhatsApp, Mail, Dateien). Die Arten${firma ? ' und die Vorwarnzeit' : ''} stellst du unter Einstellungen › Abläufe & Listen ein.</p>`;
+      <p class="hint">Antippen zum Ansehen, Briefsymbol zum Senden (WhatsApp, Mail, Dateien). Die Arten${firma ? ' und die Vorwarnzeit' : ''} stellst du unter Einstellungen › Abläufe & Listen ein.</p>`;
     $('#uNeu').onclick = () => neu(bereich);
-    $$('[data-uteil]').forEach((b) => (b.onclick = () => teilen(alle.get(b.dataset.uteil))));
+    $$('[data-uteil]').forEach((b) => (b.onclick = async () => { const f = await datei(alle.get(b.dataset.uteil)); if (f) ansehen(f); }));
+    $$('[data-uteilen]').forEach((b) => (b.onclick = () => teilen(alle.get(b.dataset.uteilen))));
     $$('[data-uedit]').forEach((b) => (b.onclick = () => bearbeiten(alle.get(b.dataset.uedit))));
   }
 
@@ -64,7 +66,7 @@ window.Unterlagen = (() => {
   }
   async function teilen(x) {
     const f = await datei(x); if (!f) return;
-    if (navigator.canShare?.({ files: [f] })) { try { await navigator.share({ files: [f], title: x.name }); return; } catch (e) { if (e.name === 'AbortError') return; } }
+    if (navigator.canShare?.({ files: [f] })) { try { await navigator.share({ files: [f], title: x.name, ohneDialog: true }); return; } catch (e) { if (e.name === 'AbortError') return; } }
     ansehen(f);
   }
   function ansehen(f) {

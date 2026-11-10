@@ -46,6 +46,8 @@ window.Heute = (() => {
     // Firmendokumente, die bald ablaufen
     const fdok = (window.Unterlagen?.ablaufend() || []).map((x) => zeile('u:' + x.id, 'file', `Erneuern: ${x.name}`, `${x.gueltig < h ? 'abgelaufen seit ' : 'gültig bis '}${tag(x.gueltig)}`, x.gueltig < h ? '#c0392b' : '#d2691e'));
     block('Firmenordner', fdok);
+    // Excel-Sicherung fällig
+    if (window.Backup?.excelFaellig()) block('Datensicherung', [zeile('xl:', 'download', 'Excel-Sicherung machen', 'Alle Daten als Excel, z. B. in den OneDrive-Ordner')]);
     // Laufende Baustellen
     block('Laufende Baustellen', idx.filter((x) => Projekt.norm(x.status) === '').map((x) => zeile('p:' + x.id, 'home', name(x), x.fort ? `${x.fort.fertig} von ${x.fort.n} Schritten${x.fort.naechster ? ' · als Nächstes: ' + x.fort.naechster : ''}` : 'Noch keine Arbeitsschritte')));
 
@@ -60,6 +62,7 @@ window.Heute = (() => {
     if (art === 'p') { switchTab('projekt', { wohnung: null }); return Projekt.oeffnen(id); }
     if (art === 'kal') { Kalender.view(); return; }
     if (art === 'u') return switchTab('unterlagen');
+    if (art === 'xl') { await Backup.excel(); return view(); }
     if (art === 'r') { switchTab('rechnungen'); await Rechnung.laden(); return Rechnung.detail(Rechnung.liste().find((r) => r.id === id), () => switchTab('rechnungen')); }
     if (art === 'b') { switchTab('rechnungen'); await Finanzen.laden(); return Finanzen.erfassen(Finanzen.liste().find((b) => b.id === id), () => switchTab('rechnungen')); }
   }

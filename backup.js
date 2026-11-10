@@ -85,16 +85,82 @@ window.Backup = (() => {
     return true;
   }
 
+  // ---------- Excel-Sicherung (Wunsch Felix) ----------
+  // Alle wichtigen Daten als eine Excel-Datei mit einem Blatt je Bereich: Kunden, Objekte, Partner, Aufträge,
+  // Angebotspositionen, Rechnungen, Eingangsrechnungen, Termine. Lesbar ohne die App, z. B. im OneDrive-Ordner am PC.
+  const LS_EXCEL = 'dom:lastExcel';
+  async function xlsxLaden() {
+    if (window.XLSX) return window.XLSX;
+    await new Promise((res, rej) => { const s = document.createElement('script'); s.src = 'vendor/xlsx.mini.min.js'; s.onload = res; s.onerror = () => rej(new Error('Excel-Baustein nicht geladen')); document.head.appendChild(s); });
+    return window.XLSX;
+  }
+  const dt = (s) => (s ? new Date(String(s).length === 10 ? s + 'T12:00' : s).toLocaleDateString('de-DE') : '');
+  async function excel() {
+    toast('Excel-Sicherung wird erstellt …', 10000);
+    const X = await xlsxLaden();
+    const entries = await allEntries();
+    const alleK = (p) => entries.filter(([k]) => String(k).startsWith(p)).map(([, v]) => v).filter(Boolean);
+    const kunden = alleK('kunde:'), partner = alleK('partner:'), projekte = alleK('wohnung:'), raeume = new Map(alleK('project:').map((r) => [r.id, r]));
+    const kname = (id) => { const k = kunden.find((x) => x.id === id); return k ? [k.anrede, k.vorname, k.name].filter(Boolean).join(' ') : ''; };
+    const A = window.Angebot?._intern; try { await A?.preisliste(); } catch {}
+    const blaetter = {
+      Kunden: kunden.map((k) => ({ 'Kunden-Nr.': k.nr, Anrede: k.anrede, Vorname: k.vorname, 'Name / Firma': k.name, Telefon: k.telefon, 'E-Mail': k.email, Anschrift: k.privat, Geburtstag: dt(k.geburtstag), Quelle: k.quelle, Notiz: k.notiz,
+        'Weitere Kontakte': (k.weitere || []).map((x) => `${x.label || ''} ${x.wert}`.trim()).join('; '), Hausverwaltung: k.hv?.firma || '', 'Angelegt am': dt(k.created && new Date(k.created).toISOString()) })),
+      Objekte: kunden.flatMap((k) => (k.objekte || []).map((o) => ({ 'Kunden-Nr.': k.nr, Kunde: kname(k.id), Bezeichnung: o.name, Anschrift: o.adresse, Schlüssel: o.schluessel, Notiz: o.notiz,
+        'Ansprechpartner vor Ort': (o.kontakte || []).map((x) => [x.name, x.telefon, x.email].filter(Boolean).join(' ')).join('; ') }))),
+      Partner: partner.map((p) => ({ Art: { sub: 'Subunternehmer', lief: 'Lieferant', aussen: 'Außendienst', sonst: 'Sonstige' }[p.art] || p.art, Firma: p.firma, Gewerk: p.gewerk, Ansprechpartner: p.inhaber, Telefon: p.telefon, 'E-Mail': p.email,
+        Anschrift: p.anschrift, Webseite: p.web, 'Unsere Kunden-Nr.': p.kdnr, Qualität: (p.stufen || []).join(', '), Konditionen: p.konditionen, Notiz: p.notiz })),
+      'Preise Partner': [],
+      Aufträge: projekte.map((w) => ({ 'Projekt-Nr.': w.nr, Kunde: kname(w.kundeId) || w.customer, Titel: w.titel, Anschrift: w.address, Status: window.Projekt?.statusName(w.status) || w.status, 'Versendet am': dt(w.versendetAm), Baustart: dt(w.baustart),
+        'Absagegrund': w.absage?.grund || '', Räume: (w.rooms || []).map((id) => raeume.get(id)?.room).filter(Boolean).join(', '), 'Angelegt am': dt(w.created && new Date(w.created).toISOString()) })),
+      Angebotspositionen: projekte.flatMap((w) => (w.rooms || []).map((id) => raeume.get(id)).filter((r) => r?.angebot?.positionen?.length).flatMap((r) => {
+        let z = []; try { z = A.summen(r.angebot.positionen, r.angebot.kalk).zeilen; } catch {}
+        return z.map((x) => ({ 'Projekt-Nr.': w.nr, Kunde: kname(w.kundeId) || w.customer, Raum: r.room, 'Angebot-Nr.': r.angebot.nr, Position: x.nr, Leistung: x.it.text, Menge: x.menge, Einheit: x.it.einheit, 'EP netto': x.ep, 'GP netto': x.gp }));
+      })),
+      Rechnungen: alleK('rechnung:').map((r) => ({ 'Rechnung-Nr.': r.nr, Art: r.art, Titel: r.titel, Kunde: kname(projekte.find((w) => w.id === r.projektId)?.kundeId), 'Projekt-Nr.': projekte.find((w) => w.id === r.projektId)?.nr || '',
+        Datum: dt(r.datum), 'Fällig': dt(r.faellig), 'Netto': r.netto, 'Bezahlt am': dt(r.bezahlt), Mahnungen: (r.mahnungen || []).length })),
+      Eingangsrechnungen: alleK('beleg:').map((b) => ({ Von: partner.find((p) => p.id === b.partnerId)?.firma || b.von, 'Rechnung-Nr.': b.nr, Datum: dt(b.datum), Netto: b.netto, 'USt %': b.satz, Gewerk: b.gewerk,
+        'Projekt-Nr.': projekte.find((w) => w.id === b.projektId)?.nr || '', 'Fällig': dt(b.faellig), 'Bezahlt am': dt(b.bezahlt), Notiz: b.notiz })),
+      Termine: alleK('termin:').sort((a, b) => String(a.datum).localeCompare(b.datum)).map((t) => ({ Datum: dt(t.datum), Von: t.ganztag ? 'ganztags' : t.von, Bis: t.bis, Titel: t.titel, Art: t.art, Kunde: kname(t.kundeId), Ort: t.ort, Notiz: t.notiz })),
+    };
+    let PL = null; try { PL = await A?.preisliste(); } catch {}
+    const posText = (nr) => PL?.positionen?.find((x) => x.nr === nr)?.text || '';
+    blaetter['Preise Partner'] = partner.flatMap((p) => [
+      ...Object.entries(p.preise || {}).map(([nr, preis]) => ({ Firma: p.firma, Gewerk: p.gewerk, Position: nr, Leistung: posText(nr), 'Preis netto': preis })),
+      ...(p.eigenePreise || []).map((x) => ({ Firma: p.firma, Gewerk: p.gewerk, Position: 'eigen', Leistung: x.text, Einheit: x.einheit, 'Preis netto': x.preis }))]);
+    const wb = X.utils.book_new();
+    for (const [name, zeilen] of Object.entries(blaetter)) X.utils.book_append_sheet(wb, X.utils.json_to_sheet(zeilen.length ? zeilen : [{ Hinweis: 'noch keine Einträge' }]), name.slice(0, 31));
+    const out = X.write(wb, { bookType: 'xlsx', type: 'array' });
+    const name = `DOM_Daten_${stamp()}.xlsx`;
+    const file = new File([out], name, { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+    $('#toast').hidden = true;
+    let ok = false;
+    if (navigator.canShare?.({ files: [file] })) { try { await navigator.share({ files: [file], title: name }); ok = true; } catch (e) { if (e.name === 'AbortError') return false; } }
+    if (!ok) { const a = document.createElement('a'); a.href = URL.createObjectURL(file); a.download = name; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 60000); }
+    ls.set(LS_EXCEL, Date.now());
+    toast(`Excel-Sicherung erstellt: ${kunden.length} Kunden, ${partner.length} Partner, ${projekte.length} Aufträge`, 4500);
+    return true;
+  }
+  const excelFaellig = () => { const t = vorgabe('excelSicherungTage'); return +t > 0 && Date.now() - ls.get(LS_EXCEL) > +t * 864e5; };
+
   const lastBackup = () => ls.get(LS_BACKUP);
   const needsBackup = () => ls.get(LS_CHANGE) > lastBackup();
   const markChange = () => ls.set(LS_CHANGE, Date.now());
 
   /** Karte für die Einstellungen. */
+  const excelKarte = () => `<div class="card">
+        <h2>Excel-Sicherung</h2>
+        <p class="muted">Alle Kunden, Objekte, Partner, Preise, Aufträge, Angebotspositionen, Rechnungen, Eingangsrechnungen und Termine als <b>eine Excel-Datei</b>, ein Blatt je Bereich. Lesbar ohne die App.</p>
+        <p class="muted">Tipp: Im Teilen-Menü „In Dateien sichern“ wählen und den <b>OneDrive</b>-Ordner nehmen. Dann liegt die Datei automatisch auf deinem PC.</p>
+        <p class="muted">Letzte Excel-Sicherung: <b>${esc(ago(ls.get(LS_EXCEL)))}</b></p>
+        <button class="btn block" id="bkExcel">${icon('download')} Excel-Sicherung erstellen</button>
+      </div>`;
   function einstellungenKarte(el) {
     if (!el) return;
+    const xl = () => { const b = $('#bkExcel', el); if (b) b.onclick = async () => { if (await excel()) einstellungenKarte(el); }; };
     if (window.Sync?.active()) {
       // Mit Cloud-Abgleich nur noch als Notfall-Export, zugeklappt
-      el.innerHTML = `
+      el.innerHTML = excelKarte() + `
         <details class="card">
           <summary class="muted" style="cursor:pointer">Notfall-Export (Datei)</summary>
           <p class="muted" style="margin-top:10px">Deine Daten werden automatisch über den Cloud-Abgleich gesichert. Hier kannst du zusätzlich eine Datei erstellen, z. B. für OneDrive, oder eine Datei zurückholen.</p>
@@ -104,9 +170,10 @@ window.Backup = (() => {
         </details>`;
       $('#bkCreate', el).onclick = () => create({ withKey: $('#bkKey', el).checked });
       $('#bkRestore', el).onclick = restore;
+      xl();
       return;
     }
-    el.innerHTML = `
+    el.innerHTML = excelKarte() + `
       <div class="card">
         <h2>Datensicherung</h2>
         <p class="muted">Alles liegt nur auf diesem Gerät. Sichere regelmäßig: „In Dateien sichern“ wählen und <b>iCloud Drive</b> als Ort nehmen.</p>
@@ -117,6 +184,7 @@ window.Backup = (() => {
       </div>`;
     $('#bkCreate', el).onclick = async () => { if (await create({ withKey: $('#bkKey', el).checked })) einstellungenKarte(el); };
     $('#bkRestore', el).onclick = restore;
+    xl();
   }
 
   /** Hinweis in der Projektliste, wenn seit der letzten Sicherung etwas geändert wurde. */
@@ -138,5 +206,5 @@ window.Backup = (() => {
     $('#bhCreate', el).onclick = async () => { if (await create()) hinweis(el); };
   }
 
-  return { create, restore, einstellungenKarte, hinweis, markChange };
+  return { create, restore, excel, excelFaellig, einstellungenKarte, hinweis, markChange };
 })();

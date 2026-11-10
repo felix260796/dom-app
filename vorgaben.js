@@ -69,6 +69,9 @@ const VORGABEN = {
         'Begehung | baustelle | Baufortschritt prüfen, Fotos machen, offene Punkte mit Subunternehmer klären',
       ], h: 'Art: kunde, baustelle, buero oder privat. Die Vorlagen stehen beim neuen Termin klein unter dem Titel.' },
     ]],
+    ['Datensicherung', [
+      { k: 'excelSicherungTage', l: 'An die Excel-Sicherung erinnern nach so vielen Tagen (0 = nie)', t: 'zahl', d: 7, h: 'Die Erinnerung steht auf „Heute“. Die Sicherung selbst: Einstellungen › Datensicherung.' },
+    ]],
     ['Startseite „Heute“', [
       { k: 'heuteStart', l: 'Beim Öffnen der App mit „Heute“ starten', t: 'janein', d: 'ja', h: 'Sonst startet die App bei den Kunden. „Heute“ erreichst du immer über das Menü (DOM-Logo oben).' },
       { k: 'heuteVorlauf', l: 'Fälliges so viele Tage vorher zeigen', t: 'zahl', d: 3 },
