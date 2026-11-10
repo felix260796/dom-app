@@ -56,7 +56,7 @@ Alle Bereiche teilen einen Speicher (`kvGet/kvSet`, abgeglichen über `sync.js`)
 ## Regeln
 
 - Bei jeder Änderung `APP_VERSION` in `app.js` und `VERSION` in `sw.js` um eins erhöhen.
-- Leiste unten: Das Fenster scrollt, `body` ist mindestens `--voll + 1px` hoch. Kein festes Gerüst mit `100dvh`, sonst sitzt die Leiste auf dem iPhone zu hoch.
+- Leiste unten: Das Fenster scrollt, `body` ist mindestens `--voll + 60px` hoch; nach jedem Neuzeichnen von `#main` (und bei pageshow, Tastatur zu, Rückkehr in die App) schubst `core.js` das Fenster 1 px (`leisteSchubs`), damit iOS die Leiste wieder ganz unten anlegt. Kein festes Gerüst mit `100dvh`, sonst sitzt die Leiste auf dem iPhone zu hoch.
 - Keine Geheimnisse ins Repository. Der Gemini-Schlüssel liegt nur in den Einstellungen und im Cloud-Abgleich. Der Supabase-„Publishable key“ in `sync.js` ist öffentlich.
 - Änderungen an `supabase/functions/termin-mail` und `supabase/functions/push` muss Felix in Supabase neu deployen.
 - Felix will einfache, logische Oberflächen, die man ohne Erklärung versteht. Keine Emojis in der App.

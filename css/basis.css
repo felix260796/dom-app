@@ -37,10 +37,10 @@ svg.i { width: 22px; height: 22px; flex: none; fill: none; stroke: currentColor;
 
 /* Seitenaufbau: Das Fenster scrollt, Kopfzeile klebt oben, die Leiste ist unten fest.
    Wichtig fürs iPhone (Homebildschirm-App): Kann eine Seite NICHT scrollen, hält iOS unten rund 55 px frei und die
-   Leiste sitzt zu hoch. Darum ist jede Seite mindestens 1 px höher als der ganze Bildschirm (--voll, aus
+   Leiste sitzt zu hoch. Darum ist jede Seite mindestens 60 px höher als der ganze Bildschirm (1 px reichte nicht immer) (--voll, aus
    screen.height in core.js). Bewusst nicht 100% oder 100dvh: die ändern sich mit, dann springt die Leiste. */
 html { background: var(--navy-ink); overscroll-behavior-y: none; }
-body { min-height: calc(var(--voll, 100lvh) + 1px); background: var(--bg); }
+body { min-height: calc(var(--voll, 100lvh) + 60px); background: var(--bg); }
 main { padding: 16px max(16px, calc((100% - 688px) / 2)) calc(94px + env(safe-area-inset-bottom)); }
 
 /* ---------- Tableiste ---------- */

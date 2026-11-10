@@ -8,6 +8,28 @@
     document.documentElement.style.setProperty('--voll', h + 'px');
   };
   setz(); addEventListener('resize', setz); addEventListener('orientationchange', () => setTimeout(setz, 300));
+  // Unsichtbarer Schubs: iOS (Homebildschirm-App) setzt die Leiste manchmal erst nach einer Scrollbewegung wieder
+  // ganz nach unten, z. B. nach einem Reiterwechsel, nach der Tastatur oder beim Zurückkommen in die App.
+  // Darum nach jedem Neuzeichnen 1 px runter und wieder zurück scrollen (nur ganz oben, sonst bleibt alles, wie es ist).
+  let warte = 0;
+  const schubs = () => {
+    if (warte) return;
+    warte = requestAnimationFrame(() => {
+      warte = 0; setz();
+      if (window.scrollY !== 0) return;
+      window.scrollTo(0, 1);
+      requestAnimationFrame(() => { if (window.scrollY <= 1) window.scrollTo(0, 0); });
+    });
+  };
+  window.leisteSchubs = schubs;
+  addEventListener('pageshow', schubs);
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) setTimeout(schubs, 200); });
+  document.addEventListener('focusout', () => setTimeout(schubs, 300));
+  window.visualViewport?.addEventListener('resize', () => setTimeout(schubs, 100));
+  document.addEventListener('DOMContentLoaded', () => {
+    const m = document.getElementById('main');
+    if (m) new MutationObserver(schubs).observe(m, { childList: true });
+  });
 })();
 /* DOM – Kern der App: Helfer, Speicher (IndexedDB), KI-Aufrufe (Gemini), Bildfunktionen.
  * Alle Daten liegen lokal auf dem Gerät. Sicherung: backup.js · Cloud-Abgleich: sync.js
