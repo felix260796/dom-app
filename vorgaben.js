@@ -59,6 +59,7 @@ const VORGABEN = {
     ['Kalkulation', [
       { k: 'ampelGut', l: 'Marge grün ab %', t: 'zahl', d: 20 },
       { k: 'ampelKnapp', l: 'Marge gelb ab % (darunter rot)', t: 'zahl', d: 10 },
+      { k: 'subZuschlag', l: 'Zuschlag auf Positionen aus Partner-Angeboten in %', t: 'zahl', d: 20, h: 'Wird vorgeschlagen, wenn du Positionen eines Subunternehmers ins eigene Angebot übernimmst. Du kannst ihn jedes Mal ändern.' },
     ]],
     ['Kalender und Geburtstage', [
       { k: 'kalKW', l: 'Kalenderwoche (KW) im Kalender links anzeigen', t: 'janein', d: 'ja' },
@@ -287,16 +288,24 @@ window.Vorgaben = (() => {
     const wert = (f) => { const v = vorgabe(f.k); return f.t === 'plan' ? v.join(' / ') : f.t === 'liste' ? v.join('\n') : v; };
     const feld = (f) => {
       const geaendert = S.vorgaben[f.k] !== undefined && S.vorgaben[f.k] !== '';
-      const kopf = `<div class="vg-l"><label>${esc(f.l)}</label>${geaendert ? `<button type="button" class="vg-std" data-std="${f.k}">Standard</button>` : ''}</div>`;
-      const inp = f.t === 'janein' ? `<select data-vg="${f.k}"><option value="ja" ${wert(f) === 'ja' ? 'selected' : ''}>Ja</option><option value="nein" ${wert(f) === 'nein' ? 'selected' : ''}>Nein</option></select>`
+      // Listen: „(eine Zeile je …)“ braucht es nicht mehr, jeder Eintrag hat ein eigenes Feld
+      const label = f.t === 'liste' ? f.l.replace(/\s*\(eine Zeile je [^):]*(?::\s*([^)]*))?\)/, (m, fmt) => (fmt ? ` (${fmt})` : '')) : f.l;
+      const kopf = `<div class="vg-l"><label>${esc(label)}</label>${geaendert ? `<button type="button" class="vg-std" data-std="${f.k}">Standard</button>` : ''}</div>`;
+      const inp = f.t === 'liste' ? listenFeld(f.k, vorgabe(f.k))
+        : f.t === 'janein' ? `<select data-vg="${f.k}"><option value="ja" ${wert(f) === 'ja' ? 'selected' : ''}>Ja</option><option value="nein" ${wert(f) === 'nein' ? 'selected' : ''}>Nein</option></select>`
         : f.t === 'wahl' ? `<select data-vg="${f.k}">${f.o.map(([v, n]) => `<option value="${esc(v)}" ${wert(f) === v ? 'selected' : ''}>${esc(n)}</option>`).join('')}</select>`
-        : f.t === 'text' || f.t === 'liste' ? `<textarea data-vg="${f.k}" rows="${f.t === 'liste' ? Math.max(3, wert(f).split('\n').length) : f.rows || 4}">${esc(wert(f))}</textarea>`
+        : f.t === 'text' ? `<textarea data-vg="${f.k}" rows="${f.rows || 4}">${esc(wert(f))}</textarea>`
         : `<input type="text" data-vg="${f.k}" ${f.t === 'zahl' ? 'inputmode="decimal"' : ''} value="${esc(wert(f))}">`;
       return kopf + inp + (f.h ? `<p class="hint" style="margin:4px 0 0">${esc(f.h)}</p>` : '');
     };
     main().innerHTML = (kopf ? '<div id="vgKopf"></div>' : '') + VORGABEN[id].map(([titel, felder]) => `<div class="sec-h"><h2>${esc(titel)}</h2></div><div class="card kform vg">${felder.map(feld).join('')}</div>`).join('')
       + (PLATZHALTER[id] ? `<p class="hint">Platzhalter in Texten: ${esc(PLATZHALTER[id])}</p>` : '');
     if (kopf) kopf($('#vgKopf'));
+    $$('[data-lf]').forEach((box) => listenBinden(box, vorgabe(box.dataset.lf), async (l) => {
+      S.vorgaben[box.dataset.lf] = l;
+      await saveSettings(); toast('Gespeichert'); window.Push?.abgleich();
+      const y = window.scrollY; seite(id); window.scrollTo(0, y);
+    }));
     $$('[data-vg]').forEach((el) => (el.onchange = async () => {
       const f = VORGABE_FELDER[el.dataset.vg];
       let v = el.value;
@@ -320,7 +329,9 @@ window.Vorgaben = (() => {
 
   // ---------- Preisliste & Angebot: Aufschläge, Texte, Firmendaten, Positionen ----------
   const PL_ZAHLEN = [['aufLohn', 'Aufschlag auf Lohn (Subunternehmer) in %', true], ['aufMat', 'Aufschlag auf Material in %', true], ['wagnis', 'Wagnis und Gewinn in %', true], ['mwst', 'Mehrwertsteuer in %', true], ['spanne', 'Spanne der Preisrichtung vor Ort ± %', true], ['gueltig', 'Angebot gültig (Tage)', false]];
-  const PL_TEXTE = [['textLeistung', 'Ausführung und Leistungsumfang'], ['textBauseits', 'Bauseits zu stellen'], ['textZahlung', 'Zahlungsbedingungen'], ['textGewaehr', 'Gewährleistung'], ['textWiderruf', 'Widerruf'], ['textAuftrag', 'Auftragserteilung'], ['hinweise', 'Weitere Hinweise (eine Zeile je Hinweis)']];
+  // Die Textfelder vor und nach den Positionen haben seit Version 75 eine eigene Seite (Angebot._intern.texteEinstellungen).
+  // Hier bleiben nur der Schlusssatz und der Text über der Unterschrift.
+  const PL_TEXTE = [['textSchluss', 'Schlusssatz vor dem Gruß'], ['textAuftrag', 'Text über der Unterschrift (Auftragserteilung)']];
   const PL_FIRMA = [['firma', 'Firmenname'], ['strasse', 'Straße'], ['ort', 'PLZ und Ort'], ['telefon', 'Telefon'], ['email', 'E-Mail'], ['ansprechpartner', 'Ansprechpartner'], ['ustid', 'USt-IdNr.'], ['sitz', 'Sitz'], ['hrb', 'Handelsregister'], ['gf', 'Geschäftsführer'], ['bank', 'Bankverbindung']];
   async function preisKarten(box) {
     const PL = await window.Angebot._intern.preisliste();
@@ -331,8 +342,10 @@ window.Vorgaben = (() => {
       <div class="card kform vg">${PL_ZAHLEN.map(([k, l, pr]) => `<label>${esc(l)}</label><input type="text" inputmode="decimal" data-ple="${k}" data-pr="${pr ? 1 : 0}" value="${esc(String(pr ? Math.round((E[k] || 0) * 1000) / 10 : E[k] ?? '').replace('.', ','))}">`).join('')}
         <p class="hint" style="margin:6px 0 0">Gilt für alle neuen Berechnungen. Im einzelnen Angebot kannst du unter „Nachkalkulation“ abweichen.</p></div>
       <div class="sec-h"><h2>Texte im Angebot</h2></div>
-      <div class="card kform vg">${PL_TEXTE.map(([k, l]) => `<label>${esc(l)}</label><textarea data-plt="${k}" rows="3">${esc(Array.isArray(E[k]) ? E[k].join('\n') : E[k] || '')}</textarea>`).join('')}</div>
+      <div class="docs" style="margin-bottom:10px"><button class="doc" id="plTexte"><span class="d-ico navy">${icon('edit')}</span><span class="d-t"><b>Textfelder vor und nach den Positionen</b><span>${(window.Angebot._intern.bausteine() || []).length} Textfelder, z. B. ${esc((window.Angebot._intern.bausteine() || []).map((b) => b.titel).filter(Boolean).slice(0, 3).join(', '))}</span></span>${icon('chevron', 'pc-chev')}</button></div>
+      <div class="card kform vg">${PL_TEXTE.map(([k, l]) => `<label>${esc(l)}</label><textarea data-plt="${k}" rows="3" placeholder="${k === 'textSchluss' ? 'Wir freuen uns auf Ihren Auftrag.' : ''}">${esc(Array.isArray(E[k]) ? E[k].join('\n') : E[k] || '')}</textarea>`).join('')}</div>
       `;
+    $('#plTexte', box).onclick = () => { const zur = { y: window.scrollY, h: $('#title').textContent }; window.Angebot._intern.texteEinstellungen(() => { einstellungSeite(window.__plSeite || 'kalkulation'); setTimeout(() => window.scrollTo(0, zur.y), 50); }); };
     $$('[data-ple]', box).forEach((el) => (el.onchange = async () => { const v = parseFloat(el.value.replace(',', '.')); if (!Number.isFinite(v)) return toast('Bitte eine Zahl eintragen.'); E[el.dataset.ple] = el.dataset.pr === '1' ? v / 100 : v; await sichern(); }));
     $$('[data-plt]', box).forEach((el) => (el.onchange = async () => { const k = el.dataset.plt; E[k] = k === 'hinweise' ? el.value.split('\n').map((x) => x.trim()).filter(Boolean) : el.value.trim(); await sichern(); }));
   }

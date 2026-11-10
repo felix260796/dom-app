@@ -70,6 +70,8 @@ window.Unterlagen = (() => {
     ansehen(f);
   }
   function ansehen(f) {
+    // Bilder und PDFs in der App ansehen (mit Zoom), andere Dateien (z. B. Word) wie bisher öffnen
+    if (/^(image\/|application\/pdf)/.test(f.type)) return pdfAnsicht(f, f.name);
     const url = URL.createObjectURL(f);
     const w = window.open(url, '_blank');
     if (!w) { const a = document.createElement('a'); a.href = url; a.download = f.name; a.click(); }

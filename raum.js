@@ -7,11 +7,11 @@
 const uiOpen = { more: false };
 async function viewProjekt() {
   const p = normalizeProject(state.project);
-  if (!p) return state.wohnung ? Projekt.view() : state.tab === 'kunden' ? Kunden.start() : state.tab === 'angebote' ? Angebote.view() : viewProjektListe();
+  if (!p) return state.wohnung ? Projekt.view() : state.tab === 'kunden' ? Kunden.start() : Auftraege.view();
   const w = state.wohnung;
   const rt = roomType(p.roomType);
   const backToProject = () => { state.project = null; viewProjekt(); window.scrollTo(0, 0); };
-  header(p.room || rt.name, [w?.customer || p.customer, rt.name].filter(Boolean).join(' · '), { label: w ? 'Projekt' : state.tab === 'kunden' ? 'Kunde' : 'Projekte', fn: backToProject });
+  header(p.room || rt.name, [w?.customer || p.customer, rt.name].filter(Boolean).join(' · '), { label: w ? 'Auftrag' : state.tab === 'kunden' ? 'Kunde' : 'Aufträge', fn: backToProject });
   const pkgs = roomPackages(p);
   const full = p.photos.length >= MAX_PHOTOS;
   const visible = pkgs.filter((x) => firstResult(p, x.id) || Object.keys(p.status || {}).some((k) => k.startsWith(x.id + ':') && (p.status[k].loading || p.status[k].error)));

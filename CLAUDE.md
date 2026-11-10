@@ -5,6 +5,15 @@ Diese Datei zuerst lesen. Danach nur die Dateien des Bereichs öffnen, um den es
 PWA ohne Build-Schritt: reines HTML, CSS und JS. Alle Skripte werden in `index.html` der Reihe nach geladen und teilen sich globale Helfer.
 Die Oberfläche ist auf Deutsch. Der Nutzer ist Felix (Dom Projektmanagement GmbH), Kollege Deniel Kovacic.
 
+## Aufbau seit Version 75
+
+Vier Reiter unten: **Heute** · **Aufträge** (`auftraege.js`, alles von der Anfrage bis zur Rechnung mit den Stufen Angebot, Verschickt, Zugesagt, Baustelle, Abrechnen, Bezahlt, Abgesagt) · **Kontakte** (Kunden und Partner, Umschalter `kontakteWahl` in `app.js`) · **Geld** (`finanzen.js`, Tab-Name intern weiter `rechnungen`).
+Alte Tab-Namen gehen weiter: `switchTab('projekt')` und `switchTab('angebote')` landen bei `auftraege` (`TAB_ALIAS`), `kunden`/`partner` sind die zwei Seiten von Kontakte (`TAB_KNOPF`).
+Angebot: „Speichern und ansehen“ legt das PDF unter `w.dokumente` ab, „Senden“ verschickt. Nach dem Senden ist das Angebot gesperrt (`w.angebotGesperrt`, `Projekt.gesperrt/gesperrtFrage/angebotKopieren`); ändern nur über eine Kopie mit neuer Nummer (`w.angebotArchiv`, `w.angebotKopieVon`).
+Textfelder vor und nach den Positionen: Standard `PL.einstellungen.bausteine`, je Auftrag `w.angebotTexte` (`Angebot._intern.texteAuftrag`, `texteEinstellungen`).
+Partner-Angebote übernehmen: `Angebot._intern.subUebernehmen` (Foto, PDF oder Partner-Preisliste, KI liest, Zuschlag `subZuschlag`), Zeilen als eigene Positionen mit `x.sub`.
+Dokumente ansehen mit Zoom: `pdfAnsicht` in `core.js` (Zoom nur, solange ein Dokument offen ist). Listen in den Einstellungen: `listenFeld`/`listenBinden` in `core.js`.
+
 ## Bereiche
 
 | Bereich | Dateien | Inhalt |
