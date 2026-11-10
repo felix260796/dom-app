@@ -116,7 +116,8 @@ ${w.gespraech?.transcript || ''}` }], true, { responseSchema: { type: 'OBJECT', 
     const data = await kvGet(`gpdf:${w.id}:${art}`);
     if (!data) return toast('Das PDF ist auf diesem Gerät noch nicht da. Bitte kurz warten (Cloud-Abgleich).', 4000);
     const blob = await (await fetch(data)).blob();
-    window.open(URL.createObjectURL(new File([blob], (w.gespraechPdfs || []).find((x) => x.art === art)?.name || 'Gespräch.pdf', { type: 'application/pdf' })), '_blank');
+    const name = (w.gespraechPdfs || []).find((x) => x.art === art)?.name || 'Gespräch.pdf';
+    pdfAnsicht(new File([blob], name, { type: 'application/pdf' }), name);
   }
   return { erstellen, oeffnen };
 })();

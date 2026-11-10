@@ -125,12 +125,14 @@ window.Fortschritt = (() => {
   /** Einstellungen → Baufortschritt: Vorlagen bearbeiten (ein Schritt pro Zeile) */
   function einstellungen() {
     const S = state.settings;
-    main().innerHTML = `<p class="hint" style="margin-top:0">Diese Schritte übernimmst du im Projekt mit einem Tipp und kannst sie dort je Auftrag anpassen. Ein Schritt pro Zeile, von oben nach unten in der Reihenfolge, in der gearbeitet wird (Zeile 1 = Schritt 1).</p>
+    main().innerHTML = `<p class="hint" style="margin-top:0">Diese Schritte übernimmst du im Projekt mit einem Tipp und kannst sie dort je Auftrag anpassen. Von oben nach unten in der Reihenfolge, in der gearbeitet wird. Mit dem Pfeil schiebst du einen Schritt nach oben.</p>
       ${Object.keys(VORLAGEN).map((a) => `<div class="card kform"><label style="margin-top:0">${esc(NAMEN[a])}</label>
-        <textarea data-bv="${a}" rows="${Math.min(14, vorlage(a).length + 1)}">${esc(vorlage(a).join('\n'))}</textarea>
+        ${listenFeld(a, vorlage(a), 'Neuer Arbeitsschritt')}
         <button class="link-danger" data-bvr="${a}" style="margin-top:6px">Auf Standard zurücksetzen</button></div>`).join('')}`;
-    const save = debounce(saveSettings, 400);
-    $$('[data-bv]').forEach((ta) => (ta.oninput = () => { S.bauVorlagen ??= {}; S.bauVorlagen[ta.dataset.bv] = ta.value.split('\n').map((x) => x.trim()).filter(Boolean); save(); }));
+    $$('[data-lf]').forEach((box) => listenBinden(box, vorlage(box.dataset.lf), async (l) => {
+      S.bauVorlagen ??= {}; S.bauVorlagen[box.dataset.lf] = l; await saveSettings(); toast('Gespeichert');
+      const y = window.scrollY; einstellungen(); window.scrollTo(0, y);
+    }));
     $$('[data-bvr]').forEach((b) => (b.onclick = async () => { if (S.bauVorlagen) delete S.bauVorlagen[b.dataset.bvr]; await saveSettings(); einstellungen(); }));
   }
 

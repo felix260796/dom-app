@@ -278,7 +278,7 @@ window.Kunden = (() => {
     header('Kunden', state.settings.company || '');
     const idx = await projectIndex();
     const all = liste();
-    main().innerHTML = `
+    main().innerHTML = `${kontakteWahl('kunden')}
       <label class="search big">${icon('search')}<input type="search" id="kq" value="${esc(filter)}" placeholder="Name, Straße, Ort, Telefon oder Nummer" autocomplete="off"></label>
       <button class="cta slim" id="kNew">
         <span class="cta-ico">${icon('plus')}</span>

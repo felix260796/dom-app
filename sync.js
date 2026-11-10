@@ -295,7 +295,7 @@ window.Sync = (() => {
     if (changed.has('projectIndex') || [...changed].some((k) => k.startsWith('kunde:'))) await window.Kunden?.nummern();
     for (const k of changed) if (k.startsWith('project:') && state.project?.id !== k.slice(8)) window.Projekt?.forget(k.slice(8));
     const typing = /INPUT|TEXTAREA|SELECT/.test(document.activeElement?.tagName || '');
-    if (!typing && document.getElementById('new') && state.tab === 'projekt') viewProjektListe();
+    if (!typing && document.getElementById('auNeu') && state.tab === 'auftraege' && !state.wohnung && !state.project) window.Auftraege?.view();
     if (!typing && document.getElementById('kNew') && state.tab === 'kunden') window.Kunden?.listeView();
     // Offene Kundenkarte bzw. offenes Objekt mit dem neuen Stand neu zeichnen, damit nicht mit altem Stand weitergearbeitet wird
     // (nur wenn Kundenkarte bzw. Objektseite wirklich zu sehen ist, nicht unter Kalender, Bildern oder einem Projekt)

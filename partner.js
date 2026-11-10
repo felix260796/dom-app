@@ -60,7 +60,7 @@ window.Partner = (() => {
     state.partner = null;
     header('Partner', 'Subunternehmer, Lieferanten, Außendienst');
     const all = liste();
-    main().innerHTML = `
+    main().innerHTML = `${kontakteWahl('partner')}
       <label class="search big">${icon('search')}<input type="search" id="pq" value="${esc(filter)}" placeholder="Firma, Gewerk, Name oder Telefon" autocomplete="off"></label>
       <button class="cta slim" id="pNew"><span class="cta-ico">${icon('plus')}</span>
         <span class="cta-t"><b>Neuer Partner</b></span>${icon('chevron', 'cta-chev')}</button>
@@ -185,10 +185,7 @@ window.Partner = (() => {
         const blob = await (await fetch(data)).blob();
         const file = new File([blob], d.name, { type: d.typ });
         // Antippen = ansehen (nicht gleich verschicken). Senden geht von der Ansicht aus über das Teilen-Symbol.
-        const url = URL.createObjectURL(file);
-        const w = window.open(url, '_blank');
-        if (!w) { const a = document.createElement('a'); a.href = url; a.download = d.name; a.click(); }
-        setTimeout(() => URL.revokeObjectURL(url), 120000);
+        pdfAnsicht(file, d.name);
       }));
       $$('[data-dren]').forEach((b) => (b.onclick = async () => {
         const d = p.dokumente.find((x) => x.id === b.dataset.dren);

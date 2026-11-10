@@ -6,7 +6,7 @@
  * Kern-Funktionen (Speicher, KI, Bilder) stehen in core.js. */
 
 // ---------- Symbole (einfache Linien-Icons) ----------
-const APP_VERSION = '74';
+const APP_VERSION = '75';
 const ICONS = {
   plus: '<path d="M12 5v14M5 12h14"/>',
   camera: '<path d="M3 8.5A2 2 0 0 1 5 6.5h2l1.6-2h6.8l1.6 2h2a2 2 0 0 1 2 2V18a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><circle cx="12" cy="13" r="3.6"/>',
@@ -84,7 +84,7 @@ function header(title, sub = '', back = null) {
   h.onclick = ziel ? () => { switchTab('einstellungen'); einstellungSeite(ziel); window.scrollTo(0, 0); } : null;
 }
 // Titel der Übersichtsseite → Einstellungsseite
-const SCHNELL_EINST = { Kunden: 'kundenEinst', Partner: 'partnerEinst', Projekte: 'projektEinst', Angebote: 'kalkulation', Rechnungen: 'rechnungen' };
+const SCHNELL_EINST = { Kunden: 'kundenEinst', Partner: 'partnerEinst', Aufträge: 'projektEinst', Projekte: 'projektEinst', Angebote: 'kalkulation', Geld: 'rechnungen', Rechnungen: 'rechnungen' };
 const setTitle = (t) => { $('#title').textContent = t; $('#subtitle').hidden = true; };
 // Ansichten aus angebot.js / social.js haben eigene Zurück-Knöpfe (#aBack, #soBack, #vBack). Sie werden oben gespiegelt.
 const LEGACY_BACK = '#aBack, #vBack, #soBack';
@@ -98,7 +98,19 @@ new MutationObserver(() => {
 
 // Jeder Reiter merkt sich, wo man zuletzt war (Kunde, Projekt, Raum)
 const tabState = {};
+// Seit Version 75 vier Reiter: Heute · Aufträge · Kontakte · Geld.
+// Die alten Namen bleiben als Ziele erhalten: 'projekt' und 'angebote' führen zu den Aufträgen,
+// 'kunden' und 'partner' sind die zwei Seiten des Reiters Kontakte.
+const TAB_ALIAS = { projekt: 'auftraege', angebote: 'auftraege' };
+const TAB_KNOPF = { kunden: 'kontakte', partner: 'kontakte' };
+let kontaktSeite = 'kunden';
+/** Umschalter oben auf den Kontakte-Listen. */
+const kontakteWahl = (aktiv) => `<div class="seg kw">${[['kunden', 'Kunden'], ['partner', 'Partner']].map(([id, n]) => `<button type="button" data-kw="${id}" class="${aktiv === id ? 'on' : ''}">${n}</button>`).join('')}</div>`;
+document.addEventListener('click', (e) => { const b = e.target.closest('[data-kw]'); if (b && !b.classList.contains('on')) switchTab(b.dataset.kw); });
 function switchTab(tab, restore) {
+  tab = TAB_ALIAS[tab] || tab;
+  if (tab === 'kontakte') tab = kontaktSeite;
+  if (tab === 'kunden' || tab === 'partner') kontaktSeite = tab;
   // Einstellungen sind kein Reiter unten: merken, woher man kam, damit „Zurück“ dorthin führt
   if (tab === 'einstellungen' && state.tab !== 'einstellungen') window.__vorEinst = { tab: state.tab, s: { project: state.project, wohnung: state.wohnung, kunde: state.kunde, objekt: state.objekt, partner: state.partner } };
   if (state.tab !== tab || restore) {
@@ -107,16 +119,16 @@ function switchTab(tab, restore) {
     state.project = s.project || null; state.wohnung = s.wohnung || null; state.kunde = s.kunde || null; state.objekt = s.objekt || null; state.partner = s.partner || null;
   }
   state.tab = tab; state.kalender = false; state.finanzen = false;
-  $$('.tabbar button').forEach((b) => b.classList.toggle('active', b.dataset.tab === tab));
+  $$('.tabbar button').forEach((b) => b.classList.toggle('active', b.dataset.tab === (TAB_KNOPF[tab] || tab)));
   window.scrollTo(0, 0);
   if (tab === 'einstellungen') state.editPkg = null;
-  ({ kunden: viewProjekt, partner: () => Partner.start(), projekt: viewProjekt, angebote: viewProjekt, rechnungen: () => Finanzen.view(), heute: () => Heute.view(), suche: () => Suche.view(), karte: () => Karte.view(), auswertung: () => Finanzen.auswertungView(), unterlagen: () => Unterlagen.view(), hilfe: () => Hilfe.view(), einstellungen: viewEinstellungen })[tab]();
+  ({ kunden: viewProjekt, partner: () => Partner.start(), auftraege: viewProjekt, rechnungen: () => Finanzen.view(), heute: () => Heute.view(), suche: () => Suche.view(), karte: () => Karte.view(), auswertung: () => Finanzen.auswertungView(), unterlagen: () => Unterlagen.view(), hilfe: () => Hilfe.view(), einstellungen: viewEinstellungen })[tab]();
 }
 /** Reiter wechseln und dort direkt etwas öffnen, z. B. openTab('kunden', { kunde }). */
 window.openTab = (tab, s) => switchTab(tab, s);
 $$('.tabbar button').forEach((b) => (b.onclick = () => {
   // Erneutes Tippen auf den aktiven Reiter führt zurück zur Liste
-  if (b.dataset.tab === state.tab && !state.kalender && !state.finanzen) { state.project = null; state.wohnung = null; state.kunde = null; state.objekt = null; state.partner = null; }
+  if (b.dataset.tab === (TAB_KNOPF[state.tab] || state.tab) && !state.kalender && !state.finanzen) { state.project = null; state.wohnung = null; state.kunde = null; state.objekt = null; state.partner = null; }
   switchTab(b.dataset.tab);
 }));
 
@@ -205,7 +217,6 @@ async function viewProjektListe() {
 // [id, Titel, Symbol, Untertitel (Funktion), Öffnen (Funktion)]
 const MENUE = [
   ['suche', 'Suche', 'search', () => 'Kunden, Projekte, Angebote, Rechnungen, Termine', () => switchTab('suche')],
-  ['heute', 'Heute', 'sun', () => 'Was heute dran ist', () => switchTab('heute')],
   ['kalender', 'Kalender', 'calendar', () => { const n = window.Kalender?.eintraege(Kalender._heute(), Kalender._heute()).length || 0; return n ? `Heute ${n} ${n === 1 ? 'Eintrag' : 'Einträge'}` : 'Termine, Geburtstage'; }, () => { state.finanzen = false; Kalender.view(); window.scrollTo(0, 0); }],
   ['karte', 'Karte', 'map', () => 'Alle Baustellen auf der Karte', () => switchTab('karte')],
   ['auswertung', 'Auswertung', 'chart', () => 'Umsatz, Zusagen, Marge, Kundenquellen', () => switchTab('auswertung')],
@@ -259,7 +270,7 @@ $('#micBtn').onclick = () => { const t = state.tab; Sprache.view(() => switchTab
 
 function zielOeffnen(z) {
   if (z === 'kalender') { switchTab('heute'); Kalender.view(); return; }
-  switchTab(['kunden', 'heute', 'projekt', 'angebote', 'rechnungen', 'partner'].includes(z) ? z : 'heute');
+  switchTab(['kunden', 'heute', 'projekt', 'angebote', 'auftraege', 'kontakte', 'rechnungen', 'partner'].includes(z) ? z : 'heute');
 }
 
 // ---------- Start ----------

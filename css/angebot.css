@@ -132,3 +132,23 @@ button.pg { border: 0; background: none; text-align: right; font: inherit; color
 .tb-fz { padding: 8px 0; border-bottom: 1px solid var(--line, #ece8e0); }
 .tb-fz .row { margin-top: 6px; align-items: center; }
 .tb-fz .row > div { flex: 1; min-width: 0; }
+/* ---------- Textfelder im Angebot ---------- */
+.tx { margin-bottom: 10px; }
+.tx-k { display: flex; gap: 4px; align-items: center; margin-bottom: 8px; }
+.tx-k input { flex: 1; min-width: 0; font-weight: 650; }
+.tx-k .icon-btn { width: 38px; flex: 0 0 38px; color: var(--muted); }
+.tx textarea { width: 100%; }
+.tx select { margin-top: 8px; font-size: 14px; color: var(--muted); }
+
+/* ---------- Positionen aus Partner-Angebot ---------- */
+.sub-sheet { max-height: 92vh; overflow: auto; }
+.sub-zu { display: flex; align-items: center; gap: 8px; font-weight: 650; margin: 0 0 10px; }
+.sub-zu input { width: 80px; text-align: right; }
+.sub-l { display: flex; flex-direction: column; gap: 8px; margin-bottom: 10px; }
+.sub-r { display: flex; gap: 10px; align-items: flex-start; border: 1px solid var(--line); border-radius: 12px; padding: 10px; background: #fff; }
+.sub-r > input[type="checkbox"] { width: 22px; height: 22px; margin-top: 10px; flex: 0 0 22px; }
+.sub-t { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 6px; }
+.sub-m { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; font-size: 14px; }
+.sub-m input { width: 72px; text-align: right; }
+.sub-t small { color: var(--muted); font-size: 12.5px; }
+.tb-sub { display: block; color: var(--muted); font-size: 12.5px; margin: 4px 0 2px; }

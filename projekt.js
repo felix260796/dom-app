@@ -232,8 +232,8 @@ window.Projekt = (() => {
     const k = Kunden.byId(w.kundeId);
     const nFotos = k ? await Bilder.anzahl(w.kundeId, w.objektId, w.id) : 0;
     if (state.wohnung !== w || state.project) return;
-    const zurueckLabel = state.tab === 'kunden' && state.kunde ? (state.objekt ? 'Objekt' : 'Kunde') : state.tab === 'angebote' ? 'Angebote' : 'Projekte';
-    header(w.customer || 'Neues Projekt', [w.nr && `Projekt-Nr. ${w.nr}`, w.address || (w.isNew ? 'Räume anlegen' : '')].filter(Boolean).join(' · '), { label: zurueckLabel, fn: leave });
+    const zurueckLabel = state.tab === 'kunden' && state.kunde ? (state.objekt ? 'Objekt' : 'Kunde') : state.tab === 'rechnungen' ? 'Geld' : 'Aufträge';
+    header(w.customer || 'Neuer Auftrag', [w.nr && `Projekt-Nr. ${w.nr}`, w.address || (w.isNew ? 'Räume anlegen' : '')].filter(Boolean).join(' · '), { label: zurueckLabel, fn: leave });
     const anyResult = list.some(hasAnyResult);
     const withPhotos = list.filter((r) => r.photos.length);
     const nBilder = withPhotos.reduce((n, r) => n + viewCount(r) * r.selected.length, 0);
@@ -368,7 +368,13 @@ window.Projekt = (() => {
     if ($('#wNeuAng')) $('#wNeuAng').onclick = () => angebotsRaum(w);
     if ($('#wRechAdr')) $('#wRechAdr').onclick = () => Kunden.oeffnen(k.id);
     if ($('#wSenden')) $('#wSenden').onclick = async () => { const b = $('#wSenden'); b.disabled = true; try { await sendenMitMappe(w, list); } catch (e) { console.error(e); toast('PDF-Fehler: ' + e.message, 6000); } b.disabled = false; };
-    if ($('#wAnpassen')) $('#wAnpassen').onclick = () => $('#dAngebot')?.click();
+    if ($('#wSpeichern')) $('#wSpeichern').onclick = async () => { const b = $('#wSpeichern'); b.disabled = true; try { await angebotSpeichern(w, list); } catch (e) { console.error(e); toast('PDF-Fehler: ' + e.message, 6000); } if (b.isConnected) b.disabled = false; };
+    if ($('#wAnpassen')) $('#wAnpassen').onclick = () => (gesperrt(w) ? angebotKopieren(w) : $('#dAngebot')?.click());
+    if ($('#wKopie')) $('#wKopie').onclick = () => angebotKopieren(w);
+    if ($('#wTexte')) $('#wTexte').onclick = () => {
+      if (gesperrt(w)) return gesperrtFrage(w);
+      window.Angebot._intern.texteAuftrag(w, () => { view(); window.scrollTo(0, 0); });
+    };
     if ($('#dAngPdf')) $('#dAngPdf').onclick = async () => dateiZeigen(await kvGet('angpdf:' + w.id), w.angebotPdf);
     if ($('#wAngAnsehen')) $('#wAngAnsehen').onclick = async () => dateiZeigen(await kvGet('angpdf:' + w.id), w.angebotPdf);
     // Gespeicherte Dokumente: Tipp = ansehen, Pfeil = senden
@@ -377,7 +383,7 @@ window.Projekt = (() => {
       const d = (w.dokumente || []).find((x) => x.key === b.dataset.doksend); const data = d && (await kvGet(d.key));
       if (!data) return toast('Die Datei ist auf diesem Gerät noch nicht da. Bitte kurz warten (Cloud-Abgleich).', 4000);
       const f = new File([await (await fetch(data)).blob()], d.name, { type: 'application/pdf' });
-      try { await navigator.share({ files: [f], title: d.name, ohneDialog: true }); if (/^Angebot_/.test(d.name)) await angebotVersendet(w.id); view(); } catch (e) { if (e.name !== 'AbortError') toast('Senden nicht möglich: ' + e.message, 4000); }
+      try { await navigator.share({ files: [f], title: d.name, ohneDialog: true }); if (/^Angebot_/.test(d.name) && !(w.angebotArchiv || []).some((a) => a.nr && d.name.includes(a.nr))) { await angebotMerken(w.id, { output: () => data }, d.name); await angebotVersendet(w.id); } neuZeichnen(w); } catch (e) { if (e.name !== 'AbortError') toast('Senden nicht möglich: ' + e.message, 4000); }
     }));
     $$('[data-dokdel]').forEach((b) => (b.onclick = async () => {
       const d = (w.dokumente || []).find((x) => x.key === b.dataset.dokdel); if (!d || !loeschFrage(`„${d.name}“ löschen?`)) return;
@@ -484,19 +490,24 @@ window.Projekt = (() => {
       <div class="docs">${list.map((r) => `<button class="doc" data-angraum="${r.id}"><span class="d-ico ${r.angebot?.positionen?.length ? 'navy' : 'grey'}">${roomIcon(r.roomType)}</span>
         <span class="d-t"><b>${esc(r.room || roomType(r.roomType).name)}</b><span>${r.angebot?.positionen?.length ? `${r.angebot.positionen.length} Positionen${r.angebot.nr ? ` · Nr. ${esc(r.angebot.nr)}` : ''}` : 'noch nicht ausgearbeitet'}${notizen(r) ? ` · ${notizen(r)} Punkte aus dem Gespräch` : ''}</span></span>${icon('chevron', 'pc-chev')}</button>`).join('')}
         <button class="doc" id="wNeuAng"><span class="d-ico grey">${icon('plus')}</span><span class="d-t"><b>${list.length ? 'Weiteren Raum ins Angebot' : 'Raum fürs Angebot anlegen'}</b><span>z. B. Bad, Küche, Flur. Ohne Fotos und ohne Visualisierung</span></span>${icon('chevron', 'pc-chev')}</button>
+        <button class="doc" id="wTexte"><span class="d-ico grey">${icon('edit')}</span><span class="d-t"><b>Texte im Angebot</b><span>${w.angebotTexte ? 'Für dieses Angebot angepasst' : 'Einleitung und Textfelder nach den Positionen'}</span></span>${icon('chevron', 'pc-chev')}</button>
         ${k ? `<button class="doc" data-bilder><span class="d-ico brass">${icon('camera')}</span><span class="d-t"><b>Baustellenfotos ansehen</b><span>Zum Nachschauen beim Kalkulieren</span></span>${icon('chevron', 'pc-chev')}</button>` : ''}
       </div>
 
-      ${kopf(3, 'Senden', mitPos.length ? `Angebot${anyResult ? ' und Mappe' : ''} als PDF per Mail oder WhatsApp` : 'Zuerst das Angebot ausarbeiten')}
-      <button class="btn big block" id="wSenden" ${mitPos.length ? '' : 'disabled'}>${icon('mail')} ${anyResult ? 'Senden mit Mappe' : 'Angebot senden'}</button>
-      ${w.versendetAm ? `<p class="hint center">Zuletzt versendet am ${esc(datumText(w.versendetAm))}</p>` : ''}
+      ${kopf(3, 'Speichern und senden', gesperrt(w) ? 'Verschickt, nicht mehr änderbar' : mitPos.length ? 'Erst speichern und ansehen, dann senden' : 'Zuerst das Angebot ausarbeiten')}
+      ${gesperrt(w) ? `<div class="card ab-sperre"><p>${icon('check')}<span><b>Angebot${sperrInfo(w).nr ? ` Nr. ${esc(sperrInfo(w).nr)}` : ''} ist verschickt</b>${w.versendetAm ? ` am ${esc(datumText(w.versendetAm))}. ` : '. '}Es bleibt so, wie der Kunde es bekommen hat. Für Änderungen legst du eine Kopie mit neuer Nummer an.</span></p>
+        <div class="row"><button class="btn secondary" id="wAngAnsehen">${icon('eye')} Ansehen</button><button class="btn" id="wKopie">${icon('edit')} Ändern (Kopie)</button></div></div>`
+      : `<button class="btn secondary big block" id="wSpeichern" ${mitPos.length ? '' : 'disabled'}>${icon('download')} Angebot speichern und ansehen</button>
+      <button class="btn big block" id="wSenden" style="margin-top:8px" ${mitPos.length ? '' : 'disabled'}>${icon('mail')} ${anyResult ? 'Senden mit Mappe' : 'Angebot senden'}</button>
+      <p class="hint center">Speichern legt das PDF beim Kunden unter „Dokumente“ ab. Verschickt wird nur mit „Senden“. Danach ist das Angebot gesperrt.</p>
+      ${w.angebotKopieVon ? `<p class="hint center">Kopie von Angebot Nr. ${esc(w.angebotKopieVon)}</p>` : ''}
       <button class="btn secondary block" id="wAngUpload" style="margin-top:8px">${icon('upload')} Angebot-PDF hochladen (z. B. aus Excel)</button>
-      ${w.angebotPdf ? `<button class="link-add" id="wAngAnsehen" style="margin-top:4px">${icon('file')} ${esc(w.angebotPdf.name)} ansehen</button>` : ''}
+      ${w.angebotPdf ? `<button class="link-add" id="wAngAnsehen" style="margin-top:4px">${icon('file')} ${esc(w.angebotPdf.name)} ansehen</button>` : ''}`}
       ${dokListe(w)}
 
       ${kopf(4, 'Nachfassen und Rückmeldung')}
       ${statusKarte(w)}
-      ${st === 'angebot' ? `<button class="btn secondary block" id="wAnpassen">${icon('edit')} Angebot anpassen (neue Version)</button>` : ''}
+      ${st === 'angebot' ? `<button class="btn secondary block" id="wAnpassen">${icon('edit')} Angebot ändern (Kopie mit neuer Nummer)</button>` : ''}
 
       <details class="more card" style="margin-top:16px"><summary>${icon('clipboard')}<span>Weiteres<small>Moodboard, Baumappe, Termine, Löschen</small></span>${icon('chevron', 'more-chev')}</summary>
         <div class="docs">${[...new Set(list.map((r) => r.roomType))].map((rt) => `<button class="doc" data-board="${rt}"><span class="d-ico ${eigenes(w, rt) ? 'brass' : 'grey'}">${icon('palette')}</span>
@@ -521,36 +532,26 @@ window.Projekt = (() => {
   }
   /** Angebot (ein Raum oder Gesamtangebot) und Kundenmappe zusammen teilen. Danach Status „versendet“. */
   async function sendenMitMappe(w, list) {
+    if (gesperrt(w)) return gesperrtFrage(w);
     const A = window.Angebot._intern;
-    await A.preisliste();
-    const mitPos = list.filter((r) => r.angebot?.positionen?.length);
-    if (!mitPos.length) return toast('Bitte zuerst das Angebot ausarbeiten.');
-    toast('Angebot und Mappe werden erstellt …', 15000);
-    let ang;
-    if (mitPos.length > 1) ang = await gesamtDoc(w, mitPos);
-    else {
-      const r = mitPos[0];
-      Object.assign(r, { customer: w.customer, address: w.address, kundeId: w.kundeId, projektNr: w.nr || '' });
-      A.init(r);
-      const doc = await A.baueAngebotPdf(r);
-      await saveProject(r);
-      ang = { doc, syn: r, name: `Angebot_${r.angebot.nr}_${(w.customer || 'Kunde').replace(/[^\wäöüÄÖÜß-]+/g, '_')}.pdf` };
-    }
-    await angebotMerken(w.id, ang.doc, ang.name);
-    const files = [new File([ang.doc.output('blob')], ang.name, { type: 'application/pdf' })];
-    const sel = list.filter(hasAnyResult).map((r) => ({ r, v: wahl(w, r) })).filter((x) => x.v !== '')
-      .map(({ r, v }) => ({ r, pkgs: (v === 'alle' ? PKG_IDS.filter((id) => done(r, id)) : [v]).map((id) => pkgOf(r, id)).filter(Boolean) })).filter((x) => x.pkgs.length);
-    if (sel.length && window.Mappe) {
-      const md = await window.Mappe.baueKunde(w, sel);
-      files.push(new File([md.output('blob')], `Kundenmappe_${window.Mappe.fileSafe(w.customer)}.pdf`, { type: 'application/pdf' }));
-    }
-    $('#toast').hidden = true;
+    const r = await angebotDateien(w, list);
+    if (!r) return;
+    const { ang, files } = r;
+    // „Wie verschickt“ wird erst gemerkt, wenn wirklich gesendet wird
     if (navigator.canShare?.({ files })) {
-      try { await navigator.share({ files, title: ang.name, text: A.mailText(ang.syn) }); await angebotVersendet(w.id); return view(); }
-      catch (e) { if (e.name === 'AbortError') return; }
+      try { await navigator.share({ files, title: ang.name, text: A.mailText(ang.syn) }); await angebotMerken(w.id, ang.doc, ang.name); await angebotVersendet(w.id); return neuZeichnen(w); }
+      catch (e) { if (e.name === 'AbortError') return neuZeichnen(w); }
     }
     for (const f of files) { const a = document.createElement('a'); a.href = URL.createObjectURL(f); a.download = f.name; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 60000); }
-    await angebotVersendet(w.id); view();
+    await angebotMerken(w.id, ang.doc, ang.name);
+    await angebotVersendet(w.id); neuZeichnen(w);
+  }
+  /** Nach Speichern oder Senden den Auftrag neu zeichnen (neue Dokumente, Status, Sperre), Stelle beibehalten. */
+  async function neuZeichnen(w) {
+    if (state.wohnung?.id !== w.id || state.project) return;
+    const frisch = await kvGet(key(w.id));
+    if (frisch) { frisch.mappe ??= {}; state.wohnung = frisch; }
+    const y = window.scrollY; await view(); window.scrollTo(0, y);
   }
 
   /** Alle erstellten PDFs des Auftrags (Angebot, Mappe, Rechnung, Nachtrag, Protokoll …): ansehen, senden, löschen. */
@@ -611,22 +612,99 @@ window.Projekt = (() => {
     // Auch beim erneuten Senden (angepasstes Angebot) beginnt das Nachfassen von vorn
     if (norm(w.status) !== 'angebot') (w.verlauf ??= []).push({ st: 'angebot', t: Date.now() });
     w.status = 'angebot'; w.versendetAm = heuteIso();
+    // Ab jetzt gesperrt (Wunsch Felix): Ändern geht nur noch über eine Kopie mit neuer Nummer
+    w.angebotGesperrt = { t: Date.now(), nr: nrAusPdf(w) }; delete w.angebotFrei;
     await save(w);
-    if (state.wohnung?.id === w.id) Object.assign(state.wohnung, { status: w.status, versendetAm: w.versendetAm, verlauf: w.verlauf });
-    toast('Status: Angebot versendet');
+    if (state.wohnung?.id === w.id) Object.assign(state.wohnung, { status: w.status, versendetAm: w.versendetAm, verlauf: w.verlauf, angebotGesperrt: w.angebotGesperrt, angebotFrei: undefined });
+    toast('Angebot versendet. Es ist jetzt gesperrt, Änderungen gehen über eine Kopie.', 4500);
+  }
+  // ---------- Verschickte Angebote sind gesperrt (Wunsch Felix) ----------
+  // Ein gespeichertes und verschicktes Angebot bleibt unverändert. Zum Ändern wird es kopiert und bekommt eine neue Nummer.
+  // Ältere Aufträge (vor Version 75): gesperrt, wenn das verschickte PDF da ist und der Auftrag verschickt oder zugesagt ist.
+  const nrAusPdf = (w) => (String(w.angebotPdf?.name || '').match(/^Angebot_([^_]+)/) || [])[1] || w.gesamtAngebot?.nr || '';
+  const gesperrt = (w) => !!w && (!!w.angebotGesperrt || (!w.angebotFrei && !!w.angebotPdf && !w.angebotPdf.extern && (norm(w.status) === 'angebot' || zugesagt(w.status))));
+  const sperrInfo = (w) => w.angebotGesperrt || { nr: nrAusPdf(w), t: w.angebotPdf?.t || 0 };
+  async function gesperrtFrage(w) {
+    const g = sperrInfo(w);
+    const v = await sheet(`Angebot${g.nr ? ' Nr. ' + g.nr : ''} ist verschickt`, [
+      { label: 'Verschicktes Angebot ansehen', sub: 'So, wie es der Kunde bekommen hat', icon: icon('eye'), value: 'zeigen' },
+      { label: 'Ändern: als neues Angebot kopieren', sub: 'Bekommt eine neue Nummer. Das verschickte bleibt unverändert gespeichert.', icon: icon('edit'), value: 'kopie' },
+    ]);
+    if (v === 'zeigen') return dateiZeigen(await kvGet('angpdf:' + w.id), w.angebotPdf || { name: 'Angebot.pdf', typ: 'application/pdf' });
+    if (v === 'kopie') return angebotKopieren(w);
+  }
+  async function angebotKopieren(w) {
+    const alt = sperrInfo(w);
+    if (!confirm(`Neues Angebot als Kopie von Nr. ${alt.nr || '?'} anlegen?\n\nDie Kopie bekommt eine neue Nummer und lässt sich bearbeiten. Das verschickte Angebot bleibt unverändert unter „Dokumente“.`)) return;
+    // Das verschickte PDF bleibt in den Dokumenten (falls es dort noch nicht liegt, z. B. bei älteren Aufträgen)
+    const data = await kvGet('angpdf:' + w.id);
+    if (data && w.angebotPdf) {
+      const k = 'wdok:' + w.id + ':' + w.angebotPdf.name.replace(/[^\wäöüÄÖÜß.-]+/g, '_');
+      if (!(w.dokumente || []).some((d) => d.key === k)) { await kvSet(k, data); w.dokumente = [...(w.dokumente || []), { key: k, name: w.angebotPdf.name, t: w.angebotPdf.t || Date.now() }]; }
+    }
+    (w.angebotArchiv ??= []).push({ nr: alt.nr, t: alt.t || Date.now(), name: w.angebotPdf?.name || '' });
+    const A = window.Angebot._intern;
+    const list = await raeume(w), mitPos = list.filter((r) => r.angebot?.positionen?.length);
+    const nr = await A.naechsteNummer();
+    for (const r of list) if (r.angebot) { r.angebot.nr = mitPos.length === 1 && r === mitPos[0] ? nr : ''; r.angebot.versionen = []; await saveProject(r); }
+    w.gesamtAngebot = { ...(w.gesamtAngebot || {}), nr: mitPos.length > 1 ? nr : '', versionen: [] };
+    delete w.angebotGesperrt; w.angebotFrei = true; w.angebotKopieVon = alt.nr;
+    if (norm(w.status) === 'angebot') { w.status = 'entwurf'; (w.verlauf ??= []).push({ st: 'entwurf', t: Date.now() }); }
+    await save(w);
+    toast(`Neues Angebot Nr. ${nr} angelegt. Jetzt ändern, speichern und senden.`, 5000);
+    if (state.wohnung?.id === w.id) { state.wohnung = w; state.project = null; view(); window.scrollTo(0, 0); }
+  }
+  /** Angebot als PDF bauen (ein Raum oder alle Räume), dazu die Kundenmappe, falls visualisiert: { ang, files }. */
+  async function angebotDateien(w, list) {
+    const A = window.Angebot._intern;
+    await A.preisliste();
+    const mitPos = list.filter((r) => r.angebot?.positionen?.length);
+    if (!mitPos.length) { toast('Bitte zuerst das Angebot ausarbeiten.'); return null; }
+    toast('Angebot wird erstellt …', 15000);
+    let ang;
+    if (mitPos.length > 1) ang = await gesamtDoc(w, mitPos);
+    else {
+      const r = mitPos[0];
+      Object.assign(r, { customer: w.customer, address: w.address, kundeId: w.kundeId, projektNr: w.nr || '' });
+      A.init(r);
+      const doc = await A.baueAngebotPdf(r);
+      await saveProject(r);
+      ang = { doc, syn: r, name: `Angebot_${r.angebot.nr}_${(w.customer || 'Kunde').replace(/[^\wäöüÄÖÜß-]+/g, '_')}.pdf` };
+    }
+    const files = [new File([ang.doc.output('blob')], ang.name, { type: 'application/pdf' })];
+    const sel = list.filter(hasAnyResult).map((r) => ({ r, v: wahl(w, r) })).filter((x) => x.v !== '')
+      .map(({ r, v }) => ({ r, pkgs: (v === 'alle' ? PKG_IDS.filter((id) => done(r, id)) : [v]).map((id) => pkgOf(r, id)).filter(Boolean) })).filter((x) => x.pkgs.length);
+    if (sel.length && window.Mappe) {
+      const md = await window.Mappe.baueKunde(w, sel);
+      files.push(new File([md.output('blob')], `Kundenmappe_${window.Mappe.fileSafe(w.customer)}.pdf`, { type: 'application/pdf' }));
+    }
+    $('#toast').hidden = true;
+    return { ang, files };
+  }
+  /** „Speichern“: PDF beim Auftrag (Kunde, Objekt) unter „Dokumente“ ablegen und ansehen. Nichts wird verschickt. */
+  async function angebotSpeichern(w, list) {
+    if (gesperrt(w)) return gesperrtFrage(w);
+    if (w.isNew) { delete w.isNew; await save(w); }
+    const r = await angebotDateien(w, list);
+    if (!r) return;
+    state.wohnung = w;
+    await dokMerken(r.files);
+    toast('Gespeichert beim Kunden unter „Dokumente“. Senden mit „Senden“.', 4500);
+    const y = window.scrollY; await view(); window.scrollTo(0, y);
+    pdfAnsicht(r.files[0], r.files[0].name);
   }
   /** B4: ein Angebot über alle Räume. Baut aus den Raum-Angeboten ein gemeinsames und nutzt das normale Angebots-PDF. */
   async function gesamtAngebot(w, raeume) {
+    if (gesperrt(w)) return gesperrtFrage(w);
     toast('Gesamtangebot wird erstellt …', 8000);
     const { doc, name, syn } = await gesamtDoc(w, raeume);
-    await angebotMerken(w.id, doc, name);
     const A = window.Angebot._intern;
     const blob = doc.output('blob'), file = new File([blob], name, { type: 'application/pdf' });
     $('#toast').hidden = true;
-    if (navigator.canShare?.({ files: [file] })) { try { await navigator.share({ files: [file], title: name, text: A.mailText(syn) }); return angebotVersendet(w.id); } catch (e) { if (e.name === 'AbortError') return; } }
+    if (navigator.canShare?.({ files: [file] })) { try { await navigator.share({ files: [file], title: name, text: A.mailText(syn) }); await angebotMerken(w.id, doc, name); await angebotVersendet(w.id); return neuZeichnen(w); } catch (e) { if (e.name === 'AbortError') return neuZeichnen(w); } }
     const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name; a.click();
     setTimeout(() => URL.revokeObjectURL(a.href), 60000);
-    angebotVersendet(w.id);
+    await angebotMerken(w.id, doc, name); await angebotVersendet(w.id); neuZeichnen(w);
   }
   /** PDF des Gesamtangebots über mehrere Räume: { doc, name, syn }. */
   async function gesamtDoc(w, raeume) {
@@ -659,10 +737,8 @@ window.Projekt = (() => {
   async function dateiZeigen(data, d) {
     if (!data) return toast('Die Datei ist auf diesem Gerät noch nicht da. Bitte kurz warten (Cloud-Abgleich).', 4000);
     const blob = await (await fetch(data)).blob();
-    const url = URL.createObjectURL(new File([blob], d.name || 'Dokument', { type: d.typ }));
-    const win = window.open(url, '_blank');
-    if (!win) { const a = document.createElement('a'); a.href = url; a.download = d.name || 'Dokument'; a.click(); }
-    setTimeout(() => URL.revokeObjectURL(url), 120000);
+    // In der App ansehen, mit Zoom (core.js pdfAnsicht)
+    return pdfAnsicht(new File([blob], d.name || 'Dokument', { type: d.typ || blob.type }), d.name || 'Dokument');
   }
   const heuteIso = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
   /** Automatik beim Start: eingeplante Projekte mit erreichtem Baustart auf „Baustelle läuft“ setzen. */
@@ -676,6 +752,7 @@ window.Projekt = (() => {
   }
 
   function raumAngebot(r, w) {
+    if (gesperrt(w)) return gesperrtFrage(w);
     if (norm(w.status) === 'besichtigung') { w.status = 'entwurf'; if (!w.isNew) save(w); }
     r.customer = w.customer; r.address = w.address; r.kundeId = w.kundeId; r.projektNr = w.nr || ''; state.project = r; state.angebotAusProjekt = true; window.Angebot?.ansicht(r); }
 
@@ -815,7 +892,7 @@ window.Projekt = (() => {
   }
 
   const forget = (id) => rooms.delete(id);
-  return { automatik, anlegen, angebotVersendet, nachfassen, seitTagen, STATUS, ANGEBOT, ALLE, PHASEN, phase, farbe, pill, norm, zugesagt, statusName, statusKurz, raumAngebot, angebotMerken, forget, neu, neuDirekt, neuFuer, kundeUebernehmen, oeffnen, view, mappeView, moodboardView, migrate, raum, raeume, raumGespeichert, raumEntfernt, save, wahl, PKG_IDS, _intern: { titel, addRoom } };
+  return { automatik, anlegen, angebotVersendet, gesperrt, gesperrtFrage, angebotKopieren, dateiZeigen, nachfassen, seitTagen, STATUS, ANGEBOT, ALLE, PHASEN, phase, farbe, pill, norm, zugesagt, statusName, statusKurz, raumAngebot, angebotMerken, forget, neu, neuDirekt, neuFuer, kundeUebernehmen, oeffnen, view, mappeView, moodboardView, migrate, raum, raeume, raumGespeichert, raumEntfernt, save, wahl, PKG_IDS, _intern: { titel, addRoom } };
 })();
 // Ältere Aufrufe (PR „Wohnungen“) laufen weiter
 window.Wohnung = { neu: () => Projekt.neu(), oeffnen: (id) => Projekt.oeffnen(id), view: () => Projekt.view(), raumGespeichert: (p) => Projekt.raumGespeichert(p), raumEntfernt: (p) => Projekt.raumEntfernt(p) };

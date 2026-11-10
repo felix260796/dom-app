@@ -148,7 +148,7 @@ window.Finanzen = (() => {
   async function view() {
     state.beleg = null;
     const hier = () => state.tab === 'rechnungen' && !state.kalender;
-    header('Rechnungen', 'Eingang, Zahlungen, Kalkulation');
+    header('Geld', 'Abrechnen, offene Rechnungen, Eingangsrechnungen');
     const idx = await projectIndex(); window.__fIdx = idx;
     await laden();
     if (!hier()) return;
@@ -339,10 +339,7 @@ Datum als JJJJ-MM-TT. faellig = Fälligkeitsdatum, falls angegeben (oder Datum +
         const data = b._daten || await kvGet('bdatei:' + b.id);
         if (!data) return toast('Die Datei ist auf diesem Gerät noch nicht da. Bitte kurz warten (Cloud-Abgleich).', 4000);
         const blob = await (await fetch(data)).blob();
-        const url = URL.createObjectURL(new File([blob], b.datei.name || 'Rechnung', { type: b.datei.typ }));
-        const win = window.open(url, '_blank');
-        if (!win) { const a = document.createElement('a'); a.href = url; a.download = b.datei.name || 'Rechnung'; a.click(); }
-        setTimeout(() => URL.revokeObjectURL(url), 120000);
+        pdfAnsicht(new File([blob], b.datei.name || 'Rechnung', { type: b.datei.typ || blob.type }), b.datei.name || 'Rechnung');
       };
       $('#bPartner').onchange = (e) => { $('#bVon').hidden = !!e.target.value; };
       // Auswahl mit Suche: Tipp öffnet eine Liste mit Suchfeld oben (Kunde, Projekt, Nummer bzw. Firmenname)

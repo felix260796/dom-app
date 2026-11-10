@@ -58,11 +58,62 @@ function pdfVorschau(files, gespeichert = false) {
       <button class="btn secondary block" data-zu style="margin-top:8px">${gespeichert ? 'Schließen, später senden' : 'Schließen'}</button>
       ${gespeichert ? '<p class="hint center" style="margin:8px 0 0">Du findest es jederzeit im Auftrag unter „Dokumente“.</p>' : ''}</div>`;
     document.body.appendChild(bg);
-    const ende = (ok) => { bg.remove(); setTimeout(() => urls.forEach((u) => URL.revokeObjectURL(u)), 60000); res(ok); };
-    $$('[data-pv]', bg).forEach((b) => (b.onclick = () => window.open(urls[+b.dataset.pv], '_blank')));
+    zoomFrei(true);
+    const ende = (ok) => { bg.remove(); zoomFrei(false); setTimeout(() => urls.forEach((u) => URL.revokeObjectURL(u)), 60000); res(ok); };
+    $$('[data-pv]', bg).forEach((b) => (b.onclick = () => pdfAnsicht(files[+b.dataset.pv], files[+b.dataset.pv].name)));
     $('[data-ok]', bg).onclick = () => ende(true);
     $('[data-zu]', bg).onclick = () => ende(false);
   });
+}
+// ---------- Dokument ansehen mit Zoom (Wunsch Felix) ----------
+// In der App ist Zoomen aus. Solange ein Dokument offen ist, geht Zwei-Finger-Zoom, dazu die Knöpfe − und +.
+let zoomOffen = 0;
+function zoomFrei(an) {
+  zoomOffen = Math.max(0, zoomOffen + (an ? 1 : -1));
+  const m = document.querySelector('meta[name="viewport"]');
+  if (m) m.content = zoomOffen ? 'width=device-width, initial-scale=1, maximum-scale=6, user-scalable=yes, viewport-fit=cover' : 'width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover';
+}
+/** Vollbild-Ansicht für ein PDF oder Bild (Blob, File oder data:-URL). Zoom per Knopf und mit zwei Fingern. */
+async function pdfAnsicht(quelle, name = 'Dokument') {
+  const blob = typeof quelle === 'string' ? await (await fetch(quelle)).blob() : quelle;
+  const bild = /^image\//.test(blob.type);
+  const url = URL.createObjectURL(blob);
+  let z = 1;
+  const bg = document.createElement('div');
+  bg.className = 'pdfz';
+  bg.innerHTML = `<div class="pdfz-h"><b>${esc(String(name).replace(/\.pdf$/i, '').replace(/_/g, ' '))}</b>
+      <button type="button" class="icon-btn" data-z="-1" aria-label="Kleiner">−</button><span data-zt>100 %</span><button type="button" class="icon-btn" data-z="1" aria-label="Größer">+</button>
+      <button type="button" class="icon-btn" data-x aria-label="Schließen">${icon('x')}</button></div>
+    <div class="pdfz-b"><div class="pdfz-in">${bild ? `<img src="${url}" alt="">` : `<iframe src="${url}#view=FitH" title="${esc(name)}"></iframe>`}</div></div>
+    ${bild ? '' : '<button type="button" class="pdfz-voll" data-voll>In eigenem Fenster öffnen</button>'}`;
+  document.body.appendChild(bg);
+  zoomFrei(true);
+  const zeig = () => { $('.pdfz-in', bg).style.width = z * 100 + '%'; $('[data-zt]', bg).textContent = Math.round(z * 100) + ' %'; };
+  $$('[data-z]', bg).forEach((b) => (b.onclick = () => { z = Math.min(4, Math.max(1, z + (+b.dataset.z) * 0.5)); zeig(); }));
+  $('[data-x]', bg).onclick = () => { bg.remove(); zoomFrei(false); setTimeout(() => URL.revokeObjectURL(url), 60000); };
+  if ($('[data-voll]', bg)) $('[data-voll]', bg).onclick = () => { if (!window.open(url, '_blank')) toast('Das Fenster wurde blockiert.'); };
+}
+
+// ---------- Listen in den Einstellungen: jeder Eintrag ein eigenes Feld (Wunsch Felix) ----------
+/** HTML für eine Liste mit einzelnen Feldern. id = Schlüssel, liste = Texte. */
+function listenFeld(id, liste, platzhalter = 'Neuer Eintrag') {
+  return `<div class="lf" data-lf="${esc(id)}">${(liste || []).map((x, i) => `<div class="lf-z">
+      <input type="text" data-lfi="${i}" value="${esc(x)}" aria-label="Eintrag ${i + 1}">
+      ${i ? `<button type="button" class="icon-btn" data-lfup="${i}" aria-label="Nach oben">${icon('up')}</button>` : '<span class="lf-leer"></span>'}
+      <button type="button" class="icon-btn" data-lfdel="${i}" aria-label="Entfernen">${icon('trash')}</button></div>`).join('')}
+    <div class="lf-neu"><input type="text" data-lfneu placeholder="${esc(platzhalter)}" autocomplete="off"><button type="button" class="btn small" data-lfadd>${icon('plus')} Dazu</button></div></div>`;
+}
+/** Knöpfe einer Liste binden. fertig(neueListe) speichert und zeichnet neu. */
+function listenBinden(box, liste, fertig) {
+  if (!box) return;
+  const l = [...(liste || [])];
+  $$('[data-lfi]', box).forEach((inp) => (inp.onchange = () => { const v = inp.value.trim(); if (v) l[+inp.dataset.lfi] = v; else l.splice(+inp.dataset.lfi, 1); fertig(l); }));
+  $$('[data-lfdel]', box).forEach((b) => (b.onclick = () => { const i = +b.dataset.lfdel; if (!confirm(`„${l[i]}“ entfernen?`)) return; l.splice(i, 1); fertig(l); }));
+  $$('[data-lfup]', box).forEach((b) => (b.onclick = () => { const i = +b.dataset.lfup; [l[i - 1], l[i]] = [l[i], l[i - 1]]; fertig(l); }));
+  const neu = $('[data-lfneu]', box);
+  const dazu = () => { const v = neu.value.trim(); if (!v) return neu.focus(); if (l.includes(v)) return toast('Den Eintrag gibt es schon.'); l.push(v); fertig(l); };
+  $('[data-lfadd]', box).onclick = dazu;
+  neu.onkeydown = (e) => { if (e.key === 'Enter') { e.preventDefault(); dazu(); } };
 }
 const datUrl = (f) => new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(r.result); r.onerror = rej; r.readAsDataURL(f); });
 /** PDFs beim offenen Auftrag ablegen (gleicher Name = neue Fassung ersetzt die alte). */
@@ -94,8 +145,9 @@ async function dokMerken(files) {
   } catch (e) { console.warn('Vorschau nicht möglich', e); }
 })();
 // Zoomen aus (Wunsch Felix): Zwei-Finger-Zoom und Doppeltipp-Zoom auf dem iPhone verhindern
-document.addEventListener('gesturestart', (e) => e.preventDefault(), { passive: false });
-document.addEventListener('touchmove', (e) => { if (e.touches && e.touches.length > 1) e.preventDefault(); }, { passive: false });
+// Ausnahme: Solange ein Dokument offen ist (pdfAnsicht, Vorschau), darf gezoomt werden.
+document.addEventListener('gesturestart', (e) => { if (!zoomOffen) e.preventDefault(); }, { passive: false });
+document.addEventListener('touchmove', (e) => { if (!zoomOffen && e.touches && e.touches.length > 1) e.preventDefault(); }, { passive: false });
 const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
 const main = () => $('#main');
 
