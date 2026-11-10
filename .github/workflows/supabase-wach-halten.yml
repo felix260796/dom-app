@@ -1,0 +1,47 @@
+# Hält das kostenlose Supabase-Projekt wach.
+# Supabase pausiert Free-Projekte nach 7 Tagen ohne Aktivität. Dieser Workflow
+# macht jeden Morgen eine echte Datenbankabfrage (Dateiliste im Speicher "dom",
+# läuft über die Tabelle storage.objects). Ohne Anmeldung kommt wegen der
+# Zugriffsregeln eine leere Liste zurück, die Abfrage zählt trotzdem.
+#
+# Wichtig: GitHub schaltet geplante Workflows ab, wenn 60 Tage lang nichts im
+# Repository passiert. Dann unter Actions > "Supabase wach halten" wieder
+# einschalten (oder einfach etwas am Repository ändern).
+#
+# Von Hand starten: Actions > "Supabase wach halten" > "Run workflow".
+
+name: Supabase wach halten
+
+on:
+  schedule:
+    - cron: '0 5 * * *'   # täglich 05:00 UTC (6 Uhr Winterzeit, 7 Uhr Sommerzeit)
+  workflow_dispatch:
+
+permissions: {}
+
+jobs:
+  anpingen:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      # Öffentliche Werte, stehen auch in sync.js (kein Geheimnis).
+      SB_URL: https://flqjnhetnqdcgskjsgkv.supabase.co
+      SB_KEY: sb_publishable_pw5SIPuEKUS22hU9qzQbOQ_wF_VTLrU
+    steps:
+      - name: Datenbankabfrage (Speicher "dom")
+        run: |
+          code=$(curl -sS -o antwort.txt -w '%{http_code}' --retry 3 --retry-delay 10 \
+            -X POST "$SB_URL/storage/v1/object/list/dom" \
+            -H "apikey: $SB_KEY" -H "Content-Type: application/json" \
+            -d '{"prefix":"team","limit":1}')
+          echo "Antwort $code: $(head -c 300 antwort.txt)"
+          if [ "$code" -ge 500 ] || [ "$code" = "000" ]; then
+            echo "::error::Supabase antwortet nicht (Code $code). Ist das Projekt pausiert? Dann im Supabase-Dashboard auf 'Restore' klicken."
+            exit 1
+          fi
+      - name: Anmeldedienst prüfen
+        run: |
+          code=$(curl -sS -o /dev/null -w '%{http_code}' --retry 3 --retry-delay 10 \
+            "$SB_URL/auth/v1/health" -H "apikey: $SB_KEY")
+          echo "Auth-Health: $code"
+          [ "$code" = "200" ] || { echo "::error::Auth antwortet mit $code"; exit 1; }
