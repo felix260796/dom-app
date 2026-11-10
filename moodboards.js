@@ -135,7 +135,7 @@ function viewPaketEdit(id, ctx = globalBoardCtx()) {
       a.hidden = !u; a.href = u || '#';
     });
   });
-  $$('[data-delprod]').forEach((b) => (b.onclick = () => { if (!confirm('Produkt entfernen?')) return; p.products.splice(+b.dataset.delprod, 1); rerender(); }));
+  $$('[data-delprod]').forEach((b) => (b.onclick = () => { if (!loeschFrage('Produkt entfernen?')) return; p.products.splice(+b.dataset.delprod, 1); rerender(); }));
   $$('[data-prodimg]').forEach((b) => (b.onclick = async () => {
     const x = p.products[+b.dataset.prodimg];
     const [f] = await pickFiles(); if (!f) return;

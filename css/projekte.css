@@ -142,7 +142,8 @@ canvas.sig { display: block; width: 100%; height: 140px; border: 1.5px dashed #c
 
 /* ---------- Angebotsablauf (Vor Ort → Büro → Senden → Nachfassen) ---------- */
 .ab-schritte { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin: 0 0 12px; }
-.ab-schritte span { display: flex; flex-direction: column; align-items: center; gap: 4px; font-size: 12px; font-weight: 600; color: var(--muted); text-align: center; }
+.ab-schritte button { border: 0; background: none; font: inherit; padding: 0; cursor: pointer; }
+.ab-schritte span, .ab-schritte button { display: flex; flex-direction: column; align-items: center; gap: 4px; font-size: 12px; font-weight: 600; color: var(--muted); text-align: center; }
 .ab-schritte i { width: 28px; height: 28px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-style: normal; font-weight: 700; background: var(--soft); color: var(--muted); }
 .ab-schritte i svg.i { width: 16px; height: 16px; }
 .ab-schritte .ok i { background: var(--navy); color: #fff; }

@@ -10,9 +10,9 @@ window.Projekt = (() => {
   // Ablauf eines Projekts, ein Status nach dem anderen ('' = Baustelle läuft, auch für alte Projekte ohne Status).
   // [id, Name, Farbe, kurzer Name für Listen]
   const ALLE = [
-    ['besichtigung', 'Besichtigung', '#8a8f98', 'Besichtigung'],
-    ['entwurf', 'Angebot in Arbeit', '#c99a2e', 'In Arbeit'],
-    ['angebot', 'Angebot versendet', '#3b6ea8', 'Versendet'],
+    ['besichtigung', 'In Arbeit · vor Ort', '#8a8f98', 'Vor Ort'],
+    ['entwurf', 'In Arbeit · im Büro', '#c99a2e', 'Im Büro'],
+    ['angebot', 'Verschickt · Nachverfolgung', '#3b6ea8', 'Verschickt'],
     ['abgesagt', 'Abgesagt', '#c0392b', 'Abgesagt'],
     ['geplant', 'Zugesagt, wird eingeplant', '#2f8a57', 'Zugesagt'],
     ['', 'Baustelle läuft', '#17808a', 'Läuft'],
@@ -255,14 +255,28 @@ window.Projekt = (() => {
         : `<button class="kline" id="wKundeWahl">${icon('user')}<span class="kl-t"><b>${esc(w.customer || 'Kunde zuordnen')}</b><small>Kunde auswählen oder neu anlegen</small></span>${icon('chevron', 'pc-chev')}</button>`}
       </div>
       ${statusKarte(w)}
+      ${k ? `<div class="docs" style="margin-bottom:12px"><button class="doc" id="wBilder"><span class="d-ico brass">${icon('camera')}</span>
+        <span class="d-t"><b>Bilder & Dokumentation</b><span>${nFotos ? `${nFotos} ${nFotos === 1 ? 'Bild' : 'Bilder'} in diesem Projekt` : 'Eigene Ordner, z. B. Baufortschritt mit Datum'}</span></span>${icon('chevron', 'pc-chev')}</button></div>` : ''}
       ${['geplant', '', 'fertig'].includes(norm(w.status)) ? '<div id="wFort"></div>' : ''}
       ${['geplant', '', 'fertig'].includes(norm(w.status)) && !w.isNew ? '<div id="wBau"></div>' : ''}
       ${zugesagt(w.status) && !w.isNew ? '<div id="wRech"></div><div id="wKosten"></div>' : ''}
-      ${k ? `<div class="docs" style="margin-top:12px"><button class="doc" id="wBilder"><span class="d-ico brass">${icon('camera')}</span>
-        <span class="d-t"><b>Bilder & Dokumentation</b><span>${nFotos ? `${nFotos} ${nFotos === 1 ? 'Bild' : 'Bilder'} in diesem Projekt` : 'Bestand, Baufortschritt, Abnahme, eigene Ordner'}</span></span>${icon('chevron', 'pc-chev')}</button></div>` : ''}
       ${window.Gespraech?.karte(w, list) || ''}
 
-      <div class="sec-h"><h2>Räume</h2>${list.length ? `<span class="count">${list.length}</span>` : ''}</div>
+      <div class="sec-h"><h2>Projektmappe</h2></div>
+      <div class="docs">
+        <button class="doc" id="dAngPdf" ${w.angebotPdf ? '' : 'disabled'}>
+          <span class="d-ico navy">${icon('file')}</span>
+          <span class="d-t"><b>Angebot, wie verschickt</b><span>${w.angebotPdf ? `PDF vom ${esc(new Date(w.angebotPdf.t).toLocaleDateString('de-DE'))}, nur zum Lesen` : 'Noch kein verschicktes Angebot gespeichert'}</span></span>${icon('chevron', 'pc-chev')}</button>
+        ${auftragBtn}
+        <button class="doc" id="dBau">
+          <span class="d-ico brass">${icon('clipboard')}</span>
+          <span class="d-t"><b>Baumappe für den Projektleiter</b><span>Was beauftragt ist: Positionen je Raum mit Mengen, Ausstattung, Produkte, Maße, ohne Preise</span></span>${icon('chevron', 'pc-chev')}</button>
+        <button class="doc" id="dMappe" hidden></button>
+        <button class="doc" id="dAngebot" hidden></button>
+      </div>
+      <div id="wTermine"></div>
+
+      <details class="more card" style="margin-top:16px"><summary>${icon('home')}<span>Räume<small>${list.length ? `${list.length} ${list.length === 1 ? 'Raum' : 'Räume'} mit Fotos und Visualisierung` : 'Noch keine Räume'}</small></span>${icon('chevron', 'more-chev')}</summary>
       <div class="rlist">${list.map((r, i) => `
         <div class="rcard" data-room="${r.id}" role="button" tabindex="0">
           ${r.thumb ? `<img src="${r.thumb}" alt="">` : `<span class="rc-ph">${roomIcon(r.roomType)}</span>`}
@@ -270,41 +284,9 @@ window.Projekt = (() => {
           ${i > 0 ? `<button class="icon-btn up" data-up="${i}" aria-label="Nach oben">${icon('up')}</button>` : ''}
           ${icon('chevron', 'pc-chev')}
         </div>`).join('')}
-        ${list.length ? `<button class="add-room" id="wAdd">${icon('plus')} Raum hinzufügen</button>` : ''}
-      </div>
-      ${list.length ? '' : `
-        <p class="hint">Welchen Raum möchtest du zuerst aufnehmen?</p>
-        <div class="rtgrid">${ROOM_TYPES.map((r) => `<button class="rt" data-rt="${r.id}">${roomIcon(r.id)}<span>${esc(r.name)}</span></button>`).join('')}</div>`}
-
-      ${list.length > 1 && withPhotos.length ? `
-        <button class="btn secondary block" id="wRun" ${running ? 'disabled' : ''}>${icon('sparkle')} ${running === w.id ? 'KI arbeitet …' : 'Alle Räume visualisieren'}</button>
-        <p class="hint center" id="wRunInfo">${running === w.id ? '' : `${nBilder} Bilder in ${withPhotos.length} Räumen`}</p>` : ''}
-
-      ${list.length ? `
-      <div class="sec-h"><h2>Moodboard dieses Projekts</h2></div>
-      <div class="docs">${[...new Set(list.map((r) => r.roomType))].map((rt) => {
-        const own = eigenes(w, rt);
-        return `<button class="doc" data-board="${rt}">
-          <span class="d-ico ${own ? 'brass' : 'grey'}">${icon('palette')}</span>
-          <span class="d-t"><b>${esc(roomType(rt).name)}</b><span>${own ? 'Für diesen Kunden angepasst' : 'Standard-Moodboard, tippen zum Anpassen'}</span></span>${icon('chevron', 'pc-chev')}</button>`;
-      }).join('')}</div>
-
-      <div class="sec-h"><h2>Unterlagen</h2></div>
-      <div class="docs">
-        <button class="doc" id="dMappe" ${anyResult ? '' : 'disabled'}>
-          <span class="d-ico navy">${icon('book')}</span>
-          <span class="d-t"><b>Kundenmappe</b><span>Vorher-Nachher oder Präsentation nur mit den neuen Bildern</span></span>${icon('chevron', 'pc-chev')}</button>
-        <button class="doc" id="dBau" ${anyResult ? '' : 'disabled'}>
-          <span class="d-ico brass">${icon('clipboard')}</span>
-          <span class="d-t"><b>Baumappe</b><span>Für Subunternehmer: Markierungen, Produkte, Maße, Fliesenspiegel, ohne Preise</span></span>${icon('chevron', 'pc-chev')}</button>
-        <button class="doc" id="dAngebot">
-          <span class="d-ico grey">${icon('euro')}</span>
-          <span class="d-t"><b>Angebot</b><span>${list.length > 1 ? 'Aufmaß, Positionen und Bauzeit je Raum' : 'Aufmaß, Positionen und Bauzeitenplan'}</span></span>${icon('chevron', 'pc-chev')}</button>
-        ${auftragBtn}
-      </div>
-      ${anyResult ? '' : '<p class="hint center">Kunden- und Baumappe gibt es, sobald ein Raum visualisiert ist.</p>'}
-      <div id="wTermine"></div>
-      <button class="link-danger" id="wDel">${icon('trash')} Projekt löschen</button>` : (auftragBtn ? `<div class="sec-h"><h2>Unterlagen</h2></div><div class="docs">${auftragBtn}</div>` : '')}`;
+        <button class="add-room" id="wAdd">${icon('plus')} Raum hinzufügen</button>
+      </div></details>
+      <button class="link-danger" id="wDel">${icon('trash')} Projekt löschen</button>`;
     if ($('#wKosten')) window.Finanzen?.projektAbschnitt($('#wKosten'), w);
     if ($('#wRech')) window.Rechnung?.projektAbschnitt($('#wRech'), w);
     if ($('#wBau')) window.Baustelle?.abschnitt($('#wBau'), w, list);
@@ -349,9 +331,11 @@ window.Projekt = (() => {
     };
     if ($('#wBaustart')) $('#wBaustart').onchange = async (e) => {
       w.baustart = e.target.value;
+      await baustartTermin(w);
       if (w.baustart && w.baustart <= heuteIso()) return setzen('');
       if (!w.isNew) await save(w);
-      toast(w.baustart ? 'Baustart gespeichert' : 'Baustart entfernt');
+      toast(w.baustart ? 'Eingeplant, der Baustart steht im Kalender' : 'Baustart entfernt');
+      const y = window.scrollY; await view(); window.scrollTo(0, y);
     };
     if ($('#stAlle')) $('#stAlle').onclick = async () => {
       const v = await sheet('Status ändern', ALLE.map(([id, n, c]) => ({ label: n, icon: '<i class="si-dot"></i>', color: c, value: id || '__laeuft' })));
@@ -379,9 +363,12 @@ window.Projekt = (() => {
     window.Gespraech?.bind(w, list);
     // Angebotsablauf: weitere Knöpfe
     $$('[data-bilder]').forEach((b) => (b.onclick = () => $('#wBilder')?.click()));
+    $$('[data-sprung]').forEach((b) => (b.onclick = () => { const z = $('#ab-' + b.dataset.sprung); if (z) window.scrollTo({ top: z.getBoundingClientRect().top + window.scrollY - 110, behavior: 'smooth' }); }));
+    if ($('#wNeuAng')) $('#wNeuAng').onclick = () => angebotsRaum(w);
     if ($('#wRechAdr')) $('#wRechAdr').onclick = () => Kunden.oeffnen(k.id);
     if ($('#wSenden')) $('#wSenden').onclick = async () => { const b = $('#wSenden'); b.disabled = true; try { await sendenMitMappe(w, list); } catch (e) { console.error(e); toast('PDF-Fehler: ' + e.message, 6000); } b.disabled = false; };
     if ($('#wAnpassen')) $('#wAnpassen').onclick = () => $('#dAngebot')?.click();
+    if ($('#dAngPdf')) $('#dAngPdf').onclick = async () => dateiZeigen(await kvGet('angpdf:' + w.id), w.angebotPdf);
     $$('[data-angraum]').forEach((b) => (b.onclick = () => raumAngebot(rooms.get(b.dataset.angraum), w)));
     if ($('#wZeigen')) $('#wZeigen').onclick = () => (anyResult ? mappeView(w) : toast('Zuerst einen Raum visualisieren, dann gibt es die Mappe.', 4000));
     $$('[data-room]').forEach((el) => (el.onclick = (e) => { if (e.target.closest('[data-up]')) return; raumOeffnen(rooms.get(el.dataset.room), w); }));
@@ -403,7 +390,7 @@ window.Projekt = (() => {
         if (id) raumAngebot(rooms.get(id), w);
       };
       $('#wDel').onclick = async () => {
-        if (!confirm(`Projekt „${w.customer || 'ohne Namen'}“ mit ${list.length === 1 ? 'dem Raum' : `allen ${list.length} Räumen`}, Fotos und Visualisierungen löschen?`)) return;
+        if (!loeschFrage(`Projekt „${w.customer || 'ohne Namen'}“ mit ${list.length === 1 ? 'dem Raum' : `allen ${list.length} Räumen`}, Fotos und Visualisierungen löschen?`)) return;
         for (const id of w.rooms) { await kvDel('project:' + id); rooms.delete(id); }
         await kvDel(key(w.id));
         await kvSet('projectIndex', (await projectIndex()).filter((x) => x.id !== w.id));
@@ -426,9 +413,9 @@ window.Projekt = (() => {
     const fertig = (i) => (s === -1 ? '' : i < s ? 'ok' : i === s ? 'jetzt' : '');
     const mitPos = list.filter((r) => r.angebot?.positionen?.length);
     const notizen = (r) => (r.otherNotes || '').split('\n').filter((l) => l.trim()).length + (r.wishes || '').split('\n').filter((l) => l.trim()).length;
-    const kopf = (n, t, sub = '') => `<div class="ab-h"><span class="ab-n">${n}</span><span><b>${t}</b>${sub ? `<small>${sub}</small>` : ''}</span></div>`;
+    const kopf = (n, t, sub = '') => `<div class="ab-h" id="ab-${n}"><span class="ab-n">${n}</span><span><b>${t}</b>${sub ? `<small>${sub}</small>` : ''}</span></div>`;
     return `
-      <div class="ab-schritte">${SCHRITTE.map(([id, n], i) => `<span class="${fertig(i)}"><i>${i < s && s !== -1 ? icon('check') : i + 1}</i>${n}</span>`).join('')}</div>
+      <div class="ab-schritte">${SCHRITTE.map(([id, n], i) => `<button type="button" data-sprung="${i + 1}" class="${fertig(i)}"><i>${i < s && s !== -1 ? icon('check') : i + 1}</i>${n}</button>`).join('')}</div>
       ${st === 'abgesagt' ? `<p class="notice" style="margin:0 0 10px">${icon('x')}<span><b>Abgesagt</b>${w.absage?.grund ? ` · ${esc(w.absage.grund)}` : ''}</span></p>` : ''}
 
       <div class="card kunde">
@@ -466,11 +453,11 @@ window.Projekt = (() => {
       ${list.length ? `<button class="btn block" id="wZeigen" style="margin-top:12px" ${anyResult ? '' : 'disabled'}>${icon('book')} Mappe dem Kunden zeigen</button>
         ${anyResult ? '' : '<p class="hint center">Die Mappe gibt es, sobald ein Raum visualisiert ist.</p>'}` : ''}
 
-      ${list.length ? `
-      ${kopf(2, 'Im Büro: Angebot ausarbeiten', 'Wünsche aus dem Gespräch stehen schon in jedem Raum')}
+      ${kopf(2, 'Im Büro: Angebot ausarbeiten', list.length ? 'Wünsche aus dem Gespräch stehen schon in jedem Raum' : 'Auch ohne Visualisierung: Raum wählen, Positionen eintragen')}
       <div class="docs">${list.map((r) => `<button class="doc" data-angraum="${r.id}"><span class="d-ico ${r.angebot?.positionen?.length ? 'navy' : 'grey'}">${roomIcon(r.roomType)}</span>
         <span class="d-t"><b>${esc(r.room || roomType(r.roomType).name)}</b><span>${r.angebot?.positionen?.length ? `${r.angebot.positionen.length} Positionen${r.angebot.nr ? ` · Nr. ${esc(r.angebot.nr)}` : ''}` : 'noch nicht ausgearbeitet'}${notizen(r) ? ` · ${notizen(r)} Punkte aus dem Gespräch` : ''}</span></span>${icon('chevron', 'pc-chev')}</button>`).join('')}
-        <button class="doc" data-bilder><span class="d-ico brass">${icon('camera')}</span><span class="d-t"><b>Baustellenfotos ansehen</b><span>Zum Nachschauen beim Kalkulieren</span></span>${icon('chevron', 'pc-chev')}</button>
+        <button class="doc" id="wNeuAng"><span class="d-ico grey">${icon('plus')}</span><span class="d-t"><b>${list.length ? 'Weiteren Raum ins Angebot' : 'Raum fürs Angebot anlegen'}</b><span>z. B. Bad, Küche, Flur. Ohne Fotos und ohne Visualisierung</span></span>${icon('chevron', 'pc-chev')}</button>
+        ${k ? `<button class="doc" data-bilder><span class="d-ico brass">${icon('camera')}</span><span class="d-t"><b>Baustellenfotos ansehen</b><span>Zum Nachschauen beim Kalkulieren</span></span>${icon('chevron', 'pc-chev')}</button>` : ''}
       </div>
 
       ${kopf(3, 'Senden', mitPos.length ? `Angebot${anyResult ? ' und Mappe' : ''} als PDF per Mail oder WhatsApp` : 'Zuerst das Angebot ausarbeiten')}
@@ -489,8 +476,18 @@ window.Projekt = (() => {
           <button class="doc" id="dAngebot"><span class="d-ico grey">${icon('euro')}</span><span class="d-t"><b>Angebot öffnen</b><span>${list.length > 1 ? 'Raum wählen oder Gesamtangebot' : 'Aufmaß, Positionen, Bauzeit'}</span></span>${icon('chevron', 'pc-chev')}</button>
         </div>
         <div id="wTermine"></div>
-        <button class="link-danger" id="wDel">${icon('trash')} Projekt löschen</button>
-      </details>` : ''}`;
+        <button class="link-danger" id="wDel">${icon('trash')} Angebot löschen</button>
+      </details>`;
+  }
+  /** Raum nur fürs Angebot anlegen (ohne Fotos, ohne Visualisierung) und gleich das Angebot öffnen. */
+  async function angebotsRaum(w) {
+    const rt = await sheet('Welcher Raum?', ROOM_TYPES.map((r) => ({ label: r.name, icon: roomIcon(r.id), value: r.id })));
+    if (!rt) return;
+    const list = await raeume(w);
+    const r = { id: uid(), created: Date.now(), wohnungId: w.id, kundeId: w.kundeId || '', customer: w.customer, address: w.address, roomType: rt, room: titel(list, rt), note: '', photos: [], thumb: '', results: {}, selected: packagesFor(rt).map((x) => x.id), pdfProducts: true, pdfPrices: false };
+    rooms.set(r.id, r); w.rooms.push(r.id); delete w.isNew;
+    await kvSet('project:' + r.id, r); await save(w);
+    raumAngebot(normalizeProject(r), w);
   }
   /** Angebot (ein Raum oder Gesamtangebot) und Kundenmappe zusammen teilen. Danach Status „versendet“. */
   async function sendenMitMappe(w, list) {
@@ -509,6 +506,7 @@ window.Projekt = (() => {
       await saveProject(r);
       ang = { doc, syn: r, name: `Angebot_${r.angebot.nr}_${(w.customer || 'Kunde').replace(/[^\wäöüÄÖÜß-]+/g, '_')}.pdf` };
     }
+    await angebotMerken(w.id, ang.doc, ang.name);
     const files = [new File([ang.doc.output('blob')], ang.name, { type: 'application/pdf' })];
     const sel = list.filter(hasAnyResult).map((r) => ({ r, v: wahl(w, r) })).filter((x) => x.v !== '')
       .map(({ r, v }) => ({ r, pkgs: (v === 'alle' ? PKG_IDS.filter((id) => done(r, id)) : [v]).map((id) => pkgOf(r, id)).filter(Boolean) })).filter((x) => x.pkgs.length);
@@ -525,6 +523,27 @@ window.Projekt = (() => {
     await angebotVersendet(w.id); view();
   }
 
+  /** Das verschickte Angebot als PDF im Projekt merken (Projektmappe zeigt es später nur zum Lesen). */
+  async function angebotMerken(wid, doc, name) {
+    if (!wid) return;
+    try {
+      await kvSet('angpdf:' + wid, doc.output('datauristring'));
+      const w = state.wohnung?.id === wid ? state.wohnung : await kvGet(key(wid));
+      if (!w) return;
+      w.angebotPdf = { name, typ: 'application/pdf', t: Date.now() };
+      await save(w);
+    } catch (e) { console.warn('Angebot-PDF nicht gespeichert', e); }
+  }
+  /** Baustart als ganztägiger Baustellen-Termin im Kalender (ein Termin je Projekt, wird angepasst oder entfernt). */
+  async function baustartTermin(w) {
+    const id = 'bau-' + w.id;
+    if (!w.baustart) { await kvDel('termin:' + id); return; }
+    const alt = (await kvGet('termin:' + id)) || {};
+    await kvSet('termin:' + id, { ...alt, id, kind: 'termin', art: 'baustelle', datum: w.baustart, ganztag: true, von: '', bis: '',
+      titel: `Baustart ${w.titel || w.customer || 'Projekt'}`, kundeId: w.kundeId || '', objektId: w.objektId || '', projektId: w.id, ort: w.address || '',
+      wer: alt.wer || [], notiz: alt.notiz || '', created: alt.created || Date.now(), updated: Date.now() });
+  }
+
   /** Statuskarte im Projekt: wo steht es, was kommt als Nächstes (ein großer Knopf). */
   function statusKarte(w) {
     const st = norm(w.status), i = PFAD.indexOf(st), nx = WEITER[st];
@@ -535,7 +554,7 @@ window.Projekt = (() => {
       ? `<div class="stk-2"><button class="btn" data-st="geplant" style="--c:#2f8a57">${icon('check')} Zugesagt</button><button class="btn" data-st="abgesagt" style="--c:#c0392b">${icon('x')} Abgesagt</button></div>`
       : nx ? `<button class="btn block" data-st="${nx[0]}" style="--c:${farbe(nx[0])}">${esc(nx[1])}</button>` : '';
     return `<div class="card stk" style="--c:${farbe(st)}">
-      <div class="stk-top"><span class="stk-dot"></span><span class="stk-t"><small>Status</small><b>${esc(statusName(st))}</b></span><button class="stk-alle" id="stAlle">Ändern</button></div>
+      <div class="stk-top"><span class="stk-dot"></span><span class="stk-t"><small>Status</small><b>${esc(st === 'geplant' && w.baustart ? `Eingeplant · Baustart ${datumText(w.baustart)}` : statusName(st))}</b></span><button class="stk-alle" id="stAlle">Ändern</button></div>
       <div class="stk-pfad" aria-hidden="true">${PFAD.map((id, j) => `<i class="${st === 'abgesagt' ? (j <= 2 ? 'ab' : '') : j < i ? 'ok' : j === i ? 'jetzt' : ''}" style="--c:${farbe(id)}"></i>`).join('')}</div>
       ${st === 'geplant' ? `<label class="stk-feld">${icon('calendar')}<span>Baustart</span><input type="date" id="wBaustart" value="${esc(w.baustart || '')}"></label>
         <p class="hint" style="margin:0 0 10px">Am Tag des Baustarts springt der Status von selbst auf „Baustelle läuft“.</p>` : ''}
@@ -560,6 +579,7 @@ window.Projekt = (() => {
   async function gesamtAngebot(w, raeume) {
     toast('Gesamtangebot wird erstellt …', 8000);
     const { doc, name, syn } = await gesamtDoc(w, raeume);
+    await angebotMerken(w.id, doc, name);
     const A = window.Angebot._intern;
     const blob = doc.output('blob'), file = new File([blob], name, { type: 'application/pdf' });
     $('#toast').hidden = true;
@@ -671,7 +691,7 @@ window.Projekt = (() => {
         <button class="link-danger" id="mbReset">${icon('refresh')} Zurück zum Standard-Moodboard</button>` : ''}`;
     $$('[data-edit]').forEach((el) => (el.onclick = () => { kopie(w, rt); editView(w, rt, el.dataset.edit); window.scrollTo(0, 0); }));
     if ($('#mbReset')) $('#mbReset').onclick = async () => {
-      if (!confirm(`Die Anpassungen für ${roomType(rt).name} in diesem Projekt verwerfen und wieder das Standard-Moodboard nutzen?`)) return;
+      if (!loeschFrage(`Die Anpassungen für ${roomType(rt).name} in diesem Projekt verwerfen und wieder das Standard-Moodboard nutzen?`)) return;
       delete w.boards[rt]; await save(w); moodboardView(w, rt);
     };
   }
@@ -706,7 +726,7 @@ window.Projekt = (() => {
     const seiten = () => picks().reduce((n, { r, w: v }) => n + (v === 'alle' ? PKG_IDS.filter((id) => done(r, id)).length : 1), 0);
     main().innerHTML = `
       <div class="card intro">
-        <p>Wähle für jeden Raum, ob der Kunde <b>alle Varianten</b> zum Vergleich sieht oder <b>ein Paket</b>. Danach als Vorher-Nachher-PDF oder als Präsentation nur mit den neuen Bildern erstellen.</p>
+        <p>Wähle für jeden Raum, ob der Kunde <b>alle Varianten</b> zum Vergleich sieht oder <b>ein Paket</b>. Danach als Vorher-Nachher-PDF erstellen.</p>
         <div class="quick"><span>Für alle Räume:</span>
           <button class="qchip" data-all="alle">Alle Varianten</button>
           ${allPk.map((id) => `<button class="qchip" data-all="${id}" style="--c:${col(id)}">${esc(nm(id))}</button>`).join('')}
@@ -727,8 +747,7 @@ window.Projekt = (() => {
         <label class="toggle"><input type="checkbox" id="mPrice" ${w.pdfPrices ? 'checked' : ''} ${w.pdfProducts ? '' : 'disabled'}><span class="tg"></span><span>Preise der Produkte zeigen</span></label>` : ''}
         ${anyEve ? `<label class="toggle"><input type="checkbox" id="mEve" ${w.pdfEvening !== false ? 'checked' : ''}><span class="tg"></span><span>Abendstimmung (Tag und Abend nebeneinander)</span></label>` : ''}
         <button class="btn big block" id="mPdf">${icon('file')} Vorher-Nachher als PDF</button>
-        <button class="btn big block secondary" id="mPres" style="margin-top:10px">${icon('image')} Präsentation als PDF</button>
-        <p class="hint center" style="margin-top:4px">Präsentation: nur die neuen Bilder, ohne Vorher-Fotos</p>
+        <button id="mPres" hidden></button>
         <p class="hint center" id="mInfo"></p>
       </div>`;
     const info = () => { const n = picks().length, s = seiten(); $('#mInfo').textContent = n ? `${n} ${n === 1 ? 'Raum' : 'Räume'} · ${s} Vorher-Nachher-${s === 1 ? 'Seite' : 'Seiten'}` : 'Bitte mindestens einen Raum auswählen.'; $('#mPdf').disabled = !n; $('#mPres').disabled = !n; };
@@ -756,7 +775,7 @@ window.Projekt = (() => {
   }
 
   const forget = (id) => rooms.delete(id);
-  return { automatik, anlegen, angebotVersendet, nachfassen, seitTagen, STATUS, ANGEBOT, ALLE, PHASEN, phase, farbe, pill, norm, zugesagt, statusName, statusKurz, raumAngebot, forget, neu, neuDirekt, neuFuer, kundeUebernehmen, oeffnen, view, mappeView, moodboardView, migrate, raum, raeume, raumGespeichert, raumEntfernt, save, wahl, PKG_IDS, _intern: { titel, addRoom } };
+  return { automatik, anlegen, angebotVersendet, nachfassen, seitTagen, STATUS, ANGEBOT, ALLE, PHASEN, phase, farbe, pill, norm, zugesagt, statusName, statusKurz, raumAngebot, angebotMerken, forget, neu, neuDirekt, neuFuer, kundeUebernehmen, oeffnen, view, mappeView, moodboardView, migrate, raum, raeume, raumGespeichert, raumEntfernt, save, wahl, PKG_IDS, _intern: { titel, addRoom } };
 })();
 // Ältere Aufrufe (PR „Wohnungen“) laufen weiter
 window.Wohnung = { neu: () => Projekt.neu(), oeffnen: (id) => Projekt.oeffnen(id), view: () => Projekt.view(), raumGespeichert: (p) => Projekt.raumGespeichert(p), raumEntfernt: (p) => Projekt.raumEntfernt(p) };

@@ -118,3 +118,7 @@
 .stk-feld input { width: auto; flex: none; }
 .stk-tipp { display: flex; align-items: center; gap: 6px; margin: 0 0 10px; font-weight: 650; color: #237a4b; }
 .stk-tipp svg.i { width: 18px; height: 18px; }
+
+/* ---------- Telefon mit Vorwahl, Kundennummer ---------- */
+.tel-in { display: grid; grid-template-columns: 104px 1fr; gap: 8px; }
+.k-nr { padding: 12px 14px; border-radius: 12px; background: var(--soft); color: var(--muted); font-weight: 600; }

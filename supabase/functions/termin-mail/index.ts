@@ -134,6 +134,9 @@ async function anAlle(t: Termin, an: Person[], art: Art, wann = "") {
 async function senden(an: Person[], betreff: string, html: string, anhang?: { name: string; text: string; methode: string }) {
   const empf = an.filter((p) => /.+@.+\..+/.test(p.email || "")).map((p) => (p.name ? `${p.name.replace(/[<>"]/g, "")} <${p.email}>` : p.email!));
   if (!empf.length) return 0;
+  // Kurze Zeilen: Sehr lange HTML-Zeilen werden beim Versand (Quoted-Printable) umbrochen, manche Mailprogramme
+  // zeigen das dann kaputt an (verschobene Tabelle, „=“-Zeichen, falsche Umlaute). Ein Umbruch nach jedem Tag verhindert das.
+  html = html.replace(/>\s*</g, ">\n<");
   const from = env("MAIL_FROM");
   if (!from) throw new Error("MAIL_FROM fehlt (Absender)");
   if (env("RESEND_API_KEY")) {

@@ -106,3 +106,10 @@ span.x { background: none; }
 /* ---------- Nachkalkulation ---------- */
 button.pg { border: 0; background: none; text-align: right; font: inherit; color: inherit; padding: 0; display: flex; flex-direction: column; align-items: flex-end; }
 .fixp { color: var(--brass); font-weight: 650; font-size: 12.5px; }
+
+/* ---------- Angebot: Summe oben ---------- */
+.asum { display: grid; grid-template-columns: 1fr auto; gap: 12px; align-items: end; }
+.asum-k span, .asum-b span { display: block; font-size: 12.5px; color: var(--muted); margin-bottom: 4px; }
+.asum-b { text-align: right; }
+.asum-b b { display: block; font-size: 24px; color: var(--navy); }
+.asum-b small { color: var(--muted); font-size: 12.5px; }

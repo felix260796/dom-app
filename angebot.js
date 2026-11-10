@@ -437,14 +437,16 @@ Gib Länge (längere Seite) und Breite der Grundfläche, Raumhöhe, Anzahl und G
   }
 
   // ---------- Ansicht: Aufmaß & Angebot ----------
-  let tab = 'aufmass';
+  let tab = 'angebot';
   async function ansicht(p, scrollTop = true) {
     await preisliste(); await vorlagen();
     init(p);
-    const zurueck = () => { if (state.angebotAusProjekt && state.wohnung) { state.angebotAusProjekt = false; state.project = null; return Projekt.view(); } viewProjekt(); };
-    header('Angebot', [p.customer, p.room].filter(Boolean).join(' · '), { label: state.angebotAusProjekt ? 'Projekt' : p.room || 'Raum', fn: zurueck });
+    // Zurück führt immer dorthin, woher man kam: aus dem Angebotsablauf zurück dorthin, sonst in den Raum
+    const ausProjekt = state.angebotAusProjekt && state.wohnung;
+    const zurueck = () => { if (ausProjekt) { state.angebotAusProjekt = false; state.project = null; return Projekt.view(); } viewProjekt(); };
+    header(`Angebot ${p.room || ''}`.trim(), p.customer || '', { label: 'Zurück', fn: zurueck });
     main().innerHTML = `
-      <div class="seg">${[['aufmass', 'Aufmaß'], ['angebot', 'Angebot'], ['material', 'Material'], ['bauzeit', 'Bauzeit']].map(([k, l]) => `<button data-atab="${k}" class="${tab === k ? 'on' : ''}">${l}</button>`).join('')}</div>
+      <div class="seg">${[['angebot', 'Positionen'], ['aufmass', 'Maße'], ['bauzeit', 'Bauzeit'], ['material', 'Material']].map(([k, l]) => `<button data-atab="${k}" class="${tab === k ? 'on' : ''}">${l}</button>`).join('')}</div>
       <div id="aBody"></div>`;
     
     $$('[data-atab]').forEach((b) => (b.onclick = () => { tab = b.dataset.atab; ansicht(p); }));
@@ -517,7 +519,7 @@ Gib Länge (längere Seite) und Breite der Grundfläche, Raumhöhe, Anzahl und G
       $('[data-addoe]', card).onclick = () => { r.oeff.push({ art: 'Fenster', n: 1, b: '', h: '' }); rerender(); };
       $$('[data-deloe]', card).forEach((b) => (b.onclick = () => { r.oeff.splice(+b.dataset.deloe, 1); rerender(); }));
       $('[data-skizze]', card).onclick = async () => { const [f] = await pickFiles(); if (!f) return; r.skizze = await resize(await fileToDataUrl(f), 1400); rerender(); };
-      const del = $('[data-delraum]', card); if (del) del.onclick = () => { if (!confirm(`Raum „${r.name}“ entfernen?`)) return; p.aufmass.raeume.splice(ri, 1); rerender(); };
+      const del = $('[data-delraum]', card); if (del) del.onclick = () => { if (!loeschFrage(`Raum „${r.name}“ entfernen?`)) return; p.aufmass.raeume.splice(ri, 1); rerender(); };
     });
     $('#addRaum').onclick = () => { p.aufmass.raeume.push(neuerRaum('Wohnzimmer')); rerender(); setTimeout(() => window.scrollTo(0, document.getElementById('main').scrollHeight), 50); };
     $('#zumAngebot').onclick = () => { tab = 'angebot'; ansicht(p); };
@@ -532,54 +534,49 @@ Gib Länge (längere Seite) und Breite der Grundfläche, Raumhöhe, Anzahl und G
     const raeume = [...new Set(A.positionen.map((x) => x.raum))];
     const gewerke = [...new Set(PL.positionen.map((x) => x.gewerk))];
     body.innerHTML = `
-      <div class="card"><h2>Preisrichtung vor Ort</h2>
-        <p class="muted">Brutto, aus dem Aufmaß und den Paket-Vorlagen, ±${Math.round(PL.einstellungen.spanne * 100)} %.</p>
-        ${vergleich.map(({ pk: x, s }) => `<div class="prow"><span class="swatch" style="background:${x.color};height:22px;width:6px"></span><b style="flex:1">${esc(x.name)}</b><span>${s.brutto ? `${fmtEur(s.von).replace(',00', '')} – ${fmtEur(s.bis).replace(',00', '')}` : '–'}</span></div>`).join('')}
+      <div class="card asum">
+        <div class="asum-k"><span>Paket</span><select id="aPaket">${pakete(p).map((x) => `<option value="${x.id}" ${x.id === A.paket ? 'selected' : ''}>${esc(x.name)}</option>`).join('')}</select></div>
+        <div class="asum-b"><span>Gesamt brutto</span><b>${fmtEur(S.brutto)}</b><small>netto ${fmtEur(S.netto)} · ${S.zeilen.length} Positionen</small></div>
       </div>
-      <div class="card"><h2>Angebot</h2>
-        <label>Paket</label><select id="aPaket">${pakete(p).map((x) => `<option value="${x.id}" ${x.id === A.paket ? 'selected' : ''}>${esc(x.name)}</option>`).join('')}</select>
-        <div class="row"><div><label>Angebotsnummer</label><input type="text" id="aNr" value="${esc(A.nr)}" placeholder="wird beim PDF vergeben"></div>
-          <div><label>Ansprechpartner</label><select id="aAnspr">${ansprechpartner().map((x) => `<option ${x === (A.anspr || ansprechpartner()[0]) ? 'selected' : ''}>${esc(x)}</option>`).join('')}</select></div></div>
-        <label>Betreff</label><input type="text" id="aTitel" value="${esc(A.titel)}" placeholder="${esc(titelDefault(p, pk))}">
-        <label>Anrede</label><input type="text" id="aAnrede" value="${esc(A.anrede)}" placeholder="${esc(anredeDefault(p))}">
-        ${p.otherNotes?.trim() ? `<h3>Notizen aus dem Gespräch</h3><p class="muted" style="white-space:pre-line">${esc(p.otherNotes.trim())}</p>` : ''}
-        ${A.fehler?.length ? `<p class="muted" style="color:var(--danger)">${A.fehler.map(esc).join(' · ')}</p>` : ''}
-      </div>
+      ${p.otherNotes?.trim() || p.wishes?.trim() ? `<details class="more card" open><summary>${icon('mic')}<span>Aus dem Gespräch<small>Wünsche und Notizen zu diesem Raum</small></span>${icon('chevron', 'more-chev')}</summary>
+        <p class="muted" style="white-space:pre-line;margin:8px 0 0">${esc([p.wishes?.trim(), p.otherNotes?.trim()].filter(Boolean).join('\n'))}</p>
+        ${state.settings.apiKey ? `<button class="btn secondary block" id="aWunsch" style="margin-top:10px">${icon('sparkle')} Fehlende Positionen dazu vorschlagen</button>` : ''}</details>` : ''}
+      ${A.fehler?.length ? `<p class="muted" style="color:var(--danger)">${A.fehler.map(esc).join(' · ')}</p>` : ''}
       <div class="card"><h2>Positionen</h2>
-        <p class="muted">Mengen kommen aus dem Aufmaß und passen sich an, solange du hier nichts änderst. Nach eigenen Änderungen übernimmt „Neu berechnen“ das Aufmaß wieder.</p>
         ${raeume.map((rn) => `<h3>${esc(rn || 'Allgemein')}</h3>${S.zeilen.filter((z) => z.raum === rn).map((z) => {
           const i = z.i;
           return `<div class="posrow"><div class="pt"><b>${esc(z.it.text)}</b><span class="muted">${esc(z.nr)}${z.bem ? ' · ' + esc(z.bem) : ''}</span></div>
             <div class="pm">${numIn(`data-menge="${i}"`, z.menge)}<span class="muted">${esc(z.it.einheit)}</span></div>
             <button class="pg" data-epfix="${i}" title="Einzelpreis ändern">${fmtEur(z.gp)}<span class="${z.fix ? 'fixp' : 'muted'}">${fmtEur(z.ep)}${z.fix ? ' fest' : ''}</span></button><button class="x" data-delpos="${i}" aria-label="Entfernen">✕</button></div>`;
-        }).join('')}`).join('')}
+        }).join('')}`).join('') || '<p class="hint">Noch keine Positionen. Unten eine Position wählen oder unter „Maße“ den Raum ausmessen, dann kommen die Positionen aus dem Paket.</p>'}
         <h3>Position hinzufügen</h3>
         <select id="aNeu"><option value="">Position aus Preisliste wählen …</option>${gewerke.map((g) => `<optgroup label="${esc(g)}">${PL.positionen.filter((x) => x.gewerk === g).map((x) => `<option value="${esc(x.nr)}">${esc(x.nr)} ${esc(x.text)} (${esc(x.einheit)})</option>`).join('')}</optgroup>`).join('')}</select>
         <div class="row" style="margin-top:8px"><select id="aNeuRaum">${['', ...p.aufmass.raeume.map((r) => r.name)].map((r) => `<option value="${esc(r)}">${esc(r || 'Allgemein')}</option>`).join('')}</select>
           ${numIn('id="aNeuMenge"', '', 'Menge')}<button class="btn small" id="aAdd" style="flex:none">＋</button></div>
-        ${state.settings.apiKey && (p.wishes?.trim() || p.otherNotes?.trim()) ? `<button class="btn secondary block" id="aWunsch" style="margin-top:12px">${icon('sparkle')} Positionen aus den Kundenwünschen vorschlagen</button>` : ''}
-        <button class="btn secondary block" id="aNeuBerechnen" style="margin-top:12px">↻ Neu berechnen aus Aufmaß</button>
-      </div>
-      <div class="card kform"><h2>Nachkalkulation dieses Angebots</h2>
-        <p class="muted">Leer lassen = Standard aus den Einstellungen. Einzelpreise änderst du, indem du auf den Preis einer Position tippst.</p>
-        <div class="row">${[['aufLohn', 'Lohn %'], ['aufMat', 'Material %'], ['wagnis', 'Wagnis %']].map(([n, l]) => `<div><label>${l}</label><input type="text" inputmode="decimal" data-nk="${n}" value="${A.kalk?.[n] !== undefined && A.kalk?.[n] !== null && A.kalk?.[n] !== '' ? String(Math.round(A.kalk[n] * 1000) / 10).replace('.', ',') : ''}" placeholder="${String(Math.round(PL.einstellungen[n] * 1000) / 10).replace('.', ',')}"></div>`).join('')}</div>
-        ${A.kalk && Object.values(A.kalk).some((v) => v !== null && v !== '') || A.positionen.some((x) => x.epFix > 0) ? '<button class="btn secondary block" id="nkReset" style="margin-top:10px">Alles auf Standard zurück</button>' : ''}
-      </div>
-      <div class="card"><h2>Summe</h2>
-        <div class="tot"><span>Summe netto</span><b>${fmtEur(S.netto)}</b></div>
-        <div class="tot"><span>zzgl. ${Math.round(PL.einstellungen.mwst * 100)} % MwSt.</span><span>${fmtEur(S.mwst)}</span></div>
-        <div class="tot big"><span>Gesamt brutto</span><b>${fmtEur(S.brutto)}</b></div>
-        <div class="tot"><span class="muted">Lohnanteil brutto (§ 35a EStG)</span><span class="muted">${fmtEur(S.lohnBrutto)}</span></div>
-        <div class="tot"><span class="muted">Preisrichtung</span><span class="muted">${fmtEur(S.von)} – ${fmtEur(S.bis)}</span></div>
+        <p class="hint" style="margin:10px 0 0">Preis einer Position ändern: auf den Betrag tippen. Mengen kommen aus den Maßen, bis du sie selbst änderst.</p>
       </div>
       <div class="card">
-        <label class="check"><input type="checkbox" id="aMitBz" ${A.mitBauzeit ? 'checked' : ''}>Bauzeitenplan anhängen</label>
-        <label class="check"><input type="checkbox" id="aMitBild" ${A.mitBild ? 'checked' : ''} ${firstResult(p, A.paket) ? '' : 'disabled'}>Visualisierung „${esc(pk.name)}“ anhängen${firstResult(p, A.paket) ? '' : ' (noch nicht erstellt)'}</label>
-        <button class="btn block" id="aPdf" ${S.zeilen.length ? '' : 'disabled'}>Angebot senden (PDF)</button>
+        <button class="btn big block" id="aPdf" ${S.zeilen.length ? '' : 'disabled'}>${icon('file')} Angebot als PDF senden</button>
+        <label class="check" style="margin-top:10px"><input type="checkbox" id="aMitBz" ${A.mitBauzeit ? 'checked' : ''}>Bauzeitenplan anhängen</label>
         ${A.versionen?.length ? `<p class="muted" style="margin:8px 0 0">${A.versionen.map((v, i) => `${i ? `Änderung ${i}` : 'Erste Fassung'} vom ${fmtDate(new Date(v.t))}: ${fmtEur(v.brutto)}`).join('<br>')}</p>` : ''}
+      </div>
+      <details class="more card"><summary>${icon('sliders')}<span>Weitere Einstellungen<small>Nummer, Betreff, Anrede, Aufschläge, Preisrichtung, Excel</small></span>${icon('chevron', 'more-chev')}</summary>
+        <div class="kform">
+        <div class="row"><div><label>Angebotsnummer</label><input type="text" id="aNr" value="${esc(A.nr)}" placeholder="wird beim PDF vergeben"></div>
+          <div><label>Ansprechpartner</label><select id="aAnspr">${ansprechpartner().map((x) => `<option ${x === (A.anspr || ansprechpartner()[0]) ? 'selected' : ''}>${esc(x)}</option>`).join('')}</select></div></div>
+        <label>Betreff</label><input type="text" id="aTitel" value="${esc(A.titel)}" placeholder="${esc(titelDefault(p, pk))}">
+        <label>Anrede</label><input type="text" id="aAnrede" value="${esc(A.anrede)}" placeholder="${esc(anredeDefault(p))}">
+        <label>Aufschläge nur für dieses Angebot (leer = Standard)</label>
+        <div class="row">${[['aufLohn', 'Lohn %'], ['aufMat', 'Material %'], ['wagnis', 'Wagnis %']].map(([n, l]) => `<div><label>${l}</label><input type="text" inputmode="decimal" data-nk="${n}" value="${A.kalk?.[n] !== undefined && A.kalk?.[n] !== null && A.kalk?.[n] !== '' ? String(Math.round(A.kalk[n] * 1000) / 10).replace('.', ',') : ''}" placeholder="${String(Math.round(PL.einstellungen[n] * 1000) / 10).replace('.', ',')}"></div>`).join('')}</div>
+        ${A.kalk && Object.values(A.kalk).some((v) => v !== null && v !== '') || A.positionen.some((x) => x.epFix > 0) ? '<button class="btn secondary block" id="nkReset" style="margin-top:10px">Alles auf Standard zurück</button>' : ''}
+        </div>
+        <h3>Preisrichtung je Paket</h3>
+        ${vergleich.map(({ pk: x, s }) => `<div class="prow"><span class="swatch" style="background:${x.color};height:22px;width:6px"></span><b style="flex:1">${esc(x.name)}</b><span>${s.brutto ? `${fmtEur(s.von).replace(',00', '')} – ${fmtEur(s.bis).replace(',00', '')}` : '–'}</span></div>`).join('')}
+        <div class="tot"><span class="muted">Lohnanteil brutto (§ 35a EStG)</span><span class="muted">${fmtEur(S.lohnBrutto)}</span></div>
+        <button class="btn secondary block" id="aNeuBerechnen" style="margin-top:12px">↻ Positionen neu aus den Maßen berechnen</button>
         <button class="btn secondary block" id="aExcel" style="margin-top:10px" ${S.zeilen.length ? '' : 'disabled'}>Positionen fürs Excel-Tool kopieren</button>
-        <p class="muted">Kopiert Nr, Raum, Menge und Bemerkung. In Excel im Blatt „Eingabe“ ab Zelle B12 einfügen.</p>
-      </div>`;
+        <input type="checkbox" id="aMitBild" hidden>
+      </details>`;
 
     const re = () => { saveProject(p); const y = window.scrollY; angebotView(p); window.scrollTo(0, y); };
     $('#aPaket').onchange = (e) => {
@@ -871,6 +868,7 @@ Gib Länge (längere Seite) und Breite der Grundfläche, Raumhöhe, Anzahl und G
     const file = new File([blob], name, { type: 'application/pdf' });
     $('#toast').hidden = true;
     if ($('#aNr')) $('#aNr').value = p.angebot.nr;
+    await window.Projekt?.angebotMerken?.(p.wohnungId, doc, name);
     const fertig = () => window.Projekt?.angebotVersendet?.(p.wohnungId);
     if (navigator.canShare?.({ files: [file] })) { try { await navigator.share({ files: [file], title: name, text: mailText(p) }); return fertig(); } catch (e) { if (e.name === 'AbortError') return; } }
     const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name; a.click();
@@ -899,7 +897,7 @@ Gib Länge (längere Seite) und Breite der Grundfläche, Raumhöhe, Anzahl und G
       inp.onchange = async () => { try { const r = await importExcel(inp.files[0]); toast(`${r.positionen.length} Positionen übernommen`); einstellungenKarte(); } catch (e) { toast('Import fehlgeschlagen: ' + e.message, 6000); } };
       inp.click();
     };
-    $('#plReset').onclick = async () => { if (!confirm('Preisliste auf die Standard-Schätzpreise zurücksetzen?')) return; await kvDel('preisliste'); PL = null; einstellungenKarte(); };
+    $('#plReset').onclick = async () => { if (!loeschFrage('Preisliste auf die Standard-Schätzpreise zurücksetzen?')) return; await kvDel('preisliste'); PL = null; einstellungenKarte(); };
     $('#plVorl').onclick = () => vorlagenView();
   }
 
@@ -935,7 +933,7 @@ Gib Länge (längere Seite) und Breite der Grundfläche, Raumhöhe, Anzahl und G
     $$('[data-vdel]').forEach((b) => (b.onclick = async () => { rows.splice(+b.dataset.vdel, 1); await kvSet('angebotVorlagen', VORL); vorlagenView(pkgId, grp); }));
     $$('[data-vup]').forEach((b) => (b.onclick = async () => { const i = +b.dataset.vup; [rows[i - 1], rows[i]] = [rows[i], rows[i - 1]]; await kvSet('angebotVorlagen', VORL); vorlagenView(pkgId, grp); }));
     $('#vNeu').onchange = async (e) => { if (!e.target.value) return; rows.push({ nr: e.target.value, menge: 'boden', bem: '' }); await kvSet('angebotVorlagen', VORL); vorlagenView(pkgId, grp); };
-    $('#vReset').onclick = async () => { if (!confirm('Alle Paket-Vorlagen zurücksetzen?')) return; await kvDel('angebotVorlagen'); VORL = null; vorlagenView(pkgId, grp); };
+    $('#vReset').onclick = async () => { if (!loeschFrage('Alle Paket-Vorlagen zurücksetzen?')) return; await kvDel('angebotVorlagen'); VORL = null; vorlagenView(pkgId, grp); };
   }
 
   return { projektKarte, ansicht, einstellungenKarte, _intern: { init, gruppe, materialliste, uebernimmSchaetzung, masse, rechne, erzeuge, summen, bauzeit, ep, lohnEp, preisliste, vorlagen, neuerRaum, baueAngebotPdf, importExcel, naechsteNummer, mailText } };

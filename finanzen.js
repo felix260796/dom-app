@@ -169,6 +169,8 @@ window.Finanzen = (() => {
     const kalkShown = kalk.filter((e) => e && (e.k.soll.netto || e.k.ist.netto));
     if (!hier()) return;
     main().innerHTML = `
+      <label class="search big">${icon('search')}<input type="search" id="fq" placeholder="Firma, Kunde, Nummer oder Betrag" autocomplete="off"></label>
+      <button class="cta slim" id="fNeuR"><span class="cta-ico">${icon('plus')}</span><span class="cta-t"><b>Neue Rechnung</b></span>${icon('chevron', 'cta-chev')}</button>
       <div class="phasen drei">
         <div class="fz"><b>${abrechnen.length}</b><span>Abzurechnen</span></div>
         <div class="fz ${ausUeber.length ? 'rot' : ''}"><b>${aus.offen.length}</b><span>${ausUeber.length ? `${ausUeber.length} Kunde überfällig` : 'Kunde zahlt noch'}</span></div>
@@ -200,6 +202,23 @@ window.Finanzen = (() => {
     $$('[data-rech]').forEach((b) => (b.onclick = async () => { await Rechnung.laden(); Rechnung.detail(Rechnung.liste().find((r) => r.id === b.dataset.rech), () => view()); }));
     $$('[data-fa]').forEach((b) => (b.onclick = () => { alleZeigen = b.dataset.fa === '1'; view(); }));
     $('#fNeu').onclick = () => erfassen(neu(), () => view());
+    // Einheitlicher Kopf wie bei Kunden und Angeboten: Suche filtert alle Listen dieser Seite, „Neue Rechnung“ fragt, welche Art
+    $('#fq').oninput = (e) => {
+      const w = e.target.value.trim().toLowerCase().split(/\s+/).filter(Boolean);
+      $$('main .plist > .pcard, main .plist > button, main .plist > div').forEach((el) => { el.hidden = w.length > 0 && !w.every((x) => el.textContent.toLowerCase().includes(x)); });
+    };
+    $('#fNeuR').onclick = async () => {
+      const v = await sheet('Neue Rechnung', [
+        { label: 'Eingangsrechnung erfassen', sub: 'Rechnung von Subunternehmer oder Lieferant, Foto genügt', icon: icon('camera'), value: 'ein' },
+        { label: 'Rechnung an einen Kunden', sub: 'Abschlag oder Schlussrechnung im Projekt', icon: icon('file'), value: 'aus' },
+      ]);
+      if (v === 'ein') return erfassen(neu(), () => view());
+      if (v !== 'aus') return;
+      const offen = idx.filter((x) => Projekt.zugesagt(x.status));
+      if (!offen.length) return toast('Rechnungen an Kunden gibt es, sobald ein Projekt zugesagt ist.', 4000);
+      const pid = await sheet('Für welches Projekt?', offen.map((x) => ({ label: x.titel || x.room || 'Projekt', sub: [Kunden.name(Kunden.byId(x.kundeId)) || x.customer, x.nr].filter(Boolean).join(' · '), icon: icon('home'), value: x.id })));
+      if (pid) { switchTab('projekt', { wohnung: null }); Projekt.oeffnen(pid); }
+    };
     $$('[data-beleg]').forEach((b) => (b.onclick = () => erfassen(belege.get(b.dataset.beleg), () => view())));
     $$('[data-fp]').forEach((b) => (b.onclick = () => { switchTab('projekt', { wohnung: null }); Projekt.oeffnen(b.dataset.fp); }));
   }
@@ -334,10 +353,14 @@ Datum als JJJJ-MM-TT. faellig = Fälligkeitsdatum, falls angegeben (oder Datum +
         toast(warNeu ? 'Eingangsrechnung gespeichert' : 'Gespeichert');
         zurueck();
       };
-      if ($('#bDel')) $('#bDel').onclick = async () => { if (!confirm('Diese Eingangsrechnung löschen?')) return; await loeschen(b); zurueck(); };
+      if ($('#bDel')) $('#bDel').onclick = async () => { if (!loeschFrage('Diese Eingangsrechnung löschen?')) return; await loeschen(b); zurueck(); };
     }
     render();
+    // Aus der Kamera oben: Foto ist schon da, gleich auslesen
+    if (b._daten && b.isNew && state.settings.apiKey) ki();
   }
+  /** Eingangsrechnung aus einem fertigen Bild anlegen (Kamera oben in der Kopfzeile). */
+  function ausBild(data, fertig) { const b = neu(); b._daten = data; b.datei = { typ: 'image/jpeg', name: 'Rechnung (Kamera)' }; return erfassen(b, fertig); }
 
   // ---------- Abschnitt im Projekt: Kosten & Kalkulation ----------
   async function projektAbschnitt(el, w) {
@@ -366,10 +389,10 @@ Datum als JJJJ-MM-TT. faellig = Fälligkeitsdatum, falls angegeben (oder Datum +
       ${liste.length ? `${offen.length ? `<p class="hint" style="margin-top:-4px">${offen.length} offen, ${eur0(offen.reduce((s, b) => s + brutto(b), 0))} brutto</p>` : ''}<div class="plist">${liste.map((b) => belegZeile(b)).join('')}</div>`
         : '<p class="hint" style="margin-top:-4px">Noch keine Eingangsrechnung von dieser Firma.</p>'}
       <button class="add-room" id="pBelegNeu" style="width:100%;margin-top:8px">${icon('plus')} Rechnung dieser Firma erfassen</button>
-      <div class="sec-h" style="margin-top:18px"><h2>Preise je Position</h2>${Object.keys(p.preise || {}).length ? `<span class="count">${Object.keys(p.preise).length}</span>` : ''}</div>
-      <p class="hint" style="margin-top:-4px">Was diese Firma pro Einheit verlangt. Die Kalkulation rechnet damit die geplanten Kosten aus.</p>
-      <div class="card kform" id="pPreise"></div>`;
-    await preiseRender($('#pPreise', el), p);
+      ${p.art === 'lief' ? '' : `<div class="sec-h" style="margin-top:18px" id="pPreisH"><h2>Preisliste dieser Firma</h2>${Object.keys(p.preise || {}).length + (p.eigenePreise || []).length ? `<span class="count">${Object.keys(p.preise || {}).length + (p.eigenePreise || []).length}</span>` : ''}</div>
+      <p class="hint" style="margin-top:-4px">Was diese Firma pro Einheit verlangt, aus unserer Preisliste oder eigene Positionen. Die Kalkulation rechnet damit die geplanten Kosten aus.</p>
+      <div class="card kform" id="pPreise"></div>`}`;
+    if ($('#pPreise', el)) await preiseRender($('#pPreise', el), p);
     const zurueck = () => Partner.detail(p);
     $('#pBelegNeu', el).onclick = () => erfassen(neu({ partnerId: p.id }), zurueck);
     $$('[data-beleg]', el).forEach((b) => (b.onclick = () => erfassen(belege.get(b.dataset.beleg), zurueck)));
@@ -382,12 +405,21 @@ Datum als JJJJ-MM-TT. faellig = Fälligkeitsdatum, falls angegeben (oder Datum +
     const gew = [...new Set(PL.positionen.map((x) => x.gewerk))];
     box.innerHTML = `${eintraege.map(([nr, ep]) => { const it = pos(nr); return `<div class="prow-sub"><span><b>${esc(it.text)}</b><span class="muted">${esc(nr)} · Angebot ${eur(window.Angebot._intern.ep(it))}/${esc(it.einheit)}</span></span>
         <input type="text" inputmode="decimal" data-sp="${esc(nr)}" value="${String(ep).replace('.', ',')}"><span class="muted">€/${esc(it.einheit)}</span><button class="icon-btn" data-spdel="${esc(nr)}" aria-label="Entfernen">${icon('trash')}</button></div>`; }).join('')}
-      <select id="spNeu" style="margin-top:${eintraege.length ? 10 : 0}px"><option value="">Position hinzufügen …</option>${gew.map((g) => `<optgroup label="${esc(g)}">${PL.positionen.filter((x) => x.gewerk === g && !(p.preise || {})[x.nr]).map((x) => `<option value="${esc(x.nr)}">${esc(x.nr)} ${esc(x.text)}</option>`).join('')}</optgroup>`).join('')}</select>`;
+      ${(p.eigenePreise || []).map((x) => `<div class="prow-sub eigen" data-ep="${x.id}"><span><input type="text" data-epf="text" value="${esc(x.text)}" placeholder="Eigene Leistung, z. B. Stundenlohn Helfer"><input type="text" data-epf="einheit" value="${esc(x.einheit)}" placeholder="Einheit" style="margin-top:4px"></span>
+        <input type="text" inputmode="decimal" data-epf="preis" value="${String(x.preis || '').replace('.', ',')}"><span class="muted">€/${esc(x.einheit || 'Einh.')}</span><button class="icon-btn" data-epdel="${x.id}" aria-label="Entfernen">${icon('trash')}</button></div>`).join('')}
+      <select id="spNeu" style="margin-top:${eintraege.length ? 10 : 0}px"><option value="">Position aus unserer Preisliste …</option>${gew.map((g) => `<optgroup label="${esc(g)}">${PL.positionen.filter((x) => x.gewerk === g && !(p.preise || {})[x.nr]).map((x) => `<option value="${esc(x.nr)}">${esc(x.nr)} ${esc(x.text)}</option>`).join('')}</optgroup>`).join('')}</select>
+      <button type="button" class="link-add" id="epNeu" style="margin-top:8px">${icon('plus')} Eigene Position (nicht in unserer Preisliste)</button>`;
     const sichern = async () => { p.updated = Date.now(); await kvSet('partner:' + p.id, p); await window.Partner?.laden(); };
+    $$('[data-ep]', box).forEach((row) => {
+      const x = (p.eigenePreise || []).find((y) => y.id === row.dataset.ep);
+      $$('[data-epf]', row).forEach((inp) => (inp.onchange = async () => { x[inp.dataset.epf] = inp.dataset.epf === 'preis' ? r2(num(inp.value)) : inp.value.trim(); await sichern(); toast('Gespeichert'); }));
+    });
+    $$('[data-epdel]', box).forEach((b) => (b.onclick = async () => { if (!loeschFrage('Eigene Position entfernen?')) return; p.eigenePreise = p.eigenePreise.filter((y) => y.id !== b.dataset.epdel); await sichern(); preiseRender(box, p); }));
+    $('#epNeu', box).onclick = async () => { (p.eigenePreise ??= []).push({ id: uid(), text: '', einheit: 'Std.', preis: 0 }); await sichern(); await preiseRender(box, p); $$('[data-ep] [data-epf="text"]', box).pop()?.focus(); };
     $$('[data-sp]', box).forEach((x) => (x.onchange = async () => { p.preise[x.dataset.sp] = r2(num(x.value)); await sichern(); toast('Gespeichert'); }));
     $$('[data-spdel]', box).forEach((x) => (x.onclick = async () => { delete p.preise[x.dataset.spdel]; await sichern(); preiseRender(box, p); }));
     $('#spNeu', box).onchange = async (e) => { if (!e.target.value) return; (p.preise ??= {})[e.target.value] = 0; await sichern(); await preiseRender(box, p); $(`[data-sp="${e.target.value}"]`, box)?.focus(); };
   }
 
-  return { view, auswertungView, laden, liste, fuerProjekt, kalkulation, projektAbschnitt, partnerAbschnitt, erfassen };
+  return { view, auswertungView, laden, liste, fuerProjekt, kalkulation, projektAbschnitt, partnerAbschnitt, erfassen, ausBild };
 })();

@@ -27,7 +27,8 @@ window.Baumappe = (() => {
   function paket(r) {
     const b = bau(r), w = state.wohnung;
     const cands = [b.paket, w?.mappe?.[r.id], r.angebot?.paket, ...PKG_IDS];
-    return cands.find((id) => id && id !== 'alle' && done(r, id)) || '';
+    // Ohne Visualisierung zählt das beauftragte Angebot (Baumappe für den Projektleiter)
+    return cands.find((id) => id && id !== 'alle' && done(r, id)) || (r.angebot?.positionen?.length ? r.angebot.paket || 'standard' : '');
   }
   const marks = (r, pk, i) => ((bau(r).marks[pk] ??= {})[i] ??= []);
   const anzahl = (r) => { const pk = paket(r); return pk ? Object.values(bau(r).marks[pk] || {}).reduce((n, a) => n + a.length, 0) : 0; };
@@ -134,16 +135,17 @@ window.Baumappe = (() => {
   // ---------- Ansicht: Baumappe des Projekts ----------
   async function view(w) {
     state.project = null;
-    const list = (await Projekt.raeume(w)).filter(hasAnyResult);
+    const list = (await Projekt.raeume(w)).filter((r) => hasAnyResult(r) || r.angebot?.positionen?.length);
     header('Baumappe', w.customer || '', { label: 'Projekt', fn: () => { Projekt.view(); window.scrollTo(0, 0); } });
     try { await A()?.preisliste(); await A()?.vorlagen(); } catch {}
     w.bau ??= { material: true, leistung: true };
     main().innerHTML = `
-      <div class="card intro"><p>Die Baumappe geht an deine <b>Subunternehmer</b>: Visualisierung mit Nummern, Produkte, Maße, Fliesenspiegel und Material. <b>Ohne Preise.</b></p></div>
+      <div class="card intro"><p>Die Baumappe ist für den <b>Projektleiter</b> und die Subunternehmer: was beauftragt ist, Leistungen mit Mengen aus dem Angebot, Ausstattung und Produkte aus dem Moodboard, Maße, Fliesenspiegel und Material. <b>Ohne Preise.</b></p></div>
+      ${list.length ? '' : '<p class="hint">Noch kein Raum mit Angebot oder Visualisierung.</p>'}
       ${list.map((r) => {
         const b = bau(r), pk = paket(r), am = aufmass(r), F = fliesen(r, pk), n = anzahl(r);
         return `<div class="card bcard ${b.aus ? '' : 'off'}" data-r="${r.id}">
-          <div class="bc-h"><img src="${firstResult(r, pk)}" alt=""><div><b>${esc(r.room || roomType(r.roomType).name)}</b>
+          <div class="bc-h">${firstResult(r, pk) ? `<img src="${firstResult(r, pk)}" alt="">` : ''}<div><b>${esc(r.room || roomType(r.roomType).name)}</b>
             <label class="toggle sm"><input type="checkbox" data-aus ${b.aus ? 'checked' : ''}><span class="tg"></span><span>In die Baumappe</span></label></div></div>
           <label>Ausführung in Paket</label>
           <div class="seg2 full">${PKG_IDS.filter((id) => done(r, id)).map((id) => `<button data-pk="${id}" class="${id === pk ? 'on' : ''}" style="--c:${pkgOf(r, id).color}">${esc(pkgOf(r, id).name)}</button>`).join('')}</div>
@@ -536,7 +538,7 @@ window.Baumappe = (() => {
     for (const r of rs) {
       const pk = paket(r);
       const kicker = r.room || roomType(r.roomType).name;
-      await seiteMarkierungen(c, r, pk, kicker);
+      if (firstResult(r, pk)) await seiteMarkierungen(c, r, pk, kicker);
       await seiteAusstattung(c, r, pk, kicker);
       await seiteGrundriss(c, r, pk, kicker);
       await seiteFliesenspiegel(c, r, pk, kicker);

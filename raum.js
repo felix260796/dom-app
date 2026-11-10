@@ -67,7 +67,7 @@ async function viewProjekt() {
       <button class="btn secondary block" id="toMappe" ${hasAnyResult(p) && w ? '' : 'hidden'}>${icon('book')} Zur Kundenmappe</button>
     </section>
 
-    <section class="step">
+    <section class="step" hidden><!-- vorerst ausgeblendet (Wunsch Felix): Angebot direkt aus der Visualisierung, Markierungen für Mappen. Angebot jetzt über Schritt 2 „Büro“ im Angebot -->
       <div class="step-h"><span class="num">4</span><h2>Weiter mit diesem Raum</h2></div>
       <div class="tiles">
         <button class="tile" id="toAngebot"><span class="t-ico">${icon('ruler')}</span><b>Aufmaß & Angebot</b><span>${qm ? `${qm.toLocaleString('de-DE', { maximumFractionDigits: 1 })} m²${p.angebot?.nr ? ' · Nr. ' + esc(p.angebot.nr) : ''}` : 'Maße, Preise, Bauzeit'}</span></button>
@@ -90,7 +90,7 @@ async function viewProjekt() {
   if ($('#cam')) { $('#cam').onclick = () => addPhotos(true); $('#gal').onclick = () => addPhotos(false); }
   $$('[data-delphoto]').forEach((b) => (b.onclick = async () => {
     const i = +b.dataset.delphoto;
-    if (Object.values(p.results).some((a) => a[i]) && !confirm('Foto mit den zugehörigen Nachher-Bildern entfernen?')) return;
+    if (Object.values(p.results).some((a) => a[i]) && !loeschFrage('Foto mit den zugehörigen Nachher-Bildern entfernen?')) return;
     p.photos.splice(i, 1);
     if (Array.isArray(p.views?.on)) p.views.on = p.views.on.filter((k) => k !== i).map((k) => (k > i ? k - 1 : k));
     for (const k of Object.keys(p.results)) p.results[k].splice(i, 1);
@@ -152,7 +152,7 @@ async function viewProjekt() {
   // Social Media (social.js) wird nicht gebraucht (Felix, 7.11.2026); Kachel entfernt, Datei bleibt liegen
   if ($('#social')) $('#social').onclick = () => viewSocial(p).catch((e) => toast('Fehler: ' + e.message, 5000));
   $('#del').onclick = async () => {
-    if (!confirm(`Raum „${p.room || rt.name}“ mit Fotos und Visualisierungen löschen?`)) return;
+    if (!loeschFrage(`Raum „${p.room || rt.name}“ mit Fotos und Visualisierungen löschen?`)) return;
     await deleteProject(p.id);
     if (p.wohnungId) await window.Projekt?.raumEntfernt(p);
     backToProject();
@@ -197,7 +197,7 @@ function viewRaumMoodboard(p) {
     window.scrollTo(0, 0);
   }));
   if ($('#rbReset')) $('#rbReset').onclick = async () => {
-    if (!confirm(`Die Moodboard-Anpassungen für ${rn} verwerfen?`)) return;
+    if (!loeschFrage(`Die Moodboard-Anpassungen für ${rn} verwerfen?`)) return;
     delete p.boards; delete p.boardsType; await saveProject(p); viewRaumMoodboard(p);
   };
 }

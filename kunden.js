@@ -107,7 +107,12 @@ window.Kunden = (() => {
 
   // ---------- Nummern ----------
   const ERSTE = 1001;
-  const naechsteNr = () => String(Math.max(ERSTE - 1, ...[...alle.values()].map((k) => parseInt(k.nr, 10) || 0)) + 1);
+  // Nummern werden nie neu vergeben, auch nicht nach dem Löschen (höchste je vergebene steht in den Einstellungen)
+  const naechsteNr = () => {
+    const n = Math.max(ERSTE - 1, +state.settings.kundenNrBis || 0, ...[...alle.values()].map((k) => parseInt(k.nr, 10) || 0)) + 1;
+    state.settings.kundenNrBis = n; saveSettings();
+    return String(n);
+  };
   /** Projektnummer für ein Projekt: bleibt, solange es beim selben Kunden ist, sonst die nächste freie. */
   async function projektNr(w, idx) {
     const k = byId(w.kundeId);
@@ -377,8 +382,9 @@ window.Kunden = (() => {
     main().innerHTML = `
       <div class="kd-actions" id="kAct"></div>
       <div class="card kform">
-        <div class="row"><div style="flex:1;min-width:96px"><label>Anrede</label><select id="kAnrede">${ANREDEN.map(([v, l]) => `<option value="${v}" ${v === k.anrede ? 'selected' : ''}>${l}</option>`).join('')}</select></div>
-          <div style="flex:2"><label>Vorname</label><input type="text" id="kVorname" value="${esc(k.vorname)}" autocomplete="off" placeholder="z. B. Max"></div></div>
+        <div class="row"><div style="flex:1"><label style="margin-top:0">Anrede</label><select id="kAnrede">${ANREDEN.map(([v, l]) => `<option value="${v}" ${v === k.anrede ? 'selected' : ''}>${l}</option>`).join('')}</select></div>
+          <div style="flex:1"><label style="margin-top:0">Kunden-Nr.</label><div class="k-nr">${esc(k.nr || 'wird vergeben')}</div></div></div>
+        <label>Vorname</label><input type="text" id="kVorname" value="${esc(k.vorname)}" autocomplete="off" placeholder="z. B. Max">
         <label id="kNameL">${istHv(k) ? 'Eigentümer bzw. WEG' : 'Nachname bzw. Firma'}</label><input type="text" id="kName" value="${esc(k.name)}" autocomplete="off" placeholder="${istHv(k) ? 'z. B. WEG Silberburgstraße 66' : 'z. B. Müller'}">
         <div class="hvbox" id="kHv" ${istHv(k) ? '' : 'hidden'}>
           <div class="hv-h">${icon('users')}<span>Vertreten durch die Hausverwaltung</span></div>
@@ -388,8 +394,8 @@ window.Kunden = (() => {
             <div><label>E-Mail</label><input type="email" data-hv="email" value="${esc(k.hv.email)}" autocomplete="off" inputmode="email" placeholder="info@…"></div></div>
           <label>Anschrift der Hausverwaltung</label><div class="adr"><input type="text" data-hv="anschrift" value="${esc(k.hv.anschrift)}" autocomplete="off" placeholder="Straße Nr., der Ort wird ergänzt"></div>
         </div>
-        <div class="row"><div><label>Telefon</label><input type="tel" id="kTel" value="${esc(k.telefon)}" autocomplete="off" placeholder="0711 …"></div>
-          <div><label>Geburtstag${a !== null ? ` <span class="muted" id="kAlter">(${a} Jahre)</span>` : ` <span class="muted" id="kAlter"></span>`}</label>${Kontakt.datumInput('kGeb', k.geburtstag)}</div></div>
+        <label>Telefon</label>${Kontakt.telInput('kTel', k.telefon)}
+        <label>Geburtstag${a !== null ? ` <span class="muted" id="kAlter">(${a} Jahre)</span>` : ` <span class="muted" id="kAlter"></span>`}</label>${Kontakt.datumInput('kGeb', k.geburtstag)}
         <div id="kGebArtBox" ${k.geburtstag ? '' : 'hidden'}><label>Am Geburtstag</label>${Kontakt.gebArtSelect(k.gebArt, 'kGebArt')}</div>
         <label>E-Mail</label><input type="email" id="kMail" value="${esc(k.email)}" autocomplete="off" inputmode="email" placeholder="name@beispiel.de">
         <div id="kWeitere">${Kontakt.weitereHtml()}</div>
@@ -421,7 +427,8 @@ window.Kunden = (() => {
       <div class="card">${k.schnell.slice().reverse().map((s) => `<div class="tot"><span>${esc(new Date(s.t).toLocaleDateString('de-DE'))}${s.text ? ` · ${esc(s.text)}` : ''}</span><b>ca. ${Math.round(s.von).toLocaleString('de-DE')} – ${Math.round(s.bis).toLocaleString('de-DE')} €</b></div>`).join('')}</div>` : ''}
       ${angebotePrj(idx, einfach ? () => '' : (x) => objLabel(objekt(k, x.objektId)) || 'Ohne Objekt')}
       <button class="btn big block" id="kProj" style="margin-top:12px">${icon('plus')} Neues Angebot für ${esc(name(k) || 'diesen Kunden')}</button>
-      ${idx.length || k.isNew ? '' : `<button class="link-danger" id="kDel">${icon('trash')} Kunde löschen</button>`}`;
+      ${k.isNew ? '' : `<button class="notice plain" id="kRech" style="margin-top:12px">${icon('euro')}<span><b>Rechnungen dieses Kunden</b> · zu den Rechnungen springen</span>${icon('chevron')}</button>`}
+      ${k.isNew ? '' : `<button class="link-danger" id="kDel">${icon('trash')} Kunde löschen</button>`}`;
 
     const actions = () => {
       const el = $('#kAct'); if (!el) return;
@@ -438,7 +445,8 @@ window.Kunden = (() => {
     actions();
     const persist = debounce(async () => { await speichern(k); weitergeben(k); }, 400);
     const titel = () => { $('#title').textContent = name(k) || 'Neuer Kunde'; const s = $('#subtitle'); s.textContent = untertitel(k); s.hidden = !untertitel(k); };
-    const felder = { kAnrede: 'anrede', kVorname: 'vorname', kName: 'name', kTel: 'telefon', kMail: 'email', kPrivat: 'privat', kNotiz: 'notiz', kQuelle: 'quelle', kGebArt: 'gebArt' };
+    Kontakt.telBinden($('#kTel'), (v) => { k.telefon = v; persist(); actions(); });
+    const felder = { kAnrede: 'anrede', kVorname: 'vorname', kName: 'name', kMail: 'email', kPrivat: 'privat', kNotiz: 'notiz', kQuelle: 'quelle', kGebArt: 'gebArt' };
     for (const [id, f] of Object.entries(felder)) {
       const el = $('#' + id);
       el[el.tagName === 'SELECT' ? 'onchange' : 'oninput'] = (e) => {
@@ -483,14 +491,28 @@ window.Kunden = (() => {
       if (k.isNew) await speichern(k);
       projektAnlegen(k);
     };
+    if ($('#kRech')) $('#kRech').onclick = async () => {
+      switchTab('rechnungen');
+      // Suche auf der Rechnungen-Seite mit dem Kundennamen füllen, sobald sie da ist
+      for (let i = 0; i < 40; i++) { const q = $('#fq'); if (q) { q.value = k.name || name(k); q.dispatchEvent(new Event('input')); break; } await new Promise((r) => setTimeout(r, 100)); }
+    };
     if ($('#kDel')) $('#kDel').onclick = async () => {
-      if (!confirm(`Kunde „${name(k) || 'ohne Namen'}“ löschen?`)) return;
-      alle.delete(k.id); await kvDel(key(k.id)); back();
+      const zu = idx.filter((x) => Projekt.zugesagt(x.status));
+      if (zu.length) return toast(`${name(k) || 'Der Kunde'} hat ${zu.length === 1 ? 'ein zugesagtes Projekt' : `${zu.length} zugesagte Projekte`}. Das kann nicht gelöscht werden.`, 5000);
+      if (!loeschFrage(`Kunde „${name(k) || 'ohne Namen'}“ löschen?${idx.length ? `\n\nDabei werden auch ${idx.length === 1 ? 'sein Angebot' : `seine ${idx.length} Angebote`} mit Fotos gelöscht.` : ''}\n\nDie Kundennummer ${k.nr || ''} wird nicht neu vergeben.`)) return;
+      for (const x of idx) {
+        const w = await kvGet('wohnung:' + x.id);
+        for (const rid of w?.rooms || []) { await kvDel('project:' + rid); Projekt.forget(rid); }
+        await kvDel('wohnung:' + x.id);
+      }
+      if (idx.length) await kvSet('projectIndex', (await projectIndex()).filter((x) => x.kundeId !== k.id));
+      alle.delete(k.id); await kvDel(key(k.id)); toast('Kunde gelöscht'); back();
     };
   }
 
   /** Status der Projekte als farbige Schilder (höchstens 3, Rest als „+n“), z. B. für Kunden- und Objektkarten. */
-  const pills = (list) => (window.Projekt && list.length ? `<span class="pills">${list.slice(0, 3).map((x) => Projekt.pill(x.status)).join('')}${list.length > 3 ? `<span class="muted">+${list.length - 3}</span>` : ''}</span>` : '');
+  // Kein Status in der Kundendatei (Wunsch Felix): der Status steht bei Angeboten und Projekten
+  const pills = () => '';
   const monatJahr = (t) => (t ? new Date(t).toLocaleDateString('de-DE', { month: 'short', year: 'numeric' }) : '');
   const objLabel = (o) => (o ? o.name.trim() || einzeilig(o.adresse) || 'Objekt ohne Anschrift' : '');
   const untertitel = (k) => [k.nr && `Kunden-Nr. ${k.nr}`, ort(k)].filter(Boolean).join(' · ');
@@ -499,7 +521,7 @@ window.Kunden = (() => {
       ${x.thumb ? `<img src="${x.thumb}" alt="">` : `<span class="pc-ph">${icon('home')}</span>`}
       <span class="pc-t"><b>${esc(x.titel || x.room || 'Projekt')}</b>
         <span class="muted">${esc([x.nr, wo, x.titel && x.room].filter(Boolean).join(' · '))}</span>
-        <span class="pills">${window.Projekt ? Projekt.pill(x.status) : ''}<span class="muted">${esc(monatJahr(x.created || x.updated))}</span></span>${x.absage ? `<span class="muted">Grund: ${esc(x.absage)}</span>` : ''}</span>
+        <span class="muted">${esc(monatJahr(x.created || x.updated))}</span>${x.absage ? `<span class="muted">Grund: ${esc(x.absage)}</span>` : ''}</span>
       ${icon('chevron', 'pc-chev')}</button>`;
 
   // ---------- Ansicht: ein Objekt (Anschrift, Notiz, Bilder, Projekte dort) ----------
@@ -522,6 +544,7 @@ window.Kunden = (() => {
         <label ${einfach ? 'style="margin-top:0"' : ''}>Ansprechpartner vor Ort</label>
         <div id="oKontakte"></div>
         <button type="button" class="link-add" id="oKAdd" style="padding-top:4px">${icon('plus')} Weiteren Ansprechpartner hinzufügen</button>
+        ${name(k) && !o.kontakte.some((x) => x.name.trim() === name(k)) ? `<button type="button" class="link-add" id="oEigen" style="padding-top:4px">${icon('user')} Eigentümer als Ansprechpartner übernehmen</button>` : ''}
         <label>Schlüssel</label><input type="text" id="oSchl" value="${esc(o.schluessel)}" autocomplete="off" placeholder="z. B. beim Hausmeister, Schlüsselsafe 1234">
         <label>Notiz</label><textarea id="oNotiz" placeholder="z. B. Parken im Hof, Wasser-Haupthahn im Keller links">${esc(o.notiz)}</textarea>
       </div>
@@ -566,6 +589,14 @@ window.Kunden = (() => {
       o.kontakte.push({ id: uid(), name: '', telefon: '', email: '' }); persist(); kontakte();
       $$('#oKontakte [data-akf="name"]').pop()?.focus();
     };
+    if ($('#oEigen')) $('#oEigen').onclick = () => {
+      const leer = o.kontakte.find((x) => !x.name.trim() && !x.telefon.trim() && !x.email.trim());
+      const x = leer || { id: uid() };
+      Object.assign(x, { name: name(k), telefon: k.telefon, email: k.email });
+      if (!leer) o.kontakte.unshift(x);
+      persist(); kontakte(); aktionen(); $('#oEigen').remove();
+      toast('Eigentümer als Ansprechpartner übernommen');
+    };
     if ($('#oVomKunden')) $('#oVomKunden').onclick = () => {
       if (k.privat.trim()) { o.adresse = k.privat.trim(); $('#oAdr').value = o.adresse; }
       if (name(k) && !o.kontakte.some((x) => x.name.trim() === name(k))) {
@@ -589,7 +620,7 @@ window.Kunden = (() => {
       window.Projekt.neuFuer(k, o.id);
     };
     if ($('#oDel')) $('#oDel').onclick = async () => {
-      if ((o.adresse.trim() || o.name.trim() || o.notiz.trim() || nB) && !confirm(`Objekt „${objLabel(o)}“ entfernen?${nB ? `\n\nDie ${nB} Bilder dort werden nicht mehr angezeigt.` : ''}`)) return;
+      if ((o.adresse.trim() || o.name.trim() || o.notiz.trim() || nB) && !loeschFrage(`Objekt „${objLabel(o)}“ entfernen?${nB ? `\n\nDie ${nB} Bilder dort werden nicht mehr angezeigt.` : ''}`)) return;
       k.objekte = k.objekte.filter((x) => x !== o); await speichern(k); zurueck();
     };
   }

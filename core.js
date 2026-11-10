@@ -39,6 +39,8 @@
 const $ = (s, el = document) => el.querySelector(s);
 const $$ = (s, el = document) => [...el.querySelectorAll(s)];
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+/** Löschen immer doppelt abfragen (Wunsch Felix). */
+const loeschFrage = (text) => confirm(text) && confirm('Bist du sicher? Das lässt sich nicht rückgängig machen.');
 const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
 const main = () => $('#main');
 

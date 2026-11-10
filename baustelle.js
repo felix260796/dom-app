@@ -57,7 +57,7 @@ window.Baustelle = (() => {
       w.bestellungen = (w.bestellungen || []).filter((x) => x.id !== b.id).concat(b);
       await Projekt.save(w); toast('Gespeichert'); fertig();
     };
-    if ($('#bDel')) $('#bDel').onclick = async () => { if (!confirm('Bestellung löschen?')) return; w.bestellungen = w.bestellungen.filter((x) => x.id !== b.id); await Projekt.save(w); fertig(); };
+    if ($('#bDel')) $('#bDel').onclick = async () => { if (!loeschFrage('Bestellung löschen?')) return; w.bestellungen = w.bestellungen.filter((x) => x.id !== b.id); await Projekt.save(w); fertig(); };
     window.scrollTo(0, 0);
   }
 

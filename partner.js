@@ -8,11 +8,13 @@
 window.Partner = (() => {
   const alle = new Map();
   const key = (id) => 'partner:' + id;
-  const ARTEN = [['sub', 'Subunternehmer'], ['lief', 'Lieferant'], ['sonst', 'Sonstige']];
+  const ARTEN = [['sub', 'Subunternehmer'], ['lief', 'Lieferant'], ['aussen', 'Außendienst'], ['sonst', 'Sonstige']];
+  // Eigene Einstufung wie beim Moodboard (Basic, Standard, Premium)
+  const STUFEN = [['', 'Keine Einstufung'], ['basic', 'Basic'], ['standard', 'Standard'], ['premium', 'Premium']];
   const MAX_MB = 15;
 
   const norm = (p) => {
-    for (const f of ['firma', 'gewerk', 'inhaber', 'telefon', 'email', 'anschrift', 'web', 'konditionen', 'notiz']) p[f] = String(p[f] ?? '');
+    for (const f of ['firma', 'gewerk', 'inhaber', 'telefon', 'email', 'anschrift', 'web', 'konditionen', 'notiz', 'stufe', 'kdnr']) p[f] = String(p[f] ?? '');
     p.art = ARTEN.some((a) => a[0] === p.art) ? p.art : 'sub';
     p.weitere = Kontakt.norm(p.weitere);
     p.geburtstage = (Array.isArray(p.geburtstage) ? p.geburtstage : []).filter(Boolean).map((g) => ({ id: g.id || uid(), name: String(g.name ?? ''), bez: String(g.bez ?? ''), datum: String(g.datum ?? ''), art: String(g.art ?? '') }));
@@ -54,15 +56,15 @@ window.Partner = (() => {
   async function start() { if (!alle.size) await laden(); return state.partner ? detail(state.partner) : listeView(); }
   function listeView() {
     state.partner = null;
-    header('Subunternehmer', 'und Lieferanten');
+    header('Partner', 'Subunternehmer, Lieferanten, Außendienst');
     const all = liste();
     main().innerHTML = `
       <label class="search big">${icon('search')}<input type="search" id="pq" value="${esc(filter)}" placeholder="Firma, Gewerk, Name oder Telefon" autocomplete="off"></label>
       <button class="cta slim" id="pNew"><span class="cta-ico">${icon('plus')}</span>
-        <span class="cta-t"><b>Neuer Subunternehmer</b></span>${icon('chevron', 'cta-chev')}</button>
+        <span class="cta-t"><b>Neuer Partner</b></span>${icon('chevron', 'cta-chev')}</button>
       ${all.length ? `<div class="chips gfilter">${[['', 'Alle'], ...ARTEN].map(([id, n]) => `<button class="qchip ${artFilter === id ? 'on' : ''}" data-pa="${id}">${n} ${id ? all.filter((p) => p.art === id).length : all.length}</button>`).join('')}</div>
         <div class="plist" id="plist" style="margin-top:12px"></div>`
-        : `<div class="empty-state">${icon('wrench')}<b>Noch keine Subunternehmer</b><span>Lege Fliesenleger, Installateure, Elektriker und Lieferanten mit ihren Konditionen an. Rahmenverträge kannst du als PDF oder Foto ablegen.</span></div>`}`;
+        : `<div class="empty-state">${icon('wrench')}<b>Noch keine Partner</b><span>Lege Subunternehmer, Lieferanten und Außendienstler mit ihren Konditionen an. Rahmenverträge kannst du als PDF oder Foto ablegen.</span></div>`}`;
     const render = () => {
       const el = $('#plist'); if (!el) return;
       const q = filter.trim().toLowerCase().split(/\s+/).filter(Boolean);
@@ -72,7 +74,7 @@ window.Partner = (() => {
         const g = p.geburtstage.map((x) => ({ x, n: Kontakt.bisTag(x.datum) })).filter((y) => y.n !== null && y.n <= 14).sort((a, b) => a.n - b.n)[0];
         return `<button class="pcard kcard" data-p="${p.id}"><span class="av">${esc(initialen(p))}</span>
           <span class="pc-t"><b>${esc(titel(p) || 'Ohne Namen')}</b><span class="muted">${esc([p.gewerk, p.inhaber].filter(Boolean).join(' · ') || ARTEN.find((a) => a[0] === p.art)[1])}</span>
-            <span class="pc-meta">${esc(ARTEN.find((a) => a[0] === p.art)[1])}${p.dokumente.length ? ` · ${p.dokumente.length} ${p.dokumente.length === 1 ? 'Dokument' : 'Dokumente'}` : ''}${g ? ` · <span class="geb">${esc(g.x.name || 'Geburtstag')} ${Kontakt.tageText(g.n)}</span>` : ''}</span></span>
+            <span class="pc-meta">${esc(ARTEN.find((a) => a[0] === p.art)[1])}${p.stufe ? ' · ' + esc(STUFEN.find((s) => s[0] === p.stufe)?.[1] || '') : ''}${p.dokumente.length ? ` · ${p.dokumente.length} ${p.dokumente.length === 1 ? 'Dokument' : 'Dokumente'}` : ''}${g ? ` · <span class="geb">${esc(g.x.name || 'Geburtstag')} ${Kontakt.tageText(g.n)}</span>` : ''}</span></span>
           ${icon('chevron', 'pc-chev')}</button>`;
       }).join('') || '<p class="empty">Nichts gefunden.</p>';
       $$('[data-p]', el).forEach((b) => (b.onclick = () => { detail(byId(b.dataset.p)); window.scrollTo(0, 0); }));
@@ -88,7 +90,7 @@ window.Partner = (() => {
     if (!p) return listeView();
     state.partner = p;
     const back = () => { state.partner = null; listeView(); window.scrollTo(0, 0); };
-    header(titel(p) || 'Neuer Subunternehmer', p.gewerk || (p.isNew ? 'Kontaktdaten eintragen' : ''), { label: 'Subunternehmer', fn: back });
+    header(titel(p) || 'Neuer Partner', p.gewerk || (p.isNew ? 'Kontaktdaten eintragen' : ''), { label: 'Partner', fn: back });
     main().innerHTML = `
       <div class="kd-actions" id="pAct"></div>
       <div class="card kform">
@@ -101,7 +103,10 @@ window.Partner = (() => {
         <div id="pWeitere">${Kontakt.weitereHtml()}</div>
         <label>Anschrift</label><div class="adr"><input type="text" id="pAdr" value="${esc(p.anschrift)}" autocomplete="off" placeholder="Straße Nr., der Ort wird ergänzt"></div>
         <label>Webseite</label><input type="url" id="pWeb" value="${esc(p.web)}" autocomplete="off" inputmode="url" placeholder="www.…">
+        <div id="pLiefBox" ${p.art === 'lief' ? '' : 'hidden'}><label>Unsere Kundennummer bei dieser Firma</label><input type="text" id="pKdnr" value="${esc(p.kdnr)}" autocomplete="off" placeholder="z. B. 204711"></div>
+        <label>Einstufung</label><div class="seg2 full" id="pStufe">${STUFEN.map(([id, n]) => `<button type="button" data-stufe="${id}" class="${(p.stufe || '') === id ? 'on' : ''}">${id ? n : '–'}</button>`).join('')}</div>
       </div>
+      ${p.isNew ? '' : `<button class="notice plain" id="pRech">${icon('euro')}<span><b>Rechnungen dieser Firma</b> · Eingangsrechnungen ansehen</span>${icon('chevron')}</button>`}
 
       <div class="sec-h"><h2>Konditionen und Verträge</h2></div>
       <div class="card kform">
@@ -126,13 +131,15 @@ window.Partner = (() => {
       $('#pAct').innerHTML = A.html; A.binden($('#pAct'));
     };
     actions();
-    const felder = { pFirma: 'firma', pGewerk: 'gewerk', pInhaber: 'inhaber', pTel: 'telefon', pMail: 'email', pAdr: 'anschrift', pWeb: 'web', pKond: 'konditionen', pNotiz: 'notiz' };
+    const felder = { pFirma: 'firma', pGewerk: 'gewerk', pInhaber: 'inhaber', pTel: 'telefon', pMail: 'email', pAdr: 'anschrift', pWeb: 'web', pKond: 'konditionen', pNotiz: 'notiz', pKdnr: 'kdnr' };
     for (const [id, f] of Object.entries(felder)) $('#' + id).oninput = (e) => {
       p[f] = e.target.value; persist(); actions();
       $('#title').textContent = titel(p) || 'Neuer Subunternehmer';
       const s = $('#subtitle'); s.textContent = p.gewerk; s.hidden = !p.gewerk;
     };
-    $$('#pArt [data-art]').forEach((b) => (b.onclick = () => { p.art = b.dataset.art; persist(); $$('#pArt [data-art]').forEach((x) => x.classList.toggle('on', x === b)); }));
+    $$('#pArt [data-art]').forEach((b) => (b.onclick = () => { p.art = b.dataset.art; persist(); $$('#pArt [data-art]').forEach((x) => x.classList.toggle('on', x === b)); $('#pLiefBox').hidden = p.art !== 'lief'; }));
+    $$('#pStufe [data-stufe]').forEach((b) => (b.onclick = () => { p.stufe = b.dataset.stufe; persist(); $$('#pStufe [data-stufe]').forEach((x) => x.classList.toggle('on', x === b)); }));
+    if ($('#pRech')) $('#pRech').onclick = () => { const z = $('#pBelege'); if (z) window.scrollTo({ top: z.getBoundingClientRect().top + window.scrollY - 110, behavior: 'smooth' }); };
     Kontakt.weitereBinden($('#pWeitere'), p.weitere, () => { persist(); actions(); });
     Kunden.adressVorschlaege($('#pAdr'));
     if (p.isNew) setTimeout(() => $('#pFirma')?.focus(), 50);
@@ -187,7 +194,7 @@ window.Partner = (() => {
       }));
       $$('[data-ddel]').forEach((b) => (b.onclick = async () => {
         const d = p.dokumente.find((x) => x.id === b.dataset.ddel);
-        if (!confirm(`„${d.name}“ löschen?`)) return;
+        if (!loeschFrage(`„${d.name}“ löschen?`)) return;
         p.dokumente = p.dokumente.filter((x) => x !== d); await speichern(p); await kvDel('pdok:' + d.id); docRender();
       }));
     };
@@ -205,7 +212,7 @@ window.Partner = (() => {
       if (files.length) { await speichern(p); docRender(); toast(files.length === 1 ? 'Dokument abgelegt' : `${files.length} Dokumente abgelegt`); }
     };
     if ($('#pDel')) $('#pDel').onclick = async () => {
-      if (!confirm(`„${titel(p) || 'Ohne Namen'}“ mit allen Dokumenten löschen?`)) return;
+      if (!loeschFrage(`„${titel(p) || 'Ohne Namen'}“ mit allen Dokumenten löschen?`)) return;
       for (const d of p.dokumente) await kvDel('pdok:' + d.id);
       alle.delete(p.id); await kvDel(key(p.id)); back();
     };

@@ -40,7 +40,7 @@ window.Fortschritt = (() => {
         <div class="card bf">
           ${s.length ? s.map((x, i) => `<div class="bf-z ${x.fertig ? 'ok' : ''}" data-i="${i}">
               <button class="bf-ck" data-ck aria-label="${x.fertig ? 'Nicht erledigt' : 'Erledigt'}">${x.fertig ? icon('check') : ''}</button>
-              <button class="bf-t" data-ed><b><span class="bf-nr">${i + 1}.</span> ${esc(x.name)}</b>${x.fertig || x.notiz ? `<small>${[x.fertig && `erledigt ${tag(x.fertig)}${x.wer ? ' · ' + esc(x.wer) : ''}`, x.notiz && esc(x.notiz)].filter(Boolean).join(' · ')}</small>` : ''}</button>
+              <button class="bf-t" data-ed><b><span class="bf-nr">${esc(x.nr || String(i + 1))}${/[.)]$/.test(x.nr || '') ? '' : '.'}</span> ${esc(x.name)}</b>${x.fertig || x.notiz ? `<small>${[x.fertig && `erledigt ${tag(x.fertig)}${x.wer ? ' · ' + esc(x.wer) : ''}`, x.notiz && esc(x.notiz)].filter(Boolean).join(' · ')}</small>` : ''}</button>
             </div>`).join('')
             : `<p class="hint" style="margin:0 0 10px">Lege die Arbeitsschritte an und hake sie ab, sobald sie erledigt sind. Zum Start eine Vorlage übernehmen:</p>
               <div class="chips">${arten.map((a) => `<button class="qchip" data-vl="${a}">${icon('plus')} Vorlage ${esc(NAMEN[a].replace(' (alle anderen Räume)', ''))}</button>`).join('')}</div>`}
@@ -62,18 +62,23 @@ window.Fortschritt = (() => {
         $('[data-ed]', z).onclick = async () => {
           const v = await sheet(x.name, [
             { label: 'Notiz', sub: x.notiz || 'z. B. Fliesenleger Kaya, Nacharbeit Ecke', icon: icon('edit'), value: 'notiz' },
-            ...(w.schritte.length > 1 ? [{ label: 'Nummer ändern', sub: `Jetzt Schritt ${i + 1} von ${w.schritte.length}`, icon: icon('list'), value: 'nr' }] : []),
+            { label: 'Nummer ändern', sub: `Jetzt Nummer ${x.nr || i + 1}. Eigene Nummer eintippen, z. B. 3, 2.1 oder 4a`, icon: icon('list'), value: 'nr' },
             { label: 'Löschen', icon: icon('trash'), value: 'weg' },
           ], { text: 'Umbenennen', value: x.name });
           if (!v) return;
           if (typeof v === 'object') x.name = v.text;
           else if (v === 'notiz') { const n = prompt('Notiz zu diesem Schritt', x.notiz || ''); if (n === null) return; x.notiz = n.trim(); }
           else if (v === 'nr') {
-            const n = await sheet(`${x.name}: welche Nummer?`, w.schritte.map((y, j) => ({ label: `${j + 1}.`, sub: j === i ? 'jetzt' : `${j < i ? 'vor' : 'nach'} ${y.name}`, value: String(j) })));
-            if (n == null || +n === i) return;
-            w.schritte.splice(+n, 0, w.schritte.splice(i, 1)[0]);
+            // Freie Nummer eintippen; die Liste sortiert sich danach (1, 2, 2.1, 2a, 3, 10 …)
+            const n = await sheet(`${x.name}: welche Nummer?`, [{ label: 'Nummer entfernen', sub: 'Schritt wieder automatisch zählen', icon: icon('x'), value: '__weg' }], { text: 'Nummer eintippen, z. B. 3 oder 2.1', value: x.nr || String(i + 1) });
+            if (n == null) return;
+            // Alle Schritte bekommen ihre bisherige Nummer fest, damit sich nur der geänderte verschiebt
+            w.schritte.forEach((y, j) => { if (!y.nr) y.nr = String(j + 1); });
+            if (n === '__weg') delete x.nr; else if (n.text?.trim()) x.nr = n.text.trim().replace(/\.$/, '');
+            const key = (y) => String(y.nr || '9999').split(/[.\s]+/).map((t) => t.replace(/\d+/, (d) => d.padStart(5, '0'))).join('.');
+            w.schritte.sort((a, b) => key(a).localeCompare(key(b), 'de'));
           }
-          else if (v === 'weg') { if (!confirm(`„${x.name}“ löschen?`)) return; w.schritte.splice(i, 1); }
+          else if (v === 'weg') { if (!loeschFrage(`„${x.name}“ löschen?`)) return; w.schritte.splice(i, 1); }
           await sichern();
         };
       });
