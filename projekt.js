@@ -274,6 +274,7 @@ window.Projekt = (() => {
         <button class="doc" id="dMappe" hidden></button>
         <button class="doc" id="dAngebot" hidden></button>
       </div>
+      ${dokListe(w)}
       <div id="wTermine"></div>
 
       <details class="more card" style="margin-top:16px"><summary>${icon('home')}<span>Räume<small>${list.length ? `${list.length} ${list.length === 1 ? 'Raum' : 'Räume'} mit Fotos und Visualisierung` : 'Noch keine Räume'}</small></span>${icon('chevron', 'more-chev')}</summary>
@@ -370,6 +371,18 @@ window.Projekt = (() => {
     if ($('#wAnpassen')) $('#wAnpassen').onclick = () => $('#dAngebot')?.click();
     if ($('#dAngPdf')) $('#dAngPdf').onclick = async () => dateiZeigen(await kvGet('angpdf:' + w.id), w.angebotPdf);
     if ($('#wAngAnsehen')) $('#wAngAnsehen').onclick = async () => dateiZeigen(await kvGet('angpdf:' + w.id), w.angebotPdf);
+    // Gespeicherte Dokumente: Tipp = ansehen, Pfeil = senden
+    $$('[data-dok]').forEach((b) => (b.onclick = async () => { const d = (w.dokumente || []).find((x) => x.key === b.dataset.dok); if (d) dateiZeigen(await kvGet(d.key), { name: d.name, typ: 'application/pdf' }); }));
+    $$('[data-doksend]').forEach((b) => (b.onclick = async () => {
+      const d = (w.dokumente || []).find((x) => x.key === b.dataset.doksend); const data = d && (await kvGet(d.key));
+      if (!data) return toast('Die Datei ist auf diesem Gerät noch nicht da. Bitte kurz warten (Cloud-Abgleich).', 4000);
+      const f = new File([await (await fetch(data)).blob()], d.name, { type: 'application/pdf' });
+      try { await navigator.share({ files: [f], title: d.name, ohneDialog: true }); if (/^Angebot_/.test(d.name)) await angebotVersendet(w.id); view(); } catch (e) { if (e.name !== 'AbortError') toast('Senden nicht möglich: ' + e.message, 4000); }
+    }));
+    $$('[data-dokdel]').forEach((b) => (b.onclick = async () => {
+      const d = (w.dokumente || []).find((x) => x.key === b.dataset.dokdel); if (!d || !loeschFrage(`„${d.name}“ löschen?`)) return;
+      await kvDel(d.key); w.dokumente = w.dokumente.filter((x) => x !== d); await save(w); view();
+    }));
     // Angebot außerhalb der App erstellt (z. B. Excel): PDF ablegen; auf Wunsch gleich als verschickt markieren (Nachfassen läuft)
     if ($('#wAngUpload')) $('#wAngUpload').onclick = async () => {
       const [f] = await pickFiles({ accept: 'application/pdf' });
@@ -479,6 +492,7 @@ window.Projekt = (() => {
       ${w.versendetAm ? `<p class="hint center">Zuletzt versendet am ${esc(datumText(w.versendetAm))}</p>` : ''}
       <button class="btn secondary block" id="wAngUpload" style="margin-top:8px">${icon('upload')} Angebot-PDF hochladen (z. B. aus Excel)</button>
       ${w.angebotPdf ? `<button class="link-add" id="wAngAnsehen" style="margin-top:4px">${icon('file')} ${esc(w.angebotPdf.name)} ansehen</button>` : ''}
+      ${dokListe(w)}
 
       ${kopf(4, 'Nachfassen und Rückmeldung')}
       ${statusKarte(w)}
@@ -539,6 +553,16 @@ window.Projekt = (() => {
     await angebotVersendet(w.id); view();
   }
 
+  /** Alle erstellten PDFs des Auftrags (Angebot, Mappe, Rechnung, Nachtrag, Protokoll …): ansehen, senden, löschen. */
+  function dokListe(w) {
+    const l = (w.dokumente || []).slice().sort((a, b) => b.t - a.t);
+    if (!l.length) return '';
+    return `<div class="sec-h"><h2>Dokumente</h2><span class="count">${l.length}</span></div>
+      <div class="docs">${l.map((d) => `<div class="drow"><button type="button" class="drow-b" data-dok="${esc(d.key)}"><span class="d-ico navy">${icon('file')}</span>
+        <span class="d-t"><b>${esc(d.name.replace(/\.pdf$/i, '').replace(/_/g, ' '))}</b><span>${esc(new Date(d.t).toLocaleDateString('de-DE'))} · antippen zum Ansehen</span></span></button>
+        <button type="button" class="icon-btn" data-doksend="${esc(d.key)}" aria-label="Senden">${icon('mail')}</button>
+        <button type="button" class="icon-btn" data-dokdel="${esc(d.key)}" aria-label="Löschen">${icon('trash')}</button></div>`).join('')}</div>`;
+  }
   /** Das verschickte Angebot als PDF im Projekt merken (Projektmappe zeigt es später nur zum Lesen). */
   async function angebotMerken(wid, doc, name) {
     if (!wid) return;

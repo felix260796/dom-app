@@ -44,16 +44,19 @@ const loeschFrage = (text) => confirm(text) && confirm('Bist du sicher? Das läs
 // ---------- Vorschau vor jedem PDF-Versand (Wunsch Felix) ----------
 // Jeder Teilen-Vorgang mit PDF (Angebot, Rechnung, Mappe, Nachtrag, Protokoll …) zeigt erst eine Vorschau.
 // „Jetzt senden“ öffnet danach das normale Teilen-Menü, „Abbrechen“ wirkt wie Abbrechen im Teilen-Menü.
-function pdfVorschau(files) {
+// Seit Version 74: Jedes erstellte PDF wird zuerst beim offenen Auftrag gespeichert (Liste „Dokumente“ im Auftrag).
+// Dann erscheint dieses Fenster: Ansehen, Senden oder Schließen. Gesendet wird nur, wenn du „Senden“ tippst.
+function pdfVorschau(files, gespeichert = false) {
   return new Promise((res) => {
     const urls = files.map((f) => URL.createObjectURL(f));
     const bg = document.createElement('div');
     bg.className = 'sheet-bg on pdfv';
-    bg.innerHTML = `<div class="sheet"><div class="sheet-h"><b>Vorschau vor dem Senden</b></div>
+    bg.innerHTML = `<div class="sheet"><div class="sheet-h"><b>${gespeichert ? 'Gespeichert beim Auftrag' : 'Dokument fertig'}</b></div>
       <iframe src="${urls[0]}#view=FitH" title="Vorschau"></iframe>
-      <div class="pdfv-l">${files.map((f, i) => `<button type="button" class="doc" data-pv="${i}"><span class="d-ico navy">${icon('file')}</span><span class="d-t"><b>${esc(f.name)}</b><span>Antippen zum Ansehen in voller Größe</span></span>${icon('chevron', 'pc-chev')}</button>`).join('')}</div>
-      <button class="btn big block" data-ok>${icon('mail')} Jetzt senden</button>
-      <button class="btn secondary block" data-zu style="margin-top:8px">Abbrechen</button></div>`;
+      <div class="pdfv-l">${files.map((f, i) => `<button type="button" class="doc" data-pv="${i}"><span class="d-ico navy">${icon('file')}</span><span class="d-t"><b>${esc(f.name)}</b><span>Ansehen in voller Größe</span></span>${icon('chevron', 'pc-chev')}</button>`).join('')}</div>
+      <button class="btn big block" data-ok>${icon('mail')} Senden (Mail, WhatsApp …)</button>
+      <button class="btn secondary block" data-zu style="margin-top:8px">${gespeichert ? 'Schließen, später senden' : 'Schließen'}</button>
+      ${gespeichert ? '<p class="hint center" style="margin:8px 0 0">Du findest es jederzeit im Auftrag unter „Dokumente“.</p>' : ''}</div>`;
     document.body.appendChild(bg);
     const ende = (ok) => { bg.remove(); setTimeout(() => urls.forEach((u) => URL.revokeObjectURL(u)), 60000); res(ok); };
     $$('[data-pv]', bg).forEach((b) => (b.onclick = () => window.open(urls[+b.dataset.pv], '_blank')));
@@ -61,13 +64,32 @@ function pdfVorschau(files) {
     $('[data-zu]', bg).onclick = () => ende(false);
   });
 }
+const datUrl = (f) => new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(r.result); r.onerror = rej; r.readAsDataURL(f); });
+/** PDFs beim offenen Auftrag ablegen (gleicher Name = neue Fassung ersetzt die alte). */
+async function dokMerken(files) {
+  const w = state.wohnung;
+  if (!w?.id || w.isNew || !window.Projekt) return false;
+  for (const f of files.filter((x) => x.type === 'application/pdf')) {
+    const key = 'wdok:' + w.id + ':' + f.name.replace(/[^\wäöüÄÖÜß.-]+/g, '_');
+    await kvSet(key, await datUrl(f));
+    w.dokumente = [...(w.dokumente || []).filter((x) => x.key !== key), { key, name: f.name, t: Date.now() }];
+  }
+  await Projekt.save(w);
+  return true;
+}
 (() => {
   const teilen = navigator.share?.bind(navigator);
-  if (!teilen) return;
+  // Ohne Teilen-Menü (z. B. am PC): „Senden“ lädt die Datei herunter
+  const ersatz = async (data) => { for (const f of data.files || []) { const a = document.createElement('a'); a.href = URL.createObjectURL(f); a.download = f.name; a.click(); } };
   try {
+    if (!navigator.canShare) Object.defineProperty(navigator, 'canShare', { configurable: true, writable: true, value: (d) => !!d?.files?.length });
     Object.defineProperty(navigator, 'share', { configurable: true, writable: true, value: async (data) => {
-      if (data?.files?.some((f) => f.type === 'application/pdf') && !(await pdfVorschau(data.files))) throw new DOMException('Abgebrochen', 'AbortError');
-      return teilen(data);
+      if (data?.files?.some((f) => f.type === 'application/pdf') && !data.ohneDialog) {
+        const gesp = await dokMerken(data.files).catch(() => false);
+        if (!(await pdfVorschau(data.files, gesp))) throw new DOMException('Abgebrochen', 'AbortError');
+      }
+      const { ohneDialog, ...rest } = data || {};
+      return teilen ? teilen(rest) : ersatz(rest);
     } });
   } catch (e) { console.warn('Vorschau nicht möglich', e); }
 })();

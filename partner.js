@@ -108,7 +108,7 @@ window.Partner = (() => {
         <div id="pLiefBox" ${p.art === 'lief' ? '' : 'hidden'}><label>Unsere Kundennummer bei dieser Firma</label><input type="text" id="pKdnr" value="${esc(p.kdnr)}" autocomplete="off" placeholder="z. B. 204711"></div>
         <label>Qualitätseinstufung der Arbeit <span class="muted">(mehrere möglich)</span></label><div class="chips" id="pStufe">${[...new Set([...STUFEN(), ...p.stufen])].map((n) => `<button type="button" class="qchip ${p.stufen.includes(n) ? 'on' : ''}" data-stufe="${esc(n)}">${icon('check')}${esc(n)}</button>`).join('')}</div>
       </div>
-      ${p.isNew ? '' : `<button class="notice plain" id="pRech">${icon('euro')}<span><b>Rechnungen dieser Firma</b> · Eingangsrechnungen ansehen</span>${icon('chevron')}</button>`}
+
 
       <div class="sec-h"><h2>Konditionen und Verträge</h2></div>
       <div class="card kform">
@@ -184,7 +184,7 @@ window.Partner = (() => {
         if (!data) { toast('Dokument ist auf diesem Gerät noch nicht da. Bitte kurz warten (Cloud-Abgleich).', 4000); return; }
         const blob = await (await fetch(data)).blob();
         const file = new File([blob], d.name, { type: d.typ });
-        if (d.typ !== 'application/pdf' && navigator.canShare?.({ files: [file] })) { try { await navigator.share({ files: [file] }); return; } catch (e) { if (e.name === 'AbortError') return; } }
+        // Antippen = ansehen (nicht gleich verschicken). Senden geht von der Ansicht aus über das Teilen-Symbol.
         const url = URL.createObjectURL(file);
         const w = window.open(url, '_blank');
         if (!w) { const a = document.createElement('a'); a.href = url; a.download = d.name; a.click(); }
@@ -223,5 +223,46 @@ window.Partner = (() => {
 
   function oeffnen(id) { const p = byId(id); if (!p) return toast('Nicht gefunden.'); window.openTab('partner', { partner: p }); }
 
-  return { laden, start, listeView, detail, byId, liste, geburtstage, waehlen, oeffnen };
+  // ---------- Preislisten der Partner (Menü): Übersicht nach Gewerk, je Partner seine Liste ----------
+  /** Gewerke eines Partners aus dem Feld „Gewerk“ (z. B. „Fliesen, Sanitär“ = zwei Gewerke). */
+  const gewerkeVon = (p) => String(p.gewerk || '').split(/\s*[,/&+;]\s*|\s+und\s+/i).map((s) => s.trim()).filter(Boolean);
+  const anzahlPreise = (p) => Object.keys(p.preise || {}).length + (p.eigenePreise || []).length;
+  async function preislistenView() {
+    state.partner = null;
+    if (!alle.size) await laden();
+    header('Preislisten der Partner', 'nach Gewerk', { label: 'Zurück', fn: () => switchTab('partner') });
+    const ps = liste().filter((p) => p.art !== 'lief');
+    const gruppen = {};
+    for (const p of ps) for (const g of (gewerkeVon(p).length ? gewerkeVon(p) : ['Ohne Gewerk'])) (gruppen[g] ??= []).push(p);
+    const namen = Object.keys(gruppen).sort((a, b) => (a === 'Ohne Gewerk') - (b === 'Ohne Gewerk') || a.localeCompare(b, 'de'));
+    main().innerHTML = `<label class="search big">${icon('search')}<input type="search" id="plpQ" placeholder="Gewerk oder Firma suchen" autocomplete="off"></label>
+      ${namen.map((g) => `<div class="plp-g" data-plg="${esc(g.toLowerCase())}"><div class="sec-h"><h2>${esc(g)}</h2><span class="count">${gruppen[g].length} ${gruppen[g].length === 1 ? 'Partner' : 'Partner'} · ${gruppen[g].filter((p) => anzahlPreise(p)).length} mit Preisliste</span></div>
+        <div class="plist">${gruppen[g].map((p) => `<button class="pcard kcard" data-plp="${p.id}" data-such="${esc(`${g} ${p.firma} ${p.inhaber}`.toLowerCase())}"><span class="av">${esc(initialen(p))}</span>
+          <span class="pc-t"><b>${esc(titel(p) || 'Ohne Namen')}</b><span class="muted">${anzahlPreise(p) ? `${anzahlPreise(p)} ${anzahlPreise(p) === 1 ? 'Position' : 'Positionen'}` : 'noch keine Preise'}${p.stufen.length ? ' · ' + esc(p.stufen.join(', ')) : ''}</span></span>${icon('chevron', 'pc-chev')}</button>`).join('')}</div></div>`).join('')
+        || `<div class="empty-state">${icon('wrench')}<b>Noch keine Partner</b><span>Lege Subunternehmer mit Gewerk an. Ihre Preise trägst du beim Partner unter „Preisliste dieser Firma“ ein.</span></div>`}`;
+    $$('[data-plp]').forEach((b) => (b.onclick = () => { preisView(byId(b.dataset.plp)); window.scrollTo(0, 0); }));
+    $('#plpQ').oninput = (e) => {
+      const w = e.target.value.trim().toLowerCase().split(/\s+/).filter(Boolean);
+      $$('.plp-g').forEach((g) => { let sicht = 0; $$('[data-plp]', g).forEach((b) => { b.hidden = w.length > 0 && !w.every((x) => b.dataset.such.includes(x)); if (!b.hidden) sicht++; }); g.hidden = !sicht; });
+    };
+  }
+  /** Preisliste eines Partners zum Ansehen: unsere Preisliste dagegen, eigene Positionen, Link zum Bearbeiten. */
+  async function preisView(p) {
+    let PL = null; try { PL = await window.Angebot._intern.preisliste(); } catch {}
+    const A = window.Angebot?._intern;
+    const pos = (nr) => PL?.positionen.find((x) => x.nr === nr);
+    const eur = (x) => (+x || 0).toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' €';
+    header(titel(p) || 'Partner', `Preisliste · ${p.gewerk || 'ohne Gewerk'}`, { label: 'Preislisten', fn: () => { preislistenView(); window.scrollTo(0, 0); } });
+    const zeilen = Object.entries(p.preise || {}).map(([nr, preis]) => ({ nr, it: pos(nr), preis })).filter((z) => z.it).sort((a, b) => a.nr.localeCompare(b.nr));
+    main().innerHTML = `${p.stufen.length ? `<p class="hint" style="margin-top:0">Qualität der Arbeit: <b>${esc(p.stufen.join(', '))}</b></p>` : ''}
+      ${p.konditionen ? `<div class="card"><b>Konditionen</b><p class="muted" style="white-space:pre-line;margin:6px 0 0">${esc(p.konditionen)}</p></div>` : ''}
+      <div class="card">${zeilen.length || (p.eigenePreise || []).length ? `
+        ${zeilen.map((z) => `<div class="prow-sub"><span><b>${esc(z.it.text)}</b><span class="muted">${esc(z.nr)} · unser Angebotspreis ${eur(A?.ep(z.it))}/${esc(z.it.einheit)}</span></span><b>${eur(z.preis)}</b><span class="muted">/${esc(z.it.einheit)}</span></div>`).join('')}
+        ${(p.eigenePreise || []).map((x) => `<div class="prow-sub"><span><b>${esc(x.text || 'Eigene Position')}</b><span class="muted">eigene Position</span></span><b>${eur(x.preis)}</b><span class="muted">/${esc(x.einheit || 'Einh.')}</span></div>`).join('')}`
+        : '<p class="hint" style="margin:0">Für diese Firma sind noch keine Preise hinterlegt.</p>'}</div>
+      <button class="btn secondary block" id="ppEdit">${icon('edit')} Preise bearbeiten (beim Partner)</button>`;
+    $('#ppEdit').onclick = async () => { switchTab('partner', { partner: p }); for (let i = 0; i < 30; i++) { const h = $('#pPreisH'); if (h) { window.scrollTo({ top: h.getBoundingClientRect().top + window.scrollY - 110 }); break; } await new Promise((r) => setTimeout(r, 100)); } };
+  }
+
+  return { laden, start, listeView, detail, byId, liste, geburtstage, waehlen, oeffnen, preislistenView };
 })();

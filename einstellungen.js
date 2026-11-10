@@ -21,7 +21,7 @@ const EINST = [
   ['bau', 'Baufortschritt', 'check', 'grey', 'Abläufe', 'Vorlagen der Arbeitsschritte je Raumtyp'],
   ['ki', 'KI', 'sparkle', 'navy', 'Technik', 'Schlüssel und Modell für Bilder und Texte'],
   ['cloud', 'Cloud-Abgleich', 'refresh', 'brass', 'Technik', 'Anmelden, Abgleich mit dem Kollegen'],
-  ['sicherung', 'Datensicherung', 'download', 'grey', 'Technik', 'Sicherung als Datei'],
+  ['sicherung', 'Datensicherung', 'download', 'grey', 'Technik', 'Excel-Sicherung aller Daten, Sicherung als Datei'],
 ];
 const EINST_ALT = { preise: 'pakete' }; // alte Seitennamen
 // Unterseiten, die nicht in der Liste stehen: id -> [Titel, Elternseite]

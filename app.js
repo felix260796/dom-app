@@ -6,7 +6,7 @@
  * Kern-Funktionen (Speicher, KI, Bilder) stehen in core.js. */
 
 // ---------- Symbole (einfache Linien-Icons) ----------
-const APP_VERSION = '73';
+const APP_VERSION = '74';
 const ICONS = {
   plus: '<path d="M12 5v14M5 12h14"/>',
   camera: '<path d="M3 8.5A2 2 0 0 1 5 6.5h2l1.6-2h6.8l1.6 2h2a2 2 0 0 1 2 2V18a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><circle cx="12" cy="13" r="3.6"/>',
@@ -122,16 +122,25 @@ $$('.tabbar button').forEach((b) => (b.onclick = () => {
 
 /** Auswahlfenster von unten. items: [{ label, sub?, icon?, color?, value }] → Promise<value|null>.
  * text: Platzhalter für ein freies Textfeld (Ergebnis dann { text }). */
-function sheet(title, items, { text, value = '' } = {}) {
+function sheet(title, items, { text, value = '', suche } = {}) {
+  // Lange Listen (ab 7 Einträgen) bekommen ein Suchfeld oben. Gibt es schon ein Textfeld (z. B. „Neuer Kunde“), filtert das beim Tippen mit.
+  suche ??= items.length > 6 && !text ? 'Suchen …' : '';
   return new Promise((res) => {
     const el = document.createElement('div');
     el.className = 'sheet-bg';
     el.innerHTML = `<div class="sheet" role="dialog" aria-label="${esc(title)}"><div class="sheet-h"><b>${esc(title)}</b><button class="icon-btn" data-x aria-label="Schließen">${icon('x')}</button></div>
+      ${suche ? `<label class="search sheet-such">${icon('search')}<input type="search" id="sheetSuche" placeholder="${esc(suche)}" autocomplete="off"></label>` : ''}
       ${text ? `<div class="sheet-text"><input type="text" id="sheetText" placeholder="${esc(text)}" value="${esc(value)}"><button class="btn" id="sheetOk">OK</button></div>` : ''}
       <div class="sheet-list">${items.map((it, i) => `<button class="sheet-item" data-i="${i}">${it.icon ? `<span class="si-ico" ${it.color ? `style="--c:${it.color}"` : ''}>${it.icon}</span>` : ''}<span class="si-t"><b>${esc(it.label)}</b>${it.sub ? `<span>${esc(it.sub)}</span>` : ''}</span></button>`).join('')}</div></div>`;
     const close = (v) => { el.classList.remove('on'); setTimeout(() => el.remove(), 180); res(v); };
     el.onclick = (e) => { if (e.target === el || e.target.closest('[data-x]')) close(null); };
     $$('[data-i]', el).forEach((b) => (b.onclick = () => close(items[+b.dataset.i].value)));
+    const filtern = (q) => {
+      const w = q.trim().toLowerCase().split(/\s+/).filter(Boolean);
+      $$('[data-i]', el).forEach((b) => { const it = items[+b.dataset.i]; b.hidden = w.length > 0 && !w.every((x) => `${it.label} ${it.sub || ''}`.toLowerCase().includes(x)); });
+    };
+    if (suche) $('#sheetSuche', el).oninput = (e) => filtern(e.target.value);
+    else if (text && items.length > 6) $('#sheetText', el).addEventListener('input', (e) => filtern(e.target.value));
     if (text) { const ok = () => { const v = $('#sheetText', el).value.trim(); if (v) close({ text: v }); }; $('#sheetOk', el).onclick = ok; $('#sheetText', el).onkeydown = (e) => e.key === 'Enter' && ok(); }
     document.body.appendChild(el);
     requestAnimationFrame(() => el.classList.add('on'));
@@ -201,14 +210,7 @@ const MENUE = [
   ['karte', 'Karte', 'map', () => 'Alle Baustellen auf der Karte', () => switchTab('karte')],
   ['auswertung', 'Auswertung', 'chart', () => 'Umsatz, Zusagen, Marge, Kundenquellen', () => switchTab('auswertung')],
   ['preisliste', 'Preisliste', 'euro', () => 'Positionen, Lohn, Material, Aufschläge', () => { switchTab('einstellungen'); einstellungSeite('preisliste'); }],
-  ['ppreise', 'Preislisten der Partner', 'wrench', () => 'Was jeder Subunternehmer pro Einheit verlangt', async () => {
-    const ps = (window.Partner?.liste() || []).filter((p) => p.art !== 'lief');
-    if (!ps.length) return toast('Noch keine Subunternehmer angelegt.');
-    const id = await sheet('Preisliste von …', ps.map((p) => ({ label: p.firma || p.inhaber || 'Ohne Namen', sub: [p.gewerk, `${Object.keys(p.preise || {}).length + (p.eigenePreise || []).length} Positionen`].filter(Boolean).join(' · '), icon: icon('wrench'), value: p.id })));
-    if (!id) return;
-    switchTab('partner', { partner: Partner.byId(id) });
-    for (let i = 0; i < 30; i++) { const h = $('#pPreisH'); if (h) { window.scrollTo({ top: h.getBoundingClientRect().top + window.scrollY - 110 }); break; } await new Promise((r) => setTimeout(r, 100)); }
-  }],
+  ['ppreise', 'Preislisten der Partner', 'wrench', () => 'Nach Gewerk: wer macht was zu welchem Preis', () => { switchTab('partner'); setTimeout(() => Partner.preislistenView(), 150); window.scrollTo(0, 0); }],
   ['unterlagen', 'Unterlagen', 'file', () => 'Firmenordner und Vorlagen', () => switchTab('unterlagen')],
   ['hilfe', 'Wie geht das?', 'sparkle', () => 'Frag, wo du was findest', () => switchTab('hilfe')],
   ['einstellungen', 'Einstellungen', 'sliders', () => 'Firma, Angebote, Rechnungen, Abläufe, Technik', () => switchTab('einstellungen')],
