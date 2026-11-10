@@ -511,7 +511,7 @@ window.Baumappe = (() => {
       tag: 'Baumappe · für die Ausführung',
       title: 'Baumappe',
       sub: rs.map((r) => r.room || roomType(r.roomType).name).join(' · '),
-      meta: [['Bauherr', [w.customer, window.Kunden?.byId(w.kundeId)?.telefon].filter(Boolean).join(' · ')], ['Objekt', Mappe.objektZeile(w)], ...(w.nr ? [['Projekt-Nr.', w.nr]] : []), ['Stand', date], ['Bauleitung', c.F.ansprech ? `${c.F.ansprech}${c.F.tel ? ' · ' + c.F.tel : ''}` : c.F.tel]],
+      meta: [['Bauherr', [w.customer, window.Kunden?.byId(w.kundeId)?.telefon].filter(Boolean).join(' · ')], ['Objekt', Mappe.objektZeile(w)], ...(window.Kunden?.byId(w.kundeId)?.nr ? [['Kunden-Nr.', Kunden.byId(w.kundeId).nr]] : []), ...(w.nr ? [['Projekt-Nr.', w.nr]] : []), ['Stand', date], ['Bauleitung', c.F.ansprech ? `${c.F.ansprech}${c.F.tel ? ' · ' + c.F.tel : ''}` : c.F.tel]],
       hero: firstResult(first, fpk),
       chips: [['Ohne Preise', NAVY.map((v) => v + 30)]],
     });

@@ -161,3 +161,7 @@ canvas.sig { display: block; width: 100%; height: 140px; border: 1.5px dashed #c
 .ab-l { flex: none; }
 .ab-schnell { display: flex; gap: 8px; align-items: flex-start; margin: 10px 0 0; padding: 9px 10px; border-radius: 12px; background: var(--soft); font-size: 14px; }
 .ab-schnell svg.i { flex: none; width: 18px; height: 18px; margin-top: 1px; color: var(--brass); }
+/* ---------- Baufortschritt: Verschieben per Ziehen ---------- */
+.bf-grip { flex: none; display: flex; align-items: center; justify-content: center; width: 36px; align-self: stretch; color: var(--muted); touch-action: none; cursor: grab; }
+.bf-z { transition: transform .12s ease; }
+.bf-z.zieht { transition: none; position: relative; z-index: 2; background: var(--card, #fff); box-shadow: 0 6px 18px rgba(0,0,0,.15); border-radius: 12px; }

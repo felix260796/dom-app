@@ -473,6 +473,12 @@ window.Gespraech = {
           <details class="sub"><summary>Ganzes Gespräch (${g.transcript.length} Zeichen)</summary>
             <textarea id="wTranscript" style="min-height:160px">${esc(g.transcript)}</textarea>
             <button class="btn secondary small" id="vzu2" style="margin-top:8px">Nach Änderung neu zuordnen</button></details>` : ''}
+        <div class="gpdf">
+          <button class="btn secondary small" data-gpdf="zus" ${g.transcript ? '' : 'disabled'}>${icon('file')} Zusammenfassung + Aufgaben (PDF)</button>
+          <button class="btn secondary small" data-gpdf="trans" ${g.transcript ? '' : 'disabled'}>${icon('file')} Transkript (PDF)</button>
+          <button class="btn secondary small" data-gpdf="fotos">${icon('camera')} Fotos (PDF)</button>
+        </div>
+        ${(w.gespraechPdfs || []).length ? `<p class="hint" style="margin:6px 0 0">Gespeichert beim Kunden: ${(w.gespraechPdfs || []).map((x) => `<a href="#" data-gpdfopen="${x.art}">${esc(x.name)}</a>`).join(' · ')}</p>` : ''}
       </div>`;
   },
   bind(w, list) {
@@ -500,6 +506,12 @@ window.Gespraech = {
         return;
       }
     })();
+    $$('[data-gpdf]').forEach((b) => (b.onclick = async () => {
+      const t = b.innerHTML; b.disabled = true; b.innerHTML = '<span class="spinner sm"></span> PDF wird erstellt …';
+      try { await window.GesprPdf?.erstellen(w, list, b.dataset.gpdf); } catch (e) { console.error(e); toast('PDF-Fehler: ' + e.message, 6000); }
+      b.disabled = false; b.innerHTML = t;
+    }));
+    $$('[data-gpdfopen]').forEach((a) => (a.onclick = (e) => { e.preventDefault(); window.GesprPdf?.oeffnen(w, a.dataset.gpdfopen); }));
     const zu = () => voiceRun(w.id, () => zuordnen(w), 'Wünsche den Räumen zugeordnet.');
     if ($('#vzu')) $('#vzu').onclick = zu;
     if ($('#vzu2')) $('#vzu2').onclick = zu;

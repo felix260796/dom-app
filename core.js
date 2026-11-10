@@ -41,6 +41,39 @@ const $$ = (s, el = document) => [...el.querySelectorAll(s)];
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 /** Löschen immer doppelt abfragen (Wunsch Felix). */
 const loeschFrage = (text) => confirm(text) && confirm('Bist du sicher? Das lässt sich nicht rückgängig machen.');
+// ---------- Vorschau vor jedem PDF-Versand (Wunsch Felix) ----------
+// Jeder Teilen-Vorgang mit PDF (Angebot, Rechnung, Mappe, Nachtrag, Protokoll …) zeigt erst eine Vorschau.
+// „Jetzt senden“ öffnet danach das normale Teilen-Menü, „Abbrechen“ wirkt wie Abbrechen im Teilen-Menü.
+function pdfVorschau(files) {
+  return new Promise((res) => {
+    const urls = files.map((f) => URL.createObjectURL(f));
+    const bg = document.createElement('div');
+    bg.className = 'sheet-bg on pdfv';
+    bg.innerHTML = `<div class="sheet"><div class="sheet-h"><b>Vorschau vor dem Senden</b></div>
+      <iframe src="${urls[0]}#view=FitH" title="Vorschau"></iframe>
+      <div class="pdfv-l">${files.map((f, i) => `<button type="button" class="doc" data-pv="${i}"><span class="d-ico navy">${icon('file')}</span><span class="d-t"><b>${esc(f.name)}</b><span>Antippen zum Ansehen in voller Größe</span></span>${icon('chevron', 'pc-chev')}</button>`).join('')}</div>
+      <button class="btn big block" data-ok>${icon('mail')} Jetzt senden</button>
+      <button class="btn secondary block" data-zu style="margin-top:8px">Abbrechen</button></div>`;
+    document.body.appendChild(bg);
+    const ende = (ok) => { bg.remove(); setTimeout(() => urls.forEach((u) => URL.revokeObjectURL(u)), 60000); res(ok); };
+    $$('[data-pv]', bg).forEach((b) => (b.onclick = () => window.open(urls[+b.dataset.pv], '_blank')));
+    $('[data-ok]', bg).onclick = () => ende(true);
+    $('[data-zu]', bg).onclick = () => ende(false);
+  });
+}
+(() => {
+  const teilen = navigator.share?.bind(navigator);
+  if (!teilen) return;
+  try {
+    Object.defineProperty(navigator, 'share', { configurable: true, writable: true, value: async (data) => {
+      if (data?.files?.some((f) => f.type === 'application/pdf') && !(await pdfVorschau(data.files))) throw new DOMException('Abgebrochen', 'AbortError');
+      return teilen(data);
+    } });
+  } catch (e) { console.warn('Vorschau nicht möglich', e); }
+})();
+// Zoomen aus (Wunsch Felix): Zwei-Finger-Zoom und Doppeltipp-Zoom auf dem iPhone verhindern
+document.addEventListener('gesturestart', (e) => e.preventDefault(), { passive: false });
+document.addEventListener('touchmove', (e) => { if (e.touches && e.touches.length > 1) e.preventDefault(); }, { passive: false });
 const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
 const main = () => $('#main');
 

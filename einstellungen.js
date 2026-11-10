@@ -7,6 +7,9 @@
 // [id, Titel, Symbol, Farbe, Gruppe, was man dort einstellt]
 const EINST = [
   ['firma', 'Firma & Logo', 'home', 'navy', 'Firma', 'Name, Logo, Anschrift, Bank, Steuernummer auf Angebot und Rechnung'],
+  ['kundenEinst', 'Kunden', 'user', 'navy', 'Bereiche', 'Kundenquellen, Geburtstage'],
+  ['partnerEinst', 'Partner', 'wrench', 'brass', 'Bereiche', 'Qualitätseinstufung, Gewerke für Eingangsrechnungen'],
+  ['projektEinst', 'Projekte', 'home', 'grey', 'Bereiche', 'Projektnummer, Gesprächsarten, Nachfassen im Kalender, Baufortschritt'],
   ['preisliste', 'Preisliste', 'euro', 'navy', 'Angebote', 'Jede Position: Lohn, Material, eigener Aufschlag, neue Positionen'],
   ['kalkulation', 'Aufschläge & Angebotstexte', 'euro', 'brass', 'Angebote', 'Aufschläge auf Lohn und Material, Wagnis, MwSt., Gültigkeit, Texte im Angebot'],
   ['pakete', 'Pakete & Excel-Import', 'clipboard', 'grey', 'Angebote', 'Was in Basic, Standard, Premium gehört, Excel-Angebotstool laden'],
@@ -125,7 +128,7 @@ async function einstellungSeite(k) {
   header(titel || 'Einstellungen', '', { label: 'Einstellungen', fn: () => { viewEinstellungen(); window.scrollTo(0, 0); } });
   const save = debounce(saveSettings, 300);
   if (k === 'bau') return Fortschritt.einstellungen();
-  if (k === 'rechnungen' || k === 'ablauf' || k === 'push') return Vorgaben.seite(k);
+  if (VORGABEN[k]) return Vorgaben.seite(k);
   if (k === 'kalkulation') { main().innerHTML = '<div id="plKarten"></div>'; return Vorgaben.preisKarten($('#plKarten')); }
   if (k === 'team') {
     // Personen für den Kalender (Termine je Person, oben im Kalender umschaltbar)

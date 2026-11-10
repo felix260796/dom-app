@@ -41,6 +41,7 @@ window.Fortschritt = (() => {
           ${s.length ? s.map((x, i) => `<div class="bf-z ${x.fertig ? 'ok' : ''}" data-i="${i}">
               <button class="bf-ck" data-ck aria-label="${x.fertig ? 'Nicht erledigt' : 'Erledigt'}">${x.fertig ? icon('check') : ''}</button>
               <button class="bf-t" data-ed><b><span class="bf-nr">${esc(x.nr || String(i + 1))}${/[.)]$/.test(x.nr || '') ? '' : '.'}</span> ${esc(x.name)}</b>${x.fertig || x.notiz ? `<small>${[x.fertig && `erledigt ${tag(x.fertig)}${x.wer ? ' · ' + esc(x.wer) : ''}`, x.notiz && esc(x.notiz)].filter(Boolean).join(' · ')}</small>` : ''}</button>
+              ${s.length > 1 ? `<span class="bf-grip" data-grip aria-label="Zum Verschieben ziehen">${icon('list')}</span>` : ''}
             </div>`).join('')
             : `<p class="hint" style="margin:0 0 10px">Lege die Arbeitsschritte an und hake sie ab, sobald sie erledigt sind. Zum Start eine Vorlage übernehmen:</p>
               <div class="chips">${arten.map((a) => `<button class="qchip" data-vl="${a}">${icon('plus')} Vorlage ${esc(NAMEN[a].replace(' (alle anderen Räume)', ''))}</button>`).join('')}</div>`}
@@ -50,6 +51,32 @@ window.Fortschritt = (() => {
       $$('[data-vl]', el).forEach((b) => (b.onclick = async () => { w.schritte = vorlage(b.dataset.vl).map((name) => ({ id: uid(), name, fertig: 0, wer: '', notiz: '' })); await sichern(); }));
       const add = async () => { const v = $('#bfNeu', el).value.trim(); if (!v) return; (w.schritte ||= []).push({ id: uid(), name: v, fertig: 0, wer: '', notiz: '' }); await sichern(); $('#bfNeu', el)?.focus(); };
       $('#bfAdd', el).onclick = add;
+      // Ziehen am Griff rechts: Schritt verschieben. Danach werden die Nummern der Reihe nach neu gezählt.
+      $$('[data-grip]', el).forEach((g) => (g.onpointerdown = (e) => {
+        e.preventDefault();
+        const zeile = g.closest('[data-i]'), von = +zeile.dataset.i, rows = $$('[data-i]', el);
+        const hoehe = zeile.getBoundingClientRect().height, y0 = e.clientY;
+        let nach = von;
+        zeile.classList.add('zieht');
+        try { g.setPointerCapture(e.pointerId); } catch {}
+        const bewegen = (m) => {
+          const dy = m.clientY - y0;
+          zeile.style.transform = `translateY(${dy}px)`;
+          nach = Math.max(0, Math.min(rows.length - 1, von + Math.round(dy / hoehe)));
+          rows.forEach((r, j) => { if (r === zeile) return; r.style.transform = j > von && j <= nach ? `translateY(${-hoehe}px)` : j < von && j >= nach ? `translateY(${hoehe}px)` : ''; });
+        };
+        // An window hängen, damit das Ziehen auch klappt, wenn der Finger den Griff verlässt
+        window.addEventListener('pointermove', bewegen);
+        const ende = async () => {
+          window.removeEventListener('pointermove', bewegen); window.removeEventListener('pointerup', ende); window.removeEventListener('pointercancel', ende);
+          rows.forEach((r) => (r.style.transform = '')); zeile.classList.remove('zieht');
+          if (nach === von) return;
+          w.schritte.splice(nach, 0, w.schritte.splice(von, 1)[0]);
+          w.schritte.forEach((y) => delete y.nr);
+          await sichern();
+        };
+        window.addEventListener('pointerup', ende); window.addEventListener('pointercancel', ende);
+      }));
       $('#bfNeu', el).onkeydown = (e) => { if (e.key === 'Enter') add(); };
       $$('[data-i]', el).forEach((z) => {
         const i = +z.dataset.i, x = w.schritte[i];

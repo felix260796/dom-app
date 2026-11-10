@@ -60,7 +60,7 @@ window.Rechnung = (() => {
     }
     const nachtraege = (w.nachtraege || []).map((n) => ({ ...n, gp: r2(n.menge * n.ep) }));
     const netto = r2(zeilen.reduce((s, z) => s + z.gp, 0) + nachtraege.reduce((s, n) => s + n.gp, 0));
-    return { zeilen, nachtraege, netto, lohn: r2(lohn + nachtraege.reduce((s, n) => s + (n.lohn ? n.gp : 0), 0)) };
+    return { zeilen, nachtraege, netto, lohn: r2(lohn + nachtraege.reduce((s, n) => s + (n.lohnBetrag ?? (n.lohn ? n.gp : 0)), 0)) };
   }
 
   // ---------- Abschnitt im Projekt ----------
@@ -72,7 +72,8 @@ window.Rechnung = (() => {
     const re = fuerProjekt(w.id);
     const abschl = re.filter((r) => r.art === 'abschlag'), schluss = re.find((r) => r.art === 'schluss');
     const P = plan(w), naechster = abschl.length + 1;
-    const kannAbschlag = !schluss && naechster < P.length && a.netto > 0;
+    // Abschläge sind aus dem Projekt herausgenommen (Wunsch Felix). Alte Abschlagsrechnungen bleiben sichtbar.
+    const kannAbschlag = false;
     const offen = re.filter((r) => !r.bezahlt);
     el.innerHTML = `<div class="sec-h"><h2>Rechnungen an den Kunden</h2>${re.length ? `<span class="count">${re.length}</span>` : ''}</div>
       <div class="card">
@@ -83,8 +84,6 @@ window.Rechnung = (() => {
         ${a.netto ? '' : '<p class="hint" style="margin:6px 0 0">Noch kein Angebot mit Positionen. Rechnungen entstehen aus dem Angebot.</p>'}
       </div>
       <div class="plist">${re.map(zeile).join('')}</div>
-      ${schluss ? '' : `<label class="rplan">Abschläge in diesem Projekt <input type="text" id="rPlanW" value="${esc(P.join(' / '))}"></label>
-      <p class="hint" style="margin:2px 0 0">${Array.isArray(w.abschlagPlan) && w.abschlagPlan.length ? 'Eigener Plan für dieses Projekt. Leeren für den Standard aus den Einstellungen.' : 'Standard aus den Einstellungen. Hier änderbar nur für dieses Projekt.'}</p>`}
       <div class="rbtns">
         ${kannAbschlag ? `<button class="btn" id="rAb">${icon('plus')} ${naechster}. Abschlag (${P[naechster - 1]} %)</button>` : ''}
         ${!schluss && a.netto ? `<button class="btn ${kannAbschlag ? 'secondary' : ''}" id="rSchluss">${icon('file')} Schlussrechnung</button>` : ''}
@@ -128,18 +127,30 @@ window.Rechnung = (() => {
       <div class="card kform">
         <label style="margin-top:0">Leistung</label><textarea id="nText" placeholder="z. B. Zusätzliche Steckdose im Bad, Leitungen erneuert">${esc(n.text)}</textarea>
         <label>Beschreibung (für das PDF, optional)</label><textarea id="nBeschr" placeholder="z. B. Auf Wunsch des Kunden wurde …">${esc(n.beschreibung || '')}</textarea>
-        <label>Stunden (optional)</label><input type="text" inputmode="decimal" id="nStd" value="${esc(String(n.stunden || '').replace('.', ','))}" placeholder="z. B. 3,5">
-        <div class="row"><div><label>Menge</label><input type="text" inputmode="decimal" id="nMenge" value="${esc(String(n.menge).replace('.', ','))}"></div>
-          <div><label>Einheit</label><select id="nEinh">${['pauschal', 'Stück', 'm²', 'lfm', 'Std.'].map((e) => `<option ${e === n.einheit ? 'selected' : ''}>${e}</option>`).join('')}</select></div></div>
-        <div class="row"><div><label>Einzelpreis netto</label><input type="text" inputmode="decimal" id="nEp" value="${n.ep ? String(n.ep).replace('.', ',') : ''}" placeholder="0,00"></div>
-          <div><label>Beauftragt am</label><input type="date" id="nDatum" value="${esc(n.datum)}"></div></div>
-        <label class="chk"><input type="checkbox" id="nLohn" ${n.lohn ? 'checked' : ''}> Arbeitsleistung (zählt zum Lohnanteil)</label>
+        <div class="hv-h">${icon('wrench')}<span>Stunden (Arbeit)</span></div>
+        <div class="row"><div><label>Stunden</label><input type="text" inputmode="decimal" id="nStd" value="${esc(String(n.stunden || '').replace('.', ','))}" placeholder="z. B. 3,5"></div>
+          <div><label>Stundensatz netto</label><input type="text" inputmode="decimal" id="nSatz" value="${n.satz ? String(n.satz).replace('.', ',') : ''}" placeholder="z. B. 58,00"></div></div>
+        <label>Monteur bzw. Firma</label>
+        <select id="nWerP"><option value="">Eigenes Personal oder Name eintragen</option>${(window.Partner?.liste() || []).filter((p) => p.art !== 'lief').map((p) => `<option value="${p.id}" ${p.id === n.partnerId ? 'selected' : ''}>${esc(p.firma || p.inhaber || 'Ohne Namen')}</option>`).join('')}</select>
+        <input type="text" id="nWer" value="${esc(n.monteur || '')}" placeholder="z. B. Monteur Ali, Firma Kaya" autocomplete="off" style="margin-top:6px" ${n.partnerId ? 'hidden' : ''}>
+        <div class="hv-h" style="margin-top:14px">${icon('clipboard')}<span>Material</span></div>
+        <label>Material (was?)</label><input type="text" id="nMatText" value="${esc(n.matText || '')}" placeholder="z. B. Steckdose, Kabel, Dose" autocomplete="off">
+        <label>Material netto</label><input type="text" inputmode="decimal" id="nMat" value="${n.material ? String(n.material).replace('.', ',') : ''}" placeholder="0,00">
+        <label>Beauftragt am</label><input type="date" id="nDatum" value="${esc(n.datum)}">
         <p class="hint" id="nSum" style="margin:6px 0 0"></p>
       </div>
       <button class="btn big block" id="nSave">${icon('check')} Speichern</button>
       <button class="btn secondary block" id="nPdf" style="margin-top:10px">${icon('file')} Nachtrag als PDF (mit Logo)</button>
       ${neu ? '' : `<button class="link-danger" id="nDel">${icon('trash')} Nachtrag löschen</button>`}`;
-    const lesen = () => { n.text = $('#nText').value.trim(); n.beschreibung = $('#nBeschr').value.trim(); n.stunden = num($('#nStd').value) || ''; n.menge = num($('#nMenge').value) || 1; n.einheit = $('#nEinh').value; n.ep = r2(num($('#nEp').value)); n.datum = $('#nDatum').value; n.lohn = $('#nLohn').checked; };
+    // Material und Stunden getrennt; daraus ergibt sich der Betrag (Menge 1, pauschal). Lohnanteil = Stunden × Satz.
+    const lesen = () => {
+      n.text = $('#nText').value.trim(); n.beschreibung = $('#nBeschr').value.trim();
+      n.stunden = num($('#nStd').value) || ''; n.satz = r2(num($('#nSatz').value)); n.partnerId = $('#nWerP').value; n.monteur = n.partnerId ? '' : $('#nWer').value.trim();
+      n.matText = $('#nMatText').value.trim(); n.material = r2(num($('#nMat').value)); n.datum = $('#nDatum').value;
+      const lohn = r2((+n.stunden || 0) * (n.satz || 0));
+      if (lohn || n.material || !n.ep) { n.menge = 1; n.einheit = 'pauschal'; n.ep = r2(lohn + (n.material || 0)); }
+      n.lohnBetrag = lohn; n.lohn = lohn > 0;
+    };
     const sichern = async () => {
       if (foto) { await kvSet('ntfoto:' + n.id, foto); n.foto = true; } else { if (n.foto) await kvDel('ntfoto:' + n.id); delete n.foto; }
       w.nachtraege = (w.nachtraege || []).filter((x) => x.id !== n.id).concat(n);
@@ -170,8 +181,9 @@ window.Rechnung = (() => {
       await sichern();
       try { await nachtragPdf(w, n, foto); } catch (e) { toast('PDF-Fehler: ' + e.message, 5000); }
     };
-    const summe = () => { lesen(); $('#nSum').textContent = `Summe ${eur(r2(n.menge * n.ep))} netto. Kommt mit der Schlussrechnung zum Kunden.`; };
-    $('#nMenge').oninput = summe; $('#nEp').oninput = summe; summe();
+    const summe = () => { lesen(); $('#nSum').textContent = `Stunden ${eur(n.lohnBetrag || 0)} + Material ${eur(n.material || 0)} = ${eur(r2(n.menge * n.ep))} netto. Kommt mit der Schlussrechnung zum Kunden.`; };
+    ['#nStd', '#nSatz', '#nMat'].forEach((s) => ($(s).oninput = summe)); summe();
+    $('#nWerP').onchange = (e) => { $('#nWer').hidden = !!e.target.value; };
     $('#nSave').onclick = async () => {
       lesen();
       if (!n.text || !n.ep) return toast('Bitte Leistung und Preis eintragen.');
@@ -206,7 +218,12 @@ window.Rechnung = (() => {
     doc.setFont('helvetica', 'normal'); doc.setFontSize(10);
     if (n.beschreibung) { const b = doc.splitTextToSize(n.beschreibung, R - M); t(b, M, y); y += 5 * b.length + 4; }
     const gp = r2(n.menge * n.ep), satz = E.mwst ?? 0.19;
-    const zeilen = [...(n.stunden ? [['Stunden', `${String(n.stunden).replace('.', ',')} Std.`]] : []), ['Menge', `${String(n.menge).replace('.', ',')} ${n.einheit}`], ['Einzelpreis netto', eur(n.ep)], ['Betrag netto', eur(gp)], [`zzgl. ${Math.round(satz * 100)} % MwSt.`, eur(r2(gp * satz))], ['Betrag brutto', eur(r2(gp * (1 + satz)))]];
+    const wer = n.partnerId ? (window.Partner?.byId(n.partnerId)?.firma || '') : n.monteur || '';
+    const zeilen = [
+      ...(n.stunden ? [[`Arbeit${wer ? ` (${wer})` : ''}: ${String(n.stunden).replace('.', ',')} Std.${n.satz ? ` × ${eur(n.satz)}` : ''}`, n.lohnBetrag ? eur(n.lohnBetrag) : '']] : []),
+      ...(n.material ? [[`Material${n.matText ? `: ${n.matText}` : ''}`, eur(n.material)]] : []),
+      ...(!n.stunden && !n.material ? [['Pauschal', eur(n.ep)]] : []),
+      ['Betrag netto', eur(gp)], [`zzgl. ${Math.round(satz * 100)} % MwSt.`, eur(r2(gp * satz))], ['Betrag brutto', eur(r2(gp * (1 + satz)))]];
     doc.setDrawColor(220); doc.line(M, y, R, y); y += 6;
     for (const [k, v] of zeilen) { const fett = k === 'Betrag brutto'; doc.setFont('helvetica', fett ? 'bold' : 'normal'); t(k, M, y); t(v, R, y, { align: 'right' }); y += 6; }
     y += 4;

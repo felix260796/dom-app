@@ -113,13 +113,18 @@ window.Kunden = (() => {
     state.settings.kundenNrBis = n; saveSettings();
     return String(n);
   };
-  /** Projektnummer für ein Projekt: bleibt, solange es beim selben Kunden ist, sonst die nächste freie. */
+  /** Projektnummer: einmal vergeben, danach nie mehr geändert. Eigener Nummernkreis je Jahr, Aufbau in
+   *  Einstellungen › Projekte (Standard P2026-001). Gelöschte Nummern werden nicht neu vergeben. */
   async function projektNr(w, idx) {
-    const k = byId(w.kundeId);
-    if (!k?.nr) return w.nr || '';
-    if (String(w.nr || '').startsWith(k.nr + '-')) return w.nr;
-    const n = Math.max(0, ...(idx || (await projectIndex())).filter((x) => x.id !== w.id && String(x.nr || '').startsWith(k.nr + '-')).map((x) => parseInt(x.nr.split('-')[1], 10) || 0)) + 1;
-    return `${k.nr}-${String(n).padStart(2, '0')}`;
+    if (w.nr) return w.nr;
+    const jahr = String(new Date(w.created || Date.now()).getFullYear());
+    const fmt = (n) => String(vorgabe('projektNrFormat') || 'P{jahr}-{nr}').replace('{jahr}', jahr).replace('{nr}', String(n).padStart(3, '0'));
+    const muster = new RegExp('^' + fmt(0).replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace('000', '(\\d{3,})') + '$');
+    const vorhanden = (idx || (await projectIndex())).map((x) => (muster.exec(String(x.nr || '')) || [])[1]).filter(Boolean).map(Number);
+    const bis = state.settings.projektNrBis || {};
+    const n = Math.max(0, +bis[jahr] || 0, ...vorhanden) + 1;
+    state.settings.projektNrBis = { ...bis, [jahr]: n }; saveSettings();
+    return fmt(n);
   }
   /** Fehlende Nummern nachtragen: Kunden in der Reihenfolge, in der sie angelegt wurden, danach ihre Projekte. */
   // Haben zwei Geräte gleichzeitig (ohne Abgleich dazwischen) dieselbe Nummer vergeben, bekommt der später angelegte die nächste freie.
@@ -141,7 +146,7 @@ window.Kunden = (() => {
       const k = byId(x.kundeId);
       const doppelt = x.nr && pv.has(x.nr);
       if (x.nr && !doppelt) pv.add(x.nr);
-      if (!k?.nr || (!doppelt && String(x.nr || '').startsWith(k.nr + '-'))) continue;
+      if (!k || (x.nr && !doppelt)) continue; // vergebene Nummern bleiben fest
       if (doppelt) x.nr = '';
       const w = await kvGet('wohnung:' + x.id);
       if (!w) continue;
