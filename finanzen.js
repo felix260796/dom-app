@@ -148,7 +148,7 @@ window.Finanzen = (() => {
   async function view() {
     state.beleg = null;
     const hier = () => state.tab === 'rechnungen' && !state.kalender;
-    header('Geld', 'Abrechnen, offene Rechnungen, Eingangsrechnungen');
+    header('Rechnungen', 'Eingang, Zahlungen, Kalkulation');
     const idx = await projectIndex(); window.__fIdx = idx;
     await laden();
     if (!hier()) return;

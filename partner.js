@@ -60,7 +60,7 @@ window.Partner = (() => {
     state.partner = null;
     header('Partner', 'Subunternehmer, Lieferanten, Außendienst');
     const all = liste();
-    main().innerHTML = `${kontakteWahl('partner')}
+    main().innerHTML = `
       <label class="search big">${icon('search')}<input type="search" id="pq" value="${esc(filter)}" placeholder="Firma, Gewerk, Name oder Telefon" autocomplete="off"></label>
       <button class="cta slim" id="pNew"><span class="cta-ico">${icon('plus')}</span>
         <span class="cta-t"><b>Neuer Partner</b></span>${icon('chevron', 'cta-chev')}</button>
