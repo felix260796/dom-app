@@ -226,7 +226,7 @@ async function roomBestand(p) {
   if (!_bestandJobs.has(key)) _bestandJobs.set(key, (async () => {
     const rt = roomType(p.roomType);
     const masse = masseText(p);
-    const parts = [{ text: `Du bist erfahrener Bausachverständiger. ${p.photos.length > 1 ? `Die ${p.photos.length} Fotos zeigen DENSELBEN ${rt.outdoor ? 'Bereich' : 'Raum'} aus verschiedenen Blickwinkeln` : 'Das Foto zeigt einen ' + (rt.outdoor ? 'Außenbereich' : 'Raum')} (Raumtyp: ${rt.name}${p.room && p.room !== rt.name ? `, „${p.room}“` : ''}) VOR der Sanierung.${masse ? `\n\nGemessene Maße (diese sind verbindlich):\n${masse}` : ''}
+    const parts = [{ text: promptNeu() ? bestandPromptEn(p, rt, masse) : `Du bist erfahrener Bausachverständiger. ${p.photos.length > 1 ? `Die ${p.photos.length} Fotos zeigen DENSELBEN ${rt.outdoor ? 'Bereich' : 'Raum'} aus verschiedenen Blickwinkeln` : 'Das Foto zeigt einen ' + (rt.outdoor ? 'Außenbereich' : 'Raum')} (Raumtyp: ${rt.name}${p.room && p.room !== rt.name ? `, „${p.room}“` : ''}) VOR der Sanierung.${masse ? `\n\nGemessene Maße (diese sind verbindlich):\n${masse}` : ''}
 
 Beschreibe nüchtern den BESTAND, damit eine Bild-KI bei der Sanierung den Raum nicht verändert und nichts dazuerfindet. Antworte auf Deutsch, knapp, genau in diesem Format:
 
@@ -267,7 +267,7 @@ async function roomPlan(pkg, p, bestand) {
   if (p.plan?.[pkg.id]?.sig === sig) return p.plan[pkg.id].text;
   const key = p.id + pkg.id + sig;
   if (!_planJobs.has(key)) _planJobs.set(key, (async () => {
-    const text = (await geminiText([{ text: `Du planst als Innenarchitekt die Sanierung eines bestehenden ${rt.outdoor ? 'Außenbereichs' : 'Raums'} (${rt.name}) in der Ausstattungslinie „${pkg.name}“. Eine Bild-KI setzt danach deinen Plan auf dem Foto um.
+    const text = (await geminiText([{ text: promptNeu() ? planPromptEn(pkg, p, rt, bestand) : `Du planst als Innenarchitekt die Sanierung eines bestehenden ${rt.outdoor ? 'Außenbereichs' : 'Raums'} (${rt.name}) in der Ausstattungslinie „${pkg.name}“. Eine Bild-KI setzt danach deinen Plan auf dem Foto um.
 
 BESTAND (so ist der Raum heute, das ist verbindlich):
 ${bestand}
@@ -325,6 +325,82 @@ Ergebnis: fotorealistisch wie professionelle Architektur-/Interior-Fotografie, h
   return { intro, regeln, bestand, umsetzung, schluss };
 }
 
+// ---------- KI: neue, englische Anweisungen (Version 68) ----------
+// Texte liegen in den Vorgaben (Einstellungen › KI › Prompts) und sind dort änderbar. Alt/Neu umschaltbar zum Vergleichen.
+const promptNeu = () => vorgabe('kiPromptVersion') !== 'alt';
+const dekoSatz = () => vorgabeText(vorgabe('kiDeko') === 'ja' ? 'promptDekoAn' : 'promptDekoAus');
+function pkgSpecEn(pkg, rt) {
+  const lab = (k) => FIELD_EN[k] || (FIELD_LIB[k]?.[0] || k).replace(/\s*\(.*\)/, '');
+  const spec = rt.fields.filter((k) => k !== 'beschreibung' && pkg.fields[k]?.trim()).map((k) => `- ${lab(k)}: ${pkg.fields[k].trim()}`).join('\n');
+  const prods = (pkg.products || []).filter((x) => x.name?.trim()).map((x) => `- ${x.area ? lab(x.area) + ': ' : ''}${x.name.trim()}`).join('\n');
+  return { spec, prods };
+}
+/** Zusätze für Plan und Bild: Produkte, Kundenwünsche, Hinweis (Inhalte bleiben, wie eingegeben). */
+function extrasEn(pkg, p, rt) {
+  const { prods } = pkgSpecEn(pkg, rt);
+  return [prods && `SPECIFIC PRODUCTS (as true to the original as possible):\n${prods}`,
+    p.wishes?.trim() && `CUSTOMER WISHES FROM THE ON-SITE TALK (German; they override the moodboard where physically possible, later statements override earlier ones):\n${p.wishes.trim()}`,
+    p.note?.trim() && `NOTE FROM THE PLANNER (German):\n${p.note.trim()}`].filter(Boolean).join('\n\n');
+}
+function factsEn(p, bestand) {
+  const masse = masseText(p);
+  return [masse && `MEASURED DIMENSIONS (binding; size and number of objects follow them; notes in German):\n${masse}`,
+    bestand && `EXISTING STATE (how it looks today, binding; written in German):\n${bestand}`].filter(Boolean).join('\n\n');
+}
+function renovateEn(pkg, p, rt, plan) {
+  if (plan) return `Plan tailored to this ${rt.outdoor ? 'place' : 'room'} (written in German), apply exactly:\n${plan}`;
+  const { spec } = pkgSpecEn(pkg, rt);
+  const ex = extrasEn(pkg, p, rt);
+  return `Moodboard (applies only to what exists in the photo; number, size and position of items always come from the photo, e.g. a single vanity stays a single vanity of the same width):\n${spec || '- modern, high-quality renovation'}${ex ? '\n\n' + ex : ''}`;
+}
+function bestandPromptEn(p, rt, masse) {
+  const space = rt.outdoor ? 'area' : 'room';
+  return vorgabeText('promptBestand', {
+    photos: p.photos.length > 1 ? `The ${p.photos.length} photos show the SAME ${space} from different angles` : `The photo shows a ${space}`,
+    roomtype: `${roomEn(rt.id)[0]}${p.room && p.room !== rt.name ? `, "${p.room}"` : ''}`,
+    measures: masse ? `\n\nMeasured dimensions (binding; German notes):\n${masse}` : '',
+    measurehint: masse ? 'measured, see above' : 'estimated, a door is about 2 m high and 0.8 m wide as a reference',
+    perphoto: p.photos.length > 1 ? 'JE FOTO: „Foto 1: viewing direction, which walls and items are visible“, then Foto 2 etc.' : 'FOTO: viewing direction, which walls and items are visible',
+  });
+}
+function planPromptEn(pkg, p, rt, bestand) {
+  const { spec } = pkgSpecEn(pkg, rt);
+  const ex = extrasEn(pkg, p, rt);
+  return vorgabeText('promptPlan', {
+    space: rt.outdoor ? 'outdoor area' : 'room', roomtype: roomEn(rt.id)[0], package: pkg.name, bestand,
+    spec: spec || '- modern, high-quality renovation', extras: ex ? `\n${ex}\n` : '',
+  });
+}
+const imgPart = (d) => ({ inline_data: { mime_type: mimeOf(d), data: b64(d) } });
+const moodLabel = (im) => `moodboard reference${im.label?.trim() ? ` "${im.label.trim()}"` : ''}. Take ONLY material, colour and style from it. Do NOT copy room, layout, size or objects from this image`;
+async function renderNeu(pkg, project, i, rendered, bestand, plan) {
+  const rt = roomType(project.roomType || roomTypeIdFromName(project.room));
+  const [name, keep] = roomEn(rt.id);
+  const target = project.photos[i];
+  const ort = rt.outdoor ? 'place' : 'room';
+  let n = 1;
+  const parts = [{ text: 'Image 1 – the photo to edit:' }, imgPart(target)];
+  project.photos.forEach((ph, k) => { if (k !== i) parts.push({ text: `Image ${++n} – photo ${k + 1} of the SAME ${ort} from another angle. Only to understand floor plan, size, windows and connections. Do not output it, do not use its angle:` }, imgPart(ph)); });
+  if (rendered) parts.push({ text: `Image ${++n} – an already renovated other view of the SAME ${ort} in "${pkg.name}". Use exactly the same tiles, colours, fittings, furniture finishes and lights so all views match. Perspective and layout come only from Image 1:` }, imgPart(rendered));
+  for (const im of pkg.images.slice(0, MAX_REF_IMAGES)) parts.push({ text: `Image ${++n} – ${moodLabel(im)}:` }, imgPart(im.data));
+  parts.push({ text: vorgabeText(rt.outdoor ? 'promptBildAussen' : 'promptBild', {
+    space: name, package: pkg.name, keep: keep.map((k) => '- Keep: ' + k + '.').join('\n'),
+    facts: factsEn(project, bestand), renovate: renovateEn(pkg, project, rt, plan), deko: dekoSatz(),
+  }).replace(/\n{3,}/g, '\n\n') });
+  return geminiImage(parts, await nearestAspect(target));
+}
+async function renderTopNeu(pkg, project, ref, bestand, plan) {
+  const rt = roomType(project.roomType);
+  const parts = [];
+  project.photos.forEach((ph, k) => parts.push({ text: `Photo ${k + 1} of the room (before):` }, imgPart(ph)));
+  if (ref) parts.push({ text: `Already renovated view of the SAME room in "${pkg.name}". Use exactly the same tiles, colours, fittings, furniture finishes and lights:` }, imgPart(ref));
+  for (const im of pkg.images.slice(0, MAX_REF_IMAGES)) parts.push({ text: moodLabel(im) + ':' }, imgPart(im.data));
+  parts.push({ text: vorgabeText('promptDraufsicht', {
+    space: roomEn(rt.id)[0], package: pkg.name, facts: factsEn(project, bestand), renovate: renovateEn(pkg, project, rt, plan), deko: dekoSatz(),
+  }).replace(/\n{3,}/g, '\n\n') });
+  return geminiImage(parts, '4:3');
+}
+
 const ASPECTS = { '1:1': 1, '4:3': 4 / 3, '3:4': 3 / 4, '3:2': 3 / 2, '2:3': 2 / 3, '16:9': 16 / 9, '9:16': 9 / 16, '5:4': 5 / 4, '4:5': 4 / 5 };
 async function nearestAspect(dataUrl) {
   const img = await loadImg(dataUrl);
@@ -344,6 +420,7 @@ async function renderWithGemini(pkg, project, i, rendered) {
   let bestand = '', plan = '';
   try { bestand = await roomBestand(project); } catch (e) { console.warn('Bestand nicht erkannt', e); }
   if (bestand) try { plan = await roomPlan(pkg, project, bestand); } catch (e) { console.warn('Plan nicht erstellt', e); }
+  if (promptNeu()) return renderNeu(pkg, project, i, rendered, bestand, plan);
   const target = project.photos[i];
   const others = project.photos.map((ph, k) => [ph, k]).filter(([, k]) => k !== i);
   const refs = pkg.images.slice(0, MAX_REF_IMAGES);
@@ -378,6 +455,7 @@ async function renderTop(pkg, project, ref) {
   let bestand = '', plan = '';
   try { bestand = await roomBestand(project); } catch (e) { console.warn('Bestand nicht erkannt', e); }
   if (bestand) try { plan = await roomPlan(pkg, project, bestand); } catch (e) { console.warn('Plan nicht erstellt', e); }
+  if (promptNeu()) return renderTopNeu(pkg, project, ref, bestand, plan);
   const t = buildPrompt(pkg, project, { bestand, plan });
   const rt = roomType(project.roomType);
   const img = (d) => ({ inline_data: { mime_type: mimeOf(d), data: b64(d) } });
@@ -414,6 +492,7 @@ async function geminiImage(parts, aspectRatio) {
 // ---------- Lichtstimmung: Abend (warmes, gedimmtes Licht) ----------
 /** Anweisung, um eine fertige Tageslicht-Visualisierung in die Abendstimmung zu versetzen. */
 function eveningPrompt(pkg, rt) {
+  if (promptNeu()) return vorgabeText(rt.outdoor ? 'promptAbendAussen' : 'promptAbend', { package: pkg.name });
   const light = rt.outdoor
     ? `- Abenddämmerung (blaue Stunde): Himmel tiefblau bis dunkelorange, kein direktes Sonnenlicht mehr
 - Fenster leuchten von innen warmweiß, Außen- und Fassadenbeleuchtung, Wege- und Eingangslicht eingeschaltet (warmweiß, ca. 2700 K)`

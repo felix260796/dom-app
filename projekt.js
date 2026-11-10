@@ -127,6 +127,20 @@ window.Projekt = (() => {
     const k = await Kunden.waehlen();
     if (k) Kunden.projektAnlegen(k);
   }
+  /** „Neues Projekt“ im Reiter Projekte: Auftrag ohne Angebot in der App (z. B. mündlich zugesagt). Startet als „Einzuplanen“. */
+  async function neuDirekt() {
+    const k = await Kunden.waehlen('Projekt für welchen Kunden?');
+    if (!k) return;
+    const oid = await Kunden.objektWaehlen(k, 'Wo wird gebaut?');
+    if (oid === null) return;
+    const w = neuesProjekt();
+    w.status = 'geplant'; w.kundeId = k.id; w.objektId = oid || ''; w.ohneAngebot = true;
+    w.customer = Kunden.name(k); w.address = Kunden.einzeilig(Kunden.objekt(k, oid)?.adresse || '');
+    w.verlauf = [{ st: 'geplant', t: Date.now() }];
+    await save(w);
+    await oeffnen(w.id);
+    setTimeout(() => $('#wTitel')?.focus(), 80);
+  }
   /** Neues Projekt für Kunde k am Objekt oid. Gespeichert wird es mit dem ersten Raum. */
   /** Projekt direkt speichern (z. B. aus einem Besichtigungstermin). Gibt die ID zurück. */
   async function anlegen(kundeId, oid, titel = '') {
@@ -613,7 +627,7 @@ window.Projekt = (() => {
   }
 
   const forget = (id) => rooms.delete(id);
-  return { automatik, anlegen, angebotVersendet, nachfassen, seitTagen, STATUS, ANGEBOT, ALLE, PHASEN, phase, farbe, pill, norm, zugesagt, statusName, statusKurz, raumAngebot, forget, neu, neuFuer, kundeUebernehmen, oeffnen, view, mappeView, moodboardView, migrate, raum, raeume, raumGespeichert, raumEntfernt, save, wahl, PKG_IDS, _intern: { titel, addRoom } };
+  return { automatik, anlegen, angebotVersendet, nachfassen, seitTagen, STATUS, ANGEBOT, ALLE, PHASEN, phase, farbe, pill, norm, zugesagt, statusName, statusKurz, raumAngebot, forget, neu, neuDirekt, neuFuer, kundeUebernehmen, oeffnen, view, mappeView, moodboardView, migrate, raum, raeume, raumGespeichert, raumEntfernt, save, wahl, PKG_IDS, _intern: { titel, addRoom } };
 })();
 // Ältere Aufrufe (PR „Wohnungen“) laufen weiter
 window.Wohnung = { neu: () => Projekt.neu(), oeffnen: (id) => Projekt.oeffnen(id), view: () => Projekt.view(), raumGespeichert: (p) => Projekt.raumGespeichert(p), raumEntfernt: (p) => Projekt.raumEntfernt(p) };

@@ -6,7 +6,7 @@
  * Kern-Funktionen (Speicher, KI, Bilder) stehen in core.js. */
 
 // ---------- Symbole (einfache Linien-Icons) ----------
-const APP_VERSION = '67';
+const APP_VERSION = '68';
 const ICONS = {
   plus: '<path d="M12 5v14M5 12h14"/>',
   camera: '<path d="M3 8.5A2 2 0 0 1 5 6.5h2l1.6-2h6.8l1.6 2h2a2 2 0 0 1 2 2V18a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><circle cx="12" cy="13" r="3.6"/>',
@@ -158,6 +158,7 @@ async function viewProjektListe() {
   main().innerHTML = `
     ${state.settings.apiKey || (window.Sync?.fest() && !window.Sync.active()) ? '' : `<button class="notice" id="toSet">${icon('gear')}<span><b>KI noch nicht eingerichtet.</b> Einmalig den Google-Schlüssel in den Einstellungen eintragen.</span>${icon('chevron')}</button>`}
     <div id="backupHint"></div>
+    <button class="cta slim" id="pNeu"><span class="cta-ico">${icon('plus')}</span><span class="cta-t"><b>Neues Projekt</b><span>direkt als Auftrag, ohne Angebot</span></span>${icon('chevron', 'cta-chev')}</button>
     <div class="phasen">${Projekt.PHASEN.map(([id, n]) => `<button data-ls="${id}" class="${listStatus === id ? 'on' : ''}"><b>${auftraege.filter((x) => Projekt.phase(x) === id).length}</b><span>${n}</span></button>`).join('')}</div>
     ${idx.length ? `
       <label class="search">${icon('search')}<input type="search" id="q" value="${esc(listFilter)}" placeholder="Kunde, Adresse, Raum oder Nummer" autocomplete="off"></label>
@@ -172,6 +173,7 @@ async function viewProjektListe() {
         </button>`).join('') || '<p class="empty">Nichts gefunden.</p>'}</div>` : `
       <div class="empty-state">${icon('home')}<b>${{ einplanen: 'Nichts einzuplanen', eingeplant: 'Kein Baustart geplant', laufend: 'Gerade keine Baustelle', abgeschlossen: 'Noch nichts abgeschlossen' }[listStatus]}</b><span>Hier stehen die zugesagten Aufträge. Offene und abgesagte Angebote findest du unter „Angebote“, sobald eins zugesagt ist, erscheint es hier.</span></div>`}`;
   $$('[data-ls]').forEach((b) => (b.onclick = () => { listStatus = b.dataset.ls; viewProjektListe(); }));
+  $('#pNeu').onclick = () => { listStatus = 'einplanen'; Projekt.neuDirekt(); };
   if ($('#toSet')) $('#toSet').onclick = () => { switchTab('einstellungen'); einstellungSeite('ki'); };
   if ($('#q')) $('#q').oninput = debounce((e) => { listFilter = e.target.value; viewProjektListe().then(() => { const i = $('#q'); if (i) { i.focus(); i.setSelectionRange(i.value.length, i.value.length); } }); }, 250);
   $$('[data-open]').forEach((el) => (el.onclick = async () => {

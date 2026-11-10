@@ -22,6 +22,8 @@ window.Kalender = (() => {
   const ausIso = (s) => { const [j, m, t] = s.split('-').map(Number); return new Date(j, m - 1, t); };
   const heute = () => iso(new Date());
   const tagLang = (s) => ausIso(s).toLocaleDateString('de-DE', { weekday: 'long', day: 'numeric', month: 'long' });
+  /** Kalenderwoche nach ISO 8601 (Woche mit dem ersten Donnerstag ist KW 1). */
+  const kw = (d) => { const x = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate())); const wt = x.getUTCDay() || 7; x.setUTCDate(x.getUTCDate() + 4 - wt); return Math.ceil(((x - Date.UTC(x.getUTCFullYear(), 0, 1)) / 864e5 + 1) / 7); };
   const tagKurz = (s) => ausIso(s).toLocaleDateString('de-DE', { weekday: 'short', day: '2-digit', month: '2-digit' });
 
   // ---------- Daten ----------
@@ -61,16 +63,24 @@ window.Kalender = (() => {
     const w = filter ? wer() : '';
     for (const t of alle.values()) if (t.datum >= von && t.datum <= bis && (!w || !t.wer?.length || t.wer.includes(w))) out.push({ ...t, typ: 'termin' });
     const geb = [];
-    for (const k of Kunden.liste()) if (k.geburtstag) geb.push({ art: 'gebK', datum: k.geburtstag, titel: `Geburtstag ${Kunden.name(k) || 'Kunde'}`, kundeId: k.id });
+    for (const k of Kunden.liste()) if (k.geburtstag) geb.push({ art: 'gebK', datum: k.geburtstag, wer: Kunden.name(k) || 'Kunde', gebArt: k.gebArt, titel: `Geburtstag ${Kunden.name(k) || 'Kunde'}`, kundeId: k.id });
     for (const g of window.Partner?.geburtstage() || []) geb.push({ art: 'gebP', ...g });
-    const j0 = +von.slice(0, 4), j1 = +bis.slice(0, 4);
+    // Geburtstage: am Tag gratulieren; „Mit Geschenk“ zusätzlich Erinnerungen vorher (Tage in den Einstellungen)
+    const j0 = +von.slice(0, 4), j1 = +bis.slice(0, 4) + 1;
+    const vorher = [[+vorgabe('gebGeschenkTage'), 'Geschenk besorgen für {wer}'], [+vorgabe('gebPruefTage'), 'Geschenk für {wer} wirklich besorgt?']].filter(([n]) => n > 0);
     for (const g of geb) {
+      const geschenk = Kontakt.gebArt(g.gebArt) === 'geschenk';
       for (let j = j0; j <= j1; j++) {
         let d = `${j}${g.datum.slice(4)}`;
         if (d.endsWith('-02-29') && new Date(j, 1, 29).getMonth() !== 1) d = `${j}-02-28`;
-        if (d < von || d > bis) continue;
         const a = j - +g.datum.slice(0, 4);
-        out.push({ ...g, typ: 'geb', id: `${g.art}-${g.kundeId || g.partnerId}-${g.titel}-${j}`, datum: d, ganztag: true, sub: [g.sub, a > 0 && a < 130 ? `wird ${a}` : ''].filter(Boolean).join(' · ') });
+        const basis = `${g.art}-${g.kundeId || g.partnerId}-${g.titel}-${j}`;
+        if (d >= von && d <= bis) out.push({ ...g, typ: 'geb', id: basis, datum: d, ganztag: true, titel: `${g.titel}: gratulieren`, sub: [g.sub, a > 0 && a < 130 ? `wird ${a}` : '', geschenk ? 'Geschenk mitnehmen' : ''].filter(Boolean).join(' · ') });
+        if (geschenk) for (const [n, was] of vorher) {
+          const r = new Date(ausIso(d)); r.setDate(r.getDate() - n);
+          const rs = iso(r);
+          if (rs >= von && rs <= bis) out.push({ ...g, typ: 'geb', id: `${basis}-v${n}`, datum: rs, ganztag: true, titel: was.replace('{wer}', g.wer), sub: [`Geburtstag am ${tagKurz(d)}`, g.sub].filter(Boolean).join(' · ') });
+        }
       }
     }
     const h = ausgeblendet();
@@ -144,6 +154,7 @@ window.Kalender = (() => {
     const naechste = eintraege(h, iso(new Date(Date.now() + 60 * 864e5))).filter((e) => e.datum !== tag).slice(0, 8);
     const h2 = ausgeblendet();
     const tw = team(), w = wer();
+    const mitKw = vorgabe('kalKW') !== 'nein';
     main().innerHTML = `
       <div class="seg2 full kal-wer">${[{ id: '', name: tw.length === 2 ? 'Beide' : 'Alle' }, ...tw].map((p) => `<button data-wer="${p.id}" class="${w === p.id ? 'on' : ''}">${esc(p.id ? p.name : p.name)}</button>`).join('')}</div>
       <div class="card kal">
@@ -151,13 +162,13 @@ window.Kalender = (() => {
           <b>${esc(monat.toLocaleDateString('de-DE', { month: 'long', year: 'numeric' }))}</b>
           <button class="btn secondary small" id="kHeute">Heute</button>
           <button class="icon-btn" id="kNext" aria-label="Nächster Monat">${icon('chevron')}</button></div>
-        <div class="kal-g">${WT.map((w) => `<span class="kal-wt">${w}</span>`).join('')}
-          ${sichtbar.map((d) => { const s = iso(d), e = amTag(s); return `<button class="kal-d ${d.getMonth() !== monat.getMonth() ? 'aus' : ''} ${s === h ? 'heute' : ''} ${s === tag ? 'sel' : ''}" data-d="${s}">
+        <div class="kal-g ${mitKw ? 'kw' : ''}">${mitKw ? '<span class="kal-wt kal-kw">KW</span>' : ''}${WT.map((w) => `<span class="kal-wt">${w}</span>`).join('')}
+          ${sichtbar.map((d, i) => { const s = iso(d), e = amTag(s); return `${mitKw && i % 7 === 0 ? `<span class="kal-kw">${kw(d)}</span>` : ''}<button class="kal-d ${d.getMonth() !== monat.getMonth() ? 'aus' : ''} ${s === h ? 'heute' : ''} ${s === tag ? 'sel' : ''}" data-d="${s}">
             <span>${d.getDate()}</span><i>${[...new Set(e.map((x) => x.art))].slice(0, 3).map((a) => `<em style="--c:${art(a)[2]}"></em>`).join('')}</i></button>`; }).join('')}
         </div>
         <div class="kal-f">${ARTEN.map(([id, n, c]) => `<button class="${h2.has(id) ? '' : 'on'}" data-art="${id}" style="--c:${c}" aria-pressed="${!h2.has(id)}"><i></i>${esc(n)}</button>`).join('')}</div>
       </div>
-      <div class="kal-tag-h"><h2>${esc(tag === h ? 'Heute' : tagLang(tag))}</h2><button class="kal-neu" id="kNeu">${icon('plus')} Termin</button></div>
+      <div class="kal-tag-h"><h2>${esc(tag === h ? 'Heute' : tagLang(tag))}${mitKw ? ` <small class="muted">KW ${kw(ausIso(tag))}</small>` : ''}</h2><button class="kal-neu" id="kNeu">${icon('plus')} Termin</button></div>
       <div class="tlist" id="kTag">${eintraege(tag, tag).map(zeile).join('') || '<p class="hint" style="margin:0">Nichts eingetragen.</p>'}</div>
       ${naechste.length ? `<div class="sec-h"><h2>Demnächst</h2></div><div class="tlist" id="kNaechste">${naechste.map((e) => zeile({ ...e, titel: `${tagKurz(e.datum)} · ${e.titel}` })).join('')}</div>` : ''}`;
     const neu = () => { view(); };

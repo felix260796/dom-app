@@ -115,5 +115,8 @@ window.Kontakt = (() => {
     } };
   }
 
-  return { de, lesen, datumFeld, datumInput, bisTag, alter, tageText, norm, weitereHtml, weitereBinden, aktionen, telLink, mapLink };
+  /** Auswahl „Nur gratulieren“ / „Mit Geschenk“ für einen Geburtstag. Leer = Standard aus den Einstellungen. */
+  const gebArt = (v) => v || vorgabe('gebArtStandard') || 'gratulieren';
+  const gebArtSelect = (v, id = '') => `<select data-gebart ${id ? `id="${id}"` : ''}>${[['gratulieren', 'Nur gratulieren'], ['geschenk', 'Mit Geschenk (Erinnerung vorher)']].map(([x, n]) => `<option value="${x}" ${gebArt(v) === x ? 'selected' : ''}>${esc(n)}</option>`).join('')}</select>`;
+  return { gebArt, gebArtSelect, de, lesen, datumFeld, datumInput, bisTag, alter, tageText, norm, weitereHtml, weitereBinden, aktionen, telLink, mapLink };
 })();

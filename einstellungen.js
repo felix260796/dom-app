@@ -21,6 +21,8 @@ const EINST = [
   ['sicherung', 'Datensicherung', 'download', 'grey', 'Technik', 'Sicherung als Datei'],
 ];
 const EINST_ALT = { preise: 'pakete' }; // alte Seitennamen
+// Unterseiten, die nicht in der Liste stehen: id -> [Titel, Elternseite]
+const EINST_UNTER = { prompts: ['KI › Prompts', 'ki'] };
 function einstellungInfo(k) {
   const S = state.settings;
   if (k === 'firma') return [S.company, S.logo ? 'mit Logo' : 'ohne Logo'].filter(Boolean).join(' · ');
@@ -49,7 +51,7 @@ function viewEinstellungen(suche = '') {
     $('#eListe').hidden = !!q;
     if (!q) { $('#eTreffer').innerHTML = ''; return; }
     const worte = q.split(/\s+/);
-    const titel = (k) => EINST.find((e) => e[0] === k)?.[1] || k;
+    const titel = (k) => EINST.find((e) => e[0] === k)?.[1] || EINST_UNTER[k]?.[0] || k;
     const alle = [...Vorgaben.index(), ...EINST.map(([k, t, , , g, was]) => [k, t, `${g} ${was}`, ''])];
     // zuerst im Feldnamen suchen, dann in Stichworten, zuletzt im Seitennamen
     const passt = (text) => (e) => worte.every((x) => text(e).toLowerCase().includes(x));
@@ -83,7 +85,7 @@ async function einstellungFrage(frage) {
     const txt = await geminiText([{ text: `Du hilfst in einer Handwerker-App (Sanierung). Der Nutzer fragt: „${frage}“.\nHier alle Einstellungen (nr | Seite | Feld | Stichworte):\n${idx}\n\nAntworte kurz auf Deutsch, du-Form, ohne Emojis. antwort = 1–2 Sätze, wo und wie er es einstellt (oder dass es das nicht gibt). treffer = Nummern der passenden Einstellungen (höchstens 4).` }], true, {
       responseSchema: { type: 'OBJECT', properties: { antwort: { type: 'STRING' }, treffer: { type: 'ARRAY', items: { type: 'INTEGER' } } } } });
     const j = JSON.parse(txt), I = Vorgaben.index();
-    box.innerHTML = `<div class="card"><p style="margin:0">${esc(j.antwort || '')}</p></div><div class="docs">${(j.treffer || []).map((n) => I[n]).filter(Boolean).map(([s, l, , feld]) => `<button class="doc" data-ziel="${s}" data-feld="${esc(feld)}"><span class="d-t"><b>${esc(l)}</b><span>${esc(EINST.find((e) => e[0] === s)?.[1] || s)}</span></span>${icon('chevron', 'pc-chev')}</button>`).join('')}</div>`;
+    box.innerHTML = `<div class="card"><p style="margin:0">${esc(j.antwort || '')}</p></div><div class="docs">${(j.treffer || []).map((n) => I[n]).filter(Boolean).map(([s, l, , feld]) => `<button class="doc" data-ziel="${s}" data-feld="${esc(feld)}"><span class="d-t"><b>${esc(l)}</b><span>${esc(EINST.find((e) => e[0] === s)?.[1] || EINST_UNTER[s]?.[0] || s)}</span></span>${icon('chevron', 'pc-chev')}</button>`).join('')}</div>`;
     $$('[data-ziel]', box).forEach((b) => (b.onclick = () => zuFeld(b.dataset.ziel, b.dataset.feld)));
   } catch (e) { box.innerHTML = `<p class="hint">Die KI konnte nicht antworten (${esc(e.message)}).</p>`; }
 }
@@ -114,6 +116,11 @@ async function einstellungSeite(k) {
   if (k === 'moodboards') { state.editPkg = null; return viewPakete(); }
   if (k === 'preisliste') return Vorgaben.preisliste('');
   const S = state.settings;
+  if (EINST_UNTER[k]) {
+    const [t, eltern] = EINST_UNTER[k];
+    header(t, '', { label: 'Zurück', fn: () => { einstellungSeite(eltern); window.scrollTo(0, 0); } });
+    return Vorgaben.seite(k);
+  }
   const [, titel] = EINST.find((x) => x[0] === k) || [];
   header(titel || 'Einstellungen', '', { label: 'Einstellungen', fn: () => { viewEinstellungen(); window.scrollTo(0, 0); } });
   const save = debounce(saveSettings, 300);
@@ -220,7 +227,9 @@ async function einstellungSeite(k) {
       <label>Eigenes Modell (optional, überschreibt Auswahl)</label><input type="text" id="modelCustom" placeholder="Modell-ID">
       <button class="btn secondary block" id="test" style="margin-top:12px">Verbindung testen & Modelle laden</button>
     </div>
+    <div class="docs" style="margin-top:12px"><button class="doc" id="kiPrompts"><span class="d-ico navy">${icon('sparkle')}</span><span class="d-t"><b>Prompts</b><span>Version ${vorgabe('kiPromptVersion') === 'alt' ? 'Alt' : 'Neu'} · Deko ${vorgabe('kiDeko') === 'ja' ? 'an' : 'aus'}</span><span class="muted e-was">Anweisungen an die Bild-KI ansehen und ändern</span></span>${icon('chevron', 'pc-chev')}</button></div>
 `;
+    $('#kiPrompts').onclick = () => { einstellungSeite('prompts'); window.scrollTo(0, 0); };
     $('#apiKey').oninput = (e) => { S.apiKey = e.target.value.trim(); save(); };
     $('#model').onchange = (e) => { S.model = e.target.value; save(); };
     $('#modelCustom').oninput = (e) => { if (e.target.value.trim()) { S.model = e.target.value.trim(); save(); } };

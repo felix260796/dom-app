@@ -52,6 +52,35 @@ const FIELD_LIB = {
   sonstiges: ['Sonstiges / Hinweise für die KI', 'z. B. Nischen mit Beleuchtung, keine Deko'],
 };
 
+// Englische Bezeichnungen der Felder für die KI-Anweisungen (Prompts sind Englisch, die App bleibt Deutsch)
+const FIELD_EN = {
+  beschreibung: 'Short description', stil: 'Style & colour palette', wand: 'Walls (colour, finish, plaster level)', decke: 'Ceiling', boden: 'Floor (format, colour, material)',
+  wandfliesen: 'Wall tiles (format, colour, material, laying pattern, height)', dusche: 'Shower / bathtub', wc: 'Toilet', waschtisch: 'Vanity & furniture', armaturen: 'Taps & fittings (finish, style)',
+  spiegel: 'Mirror & lighting', fronten: 'Kitchen fronts & handles', arbeitsplatte: 'Worktop', rueckwand: 'Splashback', geraete: 'Appliances', spuele: 'Sink & tap',
+  moebel: 'Furniture & furnishing', einbau: 'Built-ins & storage', licht: 'Lighting', heizung: 'Radiators', tueren: 'Doors', fenster: 'Windows', treppe: 'Stairs (treads, covering)',
+  gelaender: 'Railing & handrail', eingang: 'Entrance (door, letterbox, doorbell)', fassade: 'Facade (render, colour, cladding)', sockel: 'Plinth & accents', dach: 'Roof & eaves',
+  balkon: 'Balconies & terraces', aussen: 'Outdoor areas', terrasse: 'Terrace & paths', rasen: 'Lawn & beds', bepflanzung: 'Trees, hedges & planting', einfassung: 'Fence, wall & edging',
+  gartenlicht: 'Garden lighting', waermepumpe: 'Heat pump outdoor unit', geraetmasse: 'Outdoor unit dimensions (W × H × D in cm)', fundament: 'Heat pump base', umrandung: 'Heat pump surroundings',
+  heizgeraet: 'Heating unit / indoor unit', puffer: 'Buffer tank', trinkwasser: 'Hot water tank', verrohrung: 'Pipes & insulation', regelung: 'Controls, electrics & accessories', sonstiges: 'Other notes for the AI',
+};
+// Englischer Name des Raumtyps und was die KI unverändert lassen soll (für die neuen, englischen Prompts)
+const KEEP_EN_INNEN = 'room geometry, floor plan, ceiling height, position of windows, doors and sloped ceilings';
+const ROOM_EN = {
+  bad: ['bathroom', [KEEP_EN_INNEN, 'connections: only the fixtures that exist TODAY (shower/bathtub, toilet, washbasin) stay in their position; if one is missing, it is NOT added']],
+  'gaeste-wc': ['guest toilet', [KEEP_EN_INNEN, 'position of toilet and hand basin stays the same']],
+  kueche: ['kitchen', [KEEP_EN_INNEN, 'kitchen run, sink and hob stay roughly in their position (connections)']],
+  wohnzimmer: ['living room', [KEEP_EN_INNEN]],
+  schlafzimmer: ['bedroom', [KEEP_EN_INNEN]],
+  kinderzimmer: ["children's room", [KEEP_EN_INNEN]],
+  flur: ['hallway', [KEEP_EN_INNEN]],
+  treppenhaus: ['staircase', ['stair layout, number of steps, landings, room geometry, position of windows and doors']],
+  fassade: ['building', ['building shape, number of storeys, roof shape, position and size of windows, doors and balconies, surroundings and neighbouring buildings']],
+  garten: ['garden', ['building, house walls, windows, doors, property boundaries, neighbouring houses and terrain shape (levels, slopes) stay the same']],
+  heizraum: ['boiler room', [KEEP_EN_INNEN, 'position of chimney, house connections (water, power, gas) and basement windows stays the same']],
+  sonstiges: ['room', [KEEP_EN_INNEN]],
+};
+const roomEn = (id) => ROOM_EN[id] || ROOM_EN.sonstiges;
+
 const PKG_META = { basic: ['Basic', '#7a8795'], standard: ['Standard', '#1e3550'], premium: ['Premium', '#b8862f'] };
 
 // Was die KI je Raumtyp unbedingt unverändert lassen soll

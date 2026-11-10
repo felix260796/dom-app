@@ -73,6 +73,7 @@
 .grow { grid-template-columns: 1fr 1fr 40px; margin-bottom: 8px; }
 .grow input[inputmode="numeric"] { grid-column: 1 / 3; }
 .grow [data-gdel] { grid-row: 1 / 3; grid-column: 3; }
+.grow select[data-gebart] { grid-column: 1 / 3; }
 .hvbox { margin-top: 12px; padding: 4px 12px 12px; border-radius: 14px; background: var(--brass-soft); }
 .hv-h { display: flex; align-items: center; gap: 8px; font-weight: 650; color: var(--brass); margin-top: 8px; font-size: 14px; }
 .hv-h svg.i { width: 18px; height: 18px; }

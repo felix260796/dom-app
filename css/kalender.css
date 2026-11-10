@@ -4,6 +4,9 @@
 .kal-nav { display: flex; align-items: center; gap: 6px; margin-bottom: 8px; }
 .kal-nav b { flex: 1; font-size: 17px; padding-left: 4px; }
 .kal-g { display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px; touch-action: pan-y; }
+.kal-g.kw { grid-template-columns: 24px repeat(7, 1fr); }
+.kal-kw { font-size: 10.5px; font-weight: 650; color: var(--muted); display: flex; align-items: center; justify-content: center; opacity: .8; }
+.kal-g.kw .kal-wt.kal-kw { align-items: center; }
 .kal-wt { font-size: 11.5px; font-weight: 650; color: var(--muted); text-align: center; padding: 4px 0; }
 .kal-d { border: 0; background: none; border-radius: 11px; padding: 6px 0 5px; display: flex; flex-direction: column; align-items: center; gap: 3px; min-height: 46px; }
 .kal-d span { width: 30px; height: 30px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 15px; font-weight: 550; }

@@ -10,6 +10,7 @@ Die Oberfläche ist auf Deutsch. Der Nutzer ist Felix (Dom Projektmanagement Gmb
 | Bereich | Dateien | Inhalt |
 |---|---|---|
 | Vorgaben (alles einstellbar) | `vorgaben.js` | Alle Annahmen mit Standardwert: `vorgabe(k)`, `vorgabeText(k, {platzhalter})`, gespeichert in `settings.vorgaben`. Seiten Rechnungen & Mahnungen, Abläufe & Listen, Aufschläge & Angebotstexte, Firmendaten, Preisliste-Editor, Suchindex. **Neue Annahme = neuer Eintrag in `VORGABEN`, nie fest im Code** |
+| KI-Prompts | `core.js` (`renderNeu`, `renderTopNeu`, `bestandPromptEn`, `planPromptEn`, `eveningPrompt`), `vorgaben.js` (Seite `prompts`), `rooms.js` (`FIELD_EN`, `ROOM_EN`) | Prompts Englisch, Antworten von Bestand/Plan Deutsch. Texte in den Vorgaben (Einstellungen › KI › Prompts), `kiPromptVersion` neu/alt, `kiDeko` |
 | Gemeinsame Helfer | `core.js` | Speicher (IndexedDB `kvGet/kvSet`), `$`, `esc`, `toast`, KI-Aufrufe (Gemini), Bildfunktionen, Bildschirmhöhe `--voll` |
 | Startseite Heute | `heute.js` | Alles, was heute dran ist (Termine, Nachfassen, Geld, Lieferungen, Mängel, Baustarts, laufende Baustellen). Start der App und im Menü (`state.tab = 'heute'`) |
 | Per Sprache anlegen | `sprache.js` | Mikrofon oben in der Kopfzeile unter dem DOM-Logo: ein Satz → KI liest Kunde, Anschrift, Projekt, Termin heraus → Prüfseite → anlegen; Termin öffnet danach den Termin-Editor |
@@ -18,7 +19,7 @@ Die Oberfläche ist auf Deutsch. Der Nutzer ist Felix (Dom Projektmanagement Gmb
 | Wie geht das? | `hilfe.js` | Menü › Wie geht das? (`state.tab = 'hilfe'`): Frage an die KI mit `WISSEN` (bei neuen Funktionen ergänzen) und „Dorthin“-Knöpfen (`ZIELE`) |
 | Navigation, Leiste | `app.js`, `index.html` | Kopfzeile (oben rechts Kalender und Mikrofon; DOM-Logo öffnet das Menü `MENUE` mit Suche, Heute, Kalender, Karte, Auswertung, Preisliste, Unterlagen, Wie geht das?, Einstellungen; unten Gerät gehört Felix/Deniel/beide und Cloud-Stand), Reiter unten Kunden/Subunternehmer/Projekte/Angebote/Rechnungen (`switchTab`), Auswahlfenster `sheet`, Projektliste (nur zugesagte: Einzuplanen/Eingeplant/In Durchführung/Abgeschlossen, `Projekt.phase(x)`), Start. `APP_VERSION` |
 | Raum-Ansicht | `raum.js` | Raum: Fotos, Pakete, KI-Ergebnis, Moodboard nur für den Raum. `viewProjekt` verteilt auch die Reiter Kunden/Projekte/Angebote |
-| Kunden | `kunden.js`, `kontakt.js` | Kundenkarte, Objekte (Anschriften), Nummern ab 1001, Anrede/Briefanrede, Quelle (`k.quelle`, `QUELLEN`) |
+| Kunden | `kunden.js`, `kontakt.js` | Kundenkarte, Objekte nur bei Bedarf (`einObjekt(k)`: ein Objekt = Kundenanschrift, sonst Rechnungsanschrift + Objektliste), Angebote/Projekte getrennt (`angebotePrj`), Nummern ab 1001, Anrede/Briefanrede, Quelle (`k.quelle`, `QUELLEN`), Geburtstag `gebArt` gratulieren/geschenk (`Kontakt.gebArt`) |
 | Subunternehmer | `partner.js` | Subunternehmer und Lieferanten, Dokumente. Preise je Position (`p.preise`, bearbeitet in `finanzen.js`) |
 | Projekte | `projekt.js` | Projekt = Kunde + Objekt + Räume; **Status-Ablauf** (`ALLE`, `PHASEN`, `WEITER`), Statuskarte |
 | Baufortschritt | `fortschritt.js` | Arbeitsschritte zum Abhaken, Vorlagen |
