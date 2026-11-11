@@ -14,7 +14,7 @@ window.Projekt = (() => {
     ['entwurf', 'In Arbeit · im Büro', '#c99a2e', 'Im Büro'],
     ['angebot', 'Verschickt · Nachverfolgung', '#3b6ea8', 'Verschickt'],
     ['abgesagt', 'Abgesagt', '#c0392b', 'Abgesagt'],
-    ['geplant', 'Zugesagt, wird eingeplant', '#2f8a57', 'Zugesagt'],
+    ['geplant', 'Zugesagt, noch einzuplanen', '#2f8a57', 'Zugesagt'],
     ['', 'Baustelle läuft', '#17808a', 'Läuft'],
     ['fertig', 'Abgeschlossen', '#1e3550', 'Abgeschlossen'],
     ['rechnung', 'Rechnung gestellt', '#d2691e', 'Rechnung'],
@@ -32,9 +32,9 @@ window.Projekt = (() => {
   const WEITER = {
     besichtigung: ['entwurf', 'Angebot erstellen'],
     entwurf: ['angebot', 'Angebot ist verschickt'],
-    geplant: ['', 'Baustart: Baustelle läuft'],
-    '': ['fertig', 'Baustelle abschließen'],
-    fertig: ['rechnung', 'Rechnung ist gestellt'],
+    geplant: ['', 'Baustelle hat begonnen'],
+    '': ['fertig', 'Baustelle ist fertig'],
+    fertig: ['rechnung', 'Schlussrechnung schreiben'],
     rechnung: ['bezahlt', 'Zahlung ist eingegangen'],
   };
   const PFAD = ['besichtigung', 'entwurf', 'angebot', 'geplant', '', 'fertig', 'rechnung', 'bezahlt'];
@@ -249,56 +249,24 @@ window.Projekt = (() => {
       if (!fertig.length) return `<span class="st">${r.photos.length} ${r.photos.length === 1 ? 'Foto' : 'Fotos'} · noch nicht visualisiert</span>`;
       return `<span class="dots">${fertig.map((id) => `<i style="--c:${pkgOf(r, id)?.color || PKG_META[id][1]}" title="${esc(pkgOf(r, id)?.name || '')}"></i>`).join('')}</span><span class="st">${fertig.map((id) => esc(pkgOf(r, id)?.name || PKG_META[id][0])).join(', ')}</span>`;
     };
-    const auftragBtn = zugesagt(w.status) ? `<button class="doc" id="wAuftrag"><span class="d-ico ${w.auftrag ? 'navy' : 'grey'}">${icon('check')}</span><span class="d-t"><b>Unterschriebenes Angebot</b><span>${w.auftrag ? `Abgelegt am ${esc(new Date(w.auftrag.t).toLocaleDateString('de-DE'))}` : 'Noch nicht abgelegt, tippen zum Ablegen'}</span></span>${icon('chevron', 'pc-chev')}</button>` : '';
     let summe = 0;
     if (phase(w) === 'angebot') { try { await window.Angebot._intern.preisliste(); summe = summeVon(list); } catch (e) { console.warn(e); } if (state.wohnung !== w || state.project) return; }
-    main().innerHTML = phase(w) === 'angebot' ? angebotSeite({ w, list, k, nFotos, anyResult, withPhotos, nBilder, stand, summe }) : `
-      <div class="card kunde">
-        ${k ? `<button class="kline" id="wKunde"><span class="av sm">${esc(Kunden.initialen(k))}</span><span class="kl-t"><b>${esc(Kunden.name(k) || 'Ohne Namen')}</b><small>${esc([k.telefon, k.email].filter(Boolean).join(' · ') || 'Kundenkarte öffnen')}</small></span>${icon('chevron', 'pc-chev')}</button>
-        <label class="ic-field">${icon('map')}<select id="wObjekt" aria-label="Objekt">
-          ${w.objektId && Kunden.objekt(k, w.objektId) ? '' : `<option value="" selected>${esc(w.address || 'Objekt wählen …')}</option>`}
-          ${k.objekte.map((o) => `<option value="${o.id}" ${o.id === w.objektId ? 'selected' : ''}>${esc(Kunden.objektText(o) || 'Objekt ohne Anschrift')}</option>`).join('')}
-          <option value="__neu">Anderes Objekt …</option></select></label>
-        <label class="ic-field">${icon('edit')}<input type="text" id="wTitel" value="${esc(w.titel || '')}" placeholder="Projektname, z. B. Badumbau" autocomplete="off" aria-label="Projektname"></label>`
-        : `<button class="kline" id="wKundeWahl">${icon('user')}<span class="kl-t"><b>${esc(w.customer || 'Kunde zuordnen')}</b><small>Kunde auswählen oder neu anlegen</small></span>${icon('chevron', 'pc-chev')}</button>`}
-      </div>
-      ${statusKarte(w)}
-      ${k ? `<div class="docs" style="margin-bottom:12px"><button class="doc" id="wBilder"><span class="d-ico brass">${icon('camera')}</span>
-        <span class="d-t"><b>Bilder & Dokumentation</b><span>${nFotos ? `${nFotos} ${nFotos === 1 ? 'Bild' : 'Bilder'} in diesem Projekt` : 'Eigene Ordner, z. B. Baufortschritt mit Datum'}</span></span>${icon('chevron', 'pc-chev')}</button></div>` : ''}
-      ${['geplant', '', 'fertig'].includes(norm(w.status)) ? '<div id="wFort"></div>' : ''}
-      ${['geplant', '', 'fertig'].includes(norm(w.status)) && !w.isNew ? '<div id="wBau"></div>' : ''}
-      ${zugesagt(w.status) && !w.isNew ? '<div id="wRech"></div><div id="wKosten"></div>' : ''}
-      ${window.Gespraech?.karte(w, list) || ''}
-
-      <div class="sec-h"><h2>Projektmappe</h2></div>
-      <div class="docs">
-        <button class="doc" id="dAngPdf" ${w.angebotPdf ? '' : 'disabled'}>
-          <span class="d-ico navy">${icon('file')}</span>
-          <span class="d-t"><b>Angebot, wie verschickt</b><span>${w.angebotPdf ? `PDF vom ${esc(new Date(w.angebotPdf.t).toLocaleDateString('de-DE'))}, nur zum Lesen` : 'Noch kein verschicktes Angebot gespeichert'}</span></span>${icon('chevron', 'pc-chev')}</button>
-        ${auftragBtn}
-        <button class="doc" id="dBau">
-          <span class="d-ico brass">${icon('clipboard')}</span>
-          <span class="d-t"><b>Baumappe für den Projektleiter</b><span>Was beauftragt ist: Positionen je Raum mit Mengen, Ausstattung, Produkte, Maße, ohne Preise</span></span>${icon('chevron', 'pc-chev')}</button>
-        <button class="doc" id="dMappe" hidden></button>
-        <button class="doc" id="dAngebot" hidden></button>
-      </div>
-      ${dokListe(w)}
-      <div id="wTermine"></div>
-
-      <details class="more card" style="margin-top:16px"><summary>${icon('home')}<span>Räume<small>${list.length ? `${list.length} ${list.length === 1 ? 'Raum' : 'Räume'} mit Fotos und Visualisierung` : 'Noch keine Räume'}</small></span>${icon('chevron', 'more-chev')}</summary>
-      <div class="rlist">${list.map((r, i) => `
-        <div class="rcard" data-room="${r.id}" role="button" tabindex="0">
-          ${r.thumb ? `<img src="${r.thumb}" alt="">` : `<span class="rc-ph">${roomIcon(r.roomType)}</span>`}
-          <span class="rc-t"><b>${esc(r.room || roomType(r.roomType).name)}</b><span class="rc-s">${stand(r)}</span></span>
-          ${i > 0 ? `<button class="icon-btn up" data-up="${i}" aria-label="Nach oben">${icon('up')}</button>` : ''}
-          ${icon('chevron', 'pc-chev')}
-        </div>`).join('')}
-        <button class="add-room" id="wAdd">${icon('plus')} Raum hinzufügen</button>
-      </div></details>
-      <button class="link-danger" id="wDel">${icon('trash')} Projekt löschen</button>`;
+    main().innerHTML = phase(w) === 'angebot' ? angebotSeite({ w, list, k, nFotos, anyResult, withPhotos, nBilder, stand, summe }) : auftragSeite({ w, list, k, nFotos, stand });
     if ($('#wKosten')) window.Finanzen?.projektAbschnitt($('#wKosten'), w);
     if ($('#wRech')) window.Rechnung?.projektAbschnitt($('#wRech'), w);
-    if ($('#wBau')) window.Baustelle?.abschnitt($('#wBau'), w, list);
+    if ($('#wBau')) window.Baustelle?.abschnitt($('#wBau'), w, list, $('#wAbn') ? 'bestellungen' : '');
+    if ($('#wAbn')) window.Baustelle?.abschnitt($('#wAbn'), w, list, 'abnahme');
+    if ($('#wTodo')) todoFuellen(w);
+    // Kacheln im zugesagten Projekt
+    if ($('#kRech')) $('#kRech').onclick = () => window.Rechnung?.neu(w, () => { view(); window.scrollTo(0, 0); });
+    if ($('#kNt')) $('#kNt').onclick = () => window.Rechnung?.nachtrag(w, null, () => { view(); window.scrollTo(0, 0); });
+    if ($('#kBest')) $('#kBest').onclick = () => $('#bstNeu')?.click();
+    if ($('#kTermin')) $('#kTermin').onclick = () => $('#wTermine [data-tneu]')?.click() ?? toast('Einen Moment, die Termine laden noch.');
+    if ($('#dAb')) $('#dAb').onclick = async () => {
+      const ab = w.auftragsbestaetigung, d = (w.dokumente || []).find((x) => x.key === ab?.dokId || x.id === ab?.dokId) || (w.dokumente || []).find((x) => x.art === 'auftragsbestaetigung');
+      if (!d) return toast('Die Auftragsbestätigung ist auf diesem Gerät noch nicht da.', 4000);
+      dateiZeigen(await kvGet(d.key), { name: d.name, typ: 'application/pdf' });
+    };
     if ($('#wFort')) window.Fortschritt?.abschnitt($('#wFort'), w, list, () => save(w));
     if (k && $('#wTermine')) window.Kalender?.abschnitt($('#wTermine'), { kundeId: k.id, objektId: w.objektId, projektId: w.id, zurueck: () => view() });
     const setzen = async (v) => {
@@ -348,6 +316,7 @@ window.Projekt = (() => {
       toast(w.baustart ? 'Eingeplant, der Baustart steht im Kalender' : 'Baustart entfernt');
       const y = window.scrollY; await view(); window.scrollTo(0, y);
     };
+    if ($('#stRech')) $('#stRech').onclick = () => window.Rechnung?.neu(w, () => { view(); window.scrollTo(0, 0); });
     if ($('#stAlle')) $('#stAlle').onclick = async () => {
       const v = await sheet('Status ändern', ALLE.map(([id, n, c]) => ({ label: n, icon: '<i class="si-dot"></i>', color: c, value: id || '__laeuft' })));
       if (v !== null) setzen(v === '__laeuft' ? '' : v);
@@ -433,8 +402,12 @@ window.Projekt = (() => {
     };
     $$('[data-angraum]').forEach((b) => (b.onclick = () => raumAngebot(rooms.get(b.dataset.angraum), w)));
     if ($('#wZeigen')) $('#wZeigen').onclick = () => (anyResult ? mappeView(w) : toast('Zuerst einen Raum visualisieren, dann gibt es die Mappe.', 4000));
-    $$('[data-room]').forEach((el) => (el.onclick = (e) => { if (e.target.closest('[data-up]')) return; raumOeffnen(rooms.get(el.dataset.room), w); }));
-    $$('[data-up]').forEach((b) => (b.onclick = async () => { const i = +b.dataset.up; [w.rooms[i - 1], w.rooms[i]] = [w.rooms[i], w.rooms[i - 1]]; await save(w); view(); }));
+    $$('[data-room]').forEach((el) => (el.onclick = (e) => { if (e.target.closest('[data-griff]')) return; raumOeffnen(rooms.get(el.dataset.room), w); }));
+    // Räume ordnen: am Griff ziehen (wie überall in der App, keine Pfeile)
+    $$('.rlist').forEach((box) => ziehbar(box, '.rcard', async (von, nach) => {
+      const ids = list.map((r) => r.id), [x] = ids.splice(von, 1); ids.splice(nach, 0, x);
+      w.rooms = [...ids, ...w.rooms.filter((id) => !ids.includes(id))]; await save(w); view();
+    }));
     $$('[data-rt]').forEach((b) => (b.onclick = () => addRoom(w, b.dataset.rt)));
     $$('[data-board]').forEach((b) => (b.onclick = () => moodboardView(w, b.dataset.board)));
     if ($('#wAdd')) $('#wAdd').onclick = () => pickRoomType(w);
@@ -452,7 +425,7 @@ window.Projekt = (() => {
         if (id) raumAngebot(rooms.get(id), w);
       };
       $('#wDel').onclick = async () => {
-        if (!loeschFrage(`Projekt „${w.customer || 'ohne Namen'}“ mit ${list.length === 1 ? 'dem Raum' : `allen ${list.length} Räumen`}, Fotos und Visualisierungen löschen?`)) return;
+        if (!(await loeschenFragen(w, list))) return;
         for (const id of w.rooms) { await kvDel('project:' + id); rooms.delete(id); }
         await kvDel(key(w.id));
         await kvSet('projectIndex', (await projectIndex()).filter((x) => x.id !== w.id));
@@ -460,6 +433,117 @@ window.Projekt = (() => {
       };
     }
   }
+  // ---------- Zugesagtes Projekt: Projektdetails → Projektfortschritt → Abnahme → Abrechnen (Wunsch Felix) ----------
+  // Gleicher Aufbau wie der Angebotsablauf: Schritte oben, Kacheln für das Häufigste, darunter je Schritt ein Abschnitt, dann die Unterlagen.
+  const BAU_SCHRITTE = [['Details'], ['Fortschritt'], ['Abnahme'], ['Abrechnen']];
+  function bauSchritt(w) {
+    const st = norm(w.status);
+    return st === 'geplant' ? 0 : st === '' ? 1 : st === 'fertig' ? (w.abnahme?.unterschriftKunde ? 3 : 2) : st === 'rechnung' ? 3 : 4;
+  }
+  function auftragSeite({ w, list, k, nFotos, stand }) {
+    const s = bauSchritt(w);
+    const cls = (i) => (i < s ? 'ok' : i === s ? 'jetzt' : '');
+    const kopf = (n, t, sub = '') => `<div class="ab-h" id="ab-${n}"><span class="ab-n">${n}</span><span><b>${t}</b>${sub ? `<small>${sub}</small>` : ''}</span></div>`;
+    const ab = w.auftragsbestaetigung;
+    const vorOrt = window.Gespraech?.karte(w, list) || '';
+    return `
+      <div class="ab-schritte">${BAU_SCHRITTE.map(([n], i) => `<button type="button" data-sprung="${i + 1}" class="${cls(i)}"><i>${i < s ? icon('check') : i + 1}</i>${n}</button>`).join('')}</div>
+      <div class="card kunde">
+        ${k ? `<button class="kline" id="wKunde"><span class="av sm">${esc(Kunden.initialen(k))}</span><span class="kl-t"><b>${esc(Kunden.name(k) || 'Ohne Namen')}</b><small>${esc([k.telefon, k.email].filter(Boolean).join(' · ') || 'Kundenkarte öffnen')}</small></span>${icon('chevron', 'pc-chev')}</button>
+        <label class="ic-field">${icon('map')}<select id="wObjekt" aria-label="Objekt">
+          ${w.objektId && Kunden.objekt(k, w.objektId) ? '' : `<option value="" selected>${esc(w.address || 'Objekt wählen …')}</option>`}
+          ${k.objekte.map((o) => `<option value="${o.id}" ${o.id === w.objektId ? 'selected' : ''}>${esc(Kunden.objektText(o) || 'Objekt ohne Anschrift')}</option>`).join('')}
+          <option value="__neu">Anderes Objekt …</option></select></label>
+        <label class="ic-field">${icon('edit')}<input type="text" id="wTitel" value="${esc(w.titel || '')}" placeholder="Projektname, z. B. Badumbau" autocomplete="off" aria-label="Projektname"></label>`
+        : `<button class="kline" id="wKundeWahl">${icon('user')}<span class="kl-t"><b>${esc(w.customer || 'Kunde zuordnen')}</b><small>Kunde auswählen oder neu anlegen</small></span>${icon('chevron', 'pc-chev')}</button>`}
+      </div>
+      ${statusKarte(w)}
+      <div class="vo-sammel pj-kacheln">
+        <button type="button" class="vo-b" id="kRech">${icon('euro')}<b>Rechnung</b><span>schreiben</span></button>
+        ${k ? `<button type="button" class="vo-b" data-bilder>${icon('camera')}<b>Fotos</b><span>${nFotos ? `${nFotos} ${nFotos === 1 ? 'Bild' : 'Bilder'}` : 'Baustelle'}</span></button>` : ''}
+        <button type="button" class="vo-b" id="kBest">${icon('clipboard')}<b>Bestellung</b><span>${(w.bestellungen || []).filter((b) => b.status !== 'geliefert').length || 'eintragen'}${(w.bestellungen || []).some((b) => b.status !== 'geliefert') ? ' offen' : ''}</span></button>
+        <button type="button" class="vo-b" id="kNt">${icon('plus')}<b>Nachtrag</b><span>${w.nachtraege?.length ? `${w.nachtraege.length} bisher` : 'Zusatzleistung'}</span></button>
+        ${k ? `<button type="button" class="vo-b" id="kTermin">${icon('calendar')}<b>Termin</b><span>anlegen</span></button>` : ''}
+      </div>
+      ${k ? `<button id="wBilder" hidden></button>` : ''}
+
+      ${kopf(1, 'Projektdetails', 'Baustart, Termine, Unterlagen')}
+      <div class="card pj-todo" id="wTodo"></div>
+      <div id="wTermine"></div>
+      <div class="sec-h"><h2>Unterlagen</h2></div>
+      <div class="docs">
+        <button class="doc" id="dAngPdf" ${w.angebotPdf ? '' : 'disabled'}>
+          <span class="d-ico navy">${icon('file')}</span>
+          <span class="d-t"><b>Angebot, wie verschickt</b><span>${w.angebotPdf ? `PDF vom ${esc(new Date(w.angebotPdf.t).toLocaleDateString('de-DE'))}, nur zum Lesen` : 'Kein verschicktes Angebot gespeichert'}</span></span>${icon('chevron', 'pc-chev')}</button>
+        ${ab ? `<button class="doc" id="dAb"><span class="d-ico navy">${icon('check')}</span><span class="d-t"><b>Auftragsbestätigung</b><span>${ab.nr ? `Nr. ${esc(ab.nr)} · ` : ''}${ab.gesendetAm ? `gesendet am ${esc(datumText(ab.gesendetAm))}` : 'erstellt, noch nicht gesendet'}</span></span>${icon('chevron', 'pc-chev')}</button>` : ''}
+        <button class="doc" id="wAuftrag"><span class="d-ico ${w.auftrag ? 'navy' : 'grey'}">${icon('check')}</span><span class="d-t"><b>Unterschriebenes Angebot</b><span>${w.auftrag ? `Abgelegt am ${esc(new Date(w.auftrag.t).toLocaleDateString('de-DE'))}` : 'Noch nicht abgelegt, tippen zum Ablegen'}</span></span>${icon('chevron', 'pc-chev')}</button>
+        <button class="doc" id="dBau">
+          <span class="d-ico brass">${icon('clipboard')}</span>
+          <span class="d-t"><b>Baumappe für den Projektleiter</b><span>Was beauftragt ist, ohne Preise</span></span>${icon('chevron', 'pc-chev')}</button>
+        <button class="doc" id="dMappe" hidden></button>
+        <button class="doc" id="dAngebot" hidden></button>
+      </div>
+      ${dokListe(w)}
+      ${vorOrt ? `<details class="more card" style="margin-top:12px"><summary>${icon('mic')}<span>Vor Ort<small>${[w.gespraech ? 'Gespräch' : '', 'Fotos', 'Pläne', w.vorOrt?.scans?.length ? `${w.vorOrt.scans.length} Raumscans` : ''].filter(Boolean).join(', ')}</small></span>${icon('chevron', 'more-chev')}</summary>${vorOrt}</details>` : ''}
+
+      ${kopf(2, 'Projektfortschritt', 'Arbeitsschritte abhaken, Bestellungen')}
+      <div id="wFort"></div>
+      <div id="wBau"></div>
+
+      ${kopf(3, 'Abnahme', 'Mit dem Kunden durchgehen und unterschreiben lassen')}
+      <div id="wAbn"></div>
+
+      ${kopf(4, 'Abrechnen', 'Abschläge, Schlussrechnung, Nachträge, Kosten und Marge')}
+      <div id="wRech"></div><div id="wKosten"></div>
+
+      <details class="more card" style="margin-top:12px"><summary>${icon('home')}<span>Weiteres<small>Räume, Projekt löschen</small></span>${icon('chevron', 'more-chev')}</summary>
+      <div class="rlist">${list.map((r, i) => `
+        <div class="rcard" data-room="${r.id}" role="button" tabindex="0">
+          ${r.thumb ? `<img src="${r.thumb}" alt="">` : `<span class="rc-ph">${roomIcon(r.roomType)}</span>`}
+          <span class="rc-t"><b>${esc(r.room || roomType(r.roomType).name)}</b><span class="rc-s">${stand(r)}</span></span>
+          ${list.length > 1 ? griffHtml() : ''}
+          ${icon('chevron', 'pc-chev')}
+        </div>`).join('')}
+        <button class="add-room" id="wAdd">${icon('plus')} Raum hinzufügen</button>
+      </div>
+      <button class="link-danger" id="wDel">${icon('trash')} Projekt löschen</button></details>`;
+  }
+  /** „Was ist zu tun“ im Schritt Einplanen: abhaken ergibt sich aus den Daten, Tippen führt zur Stelle. */
+  async function todoFuellen(w) {
+    const el = $('#wTodo');
+    if (!el) return;
+    const punkte = [
+      ['baustart', !!w.baustart, w.baustart ? `Baustart am ${datumText(w.baustart)}` : 'Baustart festlegen'],
+      ...(w.auftragsbestaetigung ? [['ab', !!w.auftragsbestaetigung.gesendetAm, 'Auftragsbestätigung an den Kunden']] : []),
+      ['auftrag', !!w.auftrag, 'Unterschriebenes Angebot ablegen'],
+      ['bestellung', !!w.bestellungen?.length, w.bestellungen?.length ? `${w.bestellungen.length} ${w.bestellungen.length === 1 ? 'Bestellung' : 'Bestellungen'} eingetragen` : 'Material bestellen'],
+      ['fortschritt', !!w.schritte?.length, w.schritte?.length ? 'Arbeitsschritte stehen' : 'Arbeitsschritte festlegen (Baufortschritt)'],
+    ];
+    el.innerHTML = `<b class="pj-todo-h">Vorbereiten</b>${punkte.map(([id, ok, t]) => `<button type="button" class="pj-tp ${ok ? 'ok' : ''}" data-todo="${id}"><i>${ok ? icon('check') : ''}</i><span>${esc(t)}</span>${icon('chevron', 'pc-chev')}</button>`).join('')}`;
+    const springe = (sel) => { const z = $(sel); if (z) window.scrollTo({ top: z.getBoundingClientRect().top + window.scrollY - 110, behavior: 'smooth' }); };
+    $$('[data-todo]', el).forEach((b) => (b.onclick = () => {
+      const id = b.dataset.todo;
+      if (id === 'baustart') { const f = $('#wBaustart'); if (f) { springe('.stk'); setTimeout(() => { try { f.showPicker(); } catch { f.focus(); } }, 350); } else springe('.stk'); }
+      else if (id === 'ab') $('#dAb')?.click();
+      else if (id === 'auftrag') $('#wAuftrag')?.click();
+      else if (id === 'bestellung') springe('#wBau');
+      else if (id === 'fortschritt') springe('#wFort');
+    }));
+  }
+  /** Löschen: Ein Angebot (noch nicht zugesagt) nach einer Nachfrage. Ein Projekt (zugesagt) nach zwei Nachfragen,
+   * und gar nicht, solange es Rechnungen hat (die müssen aufbewahrt werden). */
+  async function loeschenFragen(w, list) {
+    const name = w.titel || w.customer || 'ohne Namen';
+    if (!zugesagt(w.status)) return confirm(`Angebot „${name}“ mit ${list.length === 1 ? 'dem Raum' : list.length ? `allen ${list.length} Räumen` : 'allem'}, Fotos und Visualisierungen löschen?`);
+    await window.Rechnung?.laden();
+    const re = window.Rechnung?.fuerProjekt(w.id) || [];
+    if (re.length) { alert(`Das Projekt „${name}“ hat ${re.length} ${re.length === 1 ? 'Rechnung' : 'Rechnungen'}. Rechnungen müssen aufbewahrt werden, darum lässt sich das Projekt nicht löschen.`); return false; }
+    if (!confirm(`Projekt „${name}“ löschen?\n\nDas Projekt ist zugesagt. Gelöscht werden Räume, Angebot, Baufortschritt, Bestellungen, Abnahme und Dokumente.`)) return false;
+    const v = await sheet('Wirklich löschen?', [], { text: 'Zum Bestätigen „löschen“ eintippen' });
+    if (v?.text?.trim().toLowerCase() !== 'löschen') { if (v) toast('Nicht gelöscht.'); return false; }
+    return true;
+  }
+
   // ---------- Angebotsablauf (bis zur Zusage): drei Reiter Vor Ort · Büro · Angebote (Wunsch Felix, Version 86) ----------
   // Jeder Reiter ist eine eigene Seite und zeigt nur, was dorthin gehört.
   // Gleiche Daten wie das Projekt. Element-IDs wie in der Projektansicht, damit die Knöpfe gleich funktionieren.
@@ -545,7 +629,7 @@ window.Projekt = (() => {
         <div class="rcard" data-room="${r.id}" role="button" tabindex="0">
           ${r.thumb ? `<img src="${r.thumb}" alt="">` : `<span class="rc-ph">${roomIcon(r.roomType)}</span>`}
           <span class="rc-t"><b>${esc(raumTitel(r))}</b><span class="rc-s">${stand(r)}</span></span>
-          ${i > 0 ? `<button class="icon-btn up" data-up="${i}" aria-label="Nach oben">${icon('up')}</button>` : ''}
+          ${list.length > 1 ? griffHtml() : ''}
           ${icon('chevron', 'pc-chev')}
         </div>`).join('')}
         ${list.length ? `<button class="add-room" id="wAdd">${icon('plus')} Raum hinzufügen</button>` : ''}
@@ -873,14 +957,19 @@ window.Projekt = (() => {
     const f = window.Fortschritt?.kurz(w);
     const allesErledigt = st === '' && f && f.fertig === f.n;
     const tage = seitTagen(w.versendetAm);
-    const knoepfe = st === 'angebot'
+    // Zugesagt: Der Status springt am Baustart von selbst auf „Baustelle läuft“. Vorher nur ein kleiner Knopf, falls früher begonnen wurde.
+    // Abgeschlossen: Der nächste Schritt ist die Schlussrechnung (Status „Rechnung gestellt“ setzt die Rechnung selbst).
+    const knoepfe = st === 'geplant'
+      ? `<button type="button" class="link-add" data-st="" style="margin:2px 0 0">${icon('check')} Baustelle hat schon begonnen</button>`
+      : st === 'fertig' ? `<button class="btn block" id="stRech" style="--c:${farbe('rechnung')}">${icon('euro')} Schlussrechnung schreiben</button>`
+      : st === 'angebot'
       ? `<div class="stk-2"><button class="btn" data-st="geplant" style="--c:#2f8a57">${icon('check')} Zugesagt</button><button class="btn" data-st="abgesagt" style="--c:#c0392b">${icon('x')} Abgesagt</button></div>`
       : nx ? `<button class="btn block" data-st="${nx[0]}" style="--c:${farbe(nx[0])}">${esc(nx[1])}</button>` : '';
     return `<div class="card stk" style="--c:${farbe(st)}">
       <div class="stk-top"><span class="stk-dot"></span><span class="stk-t"><small>Status</small><b>${esc(st === 'geplant' && w.baustart ? `Eingeplant · Baustart ${datumText(w.baustart)}` : statusName(st))}</b></span><button class="stk-alle" id="stAlle">Ändern</button></div>
       <div class="stk-pfad" aria-hidden="true">${PFAD.map((id, j) => `<i class="${st === 'abgesagt' ? (j <= 2 ? 'ab' : '') : j < i ? 'ok' : j === i ? 'jetzt' : ''}" style="--c:${farbe(id)}"></i>`).join('')}</div>
       ${st === 'geplant' ? `<label class="stk-feld">${icon('calendar')}<span>Baustart</span><input type="date" id="wBaustart" value="${esc(w.baustart || '')}"></label>
-        <p class="hint" style="margin:0 0 10px">Am Tag des Baustarts springt der Status von selbst auf „Baustelle läuft“.</p>` : ''}
+        <p class="hint" style="margin:0 0 6px">${w.baustart ? 'Am Tag des Baustarts springt der Status von selbst auf „Baustelle läuft“.' : 'Noch kein Baustart. Trag ihn ein, dann steht er im Kalender und das Projekt ist eingeplant.'}</p>` : ''}
       ${st === 'angebot' && tage >= nachfassen() ? `<p class="stk-tipp warn">${icon('phone')} Seit ${tage} Tagen beim Kunden. Zeit zum Nachfassen.</p>` : ''}
       ${st === 'angebot' && w.versendetAm && tage < nachfassen() ? `<p class="hint" style="margin:0 0 10px">Versendet am ${esc(datumText(w.versendetAm))}</p>` : ''}
       ${st === 'abgesagt' && w.absage?.grund ? `<p class="hint" style="margin:0 0 10px">Grund: ${esc(w.absage.grund)} · ${esc(new Date(w.absage.t).toLocaleDateString('de-DE'))}</p>` : ''}

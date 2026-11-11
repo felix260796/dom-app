@@ -57,3 +57,14 @@
 .aw-m i.leer { background: var(--line); }
 .aw-satz { margin: 0 0 8px; font-size: 15px; line-height: 1.45; }
 .aw-satz b { color: var(--navy); }
+
+/* ---------- Reiter Rechnungen: zwei Knöpfe, Bereiche zum Antippen ---------- */
+.f-neu { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 10px 0 12px; }
+.f-neu .btn { padding-left: 8px; padding-right: 8px; font-size: 15px; }
+.f-seg .fz { font: inherit; cursor: pointer; text-align: center; }
+.f-seg .fz b { font-size: 18px; }
+.f-seg .fz b svg.i { width: 22px; height: 22px; }
+.f-seg .fz span { font-size: 12px; line-height: 1.25; }
+.f-seg .fz.on { border-color: var(--navy); background: var(--navy); color: rgba(255,255,255,.85); }
+.f-seg .fz.on b { color: #fff; }
+.f-seg .fz.on.rot b { color: #ffb3a8; }

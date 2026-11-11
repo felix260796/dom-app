@@ -49,6 +49,16 @@ Texte: `bausteine.js` (`Bausteine.block/bind`), aufklappbare Blöcke Anfangstext
 Preisliste im Angebot wählbar (`plWahl` in `angebotTabelle`): allgemeine oder die eines Partners, Partnerpreise ohne Zuschlag (`x.sub.zuschlag = 0`, `x.sub.key`). Vorgabe `subZuschlag` steht auf 0.
 Angebote: Stand Entwurf/Versendet/Abgesagt, frühere Fassungen aus `w.angebotArchiv` („überarbeitet“). Zugesagt → `zusage` → `auftragsbestaetigung` (`baueAngebotPdf(p, { art: 'ab' })`, Eintrag in `w.dokumente` mit `art: 'auftragsbestaetigung'`, `w.auftragsbestaetigung = { t, nr, dokId, gesendetAm }`, Vorgaben `abEinleitung`, `abSchluss`). Abgesagt: `w.absage = { grund, t }`, das PDF bleibt in `w.dokumente` (`pdfInDokumente`).
 
+## Neuerungen aus Version 90 (Projekte und Rechnungen)
+
+Zugesagtes Projekt (`auftragSeite` in `projekt.js`): Schritte Projektdetails, Projektfortschritt, Abnahme, Abrechnen; Kacheln Rechnung, Fotos, Bestellung, Nachtrag, Termin; „Vorbereiten“ (`todoFuellen`). Status „Zugesagt, noch einzuplanen“, kein Knopf „Baustelle läuft“ mehr. Löschen: `loeschenFragen` (Angebot eine Nachfrage, Projekt zwei, mit Rechnungen gar nicht). `Baustelle.abschnitt(el, w, list, 'bestellungen'|'abnahme')`.
+Rechnung schreiben: ein Weg `Rechnung.neu(w?, fertig)` aus Projekt und Reiter (Projekt suchen, Art wählen: Abschlag nach Plan, Abschlag frei, Schlussrechnung, ohne Angebot eigene Positionen `r.eigen`). Rechnungen werden nie gelöscht, nur storniert (`art 'storno'`, `r.storniert`, beide tragen das Stornodatum in `bezahlt`, Summen gleichen sich aus; `Rechnung.gilt/istOffen`). Hinweis zur Aufbewahrung auf jeder Rechnung an Privatkunden. Vorgaben `abschlagFortschritt`, `textStorno`.
+Reiter Rechnungen: Suche über alles (auch Bezahltes), zwei Knöpfe „Rechnung schreiben“ / „Eingang erfassen“, Bereiche An Kunden / Eingang / Kalkulation (`fSeg`).
+GiroCode (QR zum Bezahlen) auf Rechnung und Mahnung: `qrcode.js` (`QR.giroCode`), IBAN/BIC in den Firmendaten (`PL.einstellungen.iban/bic`), Vorgabe `rechnungQr`.
+Unterschrift unter PDFs: `unterschrift.js` (`Unterschrift.pdf(doc, x, y, { firma })` setzt Grußformel, Bild und Namen; je Person in `settings.unterschriften[personId]`, es unterschreibt, wem das Gerät gehört). Einstellungen › Firmendaten.
+Firmenstempel: `settings.stempel`, einmal als Bild hinterlegt, `Unterschrift.pdf` setzt ihn rechts neben die Unterschrift (Angebot und Rechnung).
+Texte auf der Rechnung: wie im Angebot über `bausteine.js`, je Rechnung `r.texte` (Standard `texteStd` aus den Vorgaben: Einleitung je Art, Zahlungsaufforderung, Aufbewahrung), feste Zusätze `r.opt.qr` und `r.opt.gruss`. Platzhalter werden erst im PDF gefüllt. Bearbeiten mit `Angebot._intern.textEditor`. Änderbar, bis die Rechnung gesendet oder bezahlt ist.
+
 ## Bereiche
 
 | Bereich | Dateien | Inhalt |
