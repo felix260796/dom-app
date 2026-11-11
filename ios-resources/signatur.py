@@ -81,4 +81,4 @@ def anlegen(ordner):
 
 
 if __name__ == '__main__':
-    anlegen(sys.argv[2])
+    anlegen(sys.argv[1])
