@@ -10,13 +10,16 @@ const VORGABEN = {
     ['Zahlung', [
       { k: 'zahlungsziel', l: 'Zahlungsziel in Tagen', t: 'zahl', d: 14 },
       { k: 'abschlagPlan', l: 'Abschläge in % (der letzte Teil kommt mit der Schlussrechnung)', t: 'plan', d: [30, 40, 30], h: 'Je Projekt kannst du im Projekt einen eigenen Plan eintragen.' },
+      { k: 'rechnungQr', l: 'QR-Code zum Bezahlen auf Rechnung und Mahnung (GiroCode, IBAN in den Firmendaten)', t: 'janein', d: 'ja' },
+      { k: 'abschlagFortschritt', l: 'Beim Abschlag den Baufortschritt anzeigen (z. B. „60 % fertig“)', t: 'janein', d: 'ja' },
       { k: 'mahnFrist', l: 'Neue Frist bei Erinnerung und Mahnung in Tagen', t: 'zahl', d: 7 },
     ]],
     ['Texte auf der Rechnung', [
       { k: 'textRechnungAbschlag', l: 'Einleitung Abschlagsrechnung', t: 'text', d: 'vielen Dank für Ihren Auftrag. Vereinbarungsgemäß berechnen wir Ihnen eine Abschlagszahlung von {prozent} % der Auftragssumme.' },
       { k: 'textRechnungSchluss', l: 'Einleitung Schlussrechnung', t: 'text', d: 'vielen Dank für Ihren Auftrag. Für die ausgeführten Leistungen berechnen wir Ihnen:' },
+      { k: 'textStorno', l: 'Einleitung Stornorechnung', t: 'text', d: 'hiermit stornieren wir unsere {art} Nr. {nr} vom {datum}. Sie wird mit dieser Stornorechnung vollständig aufgehoben.' },
       { k: 'textZahlung', l: 'Zahlungsaufforderung', t: 'text', d: 'Bitte überweisen Sie den Betrag von {betrag} bis zum {faellig} unter Angabe der Rechnungsnummer {nr}.' },
-      { k: 'textAufbewahrung', l: 'Hinweis auf der Schlussrechnung', t: 'text', d: 'Bitte bewahren Sie diese Rechnung zwei Jahre auf (§ 14b UStG).' },
+      { k: 'textAufbewahrung', l: 'Hinweis zur Aufbewahrung (auf jeder Rechnung an Privatkunden)', t: 'text', d: 'Bitte bewahren Sie diese Rechnung zwei Jahre auf (§ 14b UStG).' },
       { k: 'textGruss', l: 'Grußformel', t: 'zeile', d: 'Mit freundlichen Grüßen' },
     ]],
     ['Zahlungserinnerung und Mahnungen', [
@@ -55,6 +58,19 @@ const VORGABEN = {
   ],
   ablauf: [
     ['Angebote', [
+      { k: 'vorortAuto', l: 'Nach jeder Aufnahme gleich prüfen, was fürs Angebot noch fehlt', t: 'janein', d: 'ja', h: 'Im Projekt unter „Was fehlt noch?“. Von Hand geht es dort immer.' },
+      { k: 'vorortFragenMax', l: 'Wie viele Rückfragen höchstens auf einmal?', t: 'zahl', d: 8 },
+      { k: 'vorortPruefliste', l: 'Daran soll die App vor Ort immer denken (eine Zeile je Arbeit)', t: 'text', d: 'Bad: Länge, Breite, Deckenhöhe, Fenster und Türen, Lage der Anschlüsse, Dusche oder Wanne, Fliesenhöhe\nWand entfernen oder Durchbruch: Wanddicke, tragend oder nicht, Leitungen in der Wand\nBoden: Fläche, alter Belag, Untergrund, Sockelleisten\nFenster und Rollläden: Anzahl, Maße, Antrieb (Gurt oder Motor), Fabrikat\nElektro: Anzahl Steckdosen und Schalter, Schalterprogramm, Zustand Sicherungskasten\nTüren und Beschläge: Anzahl, Maße, Fabrikat, Foto vom Teil\nImmer: Etage, Aufzug, Parken und Platz für Container, Strom und Wasser, Wunschtermin', h: 'Nur eine Ergänzung. Die KI denkt bei jeder Arbeit selbst mit, auch wenn sie hier nicht steht.' },
+      { k: 'vorortFotos', l: 'Wie viele Fotos schaut sich die KI vor Ort an?', t: 'zahl', d: 8, h: 'Mehr Fotos sind genauer, dauern aber länger.' },
+      { k: 'entwurfFotos', l: 'Wie viele Fotos schaut sich die KI für den Angebotsentwurf an?', t: 'zahl', d: 12 },
+      { k: 'entwurfHinweise', l: 'Das gilt für jeden Angebotsentwurf', t: 'text', d: 'Baustelleneinrichtung, Schutz der Laufwege, Entsorgung und Endreinigung mit anbieten, wenn es mehr als eine Kleinigkeit ist.\nBei Kleinigkeiten nur die Arbeit selbst und die Anfahrt.' },
+      { k: 'raeumeWohnung', l: 'Räume zum Anhaken bei „Ganze Wohnung“ (eine Zeile je Raum)', t: 'liste', d: ['Badezimmer', 'Gäste-WC', 'Küche', 'Wohnzimmer', 'Schlafzimmer', 'Kinderzimmer', 'Flur / Diele'] },
+      { k: 'raeumeHaus', l: 'Räume zum Anhaken bei „Ganzes Haus“ (eine Zeile je Raum)', t: 'liste', d: ['Badezimmer', 'Gäste-WC', 'Küche', 'Wohnzimmer', 'Schlafzimmer', 'Kinderzimmer', 'Flur / Diele', 'Treppenhaus', 'Keller', 'Dachgeschoss', 'Heizraum', 'Fassade / Außen', 'Garten'] },
+      { k: 'kleinName', l: 'So heißt eine Kleinigkeit im Angebot', t: 'zeile', d: 'Leistungen', h: 'Einzelne Arbeiten ohne Raum, z. B. Türgriffe oder Steckdosen.' },
+      { k: 'angebotGruss', l: 'Angebot endet mit Gruß und Unterschrift', t: 'janein', d: 'ja', h: 'Lässt sich in jedem Angebot unter „Schlusstexte“ abwählen.' },
+      { k: 'angebotAuftragsfeld', l: 'Angebot hat am Ende ein Feld, in dem der Kunde unterschreibt (Auftragserteilung)', t: 'janein', d: 'ja', h: 'Lässt sich in jedem Angebot unter „Schlusstexte“ abwählen.' },
+      { k: 'abEinleitung', l: 'Auftragsbestätigung: Text vor den Positionen', t: 'text', d: 'vielen Dank für Ihren Auftrag. Hiermit bestätigen wir Ihnen die folgenden Leistungen gemäß unserem Angebot Nr. {nr}:', h: 'Platzhalter: {nr} Angebotsnummer, {kunde} Kunde, {datum} heute.' },
+      { k: 'abSchluss', l: 'Auftragsbestätigung: Satz vor dem Gruß', t: 'zeile', d: 'Wir freuen uns auf die Zusammenarbeit.' },
       { k: 'nachfassenTage', l: 'Hinweis „Nachfassen“ nach wie vielen Tagen?', t: 'zahl', d: 7 },
       { k: 'absageGruende', l: 'Gründe für eine Absage (eine Zeile je Grund)', t: 'liste', d: ['Zu teuer', 'Anderer Anbieter', 'Macht es selbst', 'Kein Bedarf mehr', 'Zeitpunkt passt nicht', 'Keine Rückmeldung', 'Sonstiges'] },
     ]],
@@ -66,7 +82,7 @@ const VORGABEN = {
     ['Kalkulation', [
       { k: 'ampelGut', l: 'Marge grün ab %', t: 'zahl', d: 20 },
       { k: 'ampelKnapp', l: 'Marge gelb ab % (darunter rot)', t: 'zahl', d: 10 },
-      { k: 'subZuschlag', l: 'Zuschlag auf Positionen aus Partner-Angeboten in %', t: 'zahl', d: 20, h: 'Wird vorgeschlagen, wenn du Positionen eines Subunternehmers ins eigene Angebot übernimmst. Du kannst ihn jedes Mal ändern.' },
+      { k: 'subZuschlag', l: 'Zuschlag auf Positionen aus Partner-Angeboten in %', t: 'zahl', d: 0, h: '0 = kein Zuschlag, du kalkulierst selbst im Angebot. Sonst wird der Wert vorgeschlagen, wenn du ein Angebot eines Subunternehmers übernimmst. Preise aus der Preisliste eines Partners kommen immer ohne Zuschlag.' },
     ]],
     ['Kalender und Geburtstage', [
       { k: 'kalKW', l: 'Kalenderwoche (KW) im Kalender links anzeigen', t: 'janein', d: 'ja' },
@@ -136,6 +152,10 @@ const VORGABEN = {
   ],
   // KI-Anweisungen (Prompts). Englisch, weil die Bild-KI Englisch am genauesten umsetzt. Deutsche Erklärung jeweils darunter.
   prompts: [
+    ['Mitdenken vor Ort und Angebotsentwurf (die KI antwortet auf Deutsch)', [
+      { k: 'promptVorOrt', l: 'Vor Ort: Was fehlt noch?', t: 'text', h: 'Platzhalter: {max} Anzahl Fragen, {pruefliste} deine Prüfliste aus „Abläufe“.', d: 'You are the experienced site manager of a German renovation company (small jobs, single rooms, whole flats, whole houses; ANY trade: tiles, plumbing, electrics, painting, floors, doors, windows, roller shutters, fittings, repairs). Your colleague is still on site with the customer, sometimes together with a subcontractor. Below is everything recorded so far. Think along like a professional estimator: for every piece of work that was discussed, what must be known to write a binding offer? Typical gaps: dimensions (length, width, ceiling height, wall thickness), quantities (how many door handles, sockets, shutters), make and model (ask for a photo of the type plate or the part), material and quality the customer wants, condition of the existing substrate, access (floor, lift, parking), who supplies material, which subcontractor gives a price, dates. Ask ONLY for what is really missing and really needed for the offer. Do not ask for anything already contained in the material or already answered. Most important first. At most {max} questions. Each question short, in German, informal (du), so that it can be answered in a few words or with one photo. bereich = room or area the question belongs to (German). art = "mass" (take a measurement), "foto" (take a photo), "kunde" (ask the customer), "info" (anything else). If nothing is missing, return an empty list.\n\nThe company always wants to remember:\n{pruefliste}' },
+      { k: 'promptEntwurf', l: 'Im Büro: Angebotsentwurf', t: 'text', h: 'Platzhalter: {hinweise} deine Hinweise aus „Abläufe“, {raumtypen} die Raumtypen der App.', d: 'You are the estimator of a German renovation company. From the site material below (conversation, notes, answers given on site, photos, measurements) write the draft of the offer. The job can be anything: a small repair (door handles, sockets, silicone joints), one room, a whole flat or a whole house. Do not limit yourself to bathrooms; use your trade knowledge to conclude which work steps are needed for what was discussed, but do not invent work the customer did not ask for.\n\nStructure: bereiche = the rooms or areas. Use the names of the areas that already exist exactly as written. A small job without a room gets ONE area called "Leistungen". Work that concerns the whole job (site setup, protection, disposal, cleaning, travel) goes into an area called "Allgemein". raumtyp = one of: {raumtypen}.\n\nPositions: take a position from the PRICE LIST whenever one fits (set nr exactly as in the list, text may stay empty). Only if nothing fits, write your own position: nr empty, text = short complete German description of the work, einheit = unit (Stück, m², lfm, Std., psch). Never state prices.\n\nQuantities: if the quantity equals a measurement of the area, set mengeAus to one of boden, decke, wand, umfang, sockel, tueren, fenster and the app will take the measured value. Otherwise set menge to the number that was said or that you can count or estimate from the photos. If you cannot know the quantity, set menge to 0. Never guess dimensions that nobody measured.\n\npartner = true if this work is done by a subcontractor who was on site or who was named, so that the price comes from his offer. grund = a few German words: which wish or finding this position comes from.\n\noffen = short German list of what is still missing for a binding offer (missing measurements, decisions of the customer, prices of subcontractors, things to check on site).\n\nRules of the company:\n{hinweise}' },
+    ]],
     ['Welche Anweisung?', [
       { k: 'kiPromptVersion', l: 'Prompt-Version für die Bilder', t: 'wahl', o: [['neu', 'Neu (Englisch, gegliedert)'], ['alt', 'Alt (Deutsch, bis Version 67)']], d: 'neu', h: 'Zum Vergleichen: dasselbe Bad-Foto einmal mit „Neu“ und einmal mit „Alt“ berechnen. Danach die bessere Version stehen lassen.' },
       { k: 'kiDeko', l: 'Kleine Deko ins Bild (Handtücher, kleine Pflanze)', t: 'janein', d: 'nein', h: 'Nur kleine, lose Accessoires, nie Möbel. Standard ist aus.' },
@@ -356,7 +376,7 @@ window.Vorgaben = (() => {
   // Die Textfelder vor und nach den Positionen haben seit Version 75 eine eigene Seite (Angebot._intern.texteEinstellungen).
   // Hier bleiben nur der Schlusssatz und der Text über der Unterschrift.
   const PL_TEXTE = [['textSchluss', 'Schlusssatz vor dem Gruß'], ['textAuftrag', 'Text über der Unterschrift (Auftragserteilung)']];
-  const PL_FIRMA = [['firma', 'Firmenname'], ['strasse', 'Straße'], ['ort', 'PLZ und Ort'], ['telefon', 'Telefon'], ['email', 'E-Mail'], ['ansprechpartner', 'Ansprechpartner'], ['ustid', 'USt-IdNr.'], ['sitz', 'Sitz'], ['hrb', 'Handelsregister'], ['gf', 'Geschäftsführer'], ['bank', 'Bankverbindung']];
+  const PL_FIRMA = [['firma', 'Firmenname'], ['strasse', 'Straße'], ['ort', 'PLZ und Ort'], ['telefon', 'Telefon'], ['email', 'E-Mail'], ['ansprechpartner', 'Ansprechpartner'], ['ustid', 'USt-IdNr.'], ['sitz', 'Sitz'], ['hrb', 'Handelsregister'], ['gf', 'Geschäftsführer'], ['bank', 'Bankverbindung (Text in der Fußzeile)'], ['iban', 'IBAN (für den QR-Code zum Bezahlen)'], ['bic', 'BIC (freiwillig)']];
   async function preisKarten(box) {
     const PL = await window.Angebot._intern.preisliste();
     const E = PL.einstellungen;
@@ -378,8 +398,14 @@ window.Vorgaben = (() => {
     const PL = await window.Angebot._intern.preisliste();
     const E = PL.einstellungen;
     box.innerHTML = `<div class="sec-h"><h2>Auf Angebot, Rechnung und Protokoll</h2></div>
-      <div class="card kform vg">${PL_FIRMA.map(([k, l]) => `<label>${esc(l)}</label><input type="text" data-plf="${k}" value="${esc(E[k] || '')}">`).join('')}</div>`;
-    $$('[data-plf]', box).forEach((el) => (el.onchange = async () => { E[el.dataset.plf] = el.value.trim(); await kvSet('preisliste', PL); toast('Gespeichert'); }));
+      <div class="card kform vg">${PL_FIRMA.map(([k, l]) => `<label>${esc(l)}</label><input type="text" data-plf="${k}" value="${esc(E[k] || '')}">`).join('')}</div>
+      <div id="sigBox"></div>`;
+    window.Unterschrift?.karte($('#sigBox', box));
+    $$('[data-plf]', box).forEach((el) => (el.onchange = async () => {
+      let v = el.value.trim();
+      if (el.dataset.plf === 'iban') { v = v.replace(/\s+/g, '').toUpperCase(); if (v && window.QR && !QR.ibanOk(v)) return toast('Die IBAN stimmt nicht (Prüfziffer). Bitte noch einmal prüfen.', 4500); }
+      E[el.dataset.plf] = v; await kvSet('preisliste', PL); toast('Gespeichert');
+    }));
   }
   async function preisliste(filter) {
     const PL = await window.Angebot._intern.preisliste();
@@ -443,6 +469,7 @@ window.Vorgaben = (() => {
     for (const [k, l] of PL_FIRMA) out.push(['firma', l, 'Firmendaten Briefkopf Fußzeile Angebot Rechnung', 'plf:' + k]);
     const fest = [
       ['firma', 'Firmenname und Logo', 'Logo Briefkopf'],
+      ['firma', 'Unterschrift', 'Unterschrift Gruß Name Angebot Rechnung zeichnen'],
       ['preisliste', 'Preise einzelner Positionen', 'Lohn Material Einheitspreis Position neu löschen'],
       ['pakete', 'Excel-Angebotstool laden', 'Import Excel Preisliste zurücksetzen'],
       ['pakete', 'Was gehört in welches Paket?', 'Paket Vorlagen Basic Standard Premium Positionen'],

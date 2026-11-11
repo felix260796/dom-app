@@ -9,25 +9,26 @@ window.Baustelle = (() => {
   const tag = (s) => (s ? new Date(s + 'T12:00').toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' }) : '');
   const vonText = (b) => { const p = window.Partner?.byId(b.partnerId); return p ? p.firma || p.inhaber || 'Lieferant' : b.von || 'Lieferant'; };
 
-  /** Abschnitt im Projekt: Bestellungen und Abnahme. */
-  function abschnitt(el, w, list) {
+  /** Abschnitt im Projekt: Bestellungen und Abnahme. teil = 'bestellungen' | 'abnahme' (nur diesen Teil zeigen), sonst beide. */
+  function abschnitt(el, w, list, teil = '') {
     if (!el) return;
     const best = w.bestellungen || [];
     const offen = best.filter((b) => b.status !== 'geliefert');
     const ab = w.abnahme;
     const maengelOffen = (ab?.maengel || []).filter((m) => !m.erledigt).length;
-    el.innerHTML = `<div class="sec-h"><h2>Bestellungen</h2>${best.length ? `<span class="count">${offen.length ? `${offen.length} offen` : 'alles geliefert'}</span>` : ''}</div>
+    const bestHtml = `<div class="sec-h"><h2>Bestellungen</h2>${best.length ? `<span class="count">${offen.length ? `${offen.length} offen` : 'alles geliefert'}</span>` : ''}</div>
       <div class="plist">${best.map((b) => `<button class="pcard" data-best="${b.id}"><span class="pc-ph">${icon('clipboard')}</span>
         <span class="pc-t"><b>${esc(b.was || 'Bestellung')}</b>
           <span class="pills"><span class="st-pill" style="--c:${b.status === 'geliefert' ? '#2f8a57' : b.liefertermin && b.liefertermin < heute() ? '#c0392b' : '#3b6ea8'}">${b.status === 'geliefert' ? 'Geliefert' : 'Bestellt'}</span><span class="muted">${esc(vonText(b))}</span></span>
           ${b.status !== 'geliefert' && b.liefertermin ? `<span class="muted">Liefertermin ${esc(tag(b.liefertermin))}</span>` : ''}</span>${icon('chevron', 'pc-chev')}</button>`).join('')}</div>
-      <button class="add-room" id="bstNeu" style="width:100%;margin-top:8px">${icon('plus')} Bestellung eintragen</button>
-      <div class="docs" style="margin-top:14px"><button class="doc" id="abnahme"><span class="d-ico ${ab?.unterschriftKunde ? 'navy' : 'brass'}">${icon('check')}</span>
+      <button class="add-room" id="bstNeu" style="width:100%;margin-top:8px">${icon('plus')} Bestellung eintragen</button>`;
+    const abHtml = `<div class="docs" style="margin-top:${teil ? 0 : 14}px"><button class="doc" id="abnahme"><span class="d-ico ${ab?.unterschriftKunde ? 'navy' : 'brass'}">${icon('check')}</span>
         <span class="d-t"><b>Abnahmeprotokoll</b><span>${ab?.unterschriftKunde ? `Abgenommen am ${esc(tag(ab.datum))}${maengelOffen ? ` · ${maengelOffen} ${maengelOffen === 1 ? 'Mangel' : 'Mängel'} offen` : ''}` : 'Mit dem Kunden durchgehen und auf dem Handy unterschreiben lassen'}</span></span>${icon('chevron', 'pc-chev')}</button></div>`;
+    el.innerHTML = teil === 'abnahme' ? abHtml : teil === 'bestellungen' ? bestHtml : bestHtml + abHtml;
     const zurueck = () => Projekt.view();
-    $('#bstNeu', el).onclick = () => bestellung(w, null, zurueck);
+    if ($('#bstNeu', el)) $('#bstNeu', el).onclick = () => bestellung(w, null, zurueck);
     $$('[data-best]', el).forEach((b) => (b.onclick = () => bestellung(w, best.find((x) => x.id === b.dataset.best), zurueck)));
-    $('#abnahme', el).onclick = () => abnahme(w, list, zurueck);
+    if ($('#abnahme', el)) $('#abnahme', el).onclick = () => abnahme(w, list, zurueck);
   }
 
   // ---------- Bestellung ----------
