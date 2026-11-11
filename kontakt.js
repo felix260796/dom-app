@@ -105,15 +105,45 @@ window.Kontakt = (() => {
     };
   }
 
+  // ---------- Weitere Nummern direkt am Feld (Wunsch Felix): kleines Plus neben „Telefon“ bzw. „E-Mail“ ----------
+  // Gleiche Liste wie oben (k.weitere). Bezeichnungen zur Wahl aus den Vorgaben 'telArten' / 'mailArten'.
+  /** Überschrift mit kleinem Plus rechts. art: 'tel' | 'mail' */
+  const mehrLabel = (text, art) => `<label class="lab-plus"><span>${esc(text)}</span><button type="button" class="plus-mini" data-mehr="${art}" aria-label="${art === 'tel' ? 'Weitere Telefonnummer' : 'Weitere E-Mail'}">+</button></label>`;
+  /** box: leeres Element unter dem Hauptfeld · plus: der Knopf aus mehrLabel · list wird direkt verändert. */
+  function mehrBinden(box, plus, list, art, persist) {
+    if (!box) return;
+    const arten = () => vorgabe(art === 'tel' ? 'telArten' : 'mailArten') || [];
+    const render = () => {
+      const eigene = list.filter((x) => x.art === art);
+      box.innerHTML = eigene.map((x) => `<div class="mehr-z" data-wid="${x.id}">
+        <select data-w="label" aria-label="Bezeichnung">${[...new Set([...arten(), ...(x.label ? [x.label] : [])])].map((a) => `<option ${a === x.label ? 'selected' : ''}>${esc(a)}</option>`).join('')}</select>
+        <input type="${art === 'mail' ? 'email' : 'tel'}" data-w="wert" value="${esc(x.wert)}" placeholder="${art === 'mail' ? 'name@beispiel.de' : '0171 1234567'}" autocomplete="off" ${art === 'mail' ? 'inputmode="email"' : ''}>
+        <button type="button" class="icon-btn" data-wdel aria-label="Entfernen">${icon('x')}</button></div>`).join('');
+      $$('[data-wid]', box).forEach((row) => {
+        const x = list.find((y) => y.id === row.dataset.wid);
+        $('[data-w="label"]', row).onchange = (e) => { x.label = e.target.value; persist(); };
+        $('[data-w="wert"]', row).oninput = (e) => { x.wert = e.target.value; persist(); };
+        $('[data-wdel]', row).onclick = () => { if (x.wert.trim() && !confirm(`„${x.label}: ${x.wert}“ entfernen?`)) return; list.splice(list.indexOf(x), 1); persist(); render(); };
+      });
+    };
+    render();
+    if (plus) plus.onclick = () => {
+      const benutzt = list.filter((x) => x.art === art).map((x) => x.label);
+      list.push({ id: uid(), art, label: arten().find((a) => !benutzt.includes(a)) || arten()[0] || '', wert: '' });
+      persist(); render();
+      $$('[data-w="wert"]', box).pop()?.focus();
+    };
+  }
+
   // ---------- Schnellknöpfe ----------
-  const mapLink = (a) => 'https://maps.apple.com/?q=' + encodeURIComponent(String(a || '').split(/\s*,\s*|\n/).filter(Boolean).join(', '));
+  const mapLink = (a) => routeLink(a); // Route vom eigenen Standort, Karten-App aus der Vorgabe 'routeKarte'
   /** tels/mails: [{ label, wert }] – bei mehr als einem Eintrag fragt der Knopf, welcher. */
   function aktionen({ tels = [], mails = [], adresse = '' }) {
     tels = tels.filter((x) => x.wert.trim()); mails = mails.filter((x) => x.wert.trim());
     const b = [
       tels.length && `<button type="button" class="kd-a" data-ka="tel">${icon('phone')}<span>Anrufen${tels.length > 1 ? ` (${tels.length})` : ''}</span></button>`,
       mails.length && `<button type="button" class="kd-a" data-ka="mail">${icon('mail')}<span>E-Mail${mails.length > 1 ? ` (${mails.length})` : ''}</span></button>`,
-      adresse.trim() && `<a class="kd-a" href="${esc(mapLink(adresse))}" target="_blank" rel="noopener">${icon('map')}<span>Karte</span></a>`,
+      adresse.trim() && `<a class="kd-a" href="${esc(mapLink(adresse))}" target="_blank" rel="noopener">${icon('route')}<span>Route</span></a>`,
     ].filter(Boolean);
     return { html: b.length ? `<div class="kd-row">${b.join('')}</div>` : '', binden: (el) => {
       const los = async (list, pre, ic) => {
@@ -129,5 +159,5 @@ window.Kontakt = (() => {
   /** Auswahl „Nur gratulieren“ / „Mit Geschenk“ für einen Geburtstag. Leer = Standard aus den Einstellungen. */
   const gebArt = (v) => v || vorgabe('gebArtStandard') || 'gratulieren';
   const gebArtSelect = (v, id = '') => `<select data-gebart ${id ? `id="${id}"` : ''}>${[['gratulieren', 'Nur gratulieren'], ['geschenk', 'Mit Geschenk (Erinnerung vorher)']].map(([x, n]) => `<option value="${x}" ${gebArt(v) === x ? 'selected' : ''}>${esc(n)}</option>`).join('')}</select>`;
-  return { telInput, telBinden, gebArt, gebArtSelect, de, lesen, datumFeld, datumInput, bisTag, alter, tageText, norm, weitereHtml, weitereBinden, aktionen, telLink, mapLink };
+  return { mehrLabel, mehrBinden, telInput, telBinden, gebArt, gebArtSelect, de, lesen, datumFeld, datumInput, bisTag, alter, tageText, norm, weitereHtml, weitereBinden, aktionen, telLink, mapLink };
 })();
