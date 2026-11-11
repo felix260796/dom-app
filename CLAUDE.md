@@ -49,6 +49,8 @@ Rechnung schreiben: ein Weg `Rechnung.neu(w?, fertig)` aus Projekt und Reiter (P
 Reiter Rechnungen: Suche über alles (auch Bezahltes), zwei Knöpfe „Rechnung schreiben“ / „Eingang erfassen“, Bereiche An Kunden / Eingang / Kalkulation (`fSeg`).
 GiroCode (QR zum Bezahlen) auf Rechnung und Mahnung: `qrcode.js` (`QR.giroCode`), IBAN/BIC in den Firmendaten (`PL.einstellungen.iban/bic`), Vorgabe `rechnungQr`.
 Unterschrift unter PDFs: `unterschrift.js` (`Unterschrift.pdf(doc, x, y, { firma })` setzt Grußformel, Bild und Namen; je Person in `settings.unterschriften[personId]`, es unterschreibt, wem das Gerät gehört). Einstellungen › Firmendaten.
+Firmenstempel: `settings.stempel`, einmal als Bild hinterlegt, `Unterschrift.pdf` setzt ihn rechts neben die Unterschrift (Angebot und Rechnung).
+Texte auf der Rechnung: wie im Angebot über `bausteine.js`, je Rechnung `r.texte` (Standard `texteStd` aus den Vorgaben: Einleitung je Art, Zahlungsaufforderung, Aufbewahrung), feste Zusätze `r.opt.qr` und `r.opt.gruss`. Platzhalter werden erst im PDF gefüllt. Bearbeiten mit `Angebot._intern.textEditor`. Änderbar, bis die Rechnung gesendet oder bezahlt ist.
 
 ## Bereiche
 
