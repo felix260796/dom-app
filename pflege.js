@@ -138,7 +138,7 @@ window.Pflege = (() => {
   document.addEventListener('visibilitychange', () => {
     if (document.hidden || !offenerAnruf) return;
     const a = offenerAnruf; offenerAnruf = null;
-    if (Date.now() - a.t < 3000) return; // nicht wirklich telefoniert
+    if (Date.now() - a.t < 3000 || Date.now() - a.t > 3 * 3600e3) return; // nicht wirklich telefoniert bzw. zu lange her
     setTimeout(() => nachfrage(a.c, a.nachher), 400);
   });
 
