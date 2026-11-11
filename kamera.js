@@ -3,6 +3,7 @@
  * Foto machen → die KI erkennt, ob es eine Rechnung, ein anderes Dokument oder ein normales Foto ist.
  * Dokumente werden wie gescannt aufbereitet (gerade, hell, gut lesbar). Danach fragt die App, wohin es gehört:
  * Eingangsrechnung (finanzen.js), zu einem Kunden in „Bilder & Dokumentation“ (bilder.js).
+ * Visitenkarte: die KI liest die Kontaktdaten gleich mit, „Als Partner anlegen“ legt den Partner an und öffnet ihn zum Prüfen.
  * In der iPhone-App: Apples Dokumentenscanner (Geraet.scannen) und über „Teilen“ geschickte Dateien (ausDatei).
  * serie(): mehrere Fotos hintereinander in einer eigenen Kamera-Ansicht (für Bilder.fotosMachen). */
 window.Kamera = (() => {
@@ -16,12 +17,14 @@ window.Kamera = (() => {
     x.drawImage(img, 0, 0);
     return c.toDataURL('image/jpeg', 0.85);
   }
-  /** KI: Was ist auf dem Bild? { art: 'rechnung'|'angebot'|'dokument'|'foto', titel, firma, kunde, adresse } */
+  /** KI: Was ist auf dem Bild? { art: 'rechnung'|'angebot'|'visitenkarte'|'dokument'|'foto', titel, firma, kunde, adresse,
+   *  bei Visitenkarten zusätzlich karte: { firma, name, telefon, mobil, email, anschrift, web, gewerk, lieferant } } */
   async function erkennen(data) {
     if (!state.settings.apiKey) return { art: '' };
     try {
-      const txt = await geminiText([{ text: 'Was zeigt dieses Foto? Es stammt von einer Sanierungsfirma. art: "rechnung" (Rechnung oder Lieferschein mit Betrag), "angebot" (Angebot oder Kostenvoranschlag eines Handwerkers, Subunternehmers oder Lieferanten mit Leistungen und Preisen), "dokument" (anderes Schriftstück, Formular, Vertrag, Plan, Notiz) oder "foto" (Raum, Baustelle, Gegenstand). titel: kurzer deutscher Titel, z. B. „Rechnung Fliesen Kaya“, „Angebot Elektro Meier“ oder „Grundriss EG“. firma: Absender, falls erkennbar. kunde: Name des Kunden, Bauherrn oder Empfängers, falls erkennbar. adresse: Anschrift der Baustelle oder des Bauvorhabens, falls erkennbar.' }, { inline_data: { mime_type: 'image/jpeg', data: data.split(',')[1] } }], true, {
-        responseSchema: { type: 'OBJECT', properties: { art: { type: 'STRING' }, titel: { type: 'STRING' }, firma: { type: 'STRING' }, kunde: { type: 'STRING' }, adresse: { type: 'STRING' } }, required: ['art'] } });
+      const txt = await geminiText([{ text: 'Was zeigt dieses Foto? Es stammt von einer Sanierungsfirma. art: "rechnung" (Rechnung oder Lieferschein mit Betrag), "angebot" (Angebot oder Kostenvoranschlag eines Handwerkers, Subunternehmers oder Lieferanten mit Leistungen und Preisen), "visitenkarte" (Visitenkarte, auch Briefkopf oder Stempel nur mit Kontaktdaten einer Firma oder Person), "dokument" (anderes Schriftstück, Formular, Vertrag, Plan, Notiz) oder "foto" (Raum, Baustelle, Gegenstand). titel: kurzer deutscher Titel, z. B. „Rechnung Fliesen Kaya“, „Angebot Elektro Meier“ oder „Grundriss EG“. firma: Absender, falls erkennbar. kunde: Name des Kunden, Bauherrn oder Empfängers, falls erkennbar. adresse: Anschrift der Baustelle oder des Bauvorhabens, falls erkennbar. Nur bei art "visitenkarte" zusätzlich karte: firma (Firmenname mit Rechtsform), name (Vor- und Nachname der Person), telefon (Festnetz), mobil, email, anschrift (Straße Hausnummer, PLZ Ort in einer Zeile), web, gewerk (kurz auf Deutsch, z. B. „Fliesen“, „Sanitär, Heizung“, „Elektro“, „Baustoffhandel“), lieferant (true, wenn es ein Händler oder Lieferant ist, kein Handwerker). Nur übernehmen, was auf der Karte steht, nichts erfinden.' }, { inline_data: { mime_type: 'image/jpeg', data: data.split(',')[1] } }], true, {
+        responseSchema: { type: 'OBJECT', properties: { art: { type: 'STRING' }, titel: { type: 'STRING' }, firma: { type: 'STRING' }, kunde: { type: 'STRING' }, adresse: { type: 'STRING' },
+          karte: { type: 'OBJECT', properties: { firma: { type: 'STRING' }, name: { type: 'STRING' }, telefon: { type: 'STRING' }, mobil: { type: 'STRING' }, email: { type: 'STRING' }, anschrift: { type: 'STRING' }, web: { type: 'STRING' }, gewerk: { type: 'STRING' }, lieferant: { type: 'BOOLEAN' } } } }, required: ['art'] } });
       return JSON.parse(txt);
     } catch (e) { console.warn('Bild nicht erkannt', e); return { art: '' }; }
   }
@@ -66,6 +69,58 @@ window.Kamera = (() => {
     await Angebot._intern.subUebernehmen(r, () => { saveProject(r); Angebot.ansicht(r, false); }, { data, mime, partnerId: partnerZu(e.firma)?.id || '' });
   }
 
+  /** Visitenkarte → Partner oder Kunde anlegen und zum Prüfen öffnen. Gibt es ihn schon, wird er zuerst angeboten.
+   *  Beim Kunden liegt das Foto der Karte danach in „Bilder & Dokumentation“ (Ordner Dokumente). */
+  async function visitenkarte(v, data) {
+    const t = (x) => String(x || '').trim();
+    const firma = t(v.firma) || t(v.name);
+    const da = partnerZu(firma);
+    const kda = kundeZu(t(v.firma) ? `${v.firma}` : t(v.name));
+    const wahl = await sheet(`Visitenkarte: ${firma || 'ohne Namen'}`, [
+      ...(da ? [{ label: `${da.firma || da.inhaber} öffnen`, sub: 'Gibt es schon bei den Partnern', icon: icon('wrench'), value: 'da' }] : []),
+      { label: da ? 'Als neuen Partner anlegen' : 'Als Partner anlegen', sub: [t(v.gewerk), t(v.name), t(v.mobil) || t(v.telefon)].filter(Boolean).join(' · ') || 'Subunternehmer oder Lieferant', icon: icon('wrench'), value: 'neu' },
+      ...(kda ? [{ label: `${Kunden.name(kda)} öffnen`, sub: 'Gibt es schon bei den Kunden', icon: icon('user'), value: 'kda' }] : []),
+      { label: kda ? 'Als neuen Kunden anlegen' : 'Als Kunde anlegen', sub: 'Auch Firmen können Kunden sein', icon: icon('user'), value: 'kunde' },
+      { label: 'Nur als Foto ablegen', sub: 'Zu einem Kunden in „Bilder & Dokumentation“', icon: icon('camera'), value: 'foto' },
+    ]);
+    if (wahl === 'da') return Partner.oeffnen(da.id);
+    if (wahl === 'kda') return Kunden.oeffnen(kda.id);
+    if (wahl === 'kunde') return alsKunde(v, data);
+    if (wahl === 'foto') {
+      const k = await Kunden.waehlen('Zu welchem Kunden?');
+      if (!k) return;
+      const oid = await Kunden.objektWaehlen(k, 'Zu welchem Objekt?');
+      if (oid === null) return;
+      const o = await Bilder.ablegen(k.id, oid, data, 'Dokumente');
+      return toast(`In „${o.name}“ bei ${Kunden.name(k) || 'Kunde'} gespeichert`, 4000);
+    }
+    if (wahl !== 'neu') return;
+    const tel = t(v.telefon) || t(v.mobil);
+    const p = { id: uid(), kind: 'partner', created: Date.now(), updated: Date.now(), art: v.lieferant ? 'lief' : 'sub',
+      firma: t(v.firma), inhaber: t(v.name), gewerk: t(v.gewerk), telefon: tel, email: t(v.email), anschrift: t(v.anschrift), web: t(v.web),
+      weitere: t(v.telefon) && t(v.mobil) ? [{ id: uid(), art: 'tel', label: 'Mobil', wert: t(v.mobil) }] : [] };
+    if (!p.firma && !p.inhaber) return toast('Auf der Karte war kein Name zu lesen. Bitte nochmal fotografieren.', 5000);
+    await kvSet('partner:' + p.id, p);
+    await Partner.laden();
+    Partner.oeffnen(p.id);
+    toast('Partner angelegt. Bitte kurz prüfen.', 4000);
+  }
+
+  async function alsKunde(v, data) {
+    const t = (x) => String(x || '').trim();
+    const teile = t(v.name).split(/\s+/).filter(Boolean);
+    const person = { vorname: teile.slice(0, -1).join(' '), name: teile.slice(-1)[0] || '' };
+    const k = { id: uid(), kind: 'kunde', created: Date.now(), ...(t(v.firma) ? { anrede: 'Firma', vorname: '', name: t(v.firma) } : person),
+      telefon: t(v.telefon) || t(v.mobil), email: t(v.email), privat: t(v.anschrift),
+      weitere: t(v.telefon) && t(v.mobil) ? [{ id: uid(), art: 'tel', label: 'Mobil', wert: t(v.mobil) }] : [],
+      notiz: [t(v.firma) && t(v.name) ? `Ansprechpartner: ${t(v.name)}` : '', t(v.web)].filter(Boolean).join('\n') };
+    if (!k.name && !k.vorname) return toast('Auf der Karte war kein Name zu lesen. Bitte nochmal fotografieren.', 5000);
+    await Kunden.speichern(k);
+    try { await Bilder.ablegen(k.id, '', data, 'Dokumente'); } catch (e) { console.warn('Visitenkarte nicht abgelegt', e); }
+    Kunden.oeffnen(k.id);
+    toast('Kunde angelegt, die Karte liegt in den Dokumenten. Bitte kurz prüfen.', 4500);
+  }
+
   async function start() {
     // In der iPhone-App mit eingeschaltetem Scanner (geraet.js): erst fragen, ob Dokument oder Foto
     if (window.Geraet?.kann('scanner')) {
@@ -97,7 +152,8 @@ window.Kamera = (() => {
     toast('Bild wird angesehen …', 15000);
     const e = await erkennen(data);
     $('#toast').hidden = true;
-    if (gescannt && !['rechnung', 'angebot'].includes(e.art)) e.art = 'dokument';
+    if (gescannt && !['rechnung', 'angebot', 'visitenkarte'].includes(e.art)) e.art = 'dokument';
+    if (e.art === 'visitenkarte' && e.karte) return visitenkarte(e.karte, data);
     const doc = ['rechnung', 'dokument', 'angebot'].includes(e.art);
     if (doc && !gescannt) data = await scan(data);
     const vorschlag = kundeZu(e.kunde);

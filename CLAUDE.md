@@ -59,6 +59,12 @@ Unterschrift unter PDFs: `unterschrift.js` (`Unterschrift.pdf(doc, x, y, { firma
 Firmenstempel: `settings.stempel`, einmal als Bild hinterlegt, `Unterschrift.pdf` setzt ihn rechts neben die Unterschrift (Angebot und Rechnung).
 Texte auf der Rechnung: wie im Angebot über `bausteine.js`, je Rechnung `r.texte` (Standard `texteStd` aus den Vorgaben: Einleitung je Art, Zahlungsaufforderung, Aufbewahrung), feste Zusätze `r.opt.qr` und `r.opt.gruss`. Platzhalter werden erst im PDF gefüllt. Bearbeiten mit `Angebot._intern.textEditor`. Änderbar, bis die Rechnung gesendet oder bezahlt ist.
 
+## Neuerungen aus Version 91
+
+QR-Codes: `qrcode.js` (`QR.giroCode({ iban, bic, name, betrag, zweck })` → PNG für jsPDF, `QR.ibanOk`), Kodierung in `vendor/qrcode-generator.js`. Der GiroCode steht auf Rechnung und Mahnung (`rechnung.js`).
+Visitenkarte: Die Kamera oben (`kamera.js`, `erkennen` mit art `visitenkarte` und `karte`) legt daraus einen Partner oder Kunden an (`visitenkarte`, `alsKunde`) und öffnet ihn zum Prüfen.
+Zeichnen mit Stift oder Finger: `zeichnen.js`, ein Werkzeug für alles: `Zeichnen.oeffnen(hintergrund, { titel, striche, masstab, onSave(striche, bild) })`; hintergrund = Bild-DataURL, `{ breite, hoehe, zeichne(ctx) }` oder leer (Skizze). Striche sind Vektoren in Blatt-Einheiten, das Original bleibt unverändert. In `bilder.js`: Knopf „Zeichnen“ in der großen Ansicht (`b.zeichnung = { von, striche }`, weiterzeichnen möglich) und „Skizze zeichnen“ (Vorgabe `ordnerSkizzen`). Farben und Strichstärke: Vorgaben `zeichnenFarben`, `zeichnenStaerke`. Kein zweites Zeichenwerkzeug bauen.
+
 ## Bereiche
 
 | Bereich | Dateien | Inhalt |
