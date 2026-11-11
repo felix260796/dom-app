@@ -108,9 +108,8 @@ jobs:
           # Plugin anmelden: Capacitor lädt alle Klassen aus packageClassList
           node -e 'const f="ios/App/App/capacitor.config.json",c=JSON.parse(require("fs").readFileSync(f));c.packageClassList=[...new Set([...(c.packageClassList||[]),"DomGeraetPlugin"])];require("fs").writeFileSync(f,JSON.stringify(c,null,2))'
           grep -q DomGeraetPlugin ios/App/App/capacitor.config.json
-          # Über „Teilen“ geöffnete Dateien merken
-          perl -0pi -e 's/(\n([ \t]*)return ApplicationDelegateProxy\.shared\.application\(\s*app,\s*open:\s*url,\s*options:\s*options\s*\))/\n$2DomAblage.merken(url)$1/' ios/App/App/AppDelegate.swift
-          if ! grep -q 'DomAblage.merken' ios/App/App/AppDelegate.swift; then echo "::warning::AppDelegate unbekannt, An DOM teilen fehlt"; cat ios/App/App/AppDelegate.swift; fi
+          # Über „Teilen“ geöffnete Dateien merken (SceneDelegate der Capacitor-Vorlage)
+          python3 ios-resources/scene-ergaenzen.py ios/App/App/SceneDelegate.swift
           # LiDAR-Raumscan (RoomPlan) braucht iOS 16
           sed -i '' 's/IPHONEOS_DEPLOYMENT_TARGET = [0-9.]*;/IPHONEOS_DEPLOYMENT_TARGET = 16.0;/g' ios/App/App.xcodeproj/project.pbxproj
 
