@@ -82,7 +82,14 @@ jobs:
         if: steps.pruefen.outputs.los == 'ja'
         run: |
           KEY="$RUNNER_TEMP/AuthKey.p8"
-          printf '%s\n' "$ASC_KEY_P8" > "$KEY"
+          # Schlüssel sauber neu aufbauen (verträgt fehlende Kopfzeilen, Windows-Zeilenenden, alles in einer Zeile)
+          B64=$(printf '%s' "$ASC_KEY_P8" | tr -d '\r' | sed -e 's/-----[A-Z ]*-----//g' | tr -d ' \n\t')
+          { echo "-----BEGIN PRIVATE KEY-----"; printf '%s\n' "$B64" | fold -w 64; echo "-----END PRIVATE KEY-----"; } > "$KEY"
+          echo "Schlüssel: ${#B64} Zeichen (üblich sind etwa 200)"
+          if ! openssl pkey -in "$KEY" -noout 2>/dev/null; then
+            echo "::error::ASC_KEY_P8 ist kein gültiger Schlüssel. Bitte den ganzen Text der Datei AuthKey_....p8 als Secret eintragen."
+            exit 1
+          fi
           VER=$(sed -n "s/.*APP_VERSION *= *'\\([0-9]*\\)'.*/\\1/p" app.js | head -1)
           echo "App-Version $VER, Build ${{ github.run_number }}"
           xcodebuild -project ios/App/App.xcodeproj -scheme App -configuration Release \
