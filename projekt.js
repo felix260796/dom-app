@@ -362,6 +362,7 @@ window.Projekt = (() => {
       await kundeUebernehmen(w.id); view();
     };
     window.Gespraech?.bind(w, list);
+    if ($('#wVis')) $('#wVis').ontoggle = (e) => { e.target.open ? visOffen.add(w.id) : visOffen.delete(w.id); };
     // Angebotsablauf: weitere Knöpfe
     $$('[data-bilder]').forEach((b) => (b.onclick = () => $('#wBilder')?.click()));
     $$('[data-sprung]').forEach((b) => (b.onclick = () => { const z = $('#ab-' + b.dataset.sprung); if (z) window.scrollTo({ top: z.getBoundingClientRect().top + window.scrollY - 110, behavior: 'smooth' }); }));
@@ -441,6 +442,7 @@ window.Projekt = (() => {
   const eurRund = (x) => (+x || 0).toLocaleString('de-DE', { maximumFractionDigits: 0 }) + ' €';
   /** Letztes Schnellangebot des Kunden (z. B. am Telefon genannt). */
   const schnellVon = (k) => (Array.isArray(k?.schnell) && k.schnell.length ? k.schnell[k.schnell.length - 1] : null);
+  const visOffen = new Set(); // Visualisieren aufgeklappt (je Projekt, solange die App offen ist)
   function angebotSeite({ w, list, k, nFotos, anyResult, withPhotos, nBilder, stand }) {
     const st = norm(w.status), s = schrittVon(w), sq = schnellVon(k);
     const fertig = (i) => (s === -1 ? '' : i < s ? 'ok' : i === s ? 'jetzt' : '');
@@ -463,12 +465,11 @@ window.Projekt = (() => {
         : `<button class="kline" id="wKundeWahl">${icon('user')}<span class="kl-t"><b>${esc(w.customer || 'Kunde zuordnen')}</b><small>Kunde auswählen oder neu anlegen</small></span>${icon('chevron', 'pc-chev')}</button>`}
       </div>
 
-      ${kopf(1, 'Vor Ort', 'Gespräch aufnehmen, Räume fotografieren, bei Bedarf visualisieren')}
+      ${kopf(1, 'Vor Ort', 'Gespräch, Fotos, Pläne und Raumscan')}
       ${window.Gespraech?.karte(w, list) || ''}
-      ${k ? `<div class="docs" style="margin-top:12px"><button class="doc" id="wBilder"><span class="d-ico brass">${icon('camera')}</span>
-        <span class="d-t"><b>Fotos aller Räume (Doku)</b><span>${nFotos ? `${nFotos} ${nFotos === 1 ? 'Bild' : 'Bilder'} in diesem Projekt` : 'So viele Fotos wie du willst, nach Ordnern sortiert'}</span></span>${icon('chevron', 'pc-chev')}</button></div>` : ''}
-      <div class="sec-h"><h2>Räume zum Visualisieren</h2>${list.length ? `<span class="count">${list.length}</span>` : ''}</div>
-      <div class="rlist">${list.map((r, i) => `
+      ${k ? `<button id="wBilder" hidden></button>` : ''}
+      <details class="more card vis-zusatz" id="wVis" ${visOffen.has(w.id) ? 'open' : ''}><summary>${icon('sparkle')}<span>Visualisieren<small>${anyResult ? `${list.filter(hasAnyResult).length} von ${list.length} ${list.length === 1 ? 'Raum' : 'Räumen'} visualisiert` : 'Zusatz: Fotos als neuer Raum, hat mit dem Angebot nichts zu tun'}</small></span>${icon('chevron', 'more-chev')}</summary>
+      <div class="rlist" style="margin-top:10px">${list.map((r, i) => `
         <div class="rcard" data-room="${r.id}" role="button" tabindex="0">
           ${r.thumb ? `<img src="${r.thumb}" alt="">` : `<span class="rc-ph">${roomIcon(r.roomType)}</span>`}
           <span class="rc-t"><b>${esc(r.room || roomType(r.roomType).name)}</b><span class="rc-s">${stand(r)}</span></span>
@@ -478,15 +479,16 @@ window.Projekt = (() => {
         ${list.length ? `<button class="add-room" id="wAdd">${icon('plus')} Raum hinzufügen</button>` : ''}
       </div>
       ${list.length ? '' : `
-        <p class="hint">Nur die Räume anlegen, die du visualisieren oder anbieten willst. Die übrigen Fotos kommen oben in „Fotos aller Räume“.</p>
+        <p class="hint">Welchen Raum willst du visualisieren? Alle anderen Fotos kommen oben unter „Fotos“.</p>
         <div class="rtgrid">${ROOM_TYPES.map((r) => `<button class="rt" data-rt="${r.id}">${roomIcon(r.id)}<span>${esc(r.name)}</span></button>`).join('')}</div>`}
       ${list.length > 1 && withPhotos.length ? `
         <button class="btn secondary block" id="wRun" ${running ? 'disabled' : ''}>${icon('sparkle')} ${running === w.id ? 'KI arbeitet …' : 'Alle Räume visualisieren'}</button>
         <p class="hint center" id="wRunInfo">${running === w.id ? '' : `${nBilder} Bilder in ${withPhotos.length} Räumen`}</p>` : ''}
       ${list.length ? `<button class="btn block" id="wZeigen" style="margin-top:12px" ${anyResult ? '' : 'disabled'}>${icon('book')} Mappe dem Kunden zeigen</button>
         ${anyResult ? '' : '<p class="hint center">Die Mappe gibt es, sobald ein Raum visualisiert ist.</p>'}` : ''}
+      </details>
 
-      ${kopf(2, 'Im Büro: Angebot ausarbeiten', list.length ? 'Wünsche aus dem Gespräch stehen schon in jedem Raum' : 'Auch ohne Visualisierung: Raum wählen, Positionen eintragen')}
+      ${kopf(2, 'Im Büro: Angebot ausarbeiten', list.length ? 'Wünsche aus dem Gespräch stehen schon in jedem Raum' : 'Raum fürs Angebot anlegen, Positionen eintragen')}
       <div class="docs">${list.map((r) => `<button class="doc" data-angraum="${r.id}"><span class="d-ico ${r.angebot?.positionen?.length ? 'navy' : 'grey'}">${roomIcon(r.roomType)}</span>
         <span class="d-t"><b>${esc(r.room || roomType(r.roomType).name)}</b><span>${r.angebot?.positionen?.length ? `${r.angebot.positionen.length} Positionen${r.angebot.nr ? ` · Nr. ${esc(r.angebot.nr)}` : ''}` : 'noch nicht ausgearbeitet'}${notizen(r) ? ` · ${notizen(r)} Punkte aus dem Gespräch` : ''}</span></span>${icon('chevron', 'pc-chev')}</button>`).join('')}
         <button class="doc" id="wNeuAng"><span class="d-ico grey">${icon('plus')}</span><span class="d-t"><b>${list.length ? 'Weiteren Raum ins Angebot' : 'Raum fürs Angebot anlegen'}</b><span>z. B. Bad, Küche, Flur. Ohne Fotos und ohne Visualisierung</span></span>${icon('chevron', 'pc-chev')}</button>

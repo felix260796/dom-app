@@ -13,6 +13,12 @@ Textfelder vor und nach den Positionen: Standard `PL.einstellungen.bausteine`, j
 Partner-Angebote übernehmen: `Angebot._intern.subUebernehmen` (Foto, PDF oder Partner-Preisliste, KI liest, Zuschlag `subZuschlag`), Zeilen als eigene Positionen mit `x.sub`.
 Dokumente ansehen mit Zoom: `pdfAnsicht` in `core.js` (Zoom nur, solange ein Dokument offen ist). Listen in den Einstellungen: `listenFeld`/`listenBinden` in `core.js`.
 
+## Neuerungen aus Version 83
+
+Angebotsablauf Schritt 1 „Vor Ort“: Karte „Vor Ort aufnehmen“ (`Gespraech.karte` in `voice.js`) sammelt Gespräch, Fotos, Pläne und Raumscan. „Visualisieren“ ist darunter zugeklappt (`details#wVis` in `projekt.js`) und hat mit dem Angebot nichts zu tun.
+Per Sprache anlegen: Auf der Prüfseite per Sprache oder Text korrigieren (`korrigieren` in `sprache.js`).
+Handler wie `onkeydown = (e) => bedingung && tu()` sind verboten: Rückgabe `false` blockiert jede Taste (so war „Ordner benennen“ kaputt).
+
 ## Bereiche
 
 | Bereich | Dateien | Inhalt |
@@ -35,11 +41,11 @@ Dokumente ansehen mit Zoom: `pdfAnsicht` in `core.js` (Zoom nur, solange ein Dok
 | Angebote-Reiter | `angebote.js`, `schnell.js` | Liste aller Angebote (Offen/Zugesagt/Abgesagt), Schnellangebot |
 | Rechnungen (Finanzen) | `finanzen.js` | Reiter „Rechnungen“ unten (`rechnungen`): Abzurechnen, offene Rechnungen, Eingangsrechnungen (`beleg:<id>`, Datei in `bdatei:<id>`, KI liest aus), Kalkulation Soll/Ist mit Ampel (auch im Projekt und beim Subunternehmer), Auswertung (Umsatz, Zusagequote, Marge, Kundenquellen, Absagegründe; eigene Seite im Menü, `auswertungView`, `state.tab = 'auswertung'`); offene Rechnungen an Kunden aus `rechnung.js` |
 | Rechnungen an Kunden | `rechnung.js` | Abschläge nach Plan, Schlussrechnung aus den Angeboten + Nachträge (`w.nachtraege`), PDF, bezahlt, Zahlungserinnerung/Mahnung (`rechnung:<id>`, Nummern `rechnungZaehler`) |
-| Kalender & Terminmails | `kalender.js`, `supabase/functions/termin-mail/index.ts` | Termine (Kundentermin kann gleich ein Projekt „Besichtigung“ anlegen), Geburtstage, Mails an Team/Kunde/Subunternehmer, Erinnerungen (Cron in Supabase) |
+| Kalender & Terminmails | `kalender.js`, `supabase/functions/termin-mail/index.ts` | Mail-Vorschau im Termin (`mailNachbau` baut die Mail der Cloud nach, bei Änderungen an `mailHtml` mitändern). Termine (Kundentermin kann gleich ein Projekt „Besichtigung“ anlegen), Geburtstage, Mails an Team/Kunde/Subunternehmer, Erinnerungen (Cron in Supabase) |
 | Baustelle | `baustelle.js` | Bestellungen beim Lieferanten (`w.bestellungen`), Abnahmeprotokoll mit Unterschrift auf dem Handy und Mängeln (`w.abnahme`), PDF |
 | Fotos & Doku | `bilder.js` | Ordner je Objekt/Projekt |
 | KI-Visualisierung | `core.js` (KI-Teil), `rooms.js`, `moodboards.js`, `garten.js` | Raumtypen, Moodboards Basic/Standard/Premium, Wärmepumpe im Garten |
-| Gespräch vor Ort | `voice.js` | Sprachaufnahme, Transkript, Kundenwünsche |
+| Gespräch vor Ort | `voice.js`, `gesprpdf.js` | Karte „Vor Ort aufnehmen“ im Projekt = Sammelstelle: Gespräch, Fotos, Pläne (Bilder-Ordner `ordnerPlaene`), LiDAR-Scans (`w.vorOrt.scans`, im Aufmaß übernehmbar). Wer dabei ist (`w.gespraech.dabei`, Sprecher im Transkript), Pause/Weiter/Beenden (`Rec`), in der iPhone-App nativ mit Hintergrund-Audio (`Geraet.aufnahme`, `DomAufnahme` in `DomGeraet.swift`, `UIBackgroundModes audio`). Zusammenfassung und Aufgaben als Text (`w.gespraech.zus`) |
 | Unterlagen (PDF) | `pdf.js`, `baumappe.js` | Kundenmappe, Baumappe für Subunternehmer |
 | Karte | `karte.js`, `vendor/leaflet` | Baustellen auf der Karte, eigene Seite im Menü (`Karte.view`, `state.tab = 'karte'`) |
 | Einstellungen | `einstellungen.js` (`EINST`) | Im Menü (DOM-Logo), kein Reiter. Gruppen Firma, Angebote, Rechnungen, Abläufe, Technik; Suche über alle Felder (`Vorgaben.index`), „KI fragen“ |

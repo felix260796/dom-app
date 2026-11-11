@@ -17,6 +17,8 @@
     warte = requestAnimationFrame(() => {
       warte = 0; setz();
       if (window.scrollY !== 0) return;
+      const a = document.activeElement;
+      if (a && (a.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName))) return;
       window.scrollTo(0, 1);
       requestAnimationFrame(() => { if (window.scrollY <= 1) window.scrollTo(0, 0); });
     });
@@ -52,7 +54,8 @@ function pdfVorschau(files, gespeichert = false) {
     const bg = document.createElement('div');
     bg.className = 'sheet-bg on pdfv';
     bg.innerHTML = `<div class="sheet"><div class="sheet-h"><b>${gespeichert ? 'Gespeichert beim Auftrag' : 'Dokument fertig'}</b></div>
-      <iframe src="${urls[0]}#view=FitH" title="Vorschau"></iframe>
+      <div class="pdfv-zoom"><button type="button" class="icon-btn" data-vz="-1" aria-label="Kleiner">−</button><span data-vzt>100 %</span><button type="button" class="icon-btn" data-vz="1" aria-label="Größer">+</button><span class="hint">oder mit zwei Fingern</span></div>
+      <div class="pdfv-b"><div class="pdfv-in"><iframe src="${urls[0]}#view=FitH" title="Vorschau"></iframe></div></div>
       <div class="pdfv-l">${files.map((f, i) => `<button type="button" class="doc" data-pv="${i}"><span class="d-ico navy">${icon('file')}</span><span class="d-t"><b>${esc(f.name)}</b><span>Ansehen in voller Größe</span></span>${icon('chevron', 'pc-chev')}</button>`).join('')}</div>
       <button class="btn big block" data-ok>${icon('mail')} Senden (Mail, WhatsApp …)</button>
       <button class="btn secondary block" data-zu style="margin-top:8px">${gespeichert ? 'Schließen, später senden' : 'Schließen'}</button>
@@ -61,6 +64,12 @@ function pdfVorschau(files, gespeichert = false) {
     zoomFrei(true);
     const ende = (ok) => { bg.remove(); zoomFrei(false); setTimeout(() => urls.forEach((u) => URL.revokeObjectURL(u)), 60000); res(ok); };
     $$('[data-pv]', bg).forEach((b) => (b.onclick = () => pdfAnsicht(files[+b.dataset.pv], files[+b.dataset.pv].name)));
+    let z = 1;
+    $$('[data-vz]', bg).forEach((b) => (b.onclick = () => {
+      z = Math.min(4, Math.max(1, z + (+b.dataset.vz) * 0.5));
+      const inn = $('.pdfv-in', bg); inn.style.width = z * 100 + '%'; $('iframe', inn).style.height = `calc(52vh * ${z})`;
+      $('[data-vzt]', bg).textContent = Math.round(z * 100) + ' %';
+    }));
     $('[data-ok]', bg).onclick = () => ende(true);
     $('[data-zu]', bg).onclick = () => ende(false);
   });
@@ -88,7 +97,8 @@ async function pdfAnsicht(quelle, name = 'Dokument') {
     ${bild ? '' : '<button type="button" class="pdfz-voll" data-voll>In eigenem Fenster öffnen</button>'}`;
   document.body.appendChild(bg);
   zoomFrei(true);
-  const zeig = () => { $('.pdfz-in', bg).style.width = z * 100 + '%'; $('[data-zt]', bg).textContent = Math.round(z * 100) + ' %'; };
+  // Breiter und im gleichen Maß höher, damit die Seite wirklich größer wird (nicht nur gestaucht)
+  const zeig = () => { const inn = $('.pdfz-in', bg); inn.style.width = z * 100 + '%'; const f = $('iframe', inn); if (f) f.style.height = `calc(var(--voll, 100vh) * 1.6 * ${z})`; $('[data-zt]', bg).textContent = Math.round(z * 100) + ' %'; };
   $$('[data-z]', bg).forEach((b) => (b.onclick = () => { z = Math.min(4, Math.max(1, z + (+b.dataset.z) * 0.5)); zeig(); }));
   $('[data-x]', bg).onclick = () => { bg.remove(); zoomFrei(false); setTimeout(() => URL.revokeObjectURL(url), 60000); };
   if ($('[data-voll]', bg)) $('[data-voll]', bg).onclick = () => { if (!window.open(url, '_blank')) toast('Das Fenster wurde blockiert.'); };

@@ -1,6 +1,6 @@
 'use strict';
 /* DOM – iPhone-Funktionen der App aus TestFlight: Dokumentenscanner, LiDAR-Raumscan, Face ID, Termine im iPhone-Kalender,
- * Kontakte und „An DOM teilen“. Gegenstück: ios-resources/DomGeraet.swift (Plugin „DomGeraet“, nur in der iPhone-App).
+ * Kontakte, „An DOM teilen“ und die Gesprächsaufnahme, die im Hintergrund weiterläuft (aufnahme, für voice.js). Gegenstück: ios-resources/DomGeraet.swift (Plugin „DomGeraet“, nur in der iPhone-App).
  * Jede Funktion hat einen Schalter, der nur für DIESES Gerät gilt (localStorage, wird nicht abgeglichen):
  * Geschäftshandy mit Kalender und Kontakten, Privathandy oder iPad ohne. Kalender und Kontakte sind anfangs aus.
  * Einstellungen › iPhone-Funktionen (Seite 'iphone' in vorgaben.js, Kopf = karte()). Gemeinsame Vorgaben dort:
@@ -199,5 +199,22 @@ window.Geraet = (() => {
   // Face ID sofort beim Laden, noch bevor Daten zu sehen sind
   if (nativ()) { faehigkeiten(); faceIdStart(); }
 
-  return { nativ, an, kann, faehigkeiten, scannen, raumScannen, kontaktWaehlen, kontaktSpeichern, kalenderAbgleich, karte, start };
+  // ---------- Gesprächsaufnahme, die durchläuft (voice.js) ----------
+  // Ohne Schalter: in der iPhone-App immer nativ, weil nur so die Aufnahme bei Sperre, Kamera und Video weiterläuft.
+  const aufnahme = {
+    start: () => P().aufnahmeStart(),
+    pause: () => P().aufnahmePause().catch(() => {}),
+    weiter: () => P().aufnahmeWeiter().catch(() => {}),
+    status: () => P().aufnahmeStatus().catch(() => ({})),
+    /** Beenden; liefert die fertige Aufnahme als Blob (m4a). */
+    async stopp() {
+      const r = await P().aufnahmeStopp();
+      let blob = null;
+      try { const u = window.Capacitor?.convertFileSrc?.('file://' + r.pfad); if (u) { const x = await fetch(u); if (x.ok) blob = await x.blob(); } } catch {}
+      if (!blob?.size) blob = await (await fetch((await P().aufnahmeLesen({ pfad: r.pfad })).data)).blob();
+      return new Blob([blob], { type: 'audio/mp4' });
+    },
+  };
+
+  return { nativ, an, kann, faehigkeiten, aufnahme, scannen, raumScannen, kontaktWaehlen, kontaktSpeichern, kalenderAbgleich, karte, start };
 })();

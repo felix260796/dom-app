@@ -24,7 +24,9 @@
 .kal-f button:not(.on) i { background: transparent; box-shadow: inset 0 0 0 1.5px var(--c); }
 .tart .qchip { display: inline-flex; align-items: center; gap: 6px; }
 .tart .qchip i { width: 9px; height: 9px; border-radius: 50%; background: var(--c); }
-.tart .qchip.on { background: #fff; border-color: var(--c); color: var(--text); box-shadow: inset 0 0 0 1px var(--c); }
+.tart .qchip:not(.on) { border-color: var(--line, #e3dfd6); color: var(--muted); font-weight: 600; }
+.tart .qchip.on { background: var(--c); border-color: var(--c); color: #fff; }
+.tart .qchip.on i { background: #fff; }
 .kal-tag-h { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 14px 4px 8px; }
 .kal-tag-h h2 { margin: 0; font-size: 18px; }
 .kal-neu { display: inline-flex; align-items: center; gap: 4px; border: 0; border-radius: 999px; background: var(--navy); color: #fff; font-weight: 650; font-size: 14px; padding: 7px 13px 7px 9px; }
@@ -64,3 +66,9 @@ input.bad { border-color: var(--danger) !important; background: var(--danger-sof
 .tvorl button { border: 1px solid var(--line, #e3dfd6); background: none; border-radius: 999px; padding: 4px 10px; font: inherit; font-size: 12.5px; color: var(--muted); }
 .tempf .chk { display: flex; align-items: flex-start; gap: 8px; margin: 6px 0; }
 .tempf .chk small { display: block; color: var(--muted); font-size: 12.5px; }
+/* ---------- Vorschau der Termin-Mails ---------- */
+.tvor { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+.tvor-l { display: block; font-size: 13px; color: var(--muted); margin: 10px 0 0; }
+.tvor-f { width: 100%; height: 60vh; border: 0; border-radius: 12px; background: #f3f1ec; }
+.tvor-b { font-size: 13.5px; margin: 0 0 8px; color: var(--muted); }
+.tvor-b b { color: var(--text); }

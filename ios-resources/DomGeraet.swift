@@ -6,6 +6,7 @@
 //   kalender…       Termine in einen eigenen Kalender „DOM“ auf dem iPhone schreiben
 //   kontakt…        Kontakt aus dem Adressbuch wählen, Kunden als Kontakt speichern
 //   geteilteHolen   Dateien, die über „Teilen“ an DOM geschickt wurden (PDF, Bilder)
+//   aufnahme…       Gespräch vor Ort aufnehmen, läuft auch bei Sperre, in anderen Apps und nach Unterbrechungen weiter
 
 import Foundation
 import UIKit
@@ -18,6 +19,7 @@ import ContactsUI
 import UniformTypeIdentifiers
 import RoomPlan
 import simd
+import AVFoundation
 
 /// Nicht in Gebrauch: Das Plugin wird über packageClassList in capacitor.config.json angemeldet (siehe Bau). Bleibt als Rückweg.
 class DomBridgeViewController: CAPBridgeViewController {
@@ -52,6 +54,12 @@ public class DomGeraetPlugin: CAPPlugin, CAPBridgedPlugin, VNDocumentCameraViewC
         CAPPluginMethod(name: "kontaktWaehlen", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "kontaktSpeichern", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "geteilteHolen", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "aufnahmeStart", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "aufnahmePause", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "aufnahmeWeiter", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "aufnahmeStopp", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "aufnahmeLesen", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "aufnahmeStatus", returnType: CAPPluginReturnPromise),
     ]
 
     private var scanCall: CAPPluginCall?
@@ -359,6 +367,183 @@ public class DomGeraetPlugin: CAPPlugin, CAPBridgedPlugin, VNDocumentCameraViewC
             if url.path.contains("/Inbox/") { try? FileManager.default.removeItem(at: url) }
         }
         call.resolve(["dateien": dateien])
+    }
+
+    // MARK: Gesprächsaufnahme (läuft durch)
+
+    @objc func aufnahmeStart(_ call: CAPPluginCall) {
+        let los = {
+            DispatchQueue.main.async {
+                do { try DomAufnahme.shared.start(); call.resolve(DomAufnahme.shared.status()) }
+                catch { call.reject("Aufnahme ging nicht: " + error.localizedDescription) }
+            }
+        }
+        switch AVAudioSession.sharedInstance().recordPermission {
+        case .granted: los()
+        case .denied: call.reject("Kein Zugriff aufs Mikrofon. Bitte in den iPhone-Einstellungen bei DOM das Mikrofon erlauben.")
+        default:
+            AVAudioSession.sharedInstance().requestRecordPermission { ok in
+                if ok { los() } else { call.reject("Kein Zugriff aufs Mikrofon. Bitte in den iPhone-Einstellungen bei DOM das Mikrofon erlauben.") }
+            }
+        }
+    }
+
+    @objc func aufnahmePause(_ call: CAPPluginCall) {
+        DispatchQueue.main.async { DomAufnahme.shared.pause(); call.resolve(DomAufnahme.shared.status()) }
+    }
+
+    @objc func aufnahmeWeiter(_ call: CAPPluginCall) {
+        DispatchQueue.main.async { DomAufnahme.shared.weiter(); call.resolve(DomAufnahme.shared.status()) }
+    }
+
+    @objc func aufnahmeStatus(_ call: CAPPluginCall) {
+        DispatchQueue.main.async { call.resolve(DomAufnahme.shared.status()) }
+    }
+
+    /// Beenden. Liefert den Pfad der fertigen Datei; die App holt sie über convertFileSrc oder aufnahmeLesen.
+    @objc func aufnahmeStopp(_ call: CAPPluginCall) {
+        DispatchQueue.main.async {
+            let n = DomAufnahme.shared.unterbrechungen
+            DomAufnahme.shared.stopp { url, fehler in
+                if let url = url { call.resolve(["pfad": url.path, "unterbrechungen": n]) }
+                else { call.reject(fehler ?? "Die Aufnahme ist leer.") }
+            }
+        }
+    }
+
+    /// Ersatzweg: fertige Datei als Base64 (falls die App die Datei nicht direkt laden kann).
+    @objc func aufnahmeLesen(_ call: CAPPluginCall) {
+        let pfad = call.getString("pfad") ?? ""
+        guard pfad.contains("/dom-aufnahme/"), let d = FileManager.default.contents(atPath: pfad) else {
+            call.reject("Aufnahme-Datei nicht gefunden.")
+            return
+        }
+        call.resolve(["data": "data:audio/mp4;base64," + d.base64EncodedString()])
+    }
+}
+
+/// Gesprächsaufnahme vor Ort, die durchläuft (Wunsch Felix): bei Bildschirmsperre, in anderen Apps, beim Fotografieren.
+/// Nimmt iOS das Mikrofon kurz weg (Video in der Kamera-App, Anruf, Sprachmemo), endet nur das laufende Teilstück.
+/// Danach geht es von selbst mit einem neuen Teil weiter (Unterbrechung vorbei, App wieder vorne, Wächter alle 3 Sekunden).
+/// „Beenden“ fügt alle Teile zu einer m4a-Datei zusammen. Braucht UIBackgroundModes „audio“ (info-zusatz.plist).
+final class DomAufnahme: NSObject, AVAudioRecorderDelegate {
+    static let shared = DomAufnahme()
+    private var recorder: AVAudioRecorder?
+    private var teile: [URL] = []
+    private var waechter: Timer?
+    private(set) var aktiv = false
+    private(set) var pausiert = false
+    private(set) var unterbrechungen = 0
+    private var ordner: URL { FileManager.default.temporaryDirectory.appendingPathComponent("dom-aufnahme", isDirectory: true) }
+
+    override init() {
+        super.init()
+        let nc = NotificationCenter.default
+        nc.addObserver(self, selector: #selector(unterbrochen(_:)), name: AVAudioSession.interruptionNotification, object: nil)
+        nc.addObserver(self, selector: #selector(nachholen), name: UIApplication.didBecomeActiveNotification, object: nil)
+        nc.addObserver(self, selector: #selector(nachholen), name: AVAudioSession.mediaServicesWereResetNotification, object: nil)
+    }
+
+    private func sitzung() throws {
+        let s = AVAudioSession.sharedInstance()
+        try s.setCategory(.playAndRecord, mode: .default, options: [.allowBluetooth, .defaultToSpeaker])
+        try s.setActive(true)
+    }
+
+    private func neuesTeil() throws {
+        try sitzung()
+        try FileManager.default.createDirectory(at: ordner, withIntermediateDirectories: true)
+        let url = ordner.appendingPathComponent("teil-\(teile.count + 1)-\(Int(Date().timeIntervalSince1970)).m4a")
+        let einst: [String: Any] = [
+            AVFormatIDKey: kAudioFormatMPEG4AAC,
+            AVSampleRateKey: 22050,
+            AVNumberOfChannelsKey: 1,
+            AVEncoderBitRateKey: 32000,
+        ]
+        let r = try AVAudioRecorder(url: url, settings: einst)
+        r.delegate = self
+        guard r.record() else { throw NSError(domain: "DOM", code: 1, userInfo: [NSLocalizedDescriptionKey: "Das Mikrofon ist gerade belegt."]) }
+        recorder = r
+        teile.append(url)
+    }
+
+    func start() throws {
+        abbrechen()
+        try? FileManager.default.removeItem(at: ordner)
+        teile = []
+        pausiert = false
+        unterbrechungen = 0
+        try neuesTeil()
+        aktiv = true
+        waechter = Timer.scheduledTimer(withTimeInterval: 3, repeats: true) { [weak self] _ in self?.nachholen() }
+    }
+
+    func pause() {
+        guard aktiv, !pausiert else { return }
+        pausiert = true
+        recorder?.pause()
+    }
+
+    func weiter() {
+        guard aktiv, pausiert else { return }
+        pausiert = false
+        if recorder?.record() != true { recorder?.stop(); try? neuesTeil() }
+    }
+
+    /// Läuft die Aufnahme, obwohl sie laufen sollte? Sonst neues Teilstück beginnen.
+    @objc private func nachholen() {
+        guard aktiv, !pausiert, recorder?.isRecording != true else { return }
+        recorder?.stop()
+        try? neuesTeil()
+    }
+
+    @objc private func unterbrochen(_ n: Notification) {
+        guard aktiv, let wert = n.userInfo?[AVAudioSessionInterruptionTypeKey] as? UInt,
+              let typ = AVAudioSession.InterruptionType(rawValue: wert) else { return }
+        if typ == .began {
+            unterbrechungen += 1
+            recorder?.stop() // Teilstück bleibt erhalten
+        } else {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in self?.nachholen() }
+        }
+    }
+
+    func abbrechen() {
+        waechter?.invalidate(); waechter = nil
+        recorder?.stop(); recorder = nil
+        aktiv = false; pausiert = false
+    }
+
+    /// Beenden: alle Teile zu einer Datei zusammenfügen. fertig(Datei, Fehler)
+    func stopp(_ fertig: @escaping (URL?, String?) -> Void) {
+        let liste = teile
+        abbrechen()
+        try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
+        let da = liste.filter { (try? $0.checkResourceIsReachable()) == true && ((try? FileManager.default.attributesOfItem(atPath: $0.path)[.size] as? Int) ?? 0) > 0 }
+        guard !da.isEmpty else { return fertig(nil, "Die Aufnahme ist leer.") }
+        if da.count == 1 { return fertig(da[0], nil) }
+        let comp = AVMutableComposition()
+        guard let spur = comp.addMutableTrack(withMediaType: .audio, preferredTrackID: kCMPersistentTrackID_Invalid) else { return fertig(da.last, nil) }
+        var zeit = CMTime.zero
+        for url in da {
+            let a = AVURLAsset(url: url)
+            guard let s = a.tracks(withMediaType: .audio).first else { continue }
+            let bereich = CMTimeRange(start: .zero, duration: a.duration)
+            if (try? spur.insertTimeRange(bereich, of: s, at: zeit)) != nil { zeit = CMTimeAdd(zeit, a.duration) }
+        }
+        let ziel = ordner.appendingPathComponent("gespraech-\(Int(Date().timeIntervalSince1970)).m4a")
+        guard let exp = AVAssetExportSession(asset: comp, presetName: AVAssetExportPresetAppleM4A) else { return fertig(da.last, nil) }
+        exp.outputURL = ziel
+        exp.outputFileType = .m4a
+        exp.exportAsynchronously {
+            DispatchQueue.main.async {
+                if exp.status == .completed { fertig(ziel, nil) } else { fertig(nil, "Zusammenfügen ging nicht: " + (exp.error?.localizedDescription ?? "")) }
+            }
+        }
+    }
+
+    func status() -> [String: Any] {
+        ["aktiv": aktiv, "pausiert": pausiert, "laeuft": recorder?.isRecording == true, "teile": teile.count, "unterbrechungen": unterbrechungen]
     }
 }
 

@@ -115,6 +115,9 @@ const VORGABEN = {
     ]],
     ['Gespräche und Nachfassen', [
       { k: 'gespraechArten', l: 'Arten der Gesprächsaufnahme (eine Zeile je Art)', t: 'liste', d: ['Vor-Ort-Besichtigung', 'Abnahmegespräch', 'Krisengespräch', 'Baubesprechung'] },
+      { k: 'gespraechDabei', l: 'Weitere Personen, die bei Gesprächen oft dabei sind (eine Zeile je Person)', t: 'liste', d: ['Ehepartner', 'Architekt', 'Hausverwaltung', 'Subunternehmer'], h: 'Vor der Aufnahme tippst du an, wer dabei ist. Felix, Deniel und der Kunde stehen immer zur Wahl. Die KI schreibt dann im Transkript vor jede Aussage, wer spricht.' },
+      { k: 'gespraechZusammenfassung', l: 'Zusammenfassung und Aufgaben nach jeder Aufnahme automatisch erstellen', t: 'janein', d: 'ja', h: 'Steht danach als Text im Projekt unter „Gespräch vor Ort“, zum Ausklappen.' },
+      { k: 'ordnerPlaene', l: 'Bilder-Ordner für gescannte Pläne', t: 'zeile', d: 'Pläne', h: 'Pläne, die du unter „Gespräch vor Ort“ scannst oder fotografierst, landen in diesem Ordner beim Projekt.' },
       { k: 'nachfassenKalender', l: 'Nachfassen als Eintrag in den Kalender', t: 'janein', d: 'ja', h: 'Am Tag, an dem nachgefasst werden soll (Tage siehe Abläufe & Listen), steht ein Eintrag im Kalender.' },
     ]],
   ],

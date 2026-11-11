@@ -102,6 +102,9 @@ jobs:
           grep -q capacitorDidRegisterForRemoteNotifications ios/App/App/AppDelegate.swift
           # iPhone-Funktionen (geraet.js): eigenes Plugin, Erlaubnisse, „Öffnen in DOM“ für PDFs und Bilder
           $PB -c "Merge ios-resources/info-zusatz.plist" $P
+          # Gesprächsaufnahme läuft im Hintergrund weiter (UIBackgroundModes audio)
+          $PB -c "Print :UIBackgroundModes" $P | grep -q audio || $PB -c "Add :UIBackgroundModes: string audio" $P
+          $PB -c "Print :UIBackgroundModes" $P | grep -q audio
           cp ios-resources/DomGeraet.swift ios/App/App/DomGeraet.swift
           gem list -i xcodeproj >/dev/null || sudo gem install xcodeproj --no-document
           ruby ios-resources/projekt-ergaenzen.rb DomGeraet.swift

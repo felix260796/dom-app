@@ -5,11 +5,14 @@
  * Telefon, E-Mail, Projekt und Termin heraus → Prüfseite mit allen Feldern → „Anlegen“.
  * Ein bekannter Kunde wird erkannt (gleicher Name), dann kommt nur Objekt/Projekt/Termin dazu.
  * Der Termin öffnet danach den normalen Termin-Editor (dort Mails an Team und Kunde wie gewohnt).
+ * Auf der Prüfseite lässt sich per Sprache oder Text korrigieren und ergänzen (korrigieren, Wunsch Felix).
  * Statt zu sprechen kann man auch tippen (oder die Diktierfunktion der iPhone-Tastatur nutzen).
  * Vorgaben: 'spracheDauer' (Termindauer ohne Endzeit), 'spracheProjekt' (Projekt bei Kundenterminen vorschlagen). */
 window.Sprache = (() => {
   let rec = null, stream = null, chunks = [], t0 = 0, uhr = null;
   let zurueck = null;
+  // Wohin die Aufnahme geht: Startseite (neu auswerten) oder Prüfseite (Korrektur/Ergänzung, Wunsch Felix)
+  let ziel = { mic: '#spMic', status: '#spStatus', fertig: (teile) => auswerten(teile) };
   const iso = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
   const plusMin = (hm, n) => { const [h, m] = hm.split(':').map(Number); const x = h * 60 + m + n; return `${String(Math.floor(x / 60) % 24).padStart(2, '0')}:${String(x % 60).padStart(2, '0')}`; };
   const klein = (s) => String(s || '').toLowerCase().replace(/\s+/g, ' ').trim();
@@ -29,6 +32,7 @@ window.Sprache = (() => {
         <textarea id="spText" rows="3" placeholder="Hier geht auch die Diktiertaste der iPhone-Tastatur"></textarea>
         <button class="btn" id="spGo" style="margin-top:10px;width:100%">Auswerten</button>
       </div>`;
+    ziel = { mic: '#spMic', status: '#spStatus', fertig: (teile) => auswerten(teile) };
     $('#spMic').onclick = () => (rec ? stopp() : start());
     $('#spGo').onclick = () => { const t = $('#spText').value.trim(); if (t) auswerten([{ text: 'Text:\n' + t }]); };
   }
@@ -48,26 +52,52 @@ window.Sprache = (() => {
       stream?.getTracks().forEach((t) => t.stop()); stream = null; rec = null; clearInterval(uhr);
       if (abbruch || !chunks.length) return;
       const blob = new Blob(chunks, { type: typ });
-      blob.arrayBuffer().then((buf) => auswerten([{ text: 'Sprachaufnahme:' }, { inline_data: { mime_type: geminiAudioMime(blob), data: bufToB64(buf) } }]));
+      const z = ziel;
+      blob.arrayBuffer().then((buf) => z.fertig([{ text: 'Sprachaufnahme:' }, { inline_data: { mime_type: geminiAudioMime(blob), data: bufToB64(buf) } }]));
     };
     rec.start(1000); t0 = Date.now();
-    $('#spMic')?.classList.add('on');
-    const st = () => { const s = Math.round((Date.now() - t0) / 1000); if ($('#spStatus')) $('#spStatus').textContent = `Ich höre zu … ${s} s. Zum Beenden tippen.`; if (s >= 180) stopp(); };
+    $(ziel.mic)?.classList.add('on');
+    const st = () => { const s = Math.round((Date.now() - t0) / 1000); if ($(ziel.status)) $(ziel.status).textContent = `Ich höre zu … ${s} s. Zum Beenden tippen.`; if (s >= 180) stopp(); };
     st(); uhr = setInterval(st, 1000);
   }
   function stopp(abbruch) {
     if (!rec) return;
     rec.abbruch = !!abbruch;
     try { rec.stop(); } catch {}
-    $('#spMic')?.classList.remove('on');
+    $(ziel.mic)?.classList.remove('on');
   }
 
   // ---------- KI liest heraus ----------
+  const einleitung = () => { const heute = new Date(); return `Du hilfst einer Sanierungsfirma (Bad, Wohnung). Heute ist ${heute.toLocaleDateString('de-DE', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })} (${iso(heute)}).`; };
+  const REGELN = `Regeln: Wochentage ohne Datum meinen den nächsten solchen Tag ab morgen. „Morgen“, „übermorgen“, „nächste Woche“ entsprechend auflösen.
+Telefonnummern ohne Leerzeichen-Fehler, E-Mails klein und mit @ (aus „at“ wird @, aus „Punkt“ wird .). Schreibe Namen und Straßen korrekt groß.`;
+  const FORM = `{"transkript":"","kunde":{"anrede":"","vorname":"","name":"","telefon":"","email":""},"adresse":"","projekt":{"anlegen":true,"titel":""},"termin":{"anlegen":true,"titel":"","datum":"JJJJ-MM-TT","von":"HH:MM","bis":"HH:MM","art":"kunde|baustelle|buero|privat"},"notiz":""}`;
+  const lesen = (txt) => JSON.parse(String(txt).replace(/^```(json)?|```$/g, '').trim());
+
+  /** Nachträglich per Sprache oder Text ändern oder ergänzen (Wunsch Felix): „Nein, Meier mit ei“, „Termin lieber um 11“. */
+  async function korrigieren(stand, teile) {
+    const st = $('#spKStatus'); if (st) st.textContent = 'Wird eingearbeitet …';
+    $('#spKGo') && ($('#spKGo').disabled = true);
+    const prompt = `${einleitung()}
+Der Nutzer legt per Sprache einen Kunden, ein Projekt und/oder einen Termin an. Das ist der bisherige Stand:
+${JSON.stringify(stand)}
+Jetzt sagt oder schreibt er eine Korrektur oder Ergänzung (z. B. „Nein, der Name ist Meier mit ei“, „füge noch die Telefonnummer hinzu“, „Termin lieber am Mittwoch“, „kein Termin“).
+Arbeite die Änderung in den Stand ein. Alles, was er nicht ändert, bleibt genau so. Ergänzungen zu Wünschen oder Besonderheiten kommen in "notiz" dazu.
+"transkript": der bisherige Text, dahinter die neue Aussage wörtlich.
+${REGELN}
+Antworte nur mit JSON in genau dieser Form: ${FORM}`;
+    try { pruefen(lesen(await geminiText([{ text: prompt }, ...teile], true)), true); }
+    catch (e) {
+      if (st) st.textContent = 'Das hat nicht geklappt';
+      toast('Konnte nicht eingearbeitet werden: ' + e.message, 6000);
+      $('#spKGo') && ($('#spKGo').disabled = false);
+    }
+  }
+
   async function auswerten(teile) {
     const st = $('#spStatus'); if (st) st.textContent = 'Wird verstanden …';
     $('#spGo') && ($('#spGo').disabled = true);
-    const heute = new Date();
-    const prompt = `Du hilfst einer Sanierungsfirma (Bad, Wohnung). Heute ist ${heute.toLocaleDateString('de-DE', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })} (${iso(heute)}).
+    const prompt = `${einleitung()}
 Der Nutzer will per Sprache einen Kunden, ein Projekt und/oder einen Termin anlegen. Lies aus der Aufnahme bzw. dem Text alles heraus.
 Antworte nur mit JSON in genau dieser Form (fehlende Angaben als leerer Text):
 {"transkript":"was gesagt wurde, wörtlich",
@@ -76,8 +106,7 @@ Antworte nur mit JSON in genau dieser Form (fehlende Angaben als leerer Text):
  "projekt":{"anlegen":true,"titel":"kurz, z. B. Bad, Küche, Wohnung komplett"},
  "termin":{"anlegen":true,"titel":"kurz, z. B. Besichtigung Bad","datum":"JJJJ-MM-TT","von":"HH:MM","bis":"HH:MM","art":"kunde|baustelle|buero|privat"},
  "notiz":"alles Weitere, z. B. Wünsche, Schlüssel, Besonderheiten"}
-Regeln: Wochentage ohne Datum meinen den nächsten solchen Tag ab morgen. „Morgen“, „übermorgen“, „nächste Woche“ entsprechend auflösen.
-Telefonnummern ohne Leerzeichen-Fehler, E-Mails klein und mit @ (aus „at“ wird @, aus „Punkt“ wird .). Schreibe Namen und Straßen korrekt groß.
+${REGELN}
 termin.anlegen nur true, wenn ein Termin genannt wird. projekt.anlegen true, wenn eine Arbeit/ein Raum genannt wird oder es um eine Besichtigung geht.`;
     let d;
     try {
@@ -105,7 +134,7 @@ termin.anlegen nur true, wenn ein Termin genannt wird. projekt.anlegen true, wen
     return k.objekte.find((o) => klein(o.adresse).includes(a))?.id || '';
   }
 
-  function pruefen(d) {
+  function pruefen(d, korrigiert = false) {
     const kd = { anrede: '', vorname: '', name: '', telefon: '', email: '', ...(d.kunde || {}) };
     const pr = { anlegen: false, titel: '', ...(d.projekt || {}) };
     const te = { anlegen: false, titel: '', datum: '', von: '', bis: '', art: 'kunde', ...(d.termin || {}) };
@@ -117,9 +146,14 @@ termin.anlegen nur true, wenn ein Termin genannt wird. projekt.anlegen true, wen
     const render = () => {
       const k = Kunden.byId(kundeId);
       const oid = objektZu(k, d.adresse);
-      header('Bitte prüfen', 'Stimmt alles? Dann „Anlegen“.', { label: 'Zurück', fn: () => view() });
+      header('Bitte prüfen', 'Stimmt alles? Dann „Anlegen“.', { label: 'Zurück', fn: () => { stopp(true); view(); } });
       main().innerHTML = `
         ${d.transkript ? `<div class="card sp-zitat"><span class="muted">Verstanden:</span> „${esc(d.transkript)}“</div>` : ''}
+        <div class="card sp-korr">
+          <button class="sp-mic sm" id="spKMic" aria-label="Korrektur sprechen">${icon('mic')}</button>
+          <span><b>Etwas ändern oder ergänzen?</b><span class="muted" id="spKStatus">${korrigiert ? 'Eingearbeitet. Noch etwas? Einfach nochmal tippen.' : 'Tippen und sagen, z. B. „Nein, Meier mit ei“ oder „Termin lieber um 11“.'}</span></span>
+        </div>
+        <div class="sp-korr-t"><input type="text" id="spKText" placeholder="Oder hier schreiben" autocomplete="off"><button class="btn small" id="spKGo">Übernehmen</button></div>
         <div class="card kform">
           <h3 class="sp-h">Kunde</h3>
           ${tr.length ? `<label>Bekannter Kunde?</label><select id="spK"><option value="">Neuer Kunde</option>${tr.map((x) => `<option value="${x.id}" ${x.id === kundeId ? 'selected' : ''}>${esc(Kunden.name(x))} (${esc(x.nr)})</option>`).join('')}</select>` : ''}
@@ -150,6 +184,17 @@ termin.anlegen nur true, wenn ein Termin genannt wird. projekt.anlegen true, wen
       $('#spP').onchange = (e) => { $('#spPBox').hidden = !e.target.checked; };
       $('#spT').onchange = (e) => { $('#spTBox').hidden = !e.target.checked; };
       $('#spOk').onclick = () => anlegen();
+      // Korrektur per Sprache oder Text: aktueller Stand (mit eigenen Änderungen) geht an die KI
+      const stand = () => { merken(); return { transkript: d.transkript || '', kunde: kundeId ? { ...kd, name: Kunden.name(Kunden.byId(kundeId)) } : kd, adresse: d.adresse || '', projekt: pr, termin: te, notiz: d.notiz || '' }; };
+      $('#spKMic').onclick = () => {
+        if (rec) return stopp();
+        const s0 = stand();
+        ziel = { mic: '#spKMic', status: '#spKStatus', fertig: (teile) => korrigieren(s0, teile) };
+        start();
+      };
+      const kText = () => { const v = $('#spKText').value.trim(); if (v) korrigieren(stand(), [{ text: 'Korrektur:\n' + v }]); };
+      $('#spKGo').onclick = kText;
+      $('#spKText').onkeydown = (e) => { if (e.key === 'Enter') { e.preventDefault(); kText(); } };
     };
     const wert = (id) => $('#' + id)?.value.trim() ?? null;
     /** Eingaben vor einem Neuzeichnen übernehmen. */
@@ -160,6 +205,7 @@ termin.anlegen nur true, wenn ein Termin genannt wird. projekt.anlegen true, wen
     };
 
     async function anlegen() {
+      stopp(true);
       merken();
       let k = Kunden.byId(kundeId);
       if (!k && !kd.name) { toast('Bitte einen Namen eintragen.'); return; }
