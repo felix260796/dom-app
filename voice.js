@@ -6,7 +6,7 @@
 const VOICE_SEGMENT_SEC = 300;            // Audio wird in 5-Minuten-Stücke geteilt (API-Limit 20 MB pro Anfrage)
 const VOICE_RATE = 16000;                 // 16 kHz Mono reicht für Sprache
 
-const voice = { rec: null, recId: null, recLabel: '', stream: null, timer: null, started: 0, job: null, jobId: null, step: '', error: null, wake: null, finish: null };
+const voice = { rec: null, recId: null, recLabel: '', stream: null, timer: null, started: 0, paused: 0, pauseMs: 0, dabei: [], job: null, jobId: null, step: '', error: null, wake: null, finish: null };
 
 // ---------- Gemini (Text/Audio) ----------
 // Text-/Audio-Modell: textModel() in core.js (wechselt automatisch, wenn Google ein Modell abschaltet)
@@ -73,7 +73,11 @@ function bufToB64(buf) {
 }
 
 // ---------- Auswertung ----------
-const TRANSCRIBE_PROMPT = (k, n) => `Transkribiere dieses Gespräch auf Deutsch wortgetreu, aber ohne Füllwörter. Es ist ein Vor-Ort-Termin einer Sanierungsfirma mit Kunden${n > 1 ? ` (Teil ${k + 1} von ${n})` : ''}. Kennzeichne Sprecherwechsel mit neuen Zeilen. Gib nur das Transkript aus. Ist nichts Verständliches zu hören, antworte nur mit: (keine Sprache erkannt)`;
+// Sprecher erkennen (Wunsch Felix): Vor der Aufnahme wird angetippt, wer dabei ist (voice.dabei).
+const TRANSCRIBE_PROMPT = (k, n, dabei = []) => `Transkribiere dieses Gespräch auf Deutsch wortgetreu, aber ohne Füllwörter. Es ist ein Vor-Ort-Termin einer Sanierungsfirma mit Kunden${n > 1 ? ` (Teil ${k + 1} von ${n})` : ''}.
+${dabei.length ? `Dabei waren: ${dabei.join(', ')}.` : 'Wer dabei war, ist nicht bekannt.'}
+Beginne bei jedem Sprecherwechsel eine neue Zeile und schreibe den Sprecher davor, z. B. „Felix: …“ oder „Kunde: …“. Nutze die Namen von oben. Erkenne die Sprecher an Stimme und Inhalt: Die Firma fragt nach, erklärt, nennt Maße, Abläufe und Preise; der Kunde erzählt seine Wünsche und fragt nach Kosten und Terminen. Bist du unsicher, wer von der Firma spricht, schreibe „Firma:“; bei Kundenseite „Kunde:“.
+Gib nur das Transkript aus. Ist nichts Verständliches zu hören, antworte nur mit: (keine Sprache erkannt)`;
 /** Dateityp so angeben, wie Gemini ihn kennt (iPhone nimmt als audio/mp4 bzw. m4a auf). */
 function geminiAudioMime(blob) {
   const t = (blob.type || '').split(';')[0].toLowerCase(), n = (blob.name || '').toLowerCase();
@@ -105,7 +109,7 @@ async function geminiUpload(blob, mime, onStep) {
   return file.uri;
 }
 const MB = 1024 * 1024;
-async function transcribeAudio(blob, onStep) {
+async function transcribeAudio(blob, onStep, dabei = []) {
   if (!blob?.size) throw new Error('Die Aufnahme ist leer. Bitte Mikrofon-Zugriff prüfen und nochmal aufnehmen.');
   onStep('Audio wird vorbereitet …');
   let segments = null;
@@ -115,16 +119,16 @@ async function transcribeAudio(blob, onStep) {
   if (segments) {
     for (let k = 0; k < segments.length; k++) {
       onStep(`Transkribiere${segments.length > 1 ? ` Teil ${k + 1} von ${segments.length}` : ''} …`);
-      parts.push((await geminiText([{ text: TRANSCRIBE_PROMPT(k, segments.length) }, { inline_data: { mime_type: 'audio/wav', data: bufToB64(segments[k]) } }])).trim());
+      parts.push((await geminiText([{ text: TRANSCRIBE_PROMPT(k, segments.length, dabei) }, { inline_data: { mime_type: 'audio/wav', data: bufToB64(segments[k]) } }])).trim());
     }
   } else if (blob.size <= 12 * MB) {
     onStep('Transkribiere …');
-    parts.push((await geminiText([{ text: TRANSCRIBE_PROMPT(0, 1) }, { inline_data: { mime_type: geminiAudioMime(blob), data: bufToB64(await blob.arrayBuffer()) } }])).trim());
+    parts.push((await geminiText([{ text: TRANSCRIBE_PROMPT(0, 1, dabei) }, { inline_data: { mime_type: geminiAudioMime(blob), data: bufToB64(await blob.arrayBuffer()) } }])).trim());
   } else {
     const mime = geminiAudioMime(blob);
     const uri = await geminiUpload(blob, mime, onStep);
     onStep('Transkribiere das Gespräch (bei langen Aufnahmen 1–3 Minuten) …');
-    parts.push((await geminiText([{ text: TRANSCRIBE_PROMPT(0, 1) }, { file_data: { mime_type: mime, file_uri: uri } }])).trim());
+    parts.push((await geminiText([{ text: TRANSCRIBE_PROMPT(0, 1, dabei) }, { file_data: { mime_type: mime, file_uri: uri } }])).trim());
   }
   const t = parts.join('\n').trim();
   if (!t || /^\(keine Sprache erkannt\)$/i.test(t)) throw new Error('In der Aufnahme war keine Sprache zu hören. War das Mikrofon frei?');
@@ -194,6 +198,7 @@ const Rec = {
   active: () => !!voice.rec,
   async start(id, label, onBlob) {
     if (voice.rec) return false;
+    if (window.Geraet?.nativ?.()) return Rec.startNativ(id, label, onBlob);
     if (!navigator.mediaDevices?.getUserMedia || !window.MediaRecorder) { toast('Aufnahme wird auf diesem Gerät nicht unterstützt. Bitte Audio importieren.', 5000); return false; }
     // Für die Pegelanzeige: AudioContext gleich beim Antippen anlegen (iPhone erlaubt das nur direkt nach dem Tippen)
     try { const AC = window.AudioContext || window.webkitAudioContext; voice.meterCtx = AC ? new AC() : null; } catch { voice.meterCtx = null; }
@@ -213,7 +218,7 @@ const Rec = {
       clearInterval(voice.timer); meterStop(); voice.stream?.getTracks().forEach((t) => t.stop());
       voice.wake?.release?.().catch(() => {}); voice.wake = null;
       const blob = new Blob(chunks, { type: (rec.mimeType || mime || 'audio/mp4').split(';')[0] });
-      voice.rec = null; voice.recId = null; voice.finish = null;
+      voice.rec = null; voice.recId = null; voice.finish = null; voice.paused = 0;
       recBar();
       if (!blob.size) { voice.error = { id, msg: 'Die Aufnahme ist leer angekommen. Bitte App beim Aufnehmen geöffnet lassen und nochmal versuchen.' }; voiceRefresh(id); return; }
       onBlob(blob);
@@ -227,9 +232,9 @@ const Rec = {
     voice.stream.getAudioTracks().forEach((t) => (t.onended = () => rec.state !== 'inactive' && rec.stop()));
     // Kein Zeitraster: das iPhone erzeugt sonst Stücke, die sich später nicht mehr zusammensetzen lassen
     rec.start();
-    voice.rec = rec; voice.recId = id; voice.recLabel = label; voice.started = Date.now();
+    voice.rec = rec; voice.recId = id; voice.recLabel = label; voice.started = Date.now(); voice.paused = 0; voice.pauseMs = 0;
     voice.timer = setInterval(() => {
-      const s = Math.floor((Date.now() - voice.started) / 1000);
+      const s = Rec.sekunden();
       const el = $('#recbar-t'); if (el) el.textContent = `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
       if (s >= REC_MAX_MIN * 60) { toast(`Nach ${REC_MAX_MIN} Minuten automatisch gestoppt. Für mehr einfach neu starten.`, 5000); Rec.stop(); }
     }, 1000);
@@ -237,7 +242,52 @@ const Rec = {
     meterStart();
     return true;
   },
-  stop() { if (!voice.rec) return; voice.rec.state !== 'inactive' ? voice.rec.stop() : voice.finish?.(); },
+  stop() { if (!voice.rec) return; voice.rec.nativ ? voice.rec.stop() : voice.rec.state !== 'inactive' ? voice.rec.stop() : voice.finish?.(); },
+  // Pause und Weiter (Wunsch Felix): bleibt eine Aufnahme. Erst „Beenden“ schließt sie ab, dann wird ausgewertet.
+  kannPause: () => !!window.Geraet?.nativ?.() || typeof window.MediaRecorder?.prototype?.pause === 'function',
+  /** iPhone-App: Aufnahme im nativen Teil (geraet.js, DomGeraet.swift). Läuft weiter bei Bildschirmsperre, in der
+   * Kamera-App und anderen Apps; nach einer Unterbrechung (Video, Anruf) geht sie von selbst weiter. Roter Punkt oben. */
+  async startNativ(id, label, onBlob) {
+    try { await Geraet.aufnahme.start(); }
+    catch (e) { toast(String(e?.message || e || 'Aufnahme ging nicht.'), 6000); return false; }
+    let done = false;
+    const rec = {
+      nativ: true, state: 'recording',
+      pause() { this.state = 'paused'; Geraet.aufnahme.pause(); },
+      resume() { this.state = 'recording'; Geraet.aufnahme.weiter(); },
+      async stop() {
+        if (done) return; done = true; this.state = 'inactive';
+        clearInterval(voice.timer);
+        voice.rec = null; voice.recId = null; voice.finish = null; voice.paused = 0;
+        recBar();
+        let blob = null;
+        try { toast('Aufnahme wird gespeichert …', 3000); blob = await Geraet.aufnahme.stopp(); }
+        catch (e) { voice.error = { id, msg: String(e?.message || e || 'Aufnahme nicht gespeichert.') }; voiceRefresh(id); return; }
+        onBlob(blob);
+        voiceRefresh(id);
+      },
+    };
+    voice.finish = () => rec.stop();
+    voice.rec = rec; voice.recId = id; voice.recLabel = label; voice.started = Date.now(); voice.paused = 0; voice.pauseMs = 0;
+    voice.timer = setInterval(() => {
+      const s = Rec.sekunden();
+      const el = $('#recbar-t'); if (el) el.textContent = `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+      if (s >= REC_MAX_MIN * 60) { toast(`Nach ${REC_MAX_MIN} Minuten automatisch gestoppt. Für mehr einfach neu starten.`, 5000); Rec.stop(); }
+    }, 1000);
+    recBar();
+    return true;
+  },
+  sekunden: () => Math.floor((Date.now() - voice.started - voice.pauseMs - (voice.paused ? Date.now() - voice.paused : 0)) / 1000),
+  pause() {
+    if (!voice.rec || voice.paused || voice.rec.state !== 'recording') return;
+    try { voice.rec.pause(); } catch { return; }
+    voice.paused = Date.now(); recBar(); voiceRefresh(voice.recId);
+  },
+  weiter() {
+    if (!voice.rec || !voice.paused) return;
+    try { voice.rec.resume(); } catch {}
+    voice.pauseMs += Date.now() - voice.paused; voice.paused = 0; recBar(); voiceRefresh(voice.recId);
+  },
 };
 /** Pegelanzeige: Ausschläge zeigen, dass das Mikrofon wirklich etwas hört. */
 const METER_BARS = 24;
@@ -262,7 +312,7 @@ function meterStart() {
       const el = $('#rb-meter');
       if (el) el.innerHTML = hist.map((v) => `<i style="height:${Math.max(8, Math.round(v * 100))}%"></i>`).join('');
       const hint = $('#rb-hint');
-      if (hint) hint.textContent = quiet > 70 ? 'Sehr leise, Mikrofon frei?' : (voice.recLabel || '');
+      if (hint) hint.textContent = voice.paused ? 'Pausiert. „Weiter“ nimmt in derselben Aufnahme auf.' : quiet > 70 ? 'Sehr leise, Mikrofon frei?' : (voice.recLabel || '');
     };
     voice.meterRaf = requestAnimationFrame(tick);
   } catch (e) { console.warn('Pegelanzeige nicht möglich', e); }
@@ -278,8 +328,11 @@ function recBar() {
   if (!voice.rec) { el?.remove(); document.body.classList.remove('recording'); return; }
   if (!el) { el = document.createElement('div'); el.id = 'recbar'; el.className = 'recbar'; document.body.appendChild(el); }
   document.body.classList.add('recording');
-  el.innerHTML = `<span class="rb-dot"></span><span class="rb-t"><b>Aufnahme läuft <span id="recbar-t">0:00</span></b><span id="rb-hint">${esc(voice.recLabel || '')}</span></span><span class="rb-meter" id="rb-meter" aria-hidden="true">${'<i></i>'.repeat(METER_BARS)}</span><button id="recbar-stop">■ Beenden</button>`;
+  const s = Rec.sekunden();
+  el.classList.toggle('pausiert', !!voice.paused);
+  el.innerHTML = `<span class="rb-dot"></span><span class="rb-t"><b>${voice.paused ? 'Pausiert' : 'Aufnahme läuft'} <span id="recbar-t">${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}</span></b><span id="rb-hint">${esc(voice.paused ? 'Weiter nimmt in derselben Aufnahme auf.' : voice.rec.nativ ? 'Läuft auch bei Sperre und in der Kamera weiter' : voice.recLabel || '')}</span></span>${voice.rec.nativ ? '' : `<span class="rb-meter" id="rb-meter" aria-hidden="true">${'<i></i>'.repeat(METER_BARS)}</span>`}${Rec.kannPause() ? `<button id="recbar-pause">${voice.paused ? '● Weiter' : 'Pause'}</button>` : ''}<button id="recbar-stop">■ Beenden</button>`;
   $('#recbar-stop').onclick = () => Rec.stop();
+  if ($('#recbar-pause')) $('#recbar-pause').onclick = () => (voice.paused ? Rec.weiter() : Rec.pause());
 }
 
 // ---------- Auswerten ----------
@@ -352,9 +405,10 @@ ${g.transcript}` }], true, { temperature: 0.2 });
 
 async function auswertenAudio(owner, blob, fromStore) {
   if (!fromStore) await audioStore(owner.id, blob); // Aufnahme sichern, damit sie bei einem Fehler nicht verloren ist
-  const t = await transcribeAudio(blob, voiceStatus);
+  const dabei = owner.projekt ? (await wohnungVon(owner.id))?.gespraech?.dabei || voice.dabei : voice.dabei;
+  const t = await transcribeAudio(blob, voiceStatus, dabei || []);
   // Art des Gesprächs (Vor-Ort-Besichtigung, Abnahmegespräch …) als Überschrift über jeder Aufnahme
-  const ueber = `--- ${voice.art || 'Gespräch'} · ${new Date().toLocaleDateString('de-DE')} ---`;
+  const ueber = `--- ${voice.art || 'Gespräch'} · ${new Date().toLocaleDateString('de-DE')}${dabei?.length ? ` · dabei: ${dabei.join(', ')}` : ''} ---`;
   const join = (a) => [a?.trim(), `${ueber}\n${t}`].filter(Boolean).join('\n\n');
   if (owner.projekt) {
     const w = await wohnungVon(owner.id);
@@ -362,6 +416,7 @@ async function auswertenAudio(owner, blob, fromStore) {
     w.gespraech = { ...(w.gespraech || {}), transcript: join(w.gespraech?.transcript), t: Date.now() };
     await window.Projekt.save(w);
     await zuordnen(w);
+    if (vorgabe('gespraechZusammenfassung') !== 'nein') await zusammenfassung(w).catch((e) => console.warn('Zusammenfassung fehlgeschlagen', e));
   } else {
     const p = state.project?.id === owner.id ? state.project : normalizeProject(await kvGet('project:' + owner.id));
     voiceApply(p, { transcript: join(p.transcript) });
@@ -400,19 +455,33 @@ async function voiceReady(p) {
   } catch (e) { console.warn('Wünsche nicht übernommen', e); }
 }
 
+/** Zusammenfassung und Aufgaben als Text im Projekt (Wunsch Felix: ohne PDF, zum Ausklappen). */
+async function zusammenfassung(w) {
+  if (!w.gespraech?.transcript?.trim() || !window.GesprPdf) return;
+  voiceStatus('Zusammenfassung und Aufgaben werden geschrieben …');
+  const z = await window.GesprPdf.zusammenfassen(w, await window.Projekt.raeume(w));
+  const alt = w.gespraech.zus;
+  // Abgehakte Aufgaben behalten, wenn es sie noch gibt
+  const erledigt = (z.aufgaben || []).map((a) => !!alt?.aufgaben?.some((x, i) => x === a && alt.erledigt?.[i]));
+  w.gespraech.zus = { ...z, erledigt, stand: w.gespraech.transcript.length, t: Date.now() };
+  await window.Projekt.save(w);
+}
+
 // ---------- Oberfläche ----------
 function recButtons(owner) {
   const rec = voice.rec && voice.recId === owner.id, busy = !!pendingFor(owner.id);
   return `<div class="row">
-      <button class="btn ${rec ? 'rec' : ''}" id="vrec" ${busy || (voice.rec && !rec) ? 'disabled' : ''}>${rec ? '■ Aufnahme beenden' : '● Aufnahme starten'}</button>
-      <button class="btn secondary" id="vfile" ${rec || busy ? 'disabled' : ''}>Audio importieren</button>
+      ${rec && Rec.kannPause() ? `<button class="btn secondary" id="vpause">${voice.paused ? '● Weiter' : 'Pause'}</button>` : ''}
+      <button class="btn ${rec ? 'rec' : ''}" id="vrec" ${busy || (voice.rec && !rec) ? 'disabled' : ''}>${rec ? '■ Beenden' : '● Aufnahme starten'}</button>
+      ${rec ? '' : `<button class="btn secondary" id="vfile" ${busy ? 'disabled' : ''}>Audio importieren</button>`}
     </div>
-    <p class="hint" id="vstatus">${rec ? 'Aufnahme läuft. Du kannst jetzt Räume anlegen und fotografieren.' : busy ? esc(voice.step || 'Gespräch wird ausgewertet …') : ''}</p>
+    <p class="hint" id="vstatus">${rec ? (voice.paused ? 'Pausiert. „Weiter“ nimmt in derselben Aufnahme auf. „Beenden“ schließt die Aufnahme ab, dann wertet die KI aus.' : (voice.rec?.nativ ? 'Aufnahme läuft, auch bei gesperrtem Bildschirm und wenn du in die Kamera-App wechselst. ' : 'Aufnahme läuft. Du kannst jetzt Räume anlegen und fotografieren. ') + '„Pause“ hält kurz an, „Beenden“ schließt ab.') : busy ? esc(voice.step || 'Gespräch wird ausgewertet …') : ''}</p>
     <div class="voice-err" id="verr" ${voice.error?.id === owner.id ? '' : 'hidden'}><span>${esc(voice.error?.id === owner.id ? voice.error.msg : '')}</span> <button class="btn secondary small" id="vretry" hidden>Nochmal auswerten</button></div>`;
 }
 function bindRecButtons(owner, label) {
   $('#vrec').onclick = () => (voice.rec ? Rec.stop() : startAufnahme(owner, label).then((ok) => ok && voiceRefresh(owner.id)));
-  $('#vfile').onclick = () => importAudio(owner);
+  if ($('#vpause')) $('#vpause').onclick = () => (voice.paused ? Rec.weiter() : Rec.pause());
+  if ($('#vfile')) $('#vfile').onclick = () => importAudio(owner);
   (async () => { const b = $('#vretry'); if (b && voice.error?.id === owner.id) b.hidden = !(await audioLoad(owner.id)); })();
   $('#vretry').onclick = async () => { const b = await audioLoad(owner.id); if (b) voiceRun(owner.id, () => auswertenAudio(owner, b, true)); };
 }
@@ -451,33 +520,107 @@ function bindVoice(p, persist) {
   };
 }
 
-/** Karte in der Projektübersicht: Aufnahme starten, Ergebnis je Raum, nicht angelegte Räume. */
+/** Wer kann beim Gespräch dabei sein: Team (Felix, Deniel), der Kunde, Personen aus den Einstellungen und selbst ergänzte. */
+function personen(w) {
+  const team = window.Kalender?.team().map((p) => p.name) || [];
+  const k = window.Kunden?.byId(w.kundeId);
+  const kunde = k && Kunden.name(k) ? `${Kunden.name(k)} (Kunde)` : 'Kunde';
+  return [...new Set([...team, kunde, ...(w.gespraech?.dabei || []), ...vorgabe('gespraechDabei')])].filter(Boolean);
+}
+/** Wer dabei ist. Ohne Auswahl: die Person dieses Geräts (sonst das ganze Team) und der Kunde. */
+function dabeiVon(w) {
+  if (Array.isArray(w.gespraech?.dabei)) return w.gespraech.dabei;
+  const team = window.Kalender?.team() || [], ich = team.find((p) => p.id === window.Kalender?.wer());
+  const k = window.Kunden?.byId(w.kundeId);
+  return [...(ich ? [ich.name] : team.map((p) => p.name)), k && Kunden.name(k) ? `${Kunden.name(k)} (Kunde)` : 'Kunde'];
+}
+/** Plan scannen (iPhone-Scanner) oder fotografieren und beim Projekt im Bilder-Ordner „Pläne“ ablegen. */
+async function planAufnehmen(w) {
+  const k = window.Kunden?.byId(w.kundeId);
+  if (!k) return toast('Bitte zuerst einen Kunden zuordnen.');
+  let data = '';
+  try {
+    if (window.Geraet?.kann('scanner')) data = await Geraet.scannen();
+    else { const f = await pickFiles({ camera: true }); if (!f.length) return; data = await resize(await fileToDataUrl(f[0]), 2200, 'image/jpeg', 0.85); }
+  } catch (e) { return toast('Scannen ging nicht: ' + (e.message || e), 5000); }
+  if (!data) return;
+  if (w.isNew) delete w.isNew;
+  const ordner = String(vorgabe('ordnerPlaene') || 'Pläne').trim() || 'Pläne';
+  await Bilder.ablegen(k.id, w.objektId, data, ordner, w.id);
+  w.vorOrt = { ...(w.vorOrt || {}), plaene: (w.vorOrt?.plaene || 0) + 1 };
+  await window.Projekt.save(w);
+  toast(`Plan im Ordner „${ordner}“ gespeichert`);
+  voiceRefresh(w.id);
+}
+/** LiDAR-Raumscan vor Ort: Maße beim Projekt merken, im Aufmaß übernehmen. */
+async function raumScan(w, list) {
+  let m;
+  try { m = await Geraet.raumScannen(); } catch (e) { return toast('' + (e.message || e), 6000); }
+  if (!m) return;
+  const namen = [...new Set(list.map((r) => r.room || roomType(r.roomType).name))];
+  const v = await sheet('Welcher Raum war das?', namen.map((n) => ({ label: n, value: n })), { text: 'Name, z. B. Bad, Küche, Flur' });
+  const name = (typeof v === 'string' ? v : v?.text?.trim()) || `Raum ${(w.vorOrt?.scans?.length || 0) + 1}`;
+  w.vorOrt = { ...(w.vorOrt || {}), scans: [...(w.vorOrt?.scans || []), { id: uid(), name, t: Date.now(), laenge: m.laenge, breite: m.breite, hoehe: m.hoehe, flaeche: m.flaeche, tueren: m.tueren || [], fenster: m.fenster || [] }] };
+  if (w.isNew) delete w.isNew;
+  await window.Projekt.save(w);
+  toast(`Raumscan „${name}“ gespeichert`);
+  voiceRefresh(w.id);
+}
+
+/** Karte in der Projektübersicht: Sammelstelle vor Ort (Gespräch, Fotos, Pläne, Raumscan), Ergebnis, Zusammenfassung. */
 window.Gespraech = {
   karte(w, list) {
     const owner = { id: w.id, projekt: true }, g = w.gespraech || {};
     const count = (s) => (s || '').split('\n').filter((l) => l.trim()).length;
     const offen = list.filter((r) => !g.zugeordnet?.includes(r.id));
     const fehlend = (g.fehlend || []).filter((f) => !list.some((r) => (r.room || '').toLowerCase() === String(f.name).toLowerCase()));
+    const dabei = dabeiVon(w), wahl = personen(w);
+    const z = g.zus, li = (a) => (a || []).map((x) => `<li>${esc(x)}</li>`).join('');
+    const scans = w.vorOrt?.scans || [];
+    const zahl = (x) => (+x || 0).toLocaleString('de-DE', { maximumFractionDigits: 2 });
     return `
-      <div class="sec-h"><h2>Gespräch vor Ort</h2></div>
+      <div class="sec-h"><h2>Vor Ort aufnehmen</h2></div>
       <div class="card voice-p">
-        <p class="hint" style="margin-top:0">Einmal starten und laufen lassen. Währenddessen Räume anlegen und fotografieren. Am Ende ordnet die KI alles den richtigen Räumen zu, auch wenn ihr über einen Raum mehrmals sprecht. Kunden vorher um Erlaubnis fragen.</p>
+        <p class="hint" style="margin-top:0">Hier sammelst du alles vom Termin: Gespräch, Fotos, Pläne und Raumscan. Das Gespräch einmal starten und laufen lassen, währenddessen fotografieren. Kunden vorher um Erlaubnis fragen.</p>
+        <div class="vo-sammel">
+          <button type="button" class="vo-b" data-bilder>${icon('camera')}<b>Fotos</b><span>alle Räume</span></button>
+          <button type="button" class="vo-b" id="vPlan">${icon('file')}<b>Pläne</b><span>${w.vorOrt?.plaene ? `${w.vorOrt.plaene} gescannt` : 'scannen'}</span></button>
+          ${window.Geraet?.kann('lidar') ? `<button type="button" class="vo-b" id="vScan">${icon('ruler')}<b>Raumscan</b><span>${scans.length ? `${scans.length} ${scans.length === 1 ? 'Raum' : 'Räume'}` : 'LiDAR'}</span></button>` : ''}
+        </div>
+        ${scans.length ? `<div class="vo-scans">${scans.map((x) => `<div class="vo-scan">${icon('ruler')}<span><b>${esc(x.name)}</b> ${zahl(x.laenge)} × ${zahl(x.breite)} m${x.hoehe > 0 ? `, ${zahl(x.hoehe)} m hoch` : ''}${x.flaeche > 0 ? ` · ${zahl(x.flaeche)} m²` : ''}</span><button type="button" class="icon-btn" data-scandel="${x.id}" aria-label="Scan löschen">${icon('x')}</button></div>`).join('')}</div>
+          <p class="hint" style="margin-top:4px">Im Angebot beim Aufmaß übernimmst du die Maße mit einem Tipp.</p>` : ''}
+
+        <h3 class="vo-h">${icon('mic')} Gespräch</h3>
         <label style="margin-top:0">Was für ein Gespräch?</label>
         <select id="vArt">${[...new Set([...vorgabe('gespraechArten'), ...(voice.art ? [voice.art] : [])])].map((a) => `<option ${a === (voice.art || (window.Projekt?.zugesagt(w.status) ? '' : vorgabe('gespraechArten')[0])) ? 'selected' : ''}>${esc(a)}</option>`).join('')}<option value="__eigen">Eigene Bezeichnung …</option></select>
+        <label>Wer ist dabei?</label>
+        <div class="chips vdabei">${wahl.map((n, i) => `<button type="button" class="qchip ${dabei.includes(n) ? 'on' : ''}" data-dabei="${i}">${esc(n)}</button>`).join('')}<button type="button" class="qchip" data-dabeineu>${icon('plus')} Weitere</button></div>
         ${recButtons(owner)}
+        ${z ? `
+          <details class="sub vo-zus"><summary>Zusammenfassung</summary>
+            ${z.kurz ? `<p>${esc(z.kurz)}</p>` : ''}
+            ${z.masse?.length ? `<b>Maße</b><ul>${li(z.masse)}</ul>` : ''}
+            ${(z.raeume || []).map((r) => `<b>${esc(r.raum || 'Raum')}</b><ul>${li(r.wuensche)}</ul>`).join('')}
+            ${z.budget_termin ? `<b>Budget und Termine</b><p>${esc(z.budget_termin)}</p>` : ''}
+          </details>
+          <details class="sub vo-zus"><summary id="vAufgS">Aufgaben${z.aufgaben?.length ? ` (${z.aufgaben.length - (z.erledigt || []).filter(Boolean).length} offen)` : ''}</summary>
+            ${(z.aufgaben || []).map((a, i) => `<label class="chk vo-aufg"><input type="checkbox" data-aufg="${i}" ${z.erledigt?.[i] ? 'checked' : ''}> <span>${esc(String(a).replace(/^[-•]\s*/, ''))}</span></label>`).join('') || '<p class="hint">Keine Aufgaben genannt.</p>'}
+            ${z.fragen?.length ? `<b>Offene Fragen</b><ul>${li(z.fragen)}</ul>` : ''}
+          </details>` : ''}
+        ${g.transcript && (!z || z.stand !== g.transcript.length) ? `<button class="btn secondary small" id="vZus" ${pendingFor(w.id) ? 'disabled' : ''}>${z ? 'Zusammenfassung aktualisieren' : 'Zusammenfassung und Aufgaben erstellen'}</button>` : ''}
         ${g.transcript ? `
-          <div class="vp-list">${list.map((r) => `<div class="vp-r"><b>${esc(r.room || roomType(r.roomType).name)}</b><span>${g.zugeordnet?.includes(r.id) ? `${count(r.wishes)} Wünsche fürs Bild · ${count(r.otherNotes)} fürs Angebot` : 'noch nicht zugeordnet'}</span></div>`).join('')}</div>
-          ${g.allgemein?.bild?.length || g.allgemein?.sonstiges?.length ? `<p class="hint"><b>Für alle Räume:</b> ${esc([...(g.allgemein.bild || []), ...(g.allgemein.sonstiges || [])].join(' · '))}</p>` : ''}
           ${fehlend.length ? `<div class="vp-miss"><span>Im Gespräch erwähnt, aber noch nicht angelegt:</span>${fehlend.map((f, i) => `<button class="qchip" data-miss="${i}">${icon('plus')} ${esc(f.name)}</button>`).join('')}</div>` : ''}
           ${offen.length || g.stand !== g.transcript.length ? `<button class="btn secondary small" id="vzu">Wünsche den Räumen neu zuordnen</button>` : ''}
+          ${list.length ? `<details class="sub"><summary>Wünsche je Raum</summary>
+            <div class="vp-list">${list.map((r) => `<div class="vp-r"><b>${esc(r.room || roomType(r.roomType).name)}</b><span>${g.zugeordnet?.includes(r.id) ? `${count(r.wishes)} Wünsche fürs Bild · ${count(r.otherNotes)} fürs Angebot` : 'noch nicht zugeordnet'}</span></div>`).join('')}</div>
+            ${g.allgemein?.bild?.length || g.allgemein?.sonstiges?.length ? `<p class="hint"><b>Für alle Räume:</b> ${esc([...(g.allgemein.bild || []), ...(g.allgemein.sonstiges || [])].join(' · '))}</p>` : ''}</details>` : ''}
           <details class="sub"><summary>Ganzes Gespräch (${g.transcript.length} Zeichen)</summary>
             <textarea id="wTranscript" style="min-height:160px">${esc(g.transcript)}</textarea>
-            <button class="btn secondary small" id="vzu2" style="margin-top:8px">Nach Änderung neu zuordnen</button></details>` : ''}
-        <div class="gpdf">
-          <button class="btn secondary small" data-gpdf="zus" ${g.transcript ? '' : 'disabled'}>${icon('file')} Zusammenfassung + Aufgaben (PDF)</button>
-          <button class="btn secondary small" data-gpdf="trans" ${g.transcript ? '' : 'disabled'}>${icon('file')} Transkript (PDF)</button>
-          <button class="btn secondary small" data-gpdf="fotos">${icon('camera')} Fotos (PDF)</button>
-        </div>
+            <button class="btn secondary small" id="vzu2" style="margin-top:8px">Nach Änderung neu zuordnen</button></details>
+          <div class="gpdf"><span class="hint">Als PDF:</span>
+            <button class="btn secondary small" data-gpdf="zus">${icon('file')} Zusammenfassung</button>
+            <button class="btn secondary small" data-gpdf="trans">${icon('file')} Transkript</button>
+          </div>` : ''}
         ${(w.gespraechPdfs || []).length ? `<p class="hint" style="margin:6px 0 0">Gespeichert beim Kunden: ${(w.gespraechPdfs || []).map((x) => `<a href="#" data-gpdfopen="${x.art}">${esc(x.name)}</a>`).join(' · ')}</p>` : ''}
       </div>`;
   },
@@ -485,6 +628,35 @@ window.Gespraech = {
     if (!$('#vrec')) return;
     const owner = { id: w.id, projekt: true }, g = w.gespraech || {};
     bindRecButtons(owner, [w.customer, w.address].filter(Boolean).join(' · ') || 'Projekt');
+    voice.dabei = dabeiVon(w);
+    // Wer ist dabei? (fürs Erkennen der Sprecher)
+    const wahl = personen(w);
+    const dabeiSetzen = async (neu) => { w.gespraech = { ...(w.gespraech || {}), dabei: neu }; voice.dabei = neu; await window.Projekt.save(w); };
+    $$('[data-dabei]').forEach((b) => (b.onclick = () => {
+      const n = wahl[+b.dataset.dabei], d = dabeiVon(w);
+      const neu = d.includes(n) ? d.filter((x) => x !== n) : [...d, n];
+      b.classList.toggle('on', neu.includes(n)); dabeiSetzen(neu);
+    }));
+    if ($('[data-dabeineu]')) $('[data-dabeineu]').onclick = async () => {
+      const v = await sheet('Wer ist noch dabei?', vorgabe('gespraechDabei').filter((x) => !wahl.includes(x)).map((x) => ({ label: x, value: x })), { text: 'Name oder Rolle, z. B. Frau Müller, Architekt' });
+      const n = typeof v === 'string' ? v : v?.text?.trim();
+      if (!n) return;
+      await dabeiSetzen([...new Set([...dabeiVon(w), n])]); voiceRefresh(w.id);
+    };
+    // Sammelstelle: Pläne und Raumscan
+    if ($('#vPlan')) $('#vPlan').onclick = () => planAufnehmen(w);
+    if ($('#vScan')) $('#vScan').onclick = () => raumScan(w, list);
+    $$('[data-scandel]').forEach((b) => (b.onclick = async () => {
+      const x = (w.vorOrt?.scans || []).find((s) => s.id === b.dataset.scandel);
+      if (!x || !confirm(`Raumscan „${x.name}“ löschen?`)) return;
+      w.vorOrt.scans = w.vorOrt.scans.filter((s) => s !== x); await window.Projekt.save(w); voiceRefresh(w.id);
+    }));
+    $$('[data-aufg]').forEach((c) => (c.onchange = async () => {
+      const z = w.gespraech?.zus; if (!z) return;
+      z.erledigt = z.erledigt || []; z.erledigt[+c.dataset.aufg] = c.checked; await window.Projekt.save(w);
+      const s = $('#vAufgS'); if (s) s.textContent = `Aufgaben (${z.aufgaben.length - z.erledigt.filter(Boolean).length} offen)`;
+    }));
+    if ($('#vZus')) $('#vZus').onclick = () => voiceRun(w.id, () => zusammenfassung(w), 'Zusammenfassung und Aufgaben stehen im Projekt.');
     const art = $('#vArt');
     if (art) {
       voice.art = art.value === '__eigen' ? voice.art : art.value;

@@ -163,3 +163,33 @@ body.recording main { padding-bottom: 150px; }
 
 /* ---------- Gesprächs-PDFs ---------- */
 .gpdf { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 12px; }
+
+/* ---------- Vor Ort aufnehmen (Sammelstelle) ---------- */
+.vo-sammel { display: grid; grid-template-columns: repeat(auto-fit, minmax(90px, 1fr)); gap: 8px; margin: 4px 0 10px; }
+.vo-b { display: flex; flex-direction: column; align-items: center; gap: 3px; border: 1px solid var(--line); background: #fff; border-radius: 14px; padding: 12px 6px 10px; font: inherit; color: var(--text); }
+.vo-b svg.i { width: 24px; height: 24px; color: var(--brass, #b8862f); }
+.vo-b b { font-size: 14.5px; }
+.vo-b span { font-size: 12px; color: var(--muted); }
+.vo-b:active { background: var(--soft, #f4f2ee); }
+.vo-scans { display: flex; flex-direction: column; gap: 6px; }
+.vo-scan { display: flex; align-items: center; gap: 8px; font-size: 13.5px; padding: 6px 4px 6px 10px; border-radius: 10px; background: var(--soft, #f4f2ee); }
+.vo-scan > svg.i { width: 17px; height: 17px; color: var(--muted); flex: none; }
+.vo-scan span { flex: 1; min-width: 0; }
+.vo-h { display: flex; align-items: center; gap: 6px; margin: 14px 0 4px; padding-top: 12px; border-top: 1px solid var(--line); font-size: 16px; }
+.vo-h svg.i { width: 18px; height: 18px; }
+.vdabei .qchip:not(.on) { border-color: var(--line, #e3dfd6); color: var(--muted); font-weight: 600; }
+.vdabei .qchip.on { background: var(--navy); border-color: var(--navy); color: #fff; }
+.vdabei .qchip svg.i { width: 14px; height: 14px; vertical-align: -2px; }
+.vo-zus { background: var(--soft, #f4f2ee); border-radius: 12px; padding: 6px 12px; }
+.vo-zus[open] { padding-bottom: 10px; }
+.vo-zus p, .vo-zus ul { margin: 4px 0 10px; font-size: 14.5px; line-height: 1.45; }
+.vo-zus ul { padding-left: 20px; }
+.vo-zus b { font-size: 14px; }
+.vo-aufg { display: flex; align-items: flex-start; gap: 8px; margin: 8px 0; font-size: 14.5px; }
+.vo-aufg input { width: 20px; height: 20px; flex: none; margin-top: 1px; }
+.vo-aufg input:checked + span { text-decoration: line-through; color: var(--muted); }
+.gpdf .hint { width: 100%; margin: 0; }
+.recbar.pausiert { background: #5b6675; }
+.recbar.pausiert .rb-dot { animation: none; background: #fff; opacity: .7; }
+.recbar button { padding: 9px 10px; }
+.recbar .rb-meter { width: 56px; }

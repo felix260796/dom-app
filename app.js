@@ -6,7 +6,7 @@
  * Kern-Funktionen (Speicher, KI, Bilder) stehen in core.js. */
 
 // ---------- Symbole (einfache Linien-Icons) ----------
-const APP_VERSION = '82';
+const APP_VERSION = '83';
 const ICONS = {
   plus: '<path d="M12 5v14M5 12h14"/>',
   camera: '<path d="M3 8.5A2 2 0 0 1 5 6.5h2l1.6-2h6.8l1.6 2h2a2 2 0 0 1 2 2V18a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><circle cx="12" cy="13" r="3.6"/>',
@@ -145,9 +145,14 @@ function sheet(title, items, { text, value = '', suche } = {}) {
     };
     if (suche) $('#sheetSuche', el).oninput = (e) => filtern(e.target.value);
     else if (text && items.length > 6) $('#sheetText', el).addEventListener('input', (e) => filtern(e.target.value));
-    if (text) { const ok = () => { const v = $('#sheetText', el).value.trim(); if (v) close({ text: v }); }; $('#sheetOk', el).onclick = ok; $('#sheetText', el).onkeydown = (e) => e.key === 'Enter' && ok(); }
+    if (text) { const ok = () => { const v = $('#sheetText', el).value.trim(); if (v) close({ text: v }); }; $('#sheetOk', el).onclick = ok; $('#sheetText', el).onkeydown = (e) => { if (e.key === 'Enter') { e.preventDefault(); ok(); } }; } // Achtung: kein „return false“, das blockiert jede Taste
     document.body.appendChild(el);
-    requestAnimationFrame(() => el.classList.add('on'));
+    if (text) {
+      // Fenster mit Textfeld ohne Hochfahr-Bewegung zeigen und das Feld gleich bereit machen. Auf dem iPhone
+      // ging sonst die Tastatur auf, das Getippte kam aber nicht im Feld an (Feld war noch in Bewegung).
+      el.classList.add('fest', 'on');
+      setTimeout(() => { const f = $('#sheetText', el); try { f.focus({ preventScroll: true }); f.setSelectionRange(f.value.length, f.value.length); } catch {} }, 60);
+    } else requestAnimationFrame(() => el.classList.add('on'));
   });
 }
 

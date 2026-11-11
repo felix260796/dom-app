@@ -398,6 +398,8 @@ Gib Länge (längere Seite) und Breite der Grundfläche, Raumhöhe, Anzahl und G
     try { return JSON.parse(txt); } catch { throw new Error('Die KI hat keine Maße geliefert. Bitte nochmal versuchen.'); }
   }
   const dez = (x, d = 2) => (x > 0 ? String(Math.round(x * 10 ** d) / 10 ** d).replace('.', ',') : '');
+  /** LiDAR-Scans, die vor Ort im Projekt gemacht wurden (voice.js, w.vorOrt.scans). */
+  const scansVorOrt = (p) => (state.wohnung && (!p.wohnungId || state.wohnung.id === p.wohnungId) ? state.wohnung.vorOrt?.scans || [] : []);
   function uebernimmSchaetzung(r, s) {
     r.teile = [{ l: dez(s.laenge), b: dez(s.breite) }];
     if (s.hoehe > 0) r.h = dez(s.hoehe);
@@ -471,7 +473,8 @@ Gib Länge (längere Seite) und Breite der Grundfläche, Raumhöhe, Anzahl und G
         return `<div class="card" data-raum="${ri}">
         <div class="row" style="align-items:flex-end"><div style="flex:2"><label>Raum</label><input type="text" data-rf="name" value="${esc(r.name)}"></div>
           <div style="flex:2"><label>Raumtyp</label><select data-rf="typ">${typen.map((t) => `<option ${t === r.typ ? 'selected' : ''}>${esc(t)}</option>`).join('')}</select></div></div>
-        ${window.Geraet?.kann('lidar') ? `<button class="btn small block" data-lidar style="margin-top:10px">Raum scannen (LiDAR)</button>` : ''}
+        ${scansVorOrt(p).length ? `<button class="btn small block" data-vscan style="margin-top:10px">${icon('ruler')} Maße vom Raumscan vor Ort übernehmen</button>` : ''}
+        ${window.Geraet?.kann('lidar') ? `<button class="btn small ${scansVorOrt(p).length ? 'secondary ' : ''}block" data-lidar style="margin-top:10px">Raum scannen (LiDAR)</button>` : ''}
         ${p.photos.length ? `<button class="btn small secondary block" data-schaetzen style="margin-top:10px">Maße grob aus den Fotos schätzen (KI)</button>` : ''}
         ${r.schaetzung?.quelle === 'lidar' ? `<p class="muted" style="color:#9a6a12">Mit dem LiDAR-Scanner gemessen. Die Grundfläche ist das Rechteck um den Raum, bei L-Form oder Nischen bitte als Teilflächen nachtragen.${r.schaetzung.text ? `<br><i>${esc(r.schaetzung.text)}</i>` : ''}</p>` : ''}
         ${r.schaetzung && r.schaetzung.quelle !== 'lidar' ? `<p class="muted" style="color:#9a6a12">Geschätzt aus Fotos${r.schaetzung.genau ? `, ca. ±${Math.round(r.schaetzung.genau)} %` : ''}. Bitte mit dem Meterstab prüfen und korrigieren.${r.schaetzung.text ? `<br><i>${esc(r.schaetzung.text)}</i>` : ''}</p>` : ''}
@@ -514,6 +517,18 @@ Gib Länge (längere Seite) und Breite der Grundfläche, Raumhöhe, Anzahl und G
       });
       $$('[data-teil]', card).forEach((el) => (el.oninput = () => { r.teile[+el.dataset.teil][el.dataset.k] = el.value; if (r.schaetzung) r.schaetzung.bearbeitet = true; updSum(ri); persist(p); }));
       $$('[data-oe]', card).forEach((el) => (el.oninput = el.onchange = () => { r.oeff[+el.dataset.oe][el.dataset.k] = el.value; updSum(ri); persist(p); }));
+      const vs = $('[data-vscan]', card);
+      if (vs) vs.onclick = async () => {
+        const l = scansVorOrt(p);
+        const id = l.length === 1 ? l[0].id : await sheet('Welcher Raumscan?', l.map((x) => ({ label: x.name, sub: `${fmtNum(x.laenge, 2)} × ${fmtNum(x.breite, 2)} m${x.flaeche > 0 ? ` · ${fmtNum(x.flaeche, 2)} m²` : ''}`, value: x.id })));
+        const m = l.find((x) => x.id === id); if (!m) return;
+        if (masse(r).boden && !confirm('Eingetragene Maße durch den Scan ersetzen?')) return;
+        const rechteck = m.laenge * m.breite;
+        uebernimmSchaetzung(r, { ...m, genauigkeit_prozent: null,
+          begruendung: m.flaeche > 0 && rechteck > 0 && m.flaeche < rechteck * 0.92 ? `Gescannte Bodenfläche ${fmtNum(m.flaeche, 2)} m², das Rechteck ist ${fmtNum(rechteck, 2)} m². Der Raum ist also nicht rechteckig.` : '' });
+        r.schaetzung.quelle = 'lidar';
+        toast(`Maße aus dem Scan „${m.name}“ übernommen`); rerender();
+      };
       const lb = $('[data-lidar]', card);
       if (lb) lb.onclick = async () => {
         if (masse(r).boden && !confirm('Eingetragene Maße durch den Scan ersetzen?')) return;

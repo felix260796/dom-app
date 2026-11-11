@@ -58,14 +58,16 @@ ${w.gespraech?.transcript || ''}` }], true, { responseSchema: { type: 'OBJECT', 
 
   async function bauen(w, list, art) {
     if (art === 'zus') {
-      if (!state.settings.apiKey) throw new Error('Für die Zusammenfassung wird der KI-Schlüssel gebraucht (Einstellungen › KI).');
-      toast('KI fasst das Gespräch zusammen …', 20000);
-      const z = await zusammenfassen(w, list);
+      if (!state.settings.apiKey && !w.gespraech?.zus) throw new Error('Für die Zusammenfassung wird der KI-Schlüssel gebraucht (Einstellungen › KI).');
+      // Steht die Zusammenfassung schon im Projekt (voice.js) und passt zum Gespräch, wird sie genommen
+      const fertig = w.gespraech?.zus?.stand === (w.gespraech?.transcript || '').length ? w.gespraech.zus : null;
+      if (!fertig) toast('KI fasst das Gespräch zusammen …', 20000);
+      const z = fertig || await zusammenfassen(w, list);
       const P = await geruest(w, 'Zusammenfassung Vor-Ort-Gespräch');
       if (z.kurz) await P.absatz(z.kurz, { abstand: 3 });
       if (z.masse?.length) { await P.ueber('Maße'); for (const m of z.masse) await P.absatz('• ' + m, { abstand: 0.5 }); }
       if (z.raeume?.length) for (const r of z.raeume) { await P.ueber(r.raum || 'Raum'); for (const x of r.wuensche || []) await P.absatz('• ' + x, { abstand: 0.5 }); }
-      if (z.aufgaben?.length) { await P.ueber('Aufgaben für uns'); for (const a of z.aufgaben) await P.absatz('[  ] ' + a.replace(/^[-•]\s*/, ''), { abstand: 0.8 }); }
+      if (z.aufgaben?.length) { await P.ueber('Aufgaben für uns'); for (const [i, a] of z.aufgaben.entries()) await P.absatz((z.erledigt?.[i] ? '[x] ' : '[  ] ') + a.replace(/^[-•]\s*/, ''), { abstand: 0.8 }); }
       if (z.fragen?.length) { await P.ueber('Offene Fragen'); for (const f of z.fragen) await P.absatz('• ' + f, { abstand: 0.5 }); }
       if (z.budget_termin) { await P.ueber('Budget und Termine'); await P.absatz(z.budget_termin); }
       $('#toast').hidden = true;
@@ -119,5 +121,5 @@ ${w.gespraech?.transcript || ''}` }], true, { responseSchema: { type: 'OBJECT', 
     const name = (w.gespraechPdfs || []).find((x) => x.art === art)?.name || 'Gespräch.pdf';
     pdfAnsicht(new File([blob], name, { type: 'application/pdf' }), name);
   }
-  return { erstellen, oeffnen };
+  return { erstellen, oeffnen, zusammenfassen };
 })();

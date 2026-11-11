@@ -302,7 +302,13 @@ window.Kalender = (() => {
             ? `<label class="chk"><input type="checkbox" data-empf="${esc(x.email)}" data-rolle="${x.rolle}" ${(x.rolle === 'kunde' ? t.mailKunde : !(t.mailOhne || []).includes(x.email)) ? 'checked' : ''}> <span><b>${esc(x.name)}</b> <small>${esc({ team: 'Team', kunde: 'Kunde', partner: 'Subunternehmer' }[x.rolle])} · ${esc(x.email)}</small></span></label>`
             : `<p class="hint" style="margin:4px 0">${esc(x.name)}: keine E-Mail-Adresse hinterlegt</p>`).join('')}</div>
           <p class="hint" style="margin-bottom:0">${an.length ? `Geht an ${an.length} ${an.length === 1 ? 'Person' : 'Personen'}.` : 'Niemand ausgewählt.'}</p>`
-          : `<p class="hint" style="margin:8px 0 0">Bestätigung und Erinnerung per E-Mail sind noch nicht eingerichtet. Unter Einstellungen → Team steht, wie es geht.</p>`}`;
+          : `<p class="hint" style="margin:8px 0 0">Bestätigung und Erinnerung per E-Mail sind noch nicht eingerichtet. Unter Einstellungen → Team steht, wie es geht.</p>`}
+          <span class="tvor-l">Vorschau: So sieht die E-Mail aus</span>
+          <div class="tvor">${beteiligte({ ...t, mailKunde: true }).map((x, i) => `<button type="button" class="qchip" data-tvor="${i}">${icon('eye')} ${esc(x.rolle === 'team' ? x.name : x.rolle === 'kunde' ? 'Kunde' : 'Subunternehmer')}</button>`).join('')}</div>`;
+        $$('[data-tvor]', el).forEach((b) => (b.onclick = () => {
+          const x = beteiligte({ ...t, mailKunde: true })[+b.dataset.tvor];
+          mailVorschau({ ...t, kontext: kontext(t) }, x, isNeu || !t.mailGesendet ? 'bestaetigung' : 'aenderung');
+        }));
         if ($('#tMailAn')) $('#tMailAn').onchange = (e) => { mailen = e.target.checked; };
         if ($('#tErin')) $('#tErin').onchange = (e) => { t.erinnerung = +e.target.value; };
         $$('[data-empf]', el).forEach((c) => (c.onchange = () => {
@@ -388,6 +394,47 @@ window.Kalender = (() => {
       projekt: pr ? [pr.titel, pr.nr && `Nr. ${pr.nr}`].filter(Boolean).join(' · ') : '',
       partner: p ? [p.firma, p.inhaber, p.telefon].filter(Boolean).join(' · ') : '', wer: dabei.map((x) => x.name).join(', '),
       werKontakt: dabei.map((x) => [x.name, x.email].filter(Boolean).join(', ')).join(' · '), texte: Kalender.mailTexte() };
+  }
+
+  // ---------- Vorschau der Termin-Mail (Wunsch Felix) ----------
+  // Baut die Mail so nach, wie sie die Cloud verschickt (supabase/functions/termin-mail, mailHtml und betreff).
+  // Wer dort etwas am Aufbau ändert, ändert es hier mit.
+  const wannText = (t) => `${ausIso(t.datum).toLocaleDateString('de-DE', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}${t.ganztag ? ' (ganztags)' : `, ${t.von || ''} Uhr${t.bis ? ` bis ${t.bis} Uhr` : ''}`}`;
+  function mailNachbau(t, p, artM = 'bestaetigung') {
+    const k = t.kontext || {}, rolle = p.rolle === 'kunde' || p.rolle === 'partner' ? p.rolle : 'team', firma = k.firma || 'DOM Projektmanagement';
+    const KOPF = { bestaetigung: 'Terminbestätigung', aenderung: 'Termin geändert' };
+    const satz = artM === 'aenderung' ? (rolle === 'kunde' ? 'unser Termin bei Ihnen hat sich geändert. Hier der neue Stand.' : 'der Termin hat sich geändert, hier der neue Stand.') : (k.texte?.[rolle]?.bestaetigung || MAILTEXTE[rolle].bestaetigung);
+    const zeile = (l, v) => (v ? `<tr><td style="padding:6px 14px 6px 0;color:#6b7380;vertical-align:top">${esc(l)}</td><td style="padding:6px 0;font-weight:600">${esc(v)}</td></tr>` : '');
+    const anlass = zeile('Anlass', t.titel || 'Termin'), zeit = zeile('Wann', wannText(t));
+    const zeilen = rolle === 'team'
+      ? anlass + zeit + zeile('Wo', t.ort) + zeile('Kunde', [k.kunde, k.kundeTel].filter(Boolean).join(' · ')) + zeile('Objekt', k.objekt) + zeile('Projekt', k.projekt) + zeile('Subunternehmer', k.partner) + zeile('Dabei', k.wer) + zeile('Notiz', t.notiz)
+      : rolle === 'kunde' ? anlass + zeit + zeile('Wo', t.ort) + zeile('Von uns kommt', k.wer)
+        : anlass + zeit + zeile('Adresse', t.ort) + zeile('Projekt', k.projekt) + zeile('Kunde', k.kunde) + zeile('Termin mit', [firma, k.werKontakt || k.wer].filter(Boolean).join(' · '));
+    const vor = String(p.name || '').trim();
+    const anrede = String(p.anrede || '').trim() || (rolle === 'team' ? 'Hallo,' : rolle === 'kunde' ? `Guten Tag${vor ? ' ' + vor : ''},` : `Hallo${vor ? ' ' + vor.split(',')[0] : ''},`);
+    const gruss = rolle === 'team' ? '' : `<p style="margin:18px 0 0">Viele Grüße<br>${esc(firma)}${k.kontakt ? `<br><span style="font-size:13px;color:#6b7380">${esc(k.kontakt)}</span>` : ''}</p>`;
+    const html = `<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"></head><body style="margin:0;background:#f3f1ec;font-family:-apple-system,Segoe UI,Helvetica,Arial,sans-serif;color:#1b2533">
+  <div style="max-width:560px;margin:0 auto;padding:16px 10px">
+    <div style="background:#1e3550;color:#fff;border-radius:16px 16px 0 0;padding:18px 20px"><div style="font-size:13px;opacity:.75">${esc(firma)}</div><div style="font-size:21px;font-weight:700;margin-top:4px">${esc(KOPF[artM])}</div></div>
+    <div style="background:#fff;border-radius:0 0 16px 16px;padding:18px 20px">
+      <p style="margin:0 0 4px">${esc(anrede)}</p><p style="margin:0 0 14px">${esc(satz)}</p>
+      <table style="border-collapse:collapse;font-size:15px">${zeilen}</table>${gruss}
+      <p style="margin:18px 0 0;font-size:13px;color:#6b7380">Im Anhang ist der Termin zum Übernehmen in den Kalender.</p>
+    </div></div></body></html>`;
+    const mit = rolle === 'partner' ? ` mit ${firma}` : rolle === 'kunde' ? ` – ${firma}` : '';
+    const betreff = `${artM === 'aenderung' ? 'Termin geändert' : 'Terminbestätigung'}: ${t.titel || 'Termin'}${mit}, ${wannText(t)}`;
+    return { html, betreff };
+  }
+  function mailVorschau(t, p, artM) {
+    const { html, betreff } = mailNachbau(t, p, artM);
+    const bg = document.createElement('div');
+    bg.className = 'sheet-bg on';
+    bg.innerHTML = `<div class="sheet"><div class="sheet-h"><b>Vorschau für ${esc(p.name)}</b><button class="icon-btn" data-x aria-label="Schließen">${icon('x')}</button></div>
+      <p class="tvor-b">An: <b>${esc(p.email || 'keine E-Mail-Adresse hinterlegt')}</b><br>Betreff: <b>${esc(betreff)}</b></p>
+      <iframe class="tvor-f" title="Vorschau"></iframe></div>`;
+    document.body.appendChild(bg);
+    $('iframe', bg).srcdoc = html;
+    bg.onclick = (e) => { if (e.target === bg || e.target.closest('[data-x]')) bg.remove(); };
   }
 
   // Einleitungssätze der Mails, je Empfänger und Art; in Einstellungen → E-Mail-Automatisierung änderbar

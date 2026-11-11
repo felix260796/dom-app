@@ -131,6 +131,8 @@ details.sub > summary { font-size: 14px; font-weight: 600; color: var(--navy-2);
 .sheet-bg.on { background: rgba(15, 25, 40, .45); }
 .sheet { width: 100%; max-width: 560px; max-height: 82vh; background: #fff; border-radius: 22px 22px 0 0; padding: 8px 14px calc(16px + env(safe-area-inset-bottom)); display: flex; flex-direction: column; transform: translateY(100%); transition: transform .22s ease-out; }
 .sheet-bg.on .sheet { transform: none; }
+.sheet-bg.fest, .sheet-bg.fest .sheet { transition: none; }
+.sheet-bg.fest .sheet { transform: none; }
 .sheet-h { display: flex; align-items: center; justify-content: space-between; padding: 8px 2px 10px; font-size: 17px; }
 .sheet-list { overflow-y: auto; display: flex; flex-direction: column; gap: 4px; }
 .sheet-item { display: flex; align-items: center; gap: 12px; border: 0; background: none; padding: 11px 6px; border-radius: 12px; text-align: left; }
@@ -139,6 +141,7 @@ details.sub > summary { font-size: 14px; font-weight: 600; color: var(--navy-2);
 .si-t { display: flex; flex-direction: column; min-width: 0; }
 .si-t span { font-size: 13px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
 .sheet-text { display: flex; gap: 8px; margin-bottom: 8px; }
+.sheet-text input { flex: 1; min-width: 0; font-size: 16px; -webkit-user-select: text; user-select: text; }
 .sheet-text .btn { flex: none; }
 
 /* Inhalts-Zurück-Knöpfe älterer Ansichten: oben in der Kopfzeile gespiegelt */
@@ -179,6 +182,12 @@ details.sub > summary { font-size: 14px; font-weight: 600; color: var(--navy-2);
 .sp-mic.on { background: #c0392b; animation: spPuls 1.4s ease-in-out infinite; }
 @keyframes spPuls { 50% { box-shadow: 0 0 0 14px rgba(192, 57, 43, .15); } }
 .sp-zitat { font-style: italic; line-height: 1.45; }
+.sp-korr { display: flex; align-items: center; gap: 14px; margin-bottom: 8px; }
+.sp-korr > span { display: flex; flex-direction: column; gap: 3px; font-size: 14px; }
+.sp-mic.sm { width: 56px; height: 56px; flex: none; box-shadow: 0 4px 12px rgba(30, 53, 80, .22); }
+.sp-mic.sm svg.i { width: 26px; height: 26px; }
+.sp-korr-t { display: flex; gap: 8px; margin: 0 0 14px; }
+.sp-korr-t input { flex: 1; min-width: 0; }
 .sp-h { margin: 0 0 4px; font-size: 17px; }
 .sp-chk { display: flex; align-items: center; gap: 8px; margin: 0; font-size: 16px; }
 .sp-chk input { width: 20px; height: 20px; }
@@ -229,7 +238,13 @@ input, select, textarea { font-size: max(16px, 1em); }
 
 /* ---------- PDF-Vorschau vor dem Senden ---------- */
 .pdfv .sheet { max-height: 92vh; overflow: auto; }
-.pdfv iframe { width: 100%; height: 52vh; border: 0; border-radius: 12px; background: #fff; margin-bottom: 10px; }
+.pdfv iframe { display: block; width: 100%; height: 52vh; border: 0; background: #fff; }
+.pdfv-b { overflow: auto; -webkit-overflow-scrolling: touch; border-radius: 12px; margin-bottom: 10px; background: #fff; max-height: 52vh; }
+.pdfv-in { width: 100%; }
+.pdfv-zoom { display: flex; align-items: center; gap: 8px; margin: 0 0 8px; }
+.pdfv-zoom .icon-btn { font-size: 22px; font-weight: 700; min-width: 40px; }
+.pdfv-zoom [data-vzt] { font-size: 13px; min-width: 44px; text-align: center; color: var(--muted); }
+.pdfv-zoom .hint { margin: 0; }
 .pdfv-l { display: flex; flex-direction: column; gap: 8px; margin-bottom: 12px; }
 /* ---------- Dokument ansehen mit Zoom ---------- */
 .pdfz { position: fixed; inset: 0; z-index: 90; background: #2b3542; display: flex; flex-direction: column; padding: env(safe-area-inset-top) 0 env(safe-area-inset-bottom); }
