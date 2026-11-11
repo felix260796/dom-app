@@ -622,5 +622,5 @@ window.Rechnung = (() => {
     return { offen, name, html: offen.map((r) => zeile(r).replace('<b>', `<b>${esc(name(r))} · `)).join('') };
   }
 
-  return { laden, liste, fuerProjekt, projektAbschnitt, uebersicht, detail, auftrag, zahlbetrag, ueberfaellig, istOffen, gilt, neu, nachtrag, _intern: { pdf, stand } };
+  return { laden, liste, fuerProjekt, projektAbschnitt, uebersicht, detail, auftrag, zahlbetrag, ueberfaellig, istOffen, gilt, neu, nachtrag, zeile, _intern: { pdf, stand } };
 })();

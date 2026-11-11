@@ -10,7 +10,7 @@
  * Eigener Reiter „Rechnungen“ unten in der Leiste.
  * Baut auf app.js (state, header, main, icon, sheet, switchTab), projekt.js, kunden.js, partner.js, angebot.js auf. */
 window.Finanzen = (() => {
-  let alleZeigen = false;
+  let fSeg = 'aus', fAlle = false, fQ = ''; // Reiter Rechnungen: Bereich (aus | ein | kalk), Offen/Alle, Suchtext
   const belege = new Map();
   const MAX_MB = 6;
   const num = (v) => { const n = parseFloat(String(v ?? '').replace(/\s/g, '').replace(/\.(?=\d{3}(\D|$))/g, '').replace(',', '.')); return Number.isFinite(n) ? n : 0; };
@@ -191,77 +191,91 @@ window.Finanzen = (() => {
   async function view() {
     state.beleg = null;
     const hier = () => state.tab === 'rechnungen' && !state.kalender;
-    header('Rechnungen', 'Eingang, Zahlungen, Kalkulation');
+    header('Rechnungen', 'An Kunden, Eingang, Kalkulation');
     const idx = await projectIndex(); window.__fIdx = idx;
-    await laden();
+    await Promise.all([laden(), Rechnung.laden()]);
     if (!hier()) return;
+    const kName = (x) => (x ? Kunden.name(Kunden.byId(x.kundeId)) || x.customer || '' : '');
+    const pName = (pid) => { const x = pid && idx.find((y) => y.id === pid); return x ? [kName(x), x.titel || x.room].filter(Boolean).join(' · ') : ''; };
+    // Rechnungen an Kunden: offen = Kunde zahlt noch; abzurechnen = abgeschlossene Projekte ohne Schlussrechnung
+    const aus = Rechnung.liste(), ausOffen = aus.filter(Rechnung.istOffen), ausUeber = ausOffen.filter(Rechnung.ueberfaellig);
     const abrechnen = idx.filter((x) => Projekt.norm(x.status) === 'fertig');
-    const aus = await Rechnung.uebersicht();
-    aus.alle = Rechnung.liste();
-    const ausUeber = aus.offen.filter(Rechnung.ueberfaellig);
     const ein = liste(), einOffen = ein.filter((b) => !b.bezahlt), einUeber = einOffen.filter(ueberfaellig);
-    const zeigeEin = alleZeigen ? ein : einOffen;
-    const zeile = (x) => `<button class="pcard" data-fp="${x.id}">
+    // Jede Zeile mit einem Suchtext (Kunde, Projekt, Firma, Nummer, Betrag, Datum), damit die Suche auch Bezahltes findet
+    const betragText = (x) => [eur(x), String(x).replace('.', ','), String(Math.round(x))].join(' ');
+    const ausZeile = (r) => ({ such: [pName(r.projektId), r.nr, r.artName, betragText(Rechnung.zahlbetrag(r)), betragText(r.netto), r.datum, r.titel].join(' ').toLowerCase(),
+      html: Rechnung.zeile(r).replace('<b>', `<b>${esc(pName(r.projektId) || 'Projekt gelöscht')} · `) });
+    const einZeile = (b) => ({ such: [vonText(b), b.nr, pName(b.projektId), b.gewerk, betragText(b.netto), betragText(brutto(b)), b.datum].join(' ').toLowerCase(), html: belegZeile(b) });
+    const projZeile = (x) => `<button class="pcard" data-fr="${x.id}">
         <span class="pc-ph">${icon('euro')}</span>
-        <span class="pc-t"><b>${esc(x.titel || x.room || 'Projekt')}</b>${Projekt.pill(x.status)}
-          <span class="muted pc-wer">${icon('user')}${esc(Kunden.name(Kunden.byId(x.kundeId)) || x.customer || '')}</span></span>
+        <span class="pc-t"><b>${esc(kName(x) || 'Ohne Namen')}</b><span class="muted">${esc([x.titel || x.room, x.nr && 'Nr. ' + x.nr].filter(Boolean).join(' · '))}</span>
+          <span class="ang-sum">Fertig, Schlussrechnung schreiben</span></span>
         ${icon('chevron', 'pc-chev')}</button>`;
     // Kalkulation: Projekte im Auftrag oder danach, mit Angebot oder Kosten
-    const kalkP = idx.filter((x) => Projekt.zugesagt(x.status));
-    const kalk = await Promise.all(kalkP.map(async (x) => { const w = await kvGet('wohnung:' + x.id); return w ? { x, k: await kalkulation(w) } : null; }));
+    const kalk = fSeg === 'kalk' ? await Promise.all(idx.filter((x) => Projekt.zugesagt(x.status)).map(async (x) => { const w = await kvGet('wohnung:' + x.id); return w ? { x, k: await kalkulation(w) } : null; })) : [];
     const kalkShown = kalk.filter((e) => e && (e.k.soll.netto || e.k.ist.netto));
     if (!hier()) return;
-    main().innerHTML = `
-      <label class="search big">${icon('search')}<input type="search" id="fq" placeholder="Firma, Kunde, Nummer oder Betrag" autocomplete="off"></label>
-      <button class="cta slim" id="fNeuR"><span class="cta-ico">${icon('plus')}</span><span class="cta-t"><b>Neue Rechnung</b></span>${icon('chevron', 'cta-chev')}</button>
-      <div class="phasen drei">
-        <div class="fz"><b>${abrechnen.length}</b><span>Abzurechnen</span></div>
-        <div class="fz ${ausUeber.length ? 'rot' : ''}"><b>${aus.offen.length}</b><span>${ausUeber.length ? `${ausUeber.length} Kunde überfällig` : 'Kunde zahlt noch'}</span></div>
-        <div class="fz ${einUeber.length ? 'rot' : ''}"><b>${einOffen.length}</b><span>${einUeber.length ? `${einUeber.length} überfällig` : 'Eingang offen'}</span></div>
-      </div>
 
-      <div class="sec-h"><h2>Eingangsrechnungen</h2>${einOffen.length ? `<span class="count">${eur0(einOffen.reduce((s, b) => s + brutto(b), 0))} offen</span>` : ''}</div>
-      <button class="cta slim" id="fNeu"><span class="cta-ico">${icon('plus')}</span><span class="cta-t"><b>Eingangsrechnung erfassen</b></span>${icon('chevron', 'cta-chev')}</button>
-      ${ein.length ? `<div class="seg2 full" style="margin-top:12px"><button data-fa="0" class="${alleZeigen ? '' : 'on'}">Offen (${einOffen.length})</button><button data-fa="1" class="${alleZeigen ? 'on' : ''}">Alle (${ein.length})</button></div>` : ''}
-      <div class="plist">${zeigeEin.map((b) => belegZeile(b)).join('') || (ein.length ? '<p class="hint">Alles bezahlt.</p>' : '<p class="hint">Fotografiere die Rechnung eines Subunternehmers oder Lieferanten. Die KI liest Betrag, Datum und Absender aus.</p>')}</div>
-
-      ${abrechnen.length ? `<div class="sec-h"><h2>Abgeschlossen, noch keine Rechnung</h2></div><div class="plist">${abrechnen.map((x) => zeile(x).replace('data-fp=', 'data-fr=')).join('')}</div>` : ''}
-      <div class="sec-h"><h2>Rechnungen an Kunden, offen</h2>${aus.offen.length ? `<span class="count">${eur0(aus.offen.reduce((s, r) => s + Rechnung.zahlbetrag(r), 0))}</span>` : ''}</div>
-      <div class="plist">${aus.html || '<p class="hint">Keine offenen Rechnungen. Oben „Neue Rechnung“ tippen: Projekt suchen, Art wählen, fertig.</p>'}</div>
-
-      <div class="sec-h"><h2>Kalkulation je Projekt</h2></div>
-      ${kalkShown.length ? `<div class="plist">${kalkShown.map(({ x, k }) => `<button class="pcard" data-fp="${x.id}">
+    const liste_ = (q) => {
+      const w = q.trim().toLowerCase().split(/\s+/).filter(Boolean);
+      const passt = (z) => w.every((x) => z.such.includes(x));
+      if (w.length) {
+        // Suche: über alles, auch Bezahltes
+        const a = aus.map(ausZeile).filter(passt), e = ein.map(einZeile).filter(passt);
+        return `${a.length ? `<div class="sec-h"><h2>An Kunden</h2><span class="count">${a.length}</span></div><div class="plist">${a.map((z) => z.html).join('')}</div>` : ''}
+          ${e.length ? `<div class="sec-h"><h2>Eingang</h2><span class="count">${e.length}</span></div><div class="plist">${e.map((z) => z.html).join('')}</div>` : ''}
+          ${a.length || e.length ? '' : '<p class="hint center">Nichts gefunden. Gesucht wird in Kunde, Projekt, Firma, Nummer und Betrag.</p>'}`;
+      }
+      const filter = `<div class="seg2 full" style="margin:12px 0 4px"><button data-fa="0" class="${fAlle ? '' : 'on'}">Offen</button><button data-fa="1" class="${fAlle ? 'on' : ''}">Alle</button></div>`;
+      if (fSeg === 'aus') {
+        const l = (fAlle ? aus : ausOffen).map((r) => ausZeile(r).html).join('');
+        return `${abrechnen.length ? `<div class="sec-h"><h2>Abzurechnen</h2><span class="count">${abrechnen.length}</span></div><div class="plist">${abrechnen.map(projZeile).join('')}</div>` : ''}
+          ${aus.length ? filter : ''}
+          <div class="plist">${l || `<p class="hint">${aus.length ? 'Alles bezahlt.' : 'Noch keine Rechnungen an Kunden. „Rechnung schreiben“ tippen: Projekt suchen, Art wählen, Betrag steht schon da.'}</p>`}</div>`;
+      }
+      if (fSeg === 'ein') {
+        const l = (fAlle ? ein : einOffen).map((b) => belegZeile(b)).join('');
+        return `${ein.length ? filter : ''}<div class="plist">${l || `<p class="hint">${ein.length ? 'Alles bezahlt.' : 'Rechnungen von Subunternehmern und Lieferanten. Foto genügt, die KI liest Betrag, Datum und Absender aus.'}</p>`}</div>`;
+      }
+      return kalkShown.length ? `<div class="plist" style="margin-top:10px">${kalkShown.map(({ x, k }) => `<button class="pcard" data-fp="${x.id}">
           <span class="pc-ph" style="color:${k.ampel[1]}">${icon('euro')}</span>
-          <span class="pc-t"><b>${esc(x.titel || x.room || 'Projekt')}</b>${Projekt.pill(x.status)}
+          <span class="pc-t"><b>${esc(kName(x) || 'Projekt')}</b><span class="muted">${esc(x.titel || x.room || '')}</span>
             <span class="ang-sum" style="color:${k.ampel[1]}">Marge ${eur0(k.marge)}${k.soll.netto ? ` · ${k.proz.toLocaleString('de-DE', { maximumFractionDigits: 0 })} %` : ''}</span>
             <span class="muted">Angebot ${eur0(k.soll.netto)} · Kosten ${eur0(k.ist.netto)}</span></span>
           ${icon('chevron', 'pc-chev')}</button>`).join('')}</div>`
-        : '<p class="hint">Sobald ein zugesagtes Projekt ein Angebot und Eingangsrechnungen hat, steht hier die Marge.</p>'}
+        : '<p class="hint">Sobald ein zugesagtes Projekt ein Angebot und Eingangsrechnungen hat, steht hier die Marge.</p>';
+    };
+    main().innerHTML = `
+      <label class="search big">${icon('search')}<input type="search" id="fq" value="${esc(fQ)}" placeholder="Kunde, Firma, Nummer oder Betrag" autocomplete="off"></label>
+      <div class="f-neu">
+        <button class="btn" id="fNeuR">${icon('file')} Rechnung schreiben</button>
+        <button class="btn secondary" id="fNeu">${icon('camera')} Eingang erfassen</button>
+      </div>
+      <div class="phasen drei f-seg">
+        <button data-fs="aus" class="fz ${fSeg === 'aus' ? 'on' : ''} ${ausUeber.length ? 'rot' : ''}"><b>${eur0(ausOffen.reduce((s, r) => s + Rechnung.zahlbetrag(r), 0))}</b><span>${ausUeber.length ? `An Kunden · ${ausUeber.length} überfällig` : `An Kunden${abrechnen.length ? ` · ${abrechnen.length} abzurechnen` : ''}`}</span></button>
+        <button data-fs="ein" class="fz ${fSeg === 'ein' ? 'on' : ''} ${einUeber.length ? 'rot' : ''}"><b>${eur0(einOffen.reduce((s, b) => s + brutto(b), 0))}</b><span>${einUeber.length ? `Eingang · ${einUeber.length} überfällig` : 'Eingang, wir zahlen'}</span></button>
+        <button data-fs="kalk" class="fz ${fSeg === 'kalk' ? 'on' : ''}"><b>${icon('chart')}</b><span>Kalkulation je Projekt</span></button>
+      </div>
+      <div id="fListe">${liste_(fQ)}</div>
 
-      <button class="notice plain" id="fAusw">${icon('chart')}<span><b>Auswertung</b> · Umsatz, Zusagen, Marge, Kundenquellen</span>${icon('chevron')}</button>
-      <button class="notice plain" id="fEinst">${icon('sliders')}<span><b>Einstellungen für Rechnungen</b> · Zahlungsziel, Abschläge, Mahntexte</span>${icon('chevron')}</button>`;
+      <button class="notice plain" id="fAusw" style="margin-top:18px">${icon('chart')}<span><b>Auswertung</b> · Umsatz, Zusagen, Marge, Kundenquellen</span>${icon('chevron')}</button>
+      <button class="notice plain" id="fEinst">${icon('sliders')}<span><b>Einstellungen für Rechnungen</b> · Zahlungsziel, Abschläge, Texte</span>${icon('chevron')}</button>`;
+    const binden = () => {
+      $$('#fListe [data-rech]').forEach((b) => (b.onclick = () => Rechnung.detail(Rechnung.liste().find((r) => r.id === b.dataset.rech), () => view())));
+      $$('#fListe [data-fa]').forEach((b) => (b.onclick = () => { fAlle = b.dataset.fa === '1'; view(); }));
+      $$('#fListe [data-fr]').forEach((b) => (b.onclick = async () => { const w = await kvGet('wohnung:' + b.dataset.fr); if (w) Rechnung.neu(w, () => view()); }));
+      $$('#fListe [data-beleg]').forEach((b) => (b.onclick = () => erfassen(belege.get(b.dataset.beleg), () => view())));
+      $$('#fListe [data-fp]').forEach((b) => (b.onclick = () => { switchTab('projekt', { wohnung: null }); Projekt.oeffnen(b.dataset.fp); }));
+    };
+    binden();
+    // Suche: zeichnet nur die Liste neu (Tastatur bleibt offen) und sucht in allen Rechnungen, auch bezahlten
+    $('#fq').oninput = (e) => { fQ = e.target.value; $('#fListe').innerHTML = liste_(fQ); binden(); };
+    $$('[data-fs]').forEach((b) => (b.onclick = () => { fSeg = b.dataset.fs; fQ = ''; view(); }));
     $('#fAusw').onclick = () => switchTab('auswertung');
     $('#fEinst').onclick = () => { switchTab('einstellungen'); einstellungSeite('rechnungen'); window.scrollTo(0, 0); };
-    $$('[data-rech]').forEach((b) => (b.onclick = async () => { await Rechnung.laden(); Rechnung.detail(Rechnung.liste().find((r) => r.id === b.dataset.rech), () => view()); }));
-    $$('[data-fa]').forEach((b) => (b.onclick = () => { alleZeigen = b.dataset.fa === '1'; view(); }));
-    $('#fNeu').onclick = () => erfassen(neu(), () => view());
-    // Einheitlicher Kopf wie bei Kunden und Angeboten: Suche filtert alle Listen dieser Seite, „Neue Rechnung“ fragt, welche Art
-    $('#fq').oninput = (e) => {
-      const w = e.target.value.trim().toLowerCase().split(/\s+/).filter(Boolean);
-      $$('main .plist > .pcard, main .plist > button, main .plist > div').forEach((el) => { el.hidden = w.length > 0 && !w.every((x) => el.textContent.toLowerCase().includes(x)); });
-    };
-    $('#fNeuR').onclick = async () => {
-      const v = await sheet('Neue Rechnung', [
-        { label: 'Eingangsrechnung erfassen', sub: 'Rechnung von Subunternehmer oder Lieferant, Foto genügt', icon: icon('camera'), value: 'ein' },
-        { label: 'Rechnung an einen Kunden', sub: 'Abschlag, Schlussrechnung oder eigene Positionen', icon: icon('file'), value: 'aus' },
-      ]);
-      if (v === 'ein') return erfassen(neu(), () => view());
-      // Rechnung an Kunden: Projekt suchen, Art wählen, Betrag steht schon da. Man bleibt im Reiter Rechnungen.
-      if (v === 'aus') Rechnung.neu(null, () => view());
-    };
-    $$('[data-fr]').forEach((b) => (b.onclick = async () => { const w = await kvGet('wohnung:' + b.dataset.fr); if (w) Rechnung.neu(w, () => view()); }));
-    $$('[data-beleg]').forEach((b) => (b.onclick = () => erfassen(belege.get(b.dataset.beleg), () => view())));
-    $$('[data-fp]').forEach((b) => (b.onclick = () => { switchTab('projekt', { wohnung: null }); Projekt.oeffnen(b.dataset.fp); }));
+    $('#fNeu').onclick = () => erfassen(neu(), () => { fSeg = 'ein'; view(); });
+    // Rechnung an Kunden: Projekt suchen, Art wählen, Betrag steht schon da. Man bleibt im Reiter Rechnungen.
+    $('#fNeuR').onclick = () => Rechnung.neu(null, () => { fSeg = 'aus'; view(); });
   }
 
   // ---------- KI: Rechnung auslesen ----------
