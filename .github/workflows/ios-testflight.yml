@@ -1,0 +1,115 @@
+# Baut die DOM-App als iPhone-App und lädt sie zu TestFlight hoch.
+# Läuft auf einem Apple-Rechner von GitHub, ein eigener Mac ist nicht nötig.
+# Nötige Geheimnisse (Repository › Settings › Secrets and variables › Actions):
+#   APPLE_TEAM_ID      Team-ID aus developer.apple.com › Mitgliedschaft
+#   ASC_KEY_ID         Schlüssel-ID des App-Store-Connect-API-Schlüssels
+#   ASC_ISSUER_ID      Issuer-ID (steht über der Schlüsselliste)
+#   ASC_KEY_P8         Inhalt der .p8-Datei (ganzer Text)
+# Fehlen sie, wird der Bau einfach übersprungen.
+name: iPhone-App zu TestFlight
+
+on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - '**.md'
+      - 'supabase/**'
+      - 'docs/**'
+      - '.github/workflows/supabase-wach-halten.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: ios-testflight
+  cancel-in-progress: true
+
+jobs:
+  bauen:
+    runs-on: macos-latest
+    timeout-minutes: 60
+    env:
+      APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+      ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+      ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+      ASC_KEY_P8: ${{ secrets.ASC_KEY_P8 }}
+    steps:
+      - name: Geheimnisse da?
+        id: pruefen
+        run: |
+          if [ -z "$APPLE_TEAM_ID" ] || [ -z "$ASC_KEY_ID" ] || [ -z "$ASC_ISSUER_ID" ] || [ -z "$ASC_KEY_P8" ]; then
+            echo "Apple-Schlüssel fehlen noch, Bau übersprungen."
+            echo "los=nein" >> "$GITHUB_OUTPUT"
+          else
+            echo "los=ja" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/checkout@v4
+        if: steps.pruefen.outputs.los == 'ja'
+
+      - uses: actions/setup-node@v4
+        if: steps.pruefen.outputs.los == 'ja'
+        with:
+          node-version: 22
+
+      - name: Neuestes Xcode wählen
+        if: steps.pruefen.outputs.los == 'ja'
+        run: |
+          XC=$(ls -d /Applications/Xcode_*.app | grep -v beta | sort -V | tail -1)
+          sudo xcode-select -s "$XC"
+          xcodebuild -version
+
+      - name: iPhone-Projekt erzeugen
+        if: steps.pruefen.outputs.los == 'ja'
+        run: |
+          npm install --no-audit --no-fund
+          sh ios-resources/www-bauen.sh
+          npx cap add ios --packagemanager SPM
+          npx cap sync ios
+          # Symbol und Startbild
+          cp ios-resources/icon-1024.png ios/App/App/Assets.xcassets/AppIcon.appiconset/AppIcon-512@2x.png
+          for f in ios/App/App/Assets.xcassets/Splash.imageset/*.png; do cp ios-resources/splash-2732.png "$f"; done
+          # Erlaubnisse und Angaben für Apple
+          P=ios/App/App/Info.plist
+          PB=/usr/libexec/PlistBuddy
+          $PB -c "Add :NSCameraUsageDescription string 'DOM braucht die Kamera für Fotos von Räumen, Belegen und Dokumenten.'" $P
+          $PB -c "Add :NSMicrophoneUsageDescription string 'DOM braucht das Mikrofon für Sprachaufnahmen und Gespräche vor Ort.'" $P
+          $PB -c "Add :NSPhotoLibraryUsageDescription string 'DOM braucht Zugriff auf Fotos, um Bilder zu Projekten hinzuzufügen.'" $P
+          $PB -c "Add :NSPhotoLibraryAddUsageDescription string 'DOM speichert Bilder und Unterlagen in deinen Fotos.'" $P
+          $PB -c "Add :ITSAppUsesNonExemptEncryption bool false" $P
+          $PB -c "Set :CFBundleDevelopmentRegion de" $P
+          $PB -c "Delete :UIRequiredDeviceCapabilities" $P || true
+
+      - name: Bauen und signieren
+        if: steps.pruefen.outputs.los == 'ja'
+        run: |
+          KEY="$RUNNER_TEMP/AuthKey.p8"
+          printf '%s\n' "$ASC_KEY_P8" > "$KEY"
+          VER=$(sed -n "s/.*APP_VERSION *= *'\\([0-9]*\\)'.*/\\1/p" app.js | head -1)
+          echo "App-Version $VER, Build ${{ github.run_number }}"
+          xcodebuild -project ios/App/App.xcodeproj -scheme App -configuration Release \
+            -destination 'generic/platform=iOS' -archivePath "$RUNNER_TEMP/DOM.xcarchive" archive \
+            DEVELOPMENT_TEAM="$APPLE_TEAM_ID" CODE_SIGN_STYLE=Automatic \
+            TARGETED_DEVICE_FAMILY=1 \
+            MARKETING_VERSION="$VER.0" CURRENT_PROJECT_VERSION="${{ github.run_number }}" \
+            -allowProvisioningUpdates \
+            -authenticationKeyPath "$KEY" -authenticationKeyID "$ASC_KEY_ID" -authenticationKeyIssuerID "$ASC_ISSUER_ID"
+
+      - name: Zu TestFlight hochladen
+        if: steps.pruefen.outputs.los == 'ja'
+        run: |
+          KEY="$RUNNER_TEMP/AuthKey.p8"
+          cat > "$RUNNER_TEMP/export.plist" <<EOF
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0"><dict>
+            <key>method</key><string>app-store-connect</string>
+            <key>destination</key><string>upload</string>
+            <key>teamID</key><string>$APPLE_TEAM_ID</string>
+            <key>signingStyle</key><string>automatic</string>
+            <key>manageAppVersionAndBuildNumber</key><false/>
+          </dict></plist>
+          EOF
+          xcodebuild -exportArchive -archivePath "$RUNNER_TEMP/DOM.xcarchive" \
+            -exportOptionsPlist "$RUNNER_TEMP/export.plist" -exportPath "$RUNNER_TEMP/export" \
+            -allowProvisioningUpdates \
+            -authenticationKeyPath "$KEY" -authenticationKeyID "$ASC_KEY_ID" -authenticationKeyIssuerID "$ASC_ISSUER_ID"
+          rm -f "$KEY"
