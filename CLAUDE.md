@@ -48,7 +48,7 @@ Dokumente ansehen mit Zoom: `pdfAnsicht` in `core.js` (Zoom nur, solange ein Dok
 | Marketing (stillgelegt) | `social.js` | Vorher-Nachher-Video, Instagram. Nicht mehr eingebunden, wird nicht gebraucht |
 | Design | `css/*.css` | Je Bereich eine Datei: `basis` (Farben, Kopfzeile, Leiste, Grundbausteine), `projekte`, `raum`, `angebot`, `kunden`, `bilder`, `kalender`, `finanzen`. In `index.html` in dieser Reihenfolge laden (basis zuerst). Abschnitte mit `/* ---------- Name ---------- */` |
 | Offline | `sw.js`, `manifest.webmanifest` | Service Worker. Neue Datei (JS oder CSS) → in `FILES` eintragen |
-| iPhone-App (TestFlight) | `.github/workflows/ios-testflight.yml`, `capacitor.config.json`, `package.json`, `ios-resources/`, `IPHONE_APP_EINRICHTEN.md` | Capacitor-Hülle, wird bei jedem Merge auf `main` auf einem macOS-Runner erzeugt, signiert (API-Schlüssel in GitHub-Secrets) und zu TestFlight hochgeladen. Kein `ios/`-Ordner im Repo. In der Hülle gibt es keinen Service Worker und kein Web-Push |
+| iPhone-App (TestFlight) | `.github/workflows/ios-testflight.yml`, `capacitor.config.json`, `package.json`, `ios-resources/`, `IPHONE_APP_EINRICHTEN.md` | Capacitor-Hülle, wird bei jedem Merge auf `main` auf einem macOS-Runner erzeugt, signiert und zu TestFlight hochgeladen. Signatur: `ios-resources/signatur.py` holt je Lauf ein Verteilungszertifikat und Profil „DOM CI <id>“ über die App-Store-Connect-API (Schlüssel in GitHub-Secrets) und löscht das des vorigen Laufs. Zum Testen den Workflow per „Run workflow“ auf einem Zweig starten. Kein `ios/`-Ordner im Repo. In der Hülle gibt es keinen Service Worker und kein Web-Push |
 | Test | `diag.html` | Bildschirm-Test (Höhen, Sicherheitsabstand) |
 
 ## Verknüpfungen zwischen den Bereichen
