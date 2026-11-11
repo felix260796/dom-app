@@ -552,19 +552,39 @@ async function planAufnehmen(w) {
   toast(`Plan im Ordner „${ordner}“ gespeichert`);
   voiceRefresh(w.id);
 }
-/** LiDAR-Raumscan vor Ort: Maße beim Projekt merken, im Aufmaß übernehmen. */
+/** LiDAR-Raumscan vor Ort: ganzen Raum beim Projekt merken (Grundriss, 3D), Raum im Projekt anlegen, Maße ins Aufmaß. */
 async function raumScan(w, list) {
   let m;
   try { m = await Geraet.raumScannen(); } catch (e) { return toast('' + (e.message || e), 6000); }
   if (!m) return;
+  const scan = { id: uid(), name: '', t: Date.now(), laenge: m.laenge, breite: m.breite, hoehe: m.hoehe, flaeche: m.flaeche, tueren: m.tueren || [], fenster: m.fenster || [], geo: m.geo || null };
+  // Vorschläge: Räume des Projekts, dazu der Raumtyp, den die erkannten Möbel nahelegen
+  const typ = Raumscan.typFuer(scan), vorschlag = roomType(typ).name, erk = Raumscan.erkannt(scan);
   const namen = [...new Set(list.map((r) => r.room || roomType(r.roomType).name))];
-  const v = await sheet('Welcher Raum war das?', namen.map((n) => ({ label: n, value: n })), { text: 'Name, z. B. Bad, Küche, Flur' });
-  const name = (typeof v === 'string' ? v : v?.text?.trim()) || `Raum ${(w.vorOrt?.scans?.length || 0) + 1}`;
-  w.vorOrt = { ...(w.vorOrt || {}), scans: [...(w.vorOrt?.scans || []), { id: uid(), name, t: Date.now(), laenge: m.laenge, breite: m.breite, hoehe: m.hoehe, flaeche: m.flaeche, tueren: m.tueren || [], fenster: m.fenster || [] }] };
+  const items = namen.map((n) => ({ label: n, sub: 'Raum im Projekt', value: n }));
+  if (typ !== 'sonstiges' && !namen.some((n) => n.toLowerCase() === vorschlag.toLowerCase())) items.unshift({ label: vorschlag, sub: erk ? `Erkannt: ${erk}` : 'Vorschlag', value: vorschlag });
+  const v = await sheet('Welcher Raum war das?', items, { text: 'Name, z. B. Bad, Büro, Flur' });
+  scan.name = (typeof v === 'string' ? v : v?.text?.trim()) || `Raum ${(w.vorOrt?.scans?.length || 0) + 1}`;
+  w.vorOrt = { ...(w.vorOrt || {}), scans: [...(w.vorOrt?.scans || []), scan] };
   if (w.isNew) delete w.isNew;
-  await window.Projekt.save(w);
-  toast(`Raumscan „${name}“ gespeichert`);
-  voiceRefresh(w.id);
+  // Zum Raum im Projekt: vorhandenen nehmen (Maße nur, wenn das Aufmaß noch leer ist), sonst anlegen (fragt einmal)
+  const raum = Raumscan.raumFuer(scan, list);
+  if (raum) {
+    scan.raumId = raum.id;
+    window.Angebot?._intern.init(raum);
+    if (!window.Angebot?._intern.masse(raum.aufmass.raeume[0])?.boden) { Raumscan.masseIn(raum, scan); await saveProject(raum); toast(`Maße stehen im Aufmaß von „${scan.name}“`); }
+    else toast(`Raumscan „${scan.name}“ gespeichert`);
+    await window.Projekt.save(w);
+  } else if (vorgabe('raumscanRaumAnlegen') !== 'nein' && confirm(`Raum „${scan.name}“ im Projekt anlegen? Die Maße stehen dann gleich im Aufmaß.`)) {
+    await window.Projekt.save(w);
+    await window.Projekt._intern.raumAusScan(w, scan);
+    toast(`Raum „${scan.name}“ angelegt`);
+  } else {
+    await window.Projekt.save(w);
+    toast(`Raumscan „${scan.name}“ gespeichert`);
+  }
+  if (state.wohnung?.id === w.id && !state.project) await window.Projekt.view(); else voiceRefresh(w.id);
+  Raumscan.ansehen(w, scan.id);
 }
 
 /** Karte in der Projektübersicht: Sammelstelle vor Ort (Gespräch, Fotos, Pläne, Raumscan), Ergebnis, Zusammenfassung. */
@@ -587,8 +607,7 @@ window.Gespraech = {
           <button type="button" class="vo-b" id="vPlan">${icon('file')}<b>Pläne</b><span>${w.vorOrt?.plaene ? `${w.vorOrt.plaene} gescannt` : 'scannen'}</span></button>
           ${window.Geraet?.kann('lidar') ? `<button type="button" class="vo-b" id="vScan">${icon('ruler')}<b>Raumscan</b><span>${scans.length ? `${scans.length} ${scans.length === 1 ? 'Raum' : 'Räume'}` : 'LiDAR'}</span></button>` : ''}
         </div>
-        ${scans.length ? `<div class="vo-scans">${scans.map((x) => `<div class="vo-scan">${icon('ruler')}<span><b>${esc(x.name)}</b> ${zahl(x.laenge)} × ${zahl(x.breite)} m${x.hoehe > 0 ? `, ${zahl(x.hoehe)} m hoch` : ''}${x.flaeche > 0 ? ` · ${zahl(x.flaeche)} m²` : ''}</span><button type="button" class="icon-btn" data-scandel="${x.id}" aria-label="Scan löschen">${icon('x')}</button></div>`).join('')}</div>
-          <p class="hint" style="margin-top:4px">Im Angebot beim Aufmaß übernimmst du die Maße mit einem Tipp.</p>` : ''}
+        ${scans.length ? `<div class="vo-scans">${scans.map((x) => `<div class="vo-scan"><button type="button" class="vo-scan-o" data-scanauf="${x.id}"><canvas class="vo-scan-c" data-scanbild="${x.id}"></canvas><span><b>${esc(x.name)}</b> ${zahl(x.laenge)} × ${zahl(x.breite)} m${x.hoehe > 0 ? `, ${zahl(x.hoehe)} m hoch` : ''}${x.flaeche > 0 ? ` · ${zahl(x.flaeche)} m²` : ''}<small>Grundriss, 3D-Modell, reinzeichnen</small></span></button><button type="button" class="icon-btn" data-scandel="${x.id}" aria-label="Scan löschen">${icon('x')}</button></div>`).join('')}</div>` : ''}
 
         <h3 class="vo-h">${icon('mic')} Gespräch</h3>
         <label style="margin-top:0">Was für ein Gespräch?</label>
@@ -646,6 +665,8 @@ window.Gespraech = {
     // Sammelstelle: Pläne und Raumscan
     if ($('#vPlan')) $('#vPlan').onclick = () => planAufnehmen(w);
     if ($('#vScan')) $('#vScan').onclick = () => raumScan(w, list);
+    $$('[data-scanbild]').forEach((c) => { const x = (w.vorOrt?.scans || []).find((s) => s.id === c.dataset.scanbild); if (x) try { Raumscan.vorschau(c, x); } catch (e) { console.warn(e); } });
+    $$('[data-scanauf]').forEach((b) => (b.onclick = () => Raumscan.ansehen(w, b.dataset.scanauf)));
     $$('[data-scandel]').forEach((b) => (b.onclick = async () => {
       const x = (w.vorOrt?.scans || []).find((s) => s.id === b.dataset.scandel);
       if (!x || !confirm(`Raumscan „${x.name}“ löschen?`)) return;

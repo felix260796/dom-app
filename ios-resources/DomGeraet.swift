@@ -657,6 +657,41 @@ final class DomRaumScan: UIViewController, RoomCaptureViewDelegate {
             "waende": r.walls.count,
             "tueren": r.doors.map { ["breite": rund($0.dimensions.x), "hoehe": rund($0.dimensions.y)] },
             "fenster": r.windows.map { ["breite": rund($0.dimensions.x), "hoehe": rund($0.dimensions.y)] },
+            "geo": geo(r),
         ]
+    }
+
+    /// Ganzer Raum für Grundriss und 3D-Ansicht: Wände, Türen, Fenster, Durchgänge, Möbel, Boden.
+    /// Alles in Metern, von oben gesehen (x, z), Höhen ab Fußboden (y).
+    static func geo(_ r: CapturedRoom) -> [String: Any] {
+        let cm = { (x: Float) -> Double in (Double(x) * 100).rounded() / 100 }
+        var boden: Float = .greatestFiniteMagnitude
+        for w in r.walls { boden = min(boden, w.transform.columns.3.y - w.dimensions.y / 2) }
+        if boden == .greatestFiniteMagnitude { boden = 0 }
+        let waende: [[String: Any]] = r.walls.map { w in
+            let t = w.transform
+            let m = SIMD2<Float>(t.columns.3.x, t.columns.3.z)
+            let d = simd_normalize(SIMD2<Float>(t.columns.0.x, t.columns.0.z)) * (w.dimensions.x / 2)
+            return ["x1": cm(m.x - d.x), "z1": cm(m.y - d.y), "x2": cm(m.x + d.x), "z2": cm(m.y + d.y), "h": cm(w.dimensions.y)]
+        }
+        func oeffnung(_ s: CapturedRoom.Surface, _ art: String) -> [String: Any] {
+            let t = s.transform
+            return ["art": art, "x": cm(t.columns.3.x), "z": cm(t.columns.3.z), "a": Double(atan2(t.columns.0.z, t.columns.0.x)),
+                    "b": cm(s.dimensions.x), "h": cm(s.dimensions.y), "u": cm(max(0, t.columns.3.y - s.dimensions.y / 2 - boden))]
+        }
+        let oeffnungen = r.doors.map { oeffnung($0, "tuer") } + r.windows.map { oeffnung($0, "fenster") } + r.openings.map { oeffnung($0, "durchgang") }
+        let objekte: [[String: Any]] = r.objects.map { o in
+            let t = o.transform
+            return ["k": "\(o.category)", "x": cm(t.columns.3.x), "z": cm(t.columns.3.z), "a": Double(atan2(t.columns.0.z, t.columns.0.x)),
+                    "b": cm(o.dimensions.x), "h": cm(o.dimensions.y), "t": cm(o.dimensions.z), "u": cm(max(0, t.columns.3.y - o.dimensions.y / 2 - boden))]
+        }
+        var ecken: [[Double]] = []
+        if #available(iOS 17.0, *), let f = r.floors.first {
+            for c in f.polygonCorners {
+                let p = f.transform * SIMD4<Float>(c.x, c.y, c.z, 1)
+                ecken.append([cm(p.x), cm(p.z)])
+            }
+        }
+        return ["waende": waende, "oeffnungen": oeffnungen, "objekte": objekte, "boden": ecken]
     }
 }

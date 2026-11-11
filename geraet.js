@@ -10,7 +10,7 @@ window.Geraet = (() => {
   const STANDARD = { scanner: true, lidar: true, teilen: true, faceid: false, kalender: false, kontakte: false };
   const FUNKTIONEN = [
     ['scanner', 'Dokumentenscanner', 'Kamera oben: Rechnungen und Briefe scannen, das iPhone erkennt die Ränder und mehrere Seiten.'],
-    ['lidar', 'Raum scannen (LiDAR)', 'Im Aufmaß: Raum abfahren, Länge, Breite, Höhe, Türen und Fenster werden eingetragen. Nur iPhone Pro und iPad Pro.'],
+    ['lidar', 'Raum scannen (LiDAR)', 'Vor Ort und im Aufmaß: Raum abfahren. Daraus werden Grundriss, 3D-Modell und die Maße im Aufmaß. Nur iPhone Pro und iPad Pro.'],
     ['teilen', '„An DOM teilen“', 'PDFs und Bilder aus Mail, WhatsApp oder Dateien über „Teilen“ an DOM schicken.'],
     ['faceid', 'Face ID beim Öffnen', 'DOM ist gesperrt, bis du dich mit Face ID oder dem Gerätecode meldest.'],
     ['kalender', 'Termine im iPhone-Kalender', 'Deine DOM-Termine erscheinen im eigenen Kalender „DOM“. Ausschalten nimmt ihn wieder vom Gerät.'],
@@ -85,7 +85,7 @@ window.Geraet = (() => {
   }
 
   // ---------- LiDAR-Raumscan ----------
-  /** { laenge, breite, hoehe, flaeche, tueren:[{breite,hoehe}], fenster:[…] } oder null bei Abbruch */
+  /** { laenge, breite, hoehe, flaeche, tueren:[{breite,hoehe}], fenster:[…], geo } oder null bei Abbruch. geo = ganzer Raum für raumscan.js */
   async function raumScannen() {
     const r = await P().raumScannen();
     return r?.abgebrochen ? null : r;
