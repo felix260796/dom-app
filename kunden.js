@@ -386,6 +386,7 @@ window.Kunden = (() => {
     if (state.kunde !== k) return;
     main().innerHTML = `
       <div class="kd-actions" id="kAct"></div>
+      ${window.Geraet?.kann('kontakte') && !name(k).trim() ? `<button type="button" class="link-add" id="kAusKontakt" style="margin:0 0 8px">${icon('user')} Aus iPhone-Kontakten übernehmen</button>` : ''}
       <div class="card kform">
         <div class="row"><div style="flex:1"><label style="margin-top:0">Anrede</label><select id="kAnrede">${ANREDEN.map(([v, l]) => `<option value="${v}" ${v === k.anrede ? 'selected' : ''}>${l}</option>`).join('')}</select></div>
           <div style="flex:1"><label style="margin-top:0">Kunden-Nr.</label><div class="k-nr">${esc(k.nr || 'wird vergeben')}</div></div></div>
@@ -432,6 +433,7 @@ window.Kunden = (() => {
       <div class="card">${k.schnell.slice().reverse().map((s) => `<div class="tot"><span>${esc(new Date(s.t).toLocaleDateString('de-DE'))}${s.text ? ` · ${esc(s.text)}` : ''}</span><b>ca. ${Math.round(s.von).toLocaleString('de-DE')} – ${Math.round(s.bis).toLocaleString('de-DE')} €</b></div>`).join('')}</div>` : ''}
       ${angebotePrj(idx, einfach ? () => '' : (x) => objLabel(objekt(k, x.objektId)) || 'Ohne Objekt')}
       <button class="btn big block" id="kProj" style="margin-top:12px">${icon('plus')} Neues Angebot für ${esc(name(k) || 'diesen Kunden')}</button>
+      ${!k.isNew && window.Geraet?.kann('kontakte') ? `<button type="button" class="link-add" id="kInKontakte" style="margin-top:10px">${icon('user')} In iPhone-Kontakten speichern</button>` : ''}
       ${k.isNew ? '' : `<button class="notice plain" id="kRech" style="margin-top:12px">${icon('euro')}<span><b>Rechnungen dieses Kunden</b> · zu den Rechnungen springen</span>${icon('chevron')}</button>`}
       ${k.isNew ? '' : `<button class="link-danger" id="kDel">${icon('trash')} Kunde löschen</button>`}`;
 
@@ -495,6 +497,25 @@ window.Kunden = (() => {
       if (!name(k)) { toast('Bitte zuerst den Namen eintragen.'); $('#kName').focus(); return; }
       if (k.isNew) await speichern(k);
       projektAnlegen(k);
+    };
+    // iPhone-Kontakte (geraet.js, je Gerät einschaltbar)
+    if ($('#kAusKontakt')) $('#kAusKontakt').onclick = async () => {
+      const c = await Geraet.kontaktWaehlen().catch((e) => { toast('' + e.message, 5000); return null; });
+      if (!c) return;
+      if (!c.vorname && !c.name && c.firma) Object.assign(k, { anrede: 'Firma', vorname: '', name: c.firma });
+      else Object.assign(k, { vorname: c.vorname || '', name: c.name || '' });
+      if (c.telefon) k.telefon = c.telefon;
+      if (c.email) k.email = c.email;
+      if (c.geburtstag && !k.geburtstag) k.geburtstag = c.geburtstag;
+      if (c.adresse) { k.privat = c.adresse; if (einfach && k.objekte[0]) k.objekte[0].adresse = c.adresse; }
+      await speichern(k); weitergeben(k);
+      const y = window.scrollY; await detail(k); window.scrollTo(0, y);
+    };
+    if ($('#kInKontakte')) $('#kInKontakte').onclick = async () => {
+      const firma = ['Firma', 'Hausverwaltung'].includes(k.anrede);
+      const r = await Geraet.kontaktSpeichern({ vorname: firma ? '' : k.vorname, name: firma ? '' : k.name || name(k), firma: firma ? k.name : '',
+        telefon: k.telefon, email: k.email, adresse: einzeilig(k.privat || k.objekte[0]?.adresse || ''), notiz: k.nr ? `DOM-Kunde ${k.nr}` : '' }).catch((e) => { toast('' + e.message, 5000); return null; });
+      if (r?.gespeichert) toast('In den Kontakten gespeichert');
     };
     if ($('#kRech')) $('#kRech').onclick = async () => {
       switchTab('rechnungen');

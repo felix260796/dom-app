@@ -325,7 +325,7 @@ window.Kalender = (() => {
         }
         try { window.__projIdx = await projectIndex(); } catch {}
         t.kontext = kontext(t);
-        await kvSet('termin:' + t.id, t); alle.set(t.id, t); punkt();
+        await kvSet('termin:' + t.id, t); alle.set(t.id, t); punkt(); window.Geraet?.kalenderAbgleich();
         tag = t.datum; monat = new Date(ausIso(t.datum).getFullYear(), ausIso(t.datum).getMonth(), 1);
         if (sendJetzt && t.mailAn.length) {
           $('#tSave').disabled = true;
@@ -353,7 +353,7 @@ window.Kalender = (() => {
         if (t.mailGesendet && t.mailAn?.length && window.Sync?.active() && confirm('Absage per E-Mail an die Beteiligten senden?')) {
           try { await window.Sync.funktion('termin-mail', { aktion: 'absage', termin: t }); toast('Absage verschickt'); } catch (e) { toast('Absage ging nicht raus: ' + e.message, 5000); }
         }
-        await kvDel('termin:' + t.id); alle.delete(t.id); punkt(); zurueck();
+        await kvDel('termin:' + t.id); alle.delete(t.id); punkt(); window.Geraet?.kalenderAbgleich(); zurueck();
       };
     };
     render(); window.scrollTo(0, 0);

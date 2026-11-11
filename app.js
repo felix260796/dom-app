@@ -6,7 +6,7 @@
  * Kern-Funktionen (Speicher, KI, Bilder) stehen in core.js. */
 
 // ---------- Symbole (einfache Linien-Icons) ----------
-const APP_VERSION = '80';
+const APP_VERSION = '81';
 const ICONS = {
   plus: '<path d="M12 5v14M5 12h14"/>',
   camera: '<path d="M3 8.5A2 2 0 0 1 5 6.5h2l1.6-2h6.8l1.6 2h2a2 2 0 0 1 2 2V18a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><circle cx="12" cy="13" r="3.6"/>',
@@ -280,6 +280,7 @@ function zielOeffnen(z) {
   window.appGestartet = true;
   navigator.serviceWorker?.addEventListener('message', (e) => { if (e.data?.ziel) zielOeffnen(e.data.ziel); });
   setTimeout(() => window.Push?.abgleich(), 4000);
+  window.Geraet?.start(); // iPhone-App: Kalender abgleichen, über „Teilen“ geschickte Dateien abholen
   if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost')) {
     // Neue Version sofort übernehmen: beim Öffnen und beim Zurückkehren in die App nachsehen, dann einmal neu laden
     const reg = await navigator.serviceWorker.register('sw.js', { updateViaCache: 'none' }).catch(() => null);

@@ -32,6 +32,13 @@ const VORGABEN = {
       { k: 'mailMahnung', l: 'Erinnerung und Mahnung', t: 'text', d: '{anrede}\n\nzu unserer Rechnung Nr. {nr} vom {datum} konnten wir noch keinen Zahlungseingang feststellen. Anbei unsere {stufe}.\n\nFreundliche Grüße\n{firma}' },
     ]],
   ],
+  iphone: [
+    ['Für alle Geräte', [
+      { k: 'faceIdNach', l: 'Face ID wieder verlangen nach so vielen Minuten außerhalb der App (0 = jedes Mal)', t: 'zahl', d: 5, h: 'Gilt nur auf Geräten, auf denen Face ID oben eingeschaltet ist.' },
+      { k: 'kalenderErinnerung', l: 'Erinnerung im iPhone-Kalender so viele Minuten vor dem Termin (0 = keine)', t: 'zahl', d: 0, h: 'Die Mitteilung von DOM vor Terminen stellst du unter „Mitteilungen aufs iPhone“ ein. Meist reicht eine der beiden.' },
+      { k: 'routeKarte', l: 'Route für heute öffnen in', t: 'wahl', d: 'google', o: [['google', 'Google Maps (alle Termine als Stopps)'], ['apple', 'Apple Karten (nur der nächste Termin)']], h: 'Der Knopf „Route für heute“ steht auf der Seite „Heute“ über den Terminen.' },
+    ]],
+  ],
   push: [
     ['Morgenübersicht', [
       { k: 'pushMorgen', l: 'Uhrzeit der Morgenübersicht (leer = aus)', t: 'zeile', d: '07:00', h: 'Zum Beispiel 07:00. Die Mitteilung zeigt, was heute ansteht, wie die Seite „Heute“.' },
@@ -279,6 +286,7 @@ window.Vorgaben = (() => {
   // Zusätzlicher Bereich oben auf einer Seite (z. B. Mitteilungen: Gerät anmelden)
   const seiteKopf = {
     push: (el) => window.Push?.karte(el),
+    iphone: (el) => window.Geraet?.karte(el),
     projektEinst: (el) => { el.innerHTML = `<div class="docs" style="margin-bottom:8px"><button class="doc" id="zuBau"><span class="d-ico grey">${icon('check')}</span><span class="d-t"><b>Vorlagen für den Baufortschritt</b><span>Arbeitsschritte je Raumtyp</span></span>${icon('chevron', 'pc-chev')}</button></div>`; $('#zuBau', el).onclick = () => { einstellungSeite('bau'); window.scrollTo(0, 0); }; },
     prompts: (el) => { el.innerHTML = '<p class="hint" style="margin-top:0">Das sind die Anweisungen, die die App an die Bild-KI schickt. Sie sind auf Englisch, weil die KI Englisch am genauesten umsetzt. Unter jedem Feld steht auf Deutsch, was es bewirkt. Wörter in geschweiften Klammern füllt die App selbst aus, die bitte stehen lassen. „Standard“ holt den ursprünglichen Text zurück.</p>'; },
   };
