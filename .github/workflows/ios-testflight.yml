@@ -110,7 +110,7 @@ jobs:
           <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
           <plist version="1.0"><dict>
             <key>method</key><string>app-store-connect</string>
-            <key>destination</key><string>upload</string>
+            <key>destination</key><string>export</string>
             <key>teamID</key><string>$APPLE_TEAM_ID</string>
             <key>signingStyle</key><string>automatic</string>
             <key>manageAppVersionAndBuildNumber</key><false/>
@@ -120,4 +120,12 @@ jobs:
             -exportOptionsPlist "$RUNNER_TEMP/export.plist" -exportPath "$RUNNER_TEMP/export" \
             -allowProvisioningUpdates \
             -authenticationKeyPath "$KEY" -authenticationKeyID "$ASC_KEY_ID" -authenticationKeyIssuerID "$ASC_ISSUER_ID"
-          rm -f "$KEY"
+          IPA=$(ls "$RUNNER_TEMP"/export/*.ipa | head -1)
+          # Signatur ansehen (muss "Apple Distribution" sein)
+          mkdir "$RUNNER_TEMP/pruef" && unzip -q "$IPA" -d "$RUNNER_TEMP/pruef"
+          codesign -dvv "$RUNNER_TEMP"/pruef/Payload/*.app 2>&1 | grep -E "Authority|TeamIdentifier|Identifier" || true
+          # Hochladen
+          mkdir -p ~/.appstoreconnect/private_keys
+          cp "$KEY" ~/.appstoreconnect/private_keys/AuthKey_"$ASC_KEY_ID".p8
+          xcrun altool --upload-app --type ios -f "$IPA" --apiKey "$ASC_KEY_ID" --apiIssuer "$ASC_ISSUER_ID"
+          rm -f "$KEY" ~/.appstoreconnect/private_keys/AuthKey_"$ASC_KEY_ID".p8
