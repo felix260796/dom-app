@@ -7,7 +7,7 @@ Die Oberfläche ist auf Deutsch. Der Nutzer ist Felix (Dom Projektmanagement Gmb
 
 ## Neuerungen aus Version 75/76
 
-Die Leiste unten hat fünf Reiter: Kunden, Partner, Projekte, Angebote, Rechnungen. Felix wollte die Vier-Reiter-Struktur aus Version 75 (Heute/Aufträge/Kontakte/Geld) nicht, darum hat Version 76 sie wieder entfernt. Die Ziele 'auftraege' und 'kontakte' führen über `TAB_ALIAS` zu Angebote bzw. Kunden.
+Die Leiste unten hat fünf Reiter: Kunden, Partner, Angebote, Projekte, Rechnungen (Reihenfolge seit Version 88). Felix wollte die Vier-Reiter-Struktur aus Version 75 (Heute/Aufträge/Kontakte/Geld) nicht, darum hat Version 76 sie wieder entfernt. Die Ziele 'auftraege' und 'kontakte' führen über `TAB_ALIAS` zu Angebote bzw. Kunden.
 Angebot: „Speichern und ansehen“ legt das PDF unter `w.dokumente` ab, „Senden“ verschickt. Nach dem Senden ist das Angebot gesperrt (`w.angebotGesperrt`, `Projekt.gesperrt/gesperrtFrage/angebotKopieren`); ändern nur über eine Kopie mit neuer Nummer (`w.angebotArchiv`, `w.angebotKopieVon`).
 Textfelder vor und nach den Positionen: Standard `PL.einstellungen.bausteine`, je Auftrag `w.angebotTexte` (`Angebot._intern.texteAuftrag`, `texteEinstellungen`).
 Partner-Angebote übernehmen: `Angebot._intern.subUebernehmen` (Foto, PDF oder Partner-Preisliste, KI liest, Zuschlag `subZuschlag`), Zeilen als eigene Positionen mit `x.sub`.
@@ -29,6 +29,13 @@ Bilder: `Bilder.alleView` (alle Bilder nach Datum), `raster` (Markieren, PDF üb
 Karte: Filter je Gruppe (`FILTER` in `karte.js`, gemerkt in localStorage `dom:karteFilter`). Auswertung: `auswertung(daten, rechnungen, jahr)` in `finanzen.js` mit Jahr-Auswahl. „Heute“ hat ein X (`#hZu`, zurück zu `window.__vorHeute`).
 Per Sprache anlegen: Prüfseite mit Feldern untereinander, Anschrift wird über `Kunden.sucheAdresse` um PLZ und Ort ergänzt (Vorgabe `spracheAdresse`).
 
+## Neuerungen aus Version 88
+
+Schutz vor versehentlichem Ändern: `textSchutz` in `core.js` läuft von selbst nach jedem Neuzeichnen von `#main`. Jedes `textarea` mit Inhalt ist erst nach „Bearbeiten“ änderbar („Rückgängig“, „Fertig“). Ausnahme mit `data-frei`. Ganze Blöcke mit `data-schutz="<schlüssel>"` (alle Felder darin, Teile mit `data-edit-nur` gesperrt unsichtbar, `data-schutz-ohne-undo`); offen halten über Neuzeichnen mit `schutzOffen.add(schlüssel)`. Alle `textarea` bekommen Autokorrektur (außer `data-roh`).
+Reihenfolge ändern: keine Pfeile mehr, sondern Griff `griffHtml()` und `ziehbar(box, zeilenSelektor, (von, nach) => …)` in `core.js` (Listen in den Einstellungen, Textfelder im Angebot).
+Kunde: weitere Nummern und E-Mails über das kleine Plus (`Kontakt.mehrLabel/mehrBinden`, Daten in `k.weitere`, Bezeichnungen Vorgaben `telArten`/`mailArten`). Schnellübersicht `historie(k, idx)` in `kunden.js`: Angebots-, Projekt-, Rechnungshistorie; abgesagte Angebote mit Grund (`w.absage = { grund, t }`) und PDF (`angpdf:<id>` bzw. `w.dokumente`). Auswertung: Karte „Abgesagte Angebote“ (`data-awab`).
+Route: `routeLink(adresse)` in `core.js` (Vorgabe `routeKarte`), jedes Anschriftfeld `.adr` bekommt von selbst ein Routen-Zeichen (`routeZeichen`), Schnellknopf „Route“ in `Kontakt.aktionen`.
+
 ## Bereiche
 
 | Bereich | Dateien | Inhalt |
@@ -41,7 +48,7 @@ Per Sprache anlegen: Prüfseite mit Feldern untereinander, Anschrift wird über 
 | Suche über alles | `suche.js` | Menü › Suche (`state.tab = 'suche'`): Kunden, Projekte/Angebote, Rechnungen, Eingangsrechnungen, Termine, Subunternehmer |
 | Unterlagen | `unterlagen.js` | Menü › Unterlagen (`state.tab = 'unterlagen'`): Firmenordner und Vorlagen (`firmadok:<id>` mit `bereich` 'vorlage', Datei `fdatei:<id>`, gültig bis nur Firma, Warnung auf „Heute“) |
 | Wie geht das? | `hilfe.js` | Menü › Wie geht das? (`state.tab = 'hilfe'`): Frage an die KI mit `WISSEN` (bei neuen Funktionen ergänzen) und „Dorthin“-Knöpfen (`ZIELE`) |
-| Navigation, Leiste | `app.js`, `index.html` | Kopfzeile (oben rechts Kalender und Mikrofon; DOM-Logo öffnet das Menü `MENUE` mit Suche, Heute, Kalender, Karte, Auswertung, Preisliste, Unterlagen, Wie geht das?, Einstellungen; unten Gerät gehört Felix/Deniel/beide und Cloud-Stand), Reiter unten Kunden/Subunternehmer/Projekte/Angebote/Rechnungen (`switchTab`), Auswahlfenster `sheet`, Projektliste (nur zugesagte: Einzuplanen/Eingeplant/In Durchführung/Abgeschlossen, `Projekt.phase(x)`), Start. `APP_VERSION` |
+| Navigation, Leiste | `app.js`, `index.html` | Kopfzeile (oben rechts Kalender und Mikrofon; DOM-Logo öffnet das Menü `MENUE` mit Suche, Heute, Kalender, Karte, Auswertung, Preisliste, Unterlagen, Wie geht das?, Einstellungen; unten Gerät gehört Felix/Deniel/beide und Cloud-Stand), Reiter unten Kunden/Subunternehmer/Angebote/Projekte/Rechnungen (`switchTab`), Auswahlfenster `sheet`, Projektliste (nur zugesagte: Einzuplanen/Eingeplant/In Durchführung/Abgeschlossen, `Projekt.phase(x)`), Start. `APP_VERSION` |
 | Raum-Ansicht | `raum.js` | Raum: Fotos, Pakete, KI-Ergebnis, Moodboard nur für den Raum. `viewProjekt` verteilt auch die Reiter Kunden/Projekte/Angebote |
 | Kunden | `kunden.js`, `kontakt.js` | Kundenkarte, Objekte nur bei Bedarf (`einObjekt(k)`: ein Objekt = Kundenanschrift, sonst Rechnungsanschrift + Objektliste), Angebote/Projekte getrennt (`angebotePrj`), Nummern ab 1001, Anrede/Briefanrede, Quelle (`k.quelle`, `QUELLEN`), Geburtstag `gebArt` gratulieren/geschenk (`Kontakt.gebArt`) |
 | Subunternehmer | `partner.js` | Subunternehmer und Lieferanten, Dokumente. Preise je Position (`p.preise`, bearbeitet in `finanzen.js`) |
