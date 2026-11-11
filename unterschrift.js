@@ -2,7 +2,8 @@
 /* DOM – Unterschrift unter Angeboten, Rechnungen und Auftragsbestätigungen.
  * Je Person im Team (Kalender.team) eine gezeichnete Unterschrift: state.settings.unterschriften = { <personId>: 'data:image/png…' }.
  * Wer unterschreibt: die Person, der das Gerät gehört (Menü unten: Felix, Deniel oder beide), bei „beide“ die erste im Team.
- * Unterschrift.pdf(doc, x, y) setzt Grußformel, Bild und Namen ins PDF und gibt die neue y-Position zurück.
+ * Firmenstempel (einmal als Bild hinterlegt): state.settings.stempel, steht rechts neben der Unterschrift.
+ * Unterschrift.pdf(doc, x, y) setzt Grußformel, Unterschrift, Stempel und Namen ins PDF und gibt die neue y-Position zurück.
  * Einstellungen: Firmendaten (vorgaben.js firmaKarte ruft Unterschrift.karte auf). */
 window.Unterschrift = (() => {
   const team = () => window.Kalender?.team() || [];
@@ -18,8 +19,10 @@ window.Unterschrift = (() => {
     const p = person(), b = bild(p);
     doc.setFont('helvetica', 'normal'); doc.setFontSize(10); doc.setTextColor(30);
     doc.text(gruss, x, y); y += 3;
-    if (b) { try { await addFit(doc, b, x, y, 50, 16, 'PNG'); } catch (e) { console.warn('Unterschrift nicht gedruckt', e); } y += 19; }
-    else y += 4;
+    const st = state.settings.stempel || '';
+    if (st) { try { await addFit(doc, st, x + 56, y - 2, 38, 24, mimeOf(st) === 'image/png' ? 'PNG' : 'JPEG'); } catch (e) { console.warn('Stempel nicht gedruckt', e); } }
+    if (b) { try { await addFit(doc, b, x, y, 50, 16, 'PNG'); } catch (e) { console.warn('Unterschrift nicht gedruckt', e); } }
+    y += b || st ? 19 : 4;
     if (p?.name) { doc.text(p.name, x, y); y += 4.6; }
     if (firma) { doc.setFontSize(9); doc.setTextColor(110); doc.text(firma, x, y); doc.setTextColor(30); doc.setFontSize(10); y += 4.6; }
     return y;
@@ -45,11 +48,22 @@ window.Unterschrift = (() => {
     const t = team();
     box.innerHTML = `<div class="sec-h"><h2>Unterschrift</h2></div>
       <div class="card kform vg">
-        <p class="hint" style="margin-top:0">Steht unter Angebot, Rechnung und Auftragsbestätigung: „${esc(vorgabeText('textGruss'))}“, darunter die Unterschrift und der Name. Es unterschreibt, wem das Gerät gehört (unten im Menü), bei „beide“ ${esc(t[0]?.name || 'die erste Person')}.</p>
+        <p class="hint" style="margin-top:0">Steht unter Angebot, Rechnung und Auftragsbestätigung: „${esc(vorgabeText('textGruss'))}“, darunter Unterschrift, Firmenstempel und Name. Es unterschreibt, wem das Gerät gehört (unten im Menü), bei „beide“ ${esc(t[0]?.name || 'die erste Person')}.</p>
         ${t.map((p) => `<label>${esc(p.name || 'Ohne Namen')}</label>
           ${bild(p) ? `<img class="sig-zeig" src="${bild(p)}" alt="Unterschrift ${esc(p.name)}">` : '<p class="hint" style="margin:0">Noch keine Unterschrift</p>'}
           <button type="button" class="link-add" data-sig="${esc(p.id)}">${icon('edit')} ${bild(p) ? 'Neu unterschreiben' : 'Unterschrift zeichnen'}</button>`).join('')}
+        <label>Firmenstempel</label>
+        ${state.settings.stempel ? `<img class="sig-zeig" src="${state.settings.stempel}" alt="Firmenstempel">` : '<p class="hint" style="margin:0">Noch kein Stempel. Stempel auf weißes Papier drücken und fotografieren, am besten freigestellt als PNG.</p>'}
+        <div class="row" style="margin-top:4px"><button type="button" class="link-add" id="stempelNeu">${icon('upload')} ${state.settings.stempel ? 'Anderes Bild' : 'Stempel hinterlegen'}</button>${state.settings.stempel ? `<button type="button" class="link-add" id="stempelWeg">${icon('trash')} Entfernen</button>` : ''}</div>
       </div>`;
+    $('#stempelNeu', box).onclick = async () => {
+      const [f] = await pickFiles({ accept: 'image/*' });
+      if (!f) return;
+      let d = await fileToDataUrl(f);
+      d = await resize(d, 700, mimeOf(d) === 'image/png' ? 'image/png' : 'image/jpeg', 0.9);
+      state.settings.stempel = d; await saveSettings(); toast('Firmenstempel gespeichert'); karte(box);
+    };
+    if ($('#stempelWeg', box)) $('#stempelWeg', box).onclick = async () => { delete state.settings.stempel; await saveSettings(); toast('Stempel entfernt'); karte(box); };
     $$('[data-sig]', box).forEach((b) => (b.onclick = () => zeichnen(t.find((p) => p.id === b.dataset.sig), () => karte(box))));
   }
   function zeichnen(p, fertig) {
