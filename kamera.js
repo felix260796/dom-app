@@ -69,17 +69,23 @@ window.Kamera = (() => {
     await Angebot._intern.subUebernehmen(r, () => { saveProject(r); Angebot.ansicht(r, false); }, { data, mime, partnerId: partnerZu(e.firma)?.id || '' });
   }
 
-  /** Visitenkarte → Partner anlegen und zum Prüfen öffnen. Gibt es die Firma schon, erst fragen. */
+  /** Visitenkarte → Partner oder Kunde anlegen und zum Prüfen öffnen. Gibt es ihn schon, wird er zuerst angeboten.
+   *  Beim Kunden liegt das Foto der Karte danach in „Bilder & Dokumentation“ (Ordner Dokumente). */
   async function visitenkarte(v, data) {
     const t = (x) => String(x || '').trim();
     const firma = t(v.firma) || t(v.name);
     const da = partnerZu(firma);
+    const kda = kundeZu(t(v.firma) ? `${v.firma}` : t(v.name));
     const wahl = await sheet(`Visitenkarte: ${firma || 'ohne Namen'}`, [
       ...(da ? [{ label: `${da.firma || da.inhaber} öffnen`, sub: 'Gibt es schon bei den Partnern', icon: icon('wrench'), value: 'da' }] : []),
-      { label: da ? 'Trotzdem neu anlegen' : 'Als Partner anlegen', sub: [t(v.gewerk), t(v.name), t(v.mobil) || t(v.telefon)].filter(Boolean).join(' · ') || 'Subunternehmer oder Lieferant', icon: icon('plus'), value: 'neu' },
+      { label: da ? 'Als neuen Partner anlegen' : 'Als Partner anlegen', sub: [t(v.gewerk), t(v.name), t(v.mobil) || t(v.telefon)].filter(Boolean).join(' · ') || 'Subunternehmer oder Lieferant', icon: icon('wrench'), value: 'neu' },
+      ...(kda ? [{ label: `${Kunden.name(kda)} öffnen`, sub: 'Gibt es schon bei den Kunden', icon: icon('user'), value: 'kda' }] : []),
+      { label: kda ? 'Als neuen Kunden anlegen' : 'Als Kunde anlegen', sub: 'Auch Firmen können Kunden sein', icon: icon('user'), value: 'kunde' },
       { label: 'Nur als Foto ablegen', sub: 'Zu einem Kunden in „Bilder & Dokumentation“', icon: icon('camera'), value: 'foto' },
     ]);
     if (wahl === 'da') return Partner.oeffnen(da.id);
+    if (wahl === 'kda') return Kunden.oeffnen(kda.id);
+    if (wahl === 'kunde') return alsKunde(v, data);
     if (wahl === 'foto') {
       const k = await Kunden.waehlen('Zu welchem Kunden?');
       if (!k) return;
@@ -98,6 +104,21 @@ window.Kamera = (() => {
     await Partner.laden();
     Partner.oeffnen(p.id);
     toast('Partner angelegt. Bitte kurz prüfen.', 4000);
+  }
+
+  async function alsKunde(v, data) {
+    const t = (x) => String(x || '').trim();
+    const teile = t(v.name).split(/\s+/).filter(Boolean);
+    const person = { vorname: teile.slice(0, -1).join(' '), name: teile.slice(-1)[0] || '' };
+    const k = { id: uid(), kind: 'kunde', created: Date.now(), ...(t(v.firma) ? { anrede: 'Firma', vorname: '', name: t(v.firma) } : person),
+      telefon: t(v.telefon) || t(v.mobil), email: t(v.email), privat: t(v.anschrift),
+      weitere: t(v.telefon) && t(v.mobil) ? [{ id: uid(), art: 'tel', label: 'Mobil', wert: t(v.mobil) }] : [],
+      notiz: [t(v.firma) && t(v.name) ? `Ansprechpartner: ${t(v.name)}` : '', t(v.web)].filter(Boolean).join('\n') };
+    if (!k.name && !k.vorname) return toast('Auf der Karte war kein Name zu lesen. Bitte nochmal fotografieren.', 5000);
+    await Kunden.speichern(k);
+    try { await Bilder.ablegen(k.id, '', data, 'Dokumente'); } catch (e) { console.warn('Visitenkarte nicht abgelegt', e); }
+    Kunden.oeffnen(k.id);
+    toast('Kunde angelegt, die Karte liegt in den Dokumenten. Bitte kurz prüfen.', 4500);
   }
 
   async function start() {
