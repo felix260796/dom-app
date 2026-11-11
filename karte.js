@@ -81,17 +81,42 @@ window.Karte = (() => {
   }
 
   // ---------- Eigene Seite (Menü › Karte) ----------
-  let bereich = 'auftraege';
-  const BEREICHE = [['angebote', 'Angebote', (x) => Projekt.phase(x) === 'angebot' && Projekt.norm(x.status) !== 'abgesagt'], ['auftraege', 'Aufträge', (x) => ['einplanen', 'eingeplant', 'laufend'].includes(Projekt.phase(x))], ['alle', 'Alle', () => true]];
+  // Feine Filter (Wunsch Felix): jede Gruppe einzeln an- und abschaltbar, gemerkt auf dem Gerät.
+  const st = (x) => Projekt.norm(x.status);
+  const FILTER = [
+    ['Angebote', [
+      ['arbeit', 'In Arbeit', (x) => ['besichtigung', 'entwurf'].includes(st(x)), 'entwurf'],
+      ['verschickt', 'Verschickt', (x) => st(x) === 'angebot', 'angebot'],
+      ['abgesagt', 'Abgesagt', (x) => st(x) === 'abgesagt', 'abgesagt'],
+    ]],
+    ['Aufträge', [
+      ['einplanen', 'Einzuplanen', (x) => Projekt.phase(x) === 'einplanen', 'geplant'],
+      ['eingeplant', 'Eingeplant', (x) => Projekt.phase(x) === 'eingeplant', 'geplant'],
+      ['laufend', 'In Durchführung', (x) => Projekt.phase(x) === 'laufend', ''],
+      ['abgeschlossen', 'Abgeschlossen', (x) => Projekt.phase(x) === 'abgeschlossen', 'fertig'],
+    ]],
+  ];
+  const ALLE_F = FILTER.flatMap((g) => g[1]);
+  const LSF = 'dom:karteFilter';
+  let an = null;
+  const wahl = () => {
+    if (an) return an;
+    try { const v = JSON.parse(localStorage.getItem(LSF)); if (Array.isArray(v)) an = new Set(v.filter((id) => ALLE_F.some((f) => f[0] === id))); } catch {}
+    return (an ||= new Set(['verschickt', 'einplanen', 'eingeplant', 'laufend'])); // Standard: offene Angebote beim Kunden und offene Aufträge
+  };
   async function view() {
     header('Karte', 'Baustellen an der Objektanschrift');
     const idx = await projectIndex();
-    const passt = (BEREICHE.find((b) => b[0] === bereich) || BEREICHE[1])[2];
-    const shown = idx.filter(passt);
-    main().innerHTML = `<div class="phasen drei">${BEREICHE.map(([id, n, f]) => `<button data-kb="${id}" class="${bereich === id ? 'on' : ''}"><b>${idx.filter(f).length}</b><span>${n}</span></button>`).join('')}</div>
+    const w = wahl();
+    const shown = idx.filter((x) => ALLE_F.some((f) => w.has(f[0]) && f[2](x)));
+    main().innerHTML = `<div class="kfilter">${FILTER.map(([titel, liste]) => `<div class="kf-z"><span class="kf-t">${titel}</span><div class="kf-c">${liste.map(([id, n, f, farbe]) => `<button type="button" data-kf="${id}" class="${w.has(id) ? 'on' : ''}" style="--c:${Projekt.farbe(farbe)}"><i></i>${n} <b>${idx.filter(f).length}</b></button>`).join('')}</div></div>`).join('')}
+        <div class="kf-s"><button type="button" class="link-add" data-kfa="alle">Alle zeigen</button><button type="button" class="link-add" data-kfa="offen">Nur Offenes</button></div></div>
       <div class="pmap" id="pmap"></div><p class="hint pmap-info" id="pmapInfo">Karte wird geladen …</p>`;
-    $$('[data-kb]').forEach((b) => (b.onclick = () => { bereich = b.dataset.kb; view(); }));
-    zeigen($('#pmap'), shown, $('#pmapInfo'), (id) => { switchTab('projekt', { wohnung: null }); Projekt.oeffnen(id); });
+    const merk = () => { try { localStorage.setItem(LSF, JSON.stringify([...an])); } catch {} view(); };
+    $$('[data-kf]').forEach((b) => (b.onclick = () => { w.has(b.dataset.kf) ? w.delete(b.dataset.kf) : w.add(b.dataset.kf); merk(); }));
+    $$('[data-kfa]').forEach((b) => (b.onclick = () => { an = new Set(b.dataset.kfa === 'alle' ? ALLE_F.map((f) => f[0]) : ['verschickt', 'einplanen', 'eingeplant', 'laufend']); merk(); }));
+    if (!shown.length) { $('#pmapInfo').textContent = 'Nichts ausgewählt. Tippe oben an, was die Karte zeigen soll.'; }
+    zeigen($('#pmap'), shown, shown.length ? $('#pmapInfo') : null, (id) => { switchTab('projekt', { wohnung: null }); Projekt.oeffnen(id); });
   }
 
   return { zeigen, anschrift, view };
