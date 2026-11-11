@@ -60,6 +60,8 @@ public class DomGeraetPlugin: CAPPlugin, CAPBridgedPlugin, VNDocumentCameraViewC
         CAPPluginMethod(name: "aufnahmeStopp", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "aufnahmeLesen", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "aufnahmeStatus", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "aufnahmeAbbrechen", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "audioFreigeben", returnType: CAPPluginReturnPromise),
     ]
 
     private var scanCall: CAPPluginCall?
@@ -420,6 +422,24 @@ public class DomGeraetPlugin: CAPPlugin, CAPBridgedPlugin, VNDocumentCameraViewC
         }
     }
 
+    /// Aufnahme verwerfen (z. B. „Zurück“ beim Sprechen) und das Mikrofon freigeben.
+    @objc func aufnahmeAbbrechen(_ call: CAPPluginCall) {
+        DispatchQueue.main.async {
+            DomAufnahme.shared.abbrechen()
+            DomAufnahme.freigeben()
+            call.resolve()
+        }
+    }
+
+    /// Audio der App abgeben, damit vorher laufende Musik (Spotify, Apple Music, Podcast) von selbst weiterspielt.
+    /// Nach jeder Aufnahme aufrufen, auch nach einer Aufnahme über das Web-Mikrofon (getUserMedia).
+    @objc func audioFreigeben(_ call: CAPPluginCall) {
+        DispatchQueue.main.async {
+            DomAufnahme.freigeben()
+            call.resolve()
+        }
+    }
+
     /// Ersatzweg: fertige Datei als Base64 (falls die App die Datei nicht direkt laden kann).
     @objc func aufnahmeLesen(_ call: CAPPluginCall) {
         let pfad = call.getString("pfad") ?? ""
@@ -527,7 +547,7 @@ final class DomAufnahme: NSObject, AVAudioRecorderDelegate {
     func stopp(_ fertig: @escaping (URL?, String?) -> Void) {
         let liste = teile
         abbrechen()
-        try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
+        DomAufnahme.freigeben()
         let da = liste.filter { (try? $0.checkResourceIsReachable()) == true && ((try? FileManager.default.attributesOfItem(atPath: $0.path)[.size] as? Int) ?? 0) > 0 }
         guard !da.isEmpty else { return fertig(nil, "Die Aufnahme ist leer.") }
         if da.count == 1 { return fertig(da[0], nil) }
@@ -549,6 +569,27 @@ final class DomAufnahme: NSObject, AVAudioRecorderDelegate {
                 if exp.status == .completed { fertig(ziel, nil) } else { fertig(nil, "Zusammenfügen ging nicht: " + (exp.error?.localizedDescription ?? "")) }
             }
         }
+    }
+
+    /// Audio-Sitzung beenden und andere Apps benachrichtigen („notifyOthersOnDeactivation“): Dann spielt die Musik,
+    /// die beim Start der Aufnahme angehalten wurde, von selbst weiter (Wunsch Felix). Kurz verzögert und einmal
+    /// wiederholt, weil iOS das Abgeben verweigert, solange das Mikrofon noch nicht ganz zu ist.
+    static func freigeben() {
+        let s = AVAudioSession.sharedInstance()
+        let los = {
+            guard !DomAufnahme.shared.aktiv else { return }
+            do {
+                try s.setActive(false, options: .notifyOthersOnDeactivation)
+                try? s.setCategory(.ambient)
+            } catch {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
+                    guard !DomAufnahme.shared.aktiv else { return }
+                    try? s.setActive(false, options: .notifyOthersOnDeactivation)
+                    try? s.setCategory(.ambient)
+                }
+            }
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3, execute: los)
     }
 
     func status() -> [String: Any] {

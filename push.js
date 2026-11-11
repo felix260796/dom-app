@@ -33,6 +33,7 @@ window.Push = (() => {
     nachfassen: vorgabe('pushNachfassen') !== 'nein', nachfassenTage: +vorgabe('nachfassenTage') || 7,
     geld: vorgabe('pushGeld') !== 'nein', baustelle: vorgabe('pushBaustelle') !== 'nein', vorlauf: +vorgabe('heuteVorlauf') || 3,
     badge: vorgabe('appBadge') !== 'nein', wer: window.Kalender?.wer() || '',
+    pflege: window.Pflege?.prefs() || null, // Kontakt halten: Anrufe und Mittagessen (pflege.js)
   });
   const b64 = (s) => { const p = '='.repeat((4 - (s.length % 4)) % 4), r = atob((s + p).replace(/-/g, '+').replace(/_/g, '/')); return Uint8Array.from(r, (c) => c.charCodeAt(0)); };
   const geraetName = () => { const w = window.Kalender?.team().find((p) => p.id === window.Kalender.wer()); return `${/iPhone/.test(navigator.userAgent) ? 'iPhone' : /iPad/.test(navigator.userAgent) ? 'iPad' : 'Gerät'}${w ? ' von ' + w.name.split(' ')[0] : ''}`; };

@@ -4,7 +4,10 @@
 // 2. Ein Zeitplan (Supabase Cron, alle 15 Minuten) ruft { aktion: "lauf" } auf. Dann gehen raus:
 //    - die Morgenübersicht zur eingestellten Uhrzeit (Termine heute, Nachfassen, überfällige Rechnungen, Lieferungen, Mängel)
 //    - eine Erinnerung kurz vor jedem Termin (eingestellte Minuten vorher)
-//    Jede Mitteilung geht nur einmal raus.
+//    - Kontakt halten (seit 12.11.2026, App-Version 92): fällige Anrufe und Mittagessen bei Kunden und Partnern,
+//      ab der eingestellten Uhrzeit, wiederholt im eingestellten Abstand, bis in der App „erledigt“ getippt ist
+//      („später erinnern“ pausiert einen Eintrag). Gleiche Auswahl wie in der App (pflege.js, heuteListe).
+//    Morgenübersicht und Terminerinnerung gehen nur einmal raus.
 // Die Schlüssel für Web-Push (VAPID) erzeugt die Funktion beim ersten Aufruf selbst und legt sie im Speicher unter
 // „system/“ ab. Dort kommt nur Supabase selbst hin (die App sieht nur den Ordner „team“). Es gibt also keine
 // zusätzlichen Geheimnisse einzutragen, nur CRON_SECRET (dasselbe wie bei den Terminmails).
@@ -22,7 +25,8 @@ const TZ = "Europe/Berlin";
 const cors = { "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Headers": "authorization, apikey, content-type, x-cron-secret", "Access-Control-Allow-Methods": "POST, OPTIONS" };
 const antwort = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { ...cors, "Content-Type": "application/json" } });
 
-type Prefs = { badge?: boolean; morgen?: string; termin?: number; nachfassen?: boolean; nachfassenTage?: number; geld?: boolean; baustelle?: boolean; vorlauf?: number; wer?: string };
+type PflegePrefs = { an?: boolean; ab?: string; bis?: string; alle?: number; anrufe?: number; essen?: number; wochenende?: boolean };
+type Prefs = { badge?: boolean; morgen?: string; termin?: number; nachfassen?: boolean; nachfassenTage?: number; geld?: boolean; baustelle?: boolean; vorlauf?: number; wer?: string; pflege?: PflegePrefs | null };
 type Sub = { endpoint?: string; keys?: { p256dh: string; auth: string }; apns?: string };
 type Geraet = { id: string; sub: Sub; prefs: Prefs; name?: string; created: number; updated: number };
 type Termin = { id: string; titel?: string; datum: string; von?: string; ganztag?: boolean; ort?: string; wer?: string[]; kontext?: { kunde?: string } };
@@ -114,6 +118,26 @@ async function daten(): Promise<Daten> {
   return { termine, idx: idx || [], rechnungen, belege, wohnungen };
 }
 
+// ---------- Kontakt halten: Anrufe und Mittagessen (wie pflege.js in der App) ----------
+type PflegeEintrag = { r?: string; faellig?: string; zuletzt?: string; verschoben?: string; spaeter?: number; wer?: string };
+type Kontakt = { id: string; name: string; pflege?: Record<string, PflegeEintrag> };
+async function kontakte(): Promise<Kontakt[]> {
+  const [ks, ps] = await Promise.all([alle<any>("kunde"), alle<any>("partner")]);
+  const kname = (k: any) => (["Firma", "Hausverwaltung"].includes(k.anrede) ? String(k.name || "") : [k.anrede === "Familie" ? "Familie" : "", k.anrede === "Familie" ? "" : k.vorname, k.name].filter(Boolean).join(" ")).trim() || "Kunde";
+  return [
+    ...ks.filter((k) => k?.id && k.pflege).map((k) => ({ id: k.id, name: kname(k), pflege: k.pflege })),
+    ...ps.filter((p) => p?.id && p.pflege).map((p) => ({ id: p.id, name: String(p.firma || p.inhaber || "Partner").trim(), pflege: p.pflege })),
+  ];
+}
+/** Heute fällige Einträge einer Art, höchstens max, die ältesten zuerst (Einträge, die heute erledigt oder verschoben wurden, zählen mit). */
+function pflegeHeute(list: Kontakt[], art: string, max: number, heute: string, wer = "") {
+  const alleA = list.map((k) => ({ k, o: k.pflege?.[art] })).filter((x) => x.o?.r && (!x.o.wer || !wer || x.o.wer === wer)) as { k: Kontakt; o: PflegeEintrag }[];
+  const verbraucht = alleA.filter((x) => x.o.zuletzt === heute || x.o.verschoben === heute).length;
+  const offen = alleA.filter((x) => x.o.faellig && x.o.faellig <= heute && x.o.zuletzt !== heute && x.o.verschoben !== heute)
+    .sort((a, b) => String(a.o.faellig).localeCompare(String(b.o.faellig)) || a.k.name.localeCompare(b.k.name, "de"));
+  return offen.slice(0, Math.max(0, max - verbraucht));
+}
+
 // ---------- Apple (APNs) für die iPhone-App ----------
 const b64url = (b: ArrayBuffer | Uint8Array | string) => btoa(typeof b === "string" ? b : String.fromCharCode(...new Uint8Array(b as ArrayBuffer))).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
 const apnsBereit = () => !!(env("APNS_KEY_P8") && env("APNS_KEY_ID") && env("APNS_TEAM_ID"));
@@ -177,7 +201,7 @@ async function lauf() {
   if (!liste.length) return 0;
   const jetzt = new Date(), { datum: heute, min } = teile(jetzt);
   const st = await lesen<Record<string, number>>(`${SYS}/push-status.json`, {});
-  let n = 0, d: Daten | null = null;
+  let n = 0, d: Daten | null = null, kl: Kontakt[] | null = null;
   for (const g of liste) {
     const p = g.prefs || {};
     // Morgenübersicht: einmal am Tag ab der eingestellten Uhrzeit (bis 3 Stunden danach, falls ein Lauf ausfällt)
@@ -200,6 +224,24 @@ async function lauf() {
         st[sk] = Date.now();
         const inMin = beginn - min;
         if (await senden(g, { titel: t.titel || "Termin", text: `${inMin <= 1 ? "Jetzt" : `In ${inMin} Minuten`}, ${t.von} Uhr${t.ort ? " · " + t.ort : ""}`, ziel: "kalender", tag: "t-" + t.id })) n++;
+      }
+    }
+    // Kontakt halten: fällige Anrufe und Mittagessen, wiederholt bis erledigt
+    const pf = p.pflege;
+    const wt = new Date(heute + "T12:00:00Z").getUTCDay();
+    if (pf?.an && min >= minuten(pf.ab || "09:00") && min < (minuten(pf.bis || "18:00") >= 0 ? minuten(pf.bis || "18:00") : 24 * 60) && (pf.wochenende || (wt !== 0 && wt !== 6))) {
+      kl ??= await kontakte();
+      const abstand = Math.max(15, Number(pf.alle) || 60) * 60e3 - 60e3; // eine Minute Luft, weil der Zeitplan nicht auf die Sekunde läuft
+      const zeilenPf: string[] = [], aktiv: string[] = [];
+      for (const [art, max, wort] of [["anruf", pf.anrufe ?? 3, "Anrufen"], ["essen", pf.essen ?? 1, "Mittagessen vereinbaren"]] as const) {
+        const l = pflegeHeute(kl, art, Number(max) || 0, heute, p.wer).filter((x) => !(Number(x.o.spaeter) > jetzt.getTime()));
+        if (!l.length) continue;
+        zeilenPf.push(`${wort}: ${l.map((x) => x.k.name).join(", ")}`);
+        aktiv.push(...l.map((x) => `${g.id}|pf|${heute}|${art}|${x.k.id}`));
+      }
+      if (aktiv.some((k) => !st[k] || Date.now() - st[k] >= abstand)) {
+        for (const k of aktiv) st[k] = Date.now();
+        if (await senden(g, { titel: "Kontakt halten", text: zeilenPf.join(" · "), ziel: "heute", tag: "pflege" })) n++;
       }
     }
   }

@@ -465,6 +465,7 @@ window.Kunden = (() => {
         <label>Wie ist der Kunde auf uns gekommen?</label><select id="kQuelle"><option value="">Bitte wählen</option>${[...new Set([...vorgabe('kundenQuellen'), ...(k.quelle ? [k.quelle] : [])])].map((q) => `<option ${q === k.quelle ? 'selected' : ''}>${esc(q)}</option>`).join('')}</select>
         <label>Notiz</label><textarea id="kNotiz" placeholder="z. B. erreichbar ab 17 Uhr, Schlüssel beim Nachbarn">${esc(k.notiz)}</textarea>
       </div>
+      <div id="kPflege"></div>
 
       ${einfach ? `<div class="docs" style="margin-top:12px"><button class="doc" id="oVorOrt"><span class="d-ico brass">${icon('camera')}</span>
         <span class="d-t"><b>Vor Ort</b><span>${k.objekte[0] && nBilder[k.objekte[0].id] ? `${nBilder[k.objekte[0].id]} ${nBilder[k.objekte[0].id] === 1 ? 'Bild' : 'Bilder'} · ` : ''}Bilder, Schlüssel, Ansprechpartner, Notiz</span></span>${icon('chevron', 'pc-chev')}</button></div>
@@ -534,6 +535,7 @@ window.Kunden = (() => {
     Kontakt.mehrBinden($('#kTelMehr'), $('[data-mehr="tel"]'), k.weitere, 'tel', () => { persist(); actions(); });
     Kontakt.mehrBinden($('#kMailMehr'), $('[data-mehr="mail"]'), k.weitere, 'mail', () => { persist(); actions(); });
     historie(k, idx);
+    window.Pflege?.abschnitt($('#kPflege'), k, persist); // Kontakt halten: regelmäßig anrufen, Mittagessen
     if (k.isNew) setTimeout(() => $('#kName')?.focus(), 50);
     $$('.adr input').forEach(adressVorschlaege);
     $$('[data-obj]').forEach((b) => (b.onclick = () => { objektView(k, objekt(k, b.dataset.obj)); window.scrollTo(0, 0); }));

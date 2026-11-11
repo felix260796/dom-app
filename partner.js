@@ -108,7 +108,7 @@ window.Partner = (() => {
         <div id="pLiefBox" ${p.art === 'lief' ? '' : 'hidden'}><label>Unsere Kundennummer bei dieser Firma</label><input type="text" id="pKdnr" value="${esc(p.kdnr)}" autocomplete="off" placeholder="z. B. 204711"></div>
         <label>Qualitätseinstufung der Arbeit <span class="muted">(mehrere möglich)</span></label><div class="chips" id="pStufe">${[...new Set([...STUFEN(), ...p.stufen])].map((n) => `<button type="button" class="qchip ${p.stufen.includes(n) ? 'on' : ''}" data-stufe="${esc(n)}">${icon('check')}${esc(n)}</button>`).join('')}</div>
       </div>
-
+      <div id="pPflege"></div>
 
       <div class="sec-h"><h2>Konditionen und Verträge</h2></div>
       <div class="card kform">
@@ -145,6 +145,7 @@ window.Partner = (() => {
     if ($('#pRech')) $('#pRech').onclick = () => { const z = $('#pBelege'); if (z) window.scrollTo({ top: z.getBoundingClientRect().top + window.scrollY - 110, behavior: 'smooth' }); };
     Kontakt.weitereBinden($('#pWeitere'), p.weitere, () => { persist(); actions(); });
     Kunden.adressVorschlaege($('#pAdr'));
+    window.Pflege?.abschnitt($('#pPflege'), p, persist); // Kontakt halten: regelmäßig anrufen, Mittagessen
     if (p.isNew) setTimeout(() => $('#pFirma')?.focus(), 50);
     if ($('#pBelege')) window.Finanzen?.partnerAbschnitt($('#pBelege'), p);
 
@@ -261,5 +262,5 @@ window.Partner = (() => {
     $('#ppEdit').onclick = async () => { switchTab('partner', { partner: p }); for (let i = 0; i < 30; i++) { const h = $('#pPreisH'); if (h) { window.scrollTo({ top: h.getBoundingClientRect().top + window.scrollY - 110 }); break; } await new Promise((r) => setTimeout(r, 100)); } };
   }
 
-  return { laden, start, listeView, detail, byId, liste, geburtstage, waehlen, oeffnen, preislistenView };
+  return { laden, start, listeView, detail, byId, liste, geburtstage, waehlen, oeffnen, preislistenView, speichern, titel };
 })();

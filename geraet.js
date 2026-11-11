@@ -208,6 +208,8 @@ window.Geraet = (() => {
     pause: () => P().aufnahmePause().catch(() => {}),
     weiter: () => P().aufnahmeWeiter().catch(() => {}),
     status: () => P().aufnahmeStatus().catch(() => ({})),
+    /** Verwerfen und Mikrofon freigeben (Musik spielt weiter). */
+    abbrechen: () => P().aufnahmeAbbrechen().catch(() => {}),
     /** Beenden; liefert die fertige Aufnahme als Blob (m4a). */
     async stopp() {
       const r = await P().aufnahmeStopp();
@@ -218,5 +220,8 @@ window.Geraet = (() => {
     },
   };
 
-  return { nativ, an, kann, faehigkeiten, aufnahme, scannen, raumScannen, wohnungMoeglich, kontaktWaehlen, kontaktSpeichern, kalenderAbgleich, karte, start };
+  /** Nach einer Aufnahme: Audio abgeben, damit vorher laufende Musik von selbst weiterspielt (nur iPhone-App). */
+  const audioFreigeben = () => (nativ() ? P().audioFreigeben().catch(() => {}) : Promise.resolve());
+
+  return { nativ, an, kann, faehigkeiten, aufnahme, audioFreigeben, scannen, raumScannen, wohnungMoeglich, kontaktWaehlen, kontaktSpeichern, kalenderAbgleich, karte, start };
 })();

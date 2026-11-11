@@ -174,6 +174,19 @@ details.sub > summary { font-size: 14px; font-weight: 600; color: var(--navy-2);
 
 /* ---------- Startseite Heute ---------- */
 .pcard.hz .pc-ph svg.i { width: 22px; height: 22px; }
+/* Kontakt halten: Zeile mit Telefon rechts (pflege.js) */
+.pf-z { display: flex; align-items: stretch; gap: 8px; }
+.pf-z .pcard { flex: 1; min-width: 0; }
+.pf-z .pc-ph { color: #2f7d8c; }
+.pf-tel { flex: none; width: 64px; border: 0; border-radius: 18px; background: #2f7d8c; color: #fff; display: grid; place-items: center; box-shadow: var(--shadow); }
+.pf-tel svg.i { width: 26px; height: 26px; }
+.pf-tel:active { transform: scale(.97); }
+.pf-tag { display: flex; align-items: center; gap: 10px; margin-top: 8px; }
+.pf-tag span { font-size: 14px; color: var(--muted, #6b7280); flex: none; }
+.pf-tag input { flex: 1; min-width: 0; max-width: 170px; }
+.pf-info { margin: 6px 0 0; }
+.pf-frage { border: 2px solid var(--brass); }
+.pf-frage-t { margin: 0 0 12px; line-height: 1.4; }
 
 /* ---------- Per Sprache anlegen ---------- */
 .sp-card { display: flex; flex-direction: column; align-items: center; text-align: center; gap: 10px; padding: 26px 18px; }

@@ -59,6 +59,11 @@ Unterschrift unter PDFs: `unterschrift.js` (`Unterschrift.pdf(doc, x, y, { firma
 Firmenstempel: `settings.stempel`, einmal als Bild hinterlegt, `Unterschrift.pdf` setzt ihn rechts neben die Unterschrift (Angebot und Rechnung).
 Texte auf der Rechnung: wie im Angebot über `bausteine.js`, je Rechnung `r.texte` (Standard `texteStd` aus den Vorgaben: Einleitung je Art, Zahlungsaufforderung, Aufbewahrung), feste Zusätze `r.opt.qr` und `r.opt.gruss`. Platzhalter werden erst im PDF gefüllt. Bearbeiten mit `Angebot._intern.textEditor`. Änderbar, bis die Rechnung gesendet oder bezahlt ist.
 
+## Neuerungen aus Version 92 (Kontakt halten, Musik nach Aufnahme)
+
+Kontakt halten: `pflege.js` (`Pflege`). Bei Kunden und Partnern Abschnitt „Kontakt halten“ (`Pflege.abschnitt`): regelmäßig anrufen und Mittagessen vereinbaren mit Rhythmus (wöchentlich bis jährlich) und Tag fürs nächste Mal, Daten in `x.pflege = { anruf, essen }` (`r`, `faellig`, `zuletzt`, `spaeter`, `verschoben`, `wer`). Fehlt `x.pflege`, fragt die Karte nach (Vorgabe `pflegeFragen`). Auswahl je Tag `Pflege.heuteListe` (höchstens `pflegeAnrufeMax`/`pflegeEssenMax`, älteste zuerst, heute Erledigtes und Verschobenes zählt mit), auf „Heute“ mit Telefon rechts (`Pflege.heute()`), danach Nachfrage erledigt / später (`pflegeSpaeter`) / morgen. Kalender: Art `pflege`, vorausgerechnet (`Pflege.eintraege`). Mitteilung: `supabase/functions/push` (`pflegeHeute`, gleiche Auswahl) ab `pflegeAb` bis `pflegeBis`, alle `pflegeAlle` Minuten, bis erledigt; Schalter `pushPflege`, Wochenende `pflegeWochenende`. Prefs gehen über `Push.prefs().pflege` an die Funktion.
+Musik nach Aufnahme: In der iPhone-App nimmt auch das Mikrofon oben (`sprache.js`) nativ auf (`Geraet.aufnahme`), danach gibt `DomAufnahme.freigeben()` die Audio-Sitzung mit `notifyOthersOnDeactivation` ab, damit vorher laufende Musik weiterspielt (`Geraet.audioFreigeben`, `aufnahmeAbbrechen`).
+
 ## Bereiche
 
 | Bereich | Dateien | Inhalt |
@@ -81,6 +86,7 @@ Texte auf der Rechnung: wie im Angebot über `bausteine.js`, je Rechnung `r.text
 | Angebote-Reiter | `angebote.js`, `schnell.js` | Liste aller Angebote (Offen/Zugesagt/Abgesagt), Schnellangebot |
 | Rechnungen (Finanzen) | `finanzen.js` | Reiter „Rechnungen“ unten (`rechnungen`): Abzurechnen, offene Rechnungen, Eingangsrechnungen (`beleg:<id>`, Datei in `bdatei:<id>`, KI liest aus), Kalkulation Soll/Ist mit Ampel (auch im Projekt und beim Subunternehmer), Auswertung (Umsatz, Zusagequote, Marge, Kundenquellen, Absagegründe; eigene Seite im Menü, `auswertungView`, `state.tab = 'auswertung'`); offene Rechnungen an Kunden aus `rechnung.js` |
 | Rechnungen an Kunden | `rechnung.js` | Abschläge nach Plan, Schlussrechnung aus den Angeboten + Nachträge (`w.nachtraege`), PDF, bezahlt, Zahlungserinnerung/Mahnung (`rechnung:<id>`, Nummern `rechnungZaehler`) |
+| Kontakt halten | `pflege.js` | Regelmäßig anrufen und Mittagessen bei Kunden und Partnern: Abschnitt in der Karte, „Heute“, Kalender, Mitteilungen (siehe Version 92) |
 | Kalender & Terminmails | `kalender.js`, `supabase/functions/termin-mail/index.ts` | Mail-Vorschau im Termin (`mailNachbau` baut die Mail der Cloud nach, bei Änderungen an `mailHtml` mitändern). Termine (Kundentermin kann gleich ein Projekt „Besichtigung“ anlegen), Geburtstage, Mails an Team/Kunde/Subunternehmer, Erinnerungen (Cron in Supabase) |
 | Baustelle | `baustelle.js` | Bestellungen beim Lieferanten (`w.bestellungen`), Abnahmeprotokoll mit Unterschrift auf dem Handy und Mängeln (`w.abnahme`), PDF |
 | Fotos & Doku | `bilder.js` | Ordner je Objekt/Projekt |

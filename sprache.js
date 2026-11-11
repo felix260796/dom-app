@@ -7,6 +7,8 @@
  * Der Termin öffnet danach den normalen Termin-Editor (dort Mails an Team und Kunde wie gewohnt).
  * Auf der Prüfseite lässt sich per Sprache oder Text korrigieren und ergänzen (korrigieren, Wunsch Felix).
  * Statt zu sprechen kann man auch tippen (oder die Diktierfunktion der iPhone-Tastatur nutzen).
+ * In der iPhone-App nimmt der native Teil auf (Geraet.aufnahme wie bei der Gesprächsaufnahme): Danach gibt DOM das Audio
+ * ab und vorher laufende Musik spielt von selbst weiter (Wunsch Felix, v92). Im Browser wie bisher über getUserMedia.
  * Vorgaben: 'spracheDauer' (Termindauer ohne Endzeit), 'spracheProjekt' (Projekt bei Kundenterminen vorschlagen). */
 window.Sprache = (() => {
   let rec = null, stream = null, chunks = [], t0 = 0, uhr = null;
@@ -39,6 +41,7 @@ window.Sprache = (() => {
 
   async function start() {
     if (typeof voice !== 'undefined' && voice.rec) { toast('Es läuft schon eine Gesprächsaufnahme. Bitte erst beenden oder unten schreiben.', 5000); return; }
+    if (window.Geraet?.nativ?.()) return startNativ();
     if (!navigator.mediaDevices?.getUserMedia || !window.MediaRecorder) { toast('Aufnahme geht auf diesem Gerät nicht. Bitte unten schreiben.', 5000); return; }
     try { stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true } }); }
     catch { toast('Kein Zugriff aufs Mikrofon. Bitte in den iPhone-Einstellungen (Safari > Mikrofon) erlauben.', 6000); return; }
@@ -50,15 +53,41 @@ window.Sprache = (() => {
       const typ = (rec?.mimeType || mime || 'audio/mp4').split(';')[0];
       const abbruch = rec?.abbruch;
       stream?.getTracks().forEach((t) => t.stop()); stream = null; rec = null; clearInterval(uhr);
+      window.Geraet?.audioFreigeben?.(); // Musik wieder an
       if (abbruch || !chunks.length) return;
       const blob = new Blob(chunks, { type: typ });
       const z = ziel;
       blob.arrayBuffer().then((buf) => z.fertig([{ text: 'Sprachaufnahme:' }, { inline_data: { mime_type: geminiAudioMime(blob), data: bufToB64(buf) } }]));
     };
-    rec.start(1000); t0 = Date.now();
+    rec.start(1000);
+    laeuft();
+  }
+  function laeuft() {
+    t0 = Date.now();
     $(ziel.mic)?.classList.add('on');
     const st = () => { const s = Math.round((Date.now() - t0) / 1000); if ($(ziel.status)) $(ziel.status).textContent = `Ich höre zu … ${s} s. Zum Beenden tippen.`; if (s >= 180) stopp(); };
     st(); uhr = setInterval(st, 1000);
+  }
+  /** iPhone-App: Aufnahme im nativen Teil. Beim Beenden gibt er das Audio ab, die Musik läuft weiter. */
+  async function startNativ() {
+    try { await Geraet.aufnahme.start(); }
+    catch (e) { toast(String(e?.message || e || 'Aufnahme ging nicht.'), 6000); return; }
+    let fertig = false;
+    rec = {
+      async stop() {
+        if (fertig) return; fertig = true;
+        const abbruch = rec?.abbruch, z = ziel;
+        rec = null; clearInterval(uhr);
+        if (abbruch) return Geraet.aufnahme.abbrechen();
+        if ($(z.status)) $(z.status).textContent = 'Wird gespeichert …';
+        let blob;
+        try { blob = await Geraet.aufnahme.stopp(); }
+        catch (e) { toast(String(e?.message || e || 'Aufnahme nicht gespeichert.'), 6000); if ($(z.status)) $(z.status).textContent = 'Tippen und sprechen'; return; }
+        const buf = await blob.arrayBuffer();
+        z.fertig([{ text: 'Sprachaufnahme:' }, { inline_data: { mime_type: 'audio/mp4', data: bufToB64(buf) } }]);
+      },
+    };
+    laeuft();
   }
   function stopp(abbruch) {
     if (!rec) return;
