@@ -49,6 +49,9 @@ const VORGABEN = {
       { k: 'pushGeld', l: 'Überfällige und fällige Rechnungen erwähnen', t: 'janein', d: 'ja' },
       { k: 'pushBaustelle', l: 'Lieferungen, Mängel und Baustarts erwähnen', t: 'janein', d: 'ja' },
     ]],
+    ['Kontakt halten (Anrufen und Mittagessen)', [
+      { k: 'pushPflege', l: 'An fällige Anrufe und Mittagessen per Mitteilung erinnern, bis erledigt', t: 'janein', d: 'ja', h: 'Ab wann, bis wann und wie oft: Einstellungen › Abläufe & Listen › Kontakt halten.' },
+    ]],
     ['Termine', [
       { k: 'pushTermin', l: 'Erinnerung so viele Minuten vor jedem Termin (0 = aus)', t: 'zahl', d: 60, h: 'Es zählen die Termine der Person, der dieses Gerät gehört (unten im Menü einstellbar).' },
     ]],
@@ -73,6 +76,16 @@ const VORGABEN = {
       { k: 'abSchluss', l: 'Auftragsbestätigung: Satz vor dem Gruß', t: 'zeile', d: 'Wir freuen uns auf die Zusammenarbeit.' },
       { k: 'nachfassenTage', l: 'Hinweis „Nachfassen“ nach wie vielen Tagen?', t: 'zahl', d: 7 },
       { k: 'absageGruende', l: 'Gründe für eine Absage (eine Zeile je Grund)', t: 'liste', d: ['Zu teuer', 'Anderer Anbieter', 'Macht es selbst', 'Kein Bedarf mehr', 'Zeitpunkt passt nicht', 'Keine Rückmeldung', 'Sonstiges'] },
+    ]],
+    ['Kontakt halten (Anrufen und Mittagessen)', [
+      { k: 'pflegeFragen', l: 'Bei Kunden und Partnern fragen, wie oft du anrufen bzw. zum Mittagessen gehen willst', t: 'janein', d: 'ja', h: 'Die Frage steht in der Kundenkarte bzw. beim Partner unter „Kontakt halten“, bis du etwas wählst oder „Nein danke“ tippst.' },
+      { k: 'pflegeAnrufeMax', l: 'Höchstens so viele Anrufe pro Tag', t: 'zahl', d: 3, h: 'Sind mehr fällig, kommen die ältesten zuerst, der Rest rutscht auf die nächsten Tage.' },
+      { k: 'pflegeEssenMax', l: 'Höchstens so viele Mittagessen zum Vereinbaren pro Tag', t: 'zahl', d: 1 },
+      { k: 'pflegeAb', l: 'Erinnerung per Mitteilung ab Uhrzeit', t: 'zeile', d: '09:00' },
+      { k: 'pflegeBis', l: 'Erinnerung per Mitteilung bis Uhrzeit', t: 'zeile', d: '18:00', h: 'Danach keine Mitteilungen mehr, was offen ist, kommt am nächsten Tag wieder.' },
+      { k: 'pflegeAlle', l: 'Erinnerung wiederholen alle so viele Minuten, bis erledigt', t: 'zahl', d: 60, h: 'Mindestens 15 Minuten (so oft schaut der Zeitplan in Supabase nach).' },
+      { k: 'pflegeSpaeter', l: '„Später erinnern“ heißt in so vielen Minuten', t: 'zahl', d: 120 },
+      { k: 'pflegeWochenende', l: 'Auch am Wochenende erinnern', t: 'janein', d: 'nein', h: 'Bei „Nein“ rutscht, was am Samstag oder Sonntag fällig wäre, auf Montag.' },
     ]],
     ['Unterlagen (Menü): Firmenordner und Vorlagen', [
       { k: 'firmaDokArten', l: 'Arten von Firmendokumenten (eine Zeile je Art)', t: 'liste', d: ['Gewerbeanmeldung', 'Handelsregisterauszug', 'Betriebshaftpflicht', 'Freistellungsbescheinigung (§ 48b)', 'Unbedenklichkeitsbescheinigung Finanzamt', 'Unbedenklichkeitsbescheinigung Krankenkasse', 'Berufsgenossenschaft', 'Gesellschaftsvertrag', 'Sonstiges'] },

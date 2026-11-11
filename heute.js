@@ -1,6 +1,6 @@
 'use strict';
 /* DOM – Startseite „Heute“: alles, was heute dran ist, auf einen Blick.
- * Termine heute und morgen, Angebote zum Nachfassen, überfällige Rechnungen (Kunden und Eingang), Abzurechnen,
+ * Termine heute und morgen, Anrufe und Mittagessen (Kontakt halten, pflege.js), Angebote zum Nachfassen, überfällige Rechnungen (Kunden und Eingang), Abzurechnen,
  * Lieferungen, Mängel mit Frist, bevorstehende Baustarts, laufende Baustellen.
  * Öffnet beim Start (einstellbar) und über das Menü (DOM-Logo). Eigener Zustand state.tab = 'heute' (kein Reiter unten).
  * Setzt die Zahl am App-Symbol (Push.badge). Vorlauf in Tagen und Start-Verhalten: Vorgaben 'heuteStart', 'heuteVorlauf' (vorgaben.js). */
@@ -29,6 +29,9 @@ window.Heute = (() => {
     const jetzt = new Date().toTimeString().slice(0, 5);
     const stopps = termine.filter((t) => t.typ === 'termin' && t.datum === h && String(t.ort || '').trim() && (t.ganztag || !t.von || (t.bis || t.von) >= jetzt));
     if (stopps.length) bloecke.push(`<button class="btn secondary block" id="hRoute" style="margin-top:8px">${icon('map')} Route für heute (${stopps.length} ${stopps.length === 1 ? 'Termin' : 'Termine'})</button>`);
+    // Kontakt halten: Anrufe heute und Mittagessen vereinbaren (pflege.js), Telefon rechts zum direkten Anrufen
+    const pf = window.Pflege?.heute() || { html: '', anzahl: 0, binden() {} };
+    if (pf.html) bloecke.push(pf.html);
     // Nachfassen
     const nachf = idx.filter((x) => Projekt.norm(x.status) === 'angebot' && Projekt.seitTagen(x.versendetAm) >= Projekt.nachfassen());
     block('Angebote nachfassen', nachf
@@ -56,10 +59,11 @@ window.Heute = (() => {
     block('Laufende Baustellen', idx.filter((x) => Projekt.norm(x.status) === '').map((x) => zeile('p:' + x.id, 'home', name(x), x.fort ? `${x.fort.fertig} von ${x.fort.n} Schritten${x.fort.naechster ? ' · als Nächstes: ' + x.fort.naechster : ''}` : 'Noch keine Arbeitsschritte')));
 
     // Zahl am App-Symbol: was heute zu tun ist (ohne morgen und ohne laufende Baustellen)
-    window.Push?.badge(termine.filter((t) => t.datum === h && t.typ === 'termin').length + nachf.length + geld.length + bau.length + fdok.length);
+    window.Push?.badge(termine.filter((t) => t.datum === h && t.typ === 'termin').length + pf.anzahl + nachf.length + geld.length + bau.length + fdok.length);
     main().innerHTML = `<div class="heute-zu"><button type="button" class="icon-btn" id="hZu" aria-label="Heute schließen">${icon('x')}</button></div>` + (bloecke.join('') || `<div class="empty-state">${icon('check')}<b>Heute ist nichts offen</b><span>Termine, Nachfassen, Rechnungen und Baustellen erscheinen hier, sobald etwas ansteht.</span></div>`);
     $('#hZu').onclick = () => switchTab(window.__vorHeute || 'kunden'); // X: zurück zum Reiter davor (beim Start: Kunden)
     $$('[data-hz]').forEach((b) => (b.onclick = () => oeffnen(b.dataset.hz)));
+    pf.binden(main(), () => { if (state.tab === 'heute') view(); });
     if ($('#hRoute')) $('#hRoute').onclick = () => route(stopps.map((t) => String(t.ort).split(/\s*\n\s*/).join(', ').trim()));
   }
 
