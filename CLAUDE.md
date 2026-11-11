@@ -19,6 +19,10 @@ Angebotsablauf Schritt 1 „Vor Ort“: Karte „Vor Ort aufnehmen“ (`Gespraec
 Per Sprache anlegen: Auf der Prüfseite per Sprache oder Text korrigieren (`korrigieren` in `sprache.js`).
 Handler wie `onkeydown = (e) => bedingung && tu()` sind verboten: Rückgabe `false` blockiert jede Taste (so war „Ordner benennen“ kaputt).
 
+## Neuerungen aus Version 84
+
+Mitdenken vor Ort und Angebotsentwurf: `vorort.js` (`VorOrt`). „Was fehlt noch?“ in Schritt 1 (`VorOrt.karte/bind`, Fragen in `w.vorOrt.fragen`, eigene Notizen `w.vorOrt.notiz`, startet nach jeder Aufnahme über `VorOrt.nachAufnahme` aus `voice.js`). „Angebotsentwurf erstellen“ in Schritt 2 (`bueroKarte/bueroBind`): Die KI schlägt je Bereich Positionen vor, Mengen aus dem Aufmaß (`mengeAus`), Prüfseite, erst „übernehmen“ schreibt in `r.angebot.positionen` (Kennzeichen `x.ki = { sicher, partner, grund }`). Bereiche ohne Raum werden als Raumtyp `sonstiges` angelegt („Leistungen“, „Allgemein“). Offenes in `w.entwurf.offen`. Vorgaben: `vorortAuto`, `vorortFragenMax`, `vorortPruefliste`, `vorortFotos`, `entwurfFotos`, `entwurfHinweise`, Prompts `promptVorOrt`, `promptEntwurf`. Nicht auf Bäder beschränken.
+
 ## Neuerungen aus Version 85
 
 Dokumente ansehen: `pdfAnsicht` in `core.js` zeichnet PDFs mit PDF.js (`vendor/pdfjs`, wird erst beim Öffnen geladen) Seite für Seite als Bild; Zoom per Knopf, zwei Finger, Doppeltipp. Kein iframe und kein „neues Fenster“ mehr (geht in der iPhone-App nicht), stattdessen Teilen-Menü. Die Seite selbst zoomt nie.
@@ -29,7 +33,16 @@ Bilder: `Bilder.alleView` (alle Bilder nach Datum), `raster` (Markieren, PDF üb
 Karte: Filter je Gruppe (`FILTER` in `karte.js`, gemerkt in localStorage `dom:karteFilter`). Auswertung: `auswertung(daten, rechnungen, jahr)` in `finanzen.js` mit Jahr-Auswahl. „Heute“ hat ein X (`#hZu`, zurück zu `window.__vorHeute`).
 Per Sprache anlegen: Prüfseite mit Feldern untereinander, Anschrift wird über `Kunden.sucheAdresse` um PLZ und Ort ergänzt (Vorgabe `spracheAdresse`).
 
-## Neuerungen aus Version 86
+## Neuerungen aus Version 89 (Angebotsablauf)
+
+Angebotsablauf (bis zur Zusage) hat drei Reiter statt vier Schritten: Vor Ort, Büro, Angebote (`REITER`, `reiterVon/reiterSetzen`, `vorOrtTab`, `bueroTab`, `angeboteTab` in `projekt.js`). Jeder Reiter ist eine eigene Seite. Felix will das genau so, nicht wieder zu einer langen Seite zusammenlegen.
+Vor Ort: einzelne Punkte, nicht eine Karte: Gespräch (`Gespraech.karte(w, list, { einzeln: true })`), Fotos (`Bilder.fotosMachen`), Plan scannen, Raum scannen, „Was fehlt noch?“. Visualisieren und Moodboard unten als Zusatz. Baumappe und Kundenmappe sind im Angebot vorerst weg (Felix später daran erinnern).
+Büro: „Was wird angeboten?“ mit „Neu“ (`angebotsRaum`: Kleinigkeit = Raumtyp `sonstiges`, einzelner Raum, ganze Wohnung/ganzes Haus mit `raeumeWaehlen`, gescannte Räume aus `w.vorOrt.scans` oben, `r.scanId`). Zeile nach links wischen löscht (`wischen`, `raumLoeschen`). Nummer, Betreff, Anrede, Ansprechpartner, Aufschläge gelten fürs ganze Angebot (`bueroFelder`); im Angebot eines Raums gibt es dafür nur noch „Fertig“ (`ausPrj` in `angebotTabelle`).
+Texte: `bausteine.js` (`Bausteine.block/bind`), aufklappbare Blöcke Anfangstexte und Schlusstexte zum Anhaken (`b.aus`), feste Zusätze Gruß mit Unterschrift und Auftragserteilung (`w.angebotOpt`, Vorgaben `angebotGruss`, `angebotAuftragsfeld`). Gleiches Muster ist für Rechnungen gedacht. Unterschrift im PDF über `window.Unterschrift?.pdf` (kommt aus dem Rechnungs-Thread).
+Preisliste im Angebot wählbar (`plWahl` in `angebotTabelle`): allgemeine oder die eines Partners, Partnerpreise ohne Zuschlag (`x.sub.zuschlag = 0`, `x.sub.key`). Vorgabe `subZuschlag` steht auf 0.
+Angebote: Stand Entwurf/Versendet/Abgesagt, frühere Fassungen aus `w.angebotArchiv` („überarbeitet“). Zugesagt → `zusage` → `auftragsbestaetigung` (`baueAngebotPdf(p, { art: 'ab' })`, Eintrag in `w.dokumente` mit `art: 'auftragsbestaetigung'`, `w.auftragsbestaetigung = { t, nr, dokId, gesendetAm }`, Vorgaben `abEinleitung`, `abSchluss`). Abgesagt: `w.absage = { grund, t }`, das PDF bleibt in `w.dokumente` (`pdfInDokumente`).
+
+## Neuerungen aus Version 90 (Projekte und Rechnungen)
 
 Zugesagtes Projekt (`auftragSeite` in `projekt.js`): Schritte Projektdetails, Projektfortschritt, Abnahme, Abrechnen; Kacheln Rechnung, Fotos, Bestellung, Nachtrag, Termin; „Vorbereiten“ (`todoFuellen`). Status „Zugesagt, noch einzuplanen“, kein Knopf „Baustelle läuft“ mehr. Löschen: `loeschenFragen` (Angebot eine Nachfrage, Projekt zwei, mit Rechnungen gar nicht). `Baustelle.abschnitt(el, w, list, 'bestellungen'|'abnahme')`.
 Rechnung schreiben: ein Weg `Rechnung.neu(w?, fertig)` aus Projekt und Reiter (Projekt suchen, Art wählen: Abschlag nach Plan, Abschlag frei, Schlussrechnung, ohne Angebot eigene Positionen `r.eigen`). Rechnungen werden nie gelöscht, nur storniert (`art 'storno'`, `r.storniert`, beide tragen das Stornodatum in `bezahlt`, Summen gleichen sich aus; `Rechnung.gilt/istOffen`). Hinweis zur Aufbewahrung auf jeder Rechnung an Privatkunden. Vorgaben `abschlagFortschritt`, `textStorno`.
