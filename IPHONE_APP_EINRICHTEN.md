@@ -29,8 +29,30 @@ Die iPhone-App hat einen eigenen Speicher, getrennt von der Homebildschirm-App. 
 2. In der **neuen** App unter Einstellungen › Cloud-Abgleich mit derselben E-Mail anmelden. Die Daten laden aus der Cloud. Den Gemini-Schlüssel bringt der Abgleich mit.
 3. Erst wenn in der neuen App alles da ist, das alte Symbol vom Homebildschirm löschen.
 
+## Mitteilungen in der iPhone-App (einmalig)
+
+Die Morgenübersicht und die Erinnerung vor Terminen kommen in der iPhone-App über Apples eigenen Dienst. Dafür braucht Supabase einen Schlüssel von Apple.
+
+1. **Schlüssel bei Apple erstellen**: developer.apple.com › Certificates, Identifiers & Profiles › Keys › Plus. Name `DOM Push`, Häkchen bei „Apple Push Notifications service (APNs)“. Falls Apple nach der Umgebung fragt: „Sandbox & Production“. Weiter, registrieren, Datei `AuthKey_….p8` laden (geht nur einmal). Die **Key ID** notieren.
+2. **In Supabase eintragen**: supabase.com/dashboard › Projekt › Edge Functions › Secrets. Drei Einträge:
+   - `APNS_KEY_P8`: ganzer Text der .p8-Datei
+   - `APNS_KEY_ID`: die Key ID aus Schritt 1
+   - `APNS_TEAM_ID`: deine Team-ID (dieselbe wie bei GitHub)
+3. **Funktion `push` neu einspielen**: Edge Functions › push › Code. Alles löschen und den Inhalt von https://raw.githubusercontent.com/felix260796/dom-app/main/supabase/functions/push/index.ts einfügen, dann „Deploy“.
+4. **Auf dem iPhone**: DOM öffnen › Einstellungen › Mitteilungen aufs iPhone › „Mitteilungen erlauben“ › „Test senden“.
+
+Zeitplan und `CRON_SECRET` bleiben wie in `PUSH_EINRICHTEN.md`.
+
+## Läuft dauerhaft von selbst
+
+- Jeden Monat baut GitHub die App neu und lädt sie hoch, damit nie eine Version nach 90 Tagen abläuft. In der TestFlight-App bei DOM „Automatische Updates“ einschalten.
+- Der tägliche Supabase-Wachhalter und der monatliche Bau schalten sich selbst immer wieder ein, damit GitHub sie nicht nach 60 Tagen Ruhe abschaltet.
+- Das Zertifikat für die Signatur wird bei jedem Bau frisch geholt und kann darum nicht ablaufen. Die Schlüssel (GitHub und Push) haben kein Ablaufdatum.
+- Was von Felix abhängt: das Apple-Entwicklerkonto jedes Jahr verlängern (99 USD) und neue Vertragsbedingungen bei Apple bestätigen, wenn Apple per Mail darum bittet. Ohne das nimmt Apple keine neuen Versionen an.
+- Schickt GitHub eine Mail „Run failed“, ist ein Bau gescheitert. Dann Bescheid geben, die laufende Version bleibt bis zu ihrem Ablauf nutzbar.
+
 ## Gut zu wissen
 
-- TestFlight-Versionen laufen nach 90 Tagen ab. Jeder Merge baut eine neue, dann passiert das nicht.
-- Mitteilungen (Push) aus Einstellungen › Mitteilungen gehen in der iPhone-App noch nicht. Das braucht eine Umstellung auf Apples eigenen Mitteilungsdienst.
+- TestFlight-Versionen laufen nach 90 Tagen ab. Jeder Merge und der monatliche Lauf bauen eine neue, dann passiert das nicht.
+- Die Zahl am App-Symbol setzt in der iPhone-App die Morgenübersicht. Ist unter „Heute“ nichts mehr offen, verschwindet sie beim Öffnen.
 - Fehlen die Geheimnisse, überspringt GitHub den Bau einfach (kein Fehler).

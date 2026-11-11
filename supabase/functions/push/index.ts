@@ -1,4 +1,4 @@
-// DOM – Mitteilungen aufs iPhone (Supabase Edge Function „push“), Stand 7.11.2026
+// DOM – Mitteilungen aufs iPhone (Supabase Edge Function „push“), Stand 11.11.2026
 // 1. Die App meldet ein Gerät an ({ aktion: "anmelden" }): Das iPhone gibt eine Push-Adresse heraus, die hier mit den
 //    Einstellungen des Geräts (Uhrzeit der Morgenübersicht, welche Hinweise, für wen) gespeichert wird.
 // 2. Ein Zeitplan (Supabase Cron, alle 15 Minuten) ruft { aktion: "lauf" } auf. Dann gehen raus:
@@ -9,6 +9,9 @@
 // „system/“ ab. Dort kommt nur Supabase selbst hin (die App sieht nur den Ordner „team“). Es gibt also keine
 // zusätzlichen Geheimnisse einzutragen, nur CRON_SECRET (dasselbe wie bei den Terminmails).
 // Beim Anlegen „Verify JWT“ ausschalten: die Funktion prüft die Anmeldung selbst.
+// Seit 11.11.2026: Die iPhone-App aus TestFlight meldet sich mit { apns: <Token> } an. Dorthin geht die Mitteilung über
+// Apples Dienst (APNs). Dafür in Supabase drei Geheimnisse eintragen (Anleitung IPHONE_APP_EINRICHTEN.md):
+// APNS_KEY_P8 (Inhalt der Datei AuthKey_….p8), APNS_KEY_ID, APNS_TEAM_ID. Optional APNS_TOPIC (Bundle-ID).
 
 import webpush from "npm:web-push@3.6.7";
 
@@ -19,8 +22,9 @@ const TZ = "Europe/Berlin";
 const cors = { "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Headers": "authorization, apikey, content-type, x-cron-secret", "Access-Control-Allow-Methods": "POST, OPTIONS" };
 const antwort = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { ...cors, "Content-Type": "application/json" } });
 
-type Prefs = { morgen?: string; termin?: number; nachfassen?: boolean; nachfassenTage?: number; geld?: boolean; baustelle?: boolean; vorlauf?: number; wer?: string };
-type Geraet = { id: string; sub: { endpoint: string; keys: { p256dh: string; auth: string } }; prefs: Prefs; name?: string; created: number; updated: number };
+type Prefs = { badge?: boolean; morgen?: string; termin?: number; nachfassen?: boolean; nachfassenTage?: number; geld?: boolean; baustelle?: boolean; vorlauf?: number; wer?: string };
+type Sub = { endpoint?: string; keys?: { p256dh: string; auth: string }; apns?: string };
+type Geraet = { id: string; sub: Sub; prefs: Prefs; name?: string; created: number; updated: number };
 type Termin = { id: string; titel?: string; datum: string; von?: string; ganztag?: boolean; ort?: string; wer?: string[]; kontext?: { kunde?: string } };
 
 // ---------- Speicher (Service-Zugang) ----------
@@ -110,14 +114,52 @@ async function daten(): Promise<Daten> {
   return { termine, idx: idx || [], rechnungen, belege, wohnungen };
 }
 
+// ---------- Apple (APNs) für die iPhone-App ----------
+const b64url = (b: ArrayBuffer | Uint8Array | string) => btoa(typeof b === "string" ? b : String.fromCharCode(...new Uint8Array(b as ArrayBuffer))).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+const apnsBereit = () => !!(env("APNS_KEY_P8") && env("APNS_KEY_ID") && env("APNS_TEAM_ID"));
+let apnsJwt = { tok: "", zeit: 0 };
+async function apnsToken() {
+  if (apnsJwt.tok && Date.now() - apnsJwt.zeit < 40 * 60e3) return apnsJwt.tok; // Apple erlaubt höchstens 60 Minuten
+  const roh = env("APNS_KEY_P8").replace(/-----[A-Z ]+-----/g, "").replace(/\s+/g, "");
+  const key = await crypto.subtle.importKey("pkcs8", Uint8Array.from(atob(roh), (c) => c.charCodeAt(0)), { name: "ECDSA", namedCurve: "P-256" }, false, ["sign"]);
+  const kopf = b64url(JSON.stringify({ alg: "ES256", kid: env("APNS_KEY_ID").trim() })) + "." + b64url(JSON.stringify({ iss: env("APNS_TEAM_ID").trim(), iat: Math.floor(Date.now() / 1000) }));
+  const sig = await crypto.subtle.sign({ name: "ECDSA", hash: "SHA-256" }, key, new TextEncoder().encode(kopf));
+  apnsJwt = { tok: kopf + "." + b64url(sig), zeit: Date.now() };
+  return apnsJwt.tok;
+}
+/** Schickt an ein iPhone mit der App aus TestFlight. Gibt den HTTP-Status zurück (200 = angekommen). */
+async function apnsSenden(token: string, n: { titel: string; text: string; zahl?: number; ziel?: string; tag?: string }) {
+  if (!apnsBereit()) throw new Error("In Supabase fehlen APNS_KEY_P8, APNS_KEY_ID oder APNS_TEAM_ID (Anleitung IPHONE_APP_EINRICHTEN.md).");
+  const aps: Record<string, unknown> = { alert: { title: n.titel, body: n.text }, sound: "default" };
+  if (typeof n.zahl === "number") aps.badge = n.zahl;
+  if (n.tag) aps["thread-id"] = n.tag;
+  const kopf: Record<string, string> = { authorization: "bearer " + (await apnsToken()), "apns-topic": env("APNS_TOPIC") || "de.domprojektmanagement.app", "apns-push-type": "alert", "apns-priority": "10", "apns-expiration": String(Math.floor(Date.now() / 1000) + 6 * 3600), "content-type": "application/json" };
+  if (n.tag) kopf["apns-collapse-id"] = n.tag.slice(0, 64);
+  const r = await fetch(`https://api.push.apple.com/3/device/${token}`, { method: "POST", headers: kopf, body: JSON.stringify({ aps, ziel: n.ziel || "heute" }) });
+  const grund = r.ok ? "" : ((await r.json().catch(() => ({}))) as { reason?: string }).reason || "";
+  if (!r.ok) console.error("apns", r.status, grund);
+  return { status: r.status, grund };
+}
+
 // ---------- Senden ----------
+let letzterFehler = "";
 async function senden(g: Geraet, nachricht: { titel: string; text: string; zahl?: number; ziel?: string; tag?: string }) {
+  const weg = () => sto(`object/${BUCKET}`, { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ prefixes: [`${SYS}/push-geraete/${g.id}.json`] }) });
+  if (g.sub.apns) {
+    try {
+      const r = await apnsSenden(g.sub.apns, nachricht);
+      if (r.status === 200) return true;
+      letzterFehler = `Apple meldet ${r.status} ${r.grund}`;
+      if (r.status === 410 || r.grund === "BadDeviceToken" || r.grund === "Unregistered") await weg(); // Gerät abgemeldet
+    } catch (e) { letzterFehler = String((e as Error)?.message || e); console.error("apns", e); }
+    return false;
+  }
   try {
-    await webpush.sendNotification(g.sub, JSON.stringify(nachricht), { TTL: 6 * 3600, urgency: "high" });
+    await webpush.sendNotification(g.sub as { endpoint: string; keys: { p256dh: string; auth: string } }, JSON.stringify(nachricht), { TTL: 6 * 3600, urgency: "high" });
     return true;
   } catch (e) {
     const code = (e as { statusCode?: number }).statusCode;
-    if (code === 404 || code === 410) await sto(`object/${BUCKET}`, { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ prefixes: [`${SYS}/push-geraete/${g.id}.json`] }) }); // Gerät abgemeldet
+    if (code === 404 || code === 410) await weg(); // Gerät abgemeldet
     else console.error("push", code, e);
     return false;
   }
@@ -186,11 +228,12 @@ Deno.serve(async (req) => {
     if (!(await angemeldet(req))) return antwort({ fehler: "Bitte in der App beim Cloud-Abgleich anmelden." }, 401);
     if (body.aktion === "schluessel") return antwort({ ok: true, publicKey: await vapid() });
     const sub = body.sub;
-    if (!sub?.endpoint || !sub?.keys?.p256dh || !sub?.keys?.auth) return antwort({ fehler: "Gerät fehlt" }, 400);
-    const id = await geraetId(sub.endpoint), pfad = `${SYS}/push-geraete/${id}.json`;
+    const apns = typeof sub?.apns === "string" && /^[0-9a-fA-F]{32,200}$/.test(sub.apns) ? sub.apns : "";
+    if (!apns && (!sub?.endpoint || !sub?.keys?.p256dh || !sub?.keys?.auth)) return antwort({ fehler: "Gerät fehlt" }, 400);
+    const id = await geraetId(apns ? "apns:" + apns : sub.endpoint), pfad = `${SYS}/push-geraete/${id}.json`;
     if (body.aktion === "anmelden") {
       const alt = await lesen<Geraet | null>(pfad, null);
-      const g: Geraet = { id, sub, prefs: body.prefs || {}, name: String(body.name || "").slice(0, 80), created: alt?.created || Date.now(), updated: Date.now() };
+      const g: Geraet = { id, sub: apns ? { apns } : sub, prefs: body.prefs || {}, name: String(body.name || "").slice(0, 80), created: alt?.created || Date.now(), updated: Date.now() };
       await schreiben(pfad, g);
       return antwort({ ok: true, id });
     }
@@ -205,7 +248,7 @@ Deno.serve(async (req) => {
       let text = "Mitteilungen funktionieren.";
       if (body.vorschau) { const { datum } = teile(new Date()); const r = morgen(await daten(), g.prefs || {}, datum); text = r.text || "Heute steht nichts an."; }
       const ok = await senden(g, { titel: body.vorschau ? "Heute" : "DOM", text, ziel: "heute", tag: "test" });
-      return ok ? antwort({ ok: true }) : antwort({ fehler: "Die Mitteilung kam nicht an. Bitte Mitteilungen neu erlauben." }, 500);
+      return ok ? antwort({ ok: true }) : antwort({ fehler: g.sub.apns && letzterFehler ? "Die Mitteilung kam nicht an: " + letzterFehler : "Die Mitteilung kam nicht an. Bitte Mitteilungen neu erlauben." }, 500);
     }
     return antwort({ fehler: "Unbekannte Aktion" }, 400);
   } catch (e) {

@@ -4,9 +4,9 @@
 # läuft über die Tabelle storage.objects). Ohne Anmeldung kommt wegen der
 # Zugriffsregeln eine leere Liste zurück, die Abfrage zählt trotzdem.
 #
-# Wichtig: GitHub schaltet geplante Workflows ab, wenn 60 Tage lang nichts im
-# Repository passiert. Dann unter Actions > "Supabase wach halten" wieder
-# einschalten (oder einfach etwas am Repository ändern).
+# GitHub schaltet geplante Workflows ab, wenn 60 Tage lang nichts im Repository
+# passiert. Darum schaltet sich dieser Workflow jeden Tag selbst neu ein (und den
+# iPhone-Bau gleich mit), das setzt die Frist zurück. Es ist nichts von Hand nötig.
 #
 # Von Hand starten: Actions > "Supabase wach halten" > "Run workflow".
 
@@ -17,7 +17,8 @@ on:
     - cron: '0 5 * * *'   # täglich 05:00 UTC (6 Uhr Winterzeit, 7 Uhr Sommerzeit)
   workflow_dispatch:
 
-permissions: {}
+permissions:
+  actions: write
 
 jobs:
   anpingen:
@@ -28,6 +29,15 @@ jobs:
       SB_URL: https://flqjnhetnqdcgskjsgkv.supabase.co
       SB_KEY: sb_publishable_pw5SIPuEKUS22hU9qzQbOQ_wF_VTLrU
     steps:
+      - name: Geplante Läufe aktiv halten
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          for w in supabase-wach-halten.yml ios-testflight.yml; do
+            curl -fsS -o /dev/null -X PUT -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github+json" \
+              "https://api.github.com/repos/${{ github.repository }}/actions/workflows/$w/enable" && echo "$w aktiv" || echo "::warning::$w konnte nicht aktiv gehalten werden"
+          done
+
       - name: Datenbankabfrage (Speicher "dom")
         run: |
           code=$(curl -sS -o antwort.txt -w '%{http_code}' --retry 3 --retry-delay 10 \
