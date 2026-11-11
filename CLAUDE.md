@@ -33,7 +33,7 @@ Bilder: `Bilder.alleView` (alle Bilder nach Datum), `raster` (Markieren, PDF üb
 Karte: Filter je Gruppe (`FILTER` in `karte.js`, gemerkt in localStorage `dom:karteFilter`). Auswertung: `auswertung(daten, rechnungen, jahr)` in `finanzen.js` mit Jahr-Auswahl. „Heute“ hat ein X (`#hZu`, zurück zu `window.__vorHeute`).
 Per Sprache anlegen: Prüfseite mit Feldern untereinander, Anschrift wird über `Kunden.sucheAdresse` um PLZ und Ort ergänzt (Vorgabe `spracheAdresse`).
 
-## Neuerungen aus Version 88 (Angebotsablauf)
+## Neuerungen aus Version 89 (Angebotsablauf)
 
 Angebotsablauf (bis zur Zusage) hat drei Reiter statt vier Schritten: Vor Ort, Büro, Angebote (`REITER`, `reiterVon/reiterSetzen`, `vorOrtTab`, `bueroTab`, `angeboteTab` in `projekt.js`). Jeder Reiter ist eine eigene Seite. Felix will das genau so, nicht wieder zu einer langen Seite zusammenlegen.
 Vor Ort: einzelne Punkte, nicht eine Karte: Gespräch (`Gespraech.karte(w, list, { einzeln: true })`), Fotos (`Bilder.fotosMachen`), Plan scannen, Raum scannen, „Was fehlt noch?“. Visualisieren und Moodboard unten als Zusatz. Baumappe und Kundenmappe sind im Angebot vorerst weg (Felix später daran erinnern).
