@@ -19,6 +19,10 @@ Angebotsablauf Schritt 1 „Vor Ort“: Karte „Vor Ort aufnehmen“ (`Gespraec
 Per Sprache anlegen: Auf der Prüfseite per Sprache oder Text korrigieren (`korrigieren` in `sprache.js`).
 Handler wie `onkeydown = (e) => bedingung && tu()` sind verboten: Rückgabe `false` blockiert jede Taste (so war „Ordner benennen“ kaputt).
 
+## Neuerungen aus Version 84
+
+Mitdenken vor Ort und Angebotsentwurf: `vorort.js` (`VorOrt`). „Was fehlt noch?“ in Schritt 1 (`VorOrt.karte/bind`, Fragen in `w.vorOrt.fragen`, eigene Notizen `w.vorOrt.notiz`, startet nach jeder Aufnahme über `VorOrt.nachAufnahme` aus `voice.js`). „Angebotsentwurf erstellen“ in Schritt 2 (`bueroKarte/bueroBind`): Die KI schlägt je Bereich Positionen vor, Mengen aus dem Aufmaß (`mengeAus`), Prüfseite, erst „übernehmen“ schreibt in `r.angebot.positionen` (Kennzeichen `x.ki = { sicher, partner, grund }`). Bereiche ohne Raum werden als Raumtyp `sonstiges` angelegt („Leistungen“, „Allgemein“). Offenes in `w.entwurf.offen`. Vorgaben: `vorortAuto`, `vorortFragenMax`, `vorortPruefliste`, `vorortFotos`, `entwurfFotos`, `entwurfHinweise`, Prompts `promptVorOrt`, `promptEntwurf`. Nicht auf Bäder beschränken.
+
 ## Bereiche
 
 | Bereich | Dateien | Inhalt |

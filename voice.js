@@ -417,6 +417,8 @@ async function auswertenAudio(owner, blob, fromStore) {
     await window.Projekt.save(w);
     await zuordnen(w);
     if (vorgabe('gespraechZusammenfassung') !== 'nein') await zusammenfassung(w).catch((e) => console.warn('Zusammenfassung fehlgeschlagen', e));
+    // Gleich mitdenken: Was fehlt noch fürs Angebot, solange man beim Kunden ist (vorort.js)
+    window.VorOrt?.nachAufnahme(w).catch((e) => console.warn('Was fehlt noch?', e));
   } else {
     const p = state.project?.id === owner.id ? state.project : normalizeProject(await kvGet('project:' + owner.id));
     voiceApply(p, { transcript: join(p.transcript) });

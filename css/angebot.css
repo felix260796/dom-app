@@ -152,3 +152,30 @@ button.pg { border: 0; background: none; text-align: right; font: inherit; color
 .sub-m input { width: 72px; text-align: right; }
 .sub-t small { color: var(--muted); font-size: 12.5px; }
 .tb-sub { display: block; color: var(--muted); font-size: 12.5px; margin: 4px 0 2px; }
+
+/* ---------- Was fehlt noch? und Angebotsentwurf (vorort.js) ---------- */
+.wf-l { display: flex; flex-direction: column; gap: 10px; }
+.wf-f { border: 1px solid var(--line); border-radius: 12px; padding: 10px; background: #fff; }
+.wf-f.ok { background: var(--soft); }
+.wf-f.ok .wf-k b { color: var(--muted); font-weight: 500; }
+.wf-k { display: flex; gap: 10px; align-items: flex-start; margin: 0 0 8px; }
+.wf-k input { width: 22px; height: 22px; flex: 0 0 22px; margin-top: 2px; }
+.wf-k span { display: flex; flex-direction: column; min-width: 0; }
+.wf-k small, .wf-t small { color: var(--muted); font-size: 12.5px; }
+.wf-e { display: flex; flex-direction: column; gap: 10px; }
+.wf-z { display: flex; gap: 10px; align-items: flex-start; border: 1px solid var(--line); border-radius: 12px; padding: 10px; background: #fff; }
+.wf-z.aus { opacity: .45; }
+.wf-z > input[type="checkbox"] { width: 22px; height: 22px; flex: 0 0 22px; margin-top: 4px; }
+.wf-t { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 6px; }
+.wf-m { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; font-size: 14px; }
+.wf-m input { width: 76px; text-align: right; }
+.wf-b { display: inline-block; padding: 1px 8px; border-radius: 999px; font-size: 12px; font-weight: 600; white-space: nowrap; }
+.wf-b.gut { background: #e3f3ea; color: var(--ok); }
+.wf-b.mittel { background: #fbf1d6; color: #8a6410; }
+.wf-b.schlecht { background: var(--danger-soft); color: var(--danger); }
+.wf-b.partner { background: #e6edf5; color: var(--navy); }
+.wf-o { margin: 6px 0 0; padding-left: 18px; font-size: 14.5px; }
+.wf-o li { margin: 4px 0; }
+.wf-o li.ok { color: var(--muted); text-decoration: line-through; }
+.wf-o label { display: inline; font-weight: 400; margin: 0; }
+.wf-offen { margin-top: 10px; border-left: 4px solid #c99a2e; }

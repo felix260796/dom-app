@@ -671,7 +671,7 @@ Gib Länge (längere Seite) und Breite der Grundfläche, Raumhöhe, Anzahl und G
     const zeileHtml = (it) => {
       const q = mengeVon(it.nr), x = A.positionen.find((y) => y.nr === it.nr), e = x?.epFix > 0 ? x.epFix : ep(it, A.kalk);
       return `<div class="tb-z ${q ? 'an' : ''}" data-tz="${esc(it.nr)}" data-such="${esc(`${it.nr} ${it.text} ${it.gewerk}`.toLowerCase())}">
-        <span class="tb-t"><b>${esc(it.text)}</b><small>${esc(it.nr)} · ${fmtEur(e)} je ${esc(it.einheit)}${x?.epFix > 0 ? ' (eigener Preis)' : ''}</small></span>
+        <span class="tb-t"><b>${esc(it.text)}</b><small>${esc(it.nr)} · ${fmtEur(e)} je ${esc(it.einheit)}${x?.epFix > 0 ? ' (eigener Preis)' : ''}${x?.ki?.sicher === 'geschaetzt' ? ' · <span class="wf-b mittel">geschätzt</span>' : ''}</small></span>
         <input type="text" inputmode="decimal" data-q="${esc(it.nr)}" value="${q ? fmtIn(Math.round(q * 100) / 100) : ''}" placeholder="0" aria-label="Menge ${esc(it.text)}">
         <span class="tb-e">${esc(it.einheit)}</span>
         <button type="button" class="tb-gp" data-tp="${esc(it.nr)}" title="Preis ändern">${q ? fmtEur(r2(q * e)) : ''}</button></div>`;
@@ -711,7 +711,8 @@ Gib Länge (längere Seite) und Breite der Grundfläche, Raumhöhe, Anzahl und G
       <div class="sec-h"><h2>Eigene Positionen</h2>${frei.length ? `<span class="count">${frei.length}</span>` : ''}</div>
       <div class="card tb-frei">${frei.map((x) => `<div class="tb-fz" data-fz="${esc(x.nr)}">
           <input type="text" data-ff="text" value="${esc(x.frei.text || '')}" placeholder="Leistung, z. B. Nische mit LED" autocomplete="off">
-          ${x.sub ? `<small class="tb-sub">Von ${esc(window.Partner?.byId(x.sub.partnerId)?.firma || x.sub.firma || 'Partner')} · Einkauf ${fmtEur(x.sub.ep)} + ${fmtNum(x.sub.zuschlag, 0)} %</small>` : ''}
+          ${x.ki?.partner && !(x.sub?.ep > 0) ? '<small class="tb-sub"><span class="wf-b partner">Preis kommt von Partner</span></small>' : x.ki?.sicher === 'geschaetzt' ? '<small class="tb-sub"><span class="wf-b mittel">Menge geschätzt, bitte prüfen</span></small>' : ''}
+          ${x.sub && !(x.ki?.partner && !(x.sub.ep > 0)) ? `<small class="tb-sub">Von ${esc(window.Partner?.byId(x.sub.partnerId)?.firma || x.sub.firma || 'Partner')} · Einkauf ${fmtEur(x.sub.ep)} + ${fmtNum(x.sub.zuschlag, 0)} %</small>` : ''}
           <div class="row"><div><input type="text" inputmode="decimal" data-ff="menge" value="${fmtIn(x.menge)}" placeholder="Menge"></div>
             <div><input type="text" data-ff="einheit" value="${esc(x.frei.einheit || '')}" placeholder="Einheit"></div>
             <div><input type="text" inputmode="decimal" data-ff="preis" value="${fmtIn(x.epFix)}" placeholder="€ netto je Einh."></div>
@@ -810,7 +811,7 @@ Gib Länge (längere Seite) und Breite der Grundfläche, Raumhöhe, Anzahl und G
       const x = A.positionen.find((y) => y.nr === row.dataset.fz);
       $$('[data-ff]', row).forEach((inp) => (inp.oninput = () => {
         const f = inp.dataset.ff;
-        if (f === 'text' || f === 'einheit') x.frei[f] = inp.value; else if (f === 'menge') x.menge = num(inp.value); else x.epFix = r2(num(inp.value));
+        if (f === 'text' || f === 'einheit') x.frei[f] = inp.value; else if (f === 'menge') { x.menge = num(inp.value); if (x.ki) x.ki.sicher = ''; } else x.epFix = r2(num(inp.value));
         A.geaendert = true; summe(); speichern();
       }));
       $('[data-fdel]', row).onclick = () => { if (!loeschFrage('Eigene Position entfernen?')) return; A.positionen = A.positionen.filter((y) => y !== x); neu(); };

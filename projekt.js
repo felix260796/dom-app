@@ -362,6 +362,8 @@ window.Projekt = (() => {
       await kundeUebernehmen(w.id); view();
     };
     window.Gespraech?.bind(w, list);
+    window.VorOrt?.bind(w, list, () => view());
+    window.VorOrt?.bueroBind(w, list);
     if ($('#wVis')) $('#wVis').ontoggle = (e) => { e.target.open ? visOffen.add(w.id) : visOffen.delete(w.id); };
     // Angebotsablauf: weitere Knöpfe
     $$('[data-bilder]').forEach((b) => (b.onclick = () => $('#wBilder')?.click()));
@@ -467,6 +469,7 @@ window.Projekt = (() => {
 
       ${kopf(1, 'Vor Ort', 'Gespräch, Fotos, Pläne und Raumscan')}
       ${window.Gespraech?.karte(w, list) || ''}
+      ${gesperrt(w) ? '' : window.VorOrt?.karte(w, list) || ''}
       ${k ? `<button id="wBilder" hidden></button>` : ''}
       <details class="more card vis-zusatz" id="wVis" ${visOffen.has(w.id) ? 'open' : ''}><summary>${icon('sparkle')}<span>Visualisieren<small>${anyResult ? `${list.filter(hasAnyResult).length} von ${list.length} ${list.length === 1 ? 'Raum' : 'Räumen'} visualisiert` : 'Zusatz: Fotos als neuer Raum, hat mit dem Angebot nichts zu tun'}</small></span>${icon('chevron', 'more-chev')}</summary>
       <div class="rlist" style="margin-top:10px">${list.map((r, i) => `
@@ -489,6 +492,7 @@ window.Projekt = (() => {
       </details>
 
       ${kopf(2, 'Im Büro: Angebot ausarbeiten', list.length ? 'Wünsche aus dem Gespräch stehen schon in jedem Raum' : 'Raum fürs Angebot anlegen, Positionen eintragen')}
+      ${gesperrt(w) ? '' : window.VorOrt?.bueroKarte(w, list) || ''}
       <div class="docs">${list.map((r) => `<button class="doc" data-angraum="${r.id}"><span class="d-ico ${r.angebot?.positionen?.length ? 'navy' : 'grey'}">${roomIcon(r.roomType)}</span>
         <span class="d-t"><b>${esc(r.room || roomType(r.roomType).name)}</b><span>${r.angebot?.positionen?.length ? `${r.angebot.positionen.length} Positionen${r.angebot.nr ? ` · Nr. ${esc(r.angebot.nr)}` : ''}` : 'noch nicht ausgearbeitet'}${notizen(r) ? ` · ${notizen(r)} Punkte aus dem Gespräch` : ''}</span></span>${icon('chevron', 'pc-chev')}</button>`).join('')}
         <button class="doc" id="wNeuAng"><span class="d-ico grey">${icon('plus')}</span><span class="d-t"><b>${list.length ? 'Weiteren Raum ins Angebot' : 'Raum fürs Angebot anlegen'}</b><span>z. B. Bad, Küche, Flur. Ohne Fotos und ohne Visualisierung</span></span>${icon('chevron', 'pc-chev')}</button>
