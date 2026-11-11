@@ -211,6 +211,18 @@ window.Projekt = (() => {
   async function addRoom(w, rt, extra = {}) {
     raumOeffnen(await raumAnlegen(w, rt, extra), w);
   }
+  /** Raum aus einem Raumscan anlegen (ohne ihn zu öffnen): Name und Typ vom Scan, Maße gleich im Aufmaß. */
+  async function raumAusScan(w, scan) {
+    const list = await raeume(w);
+    const rt = window.Raumscan?.typFuer(scan) || 'sonstiges';
+    const name = (scan.name || '').trim();
+    const frei = name && !list.some((r) => (r.room || '').trim().toLowerCase() === name.toLowerCase());
+    const r = { id: uid(), created: Date.now(), wohnungId: w.id, kundeId: w.kundeId || '', customer: w.customer, address: w.address, roomType: rt, room: frei ? name : titel(list, rt), note: '', photos: [], thumb: '', results: {}, selected: packagesFor(rt).map((x) => x.id), pdfProducts: true, pdfPrices: false };
+    window.Raumscan?.masseIn(r, scan);
+    rooms.set(r.id, r); w.rooms.push(r.id); delete w.isNew;
+    await kvSet('project:' + r.id, r); await save(w);
+    return normalizeProject(r);
+  }
   async function pickRoomType(w) {
     const rt = await sheet('Welcher Raum?', ROOM_TYPES.map((r) => ({ label: r.name, icon: roomIcon(r.id), value: r.id })));
     if (rt) addRoom(w, rt);
@@ -521,7 +533,7 @@ window.Projekt = (() => {
 
       ${lidar || scans.length ? `<div class="sec-h"><h2>Raum scannen</h2>${scans.length ? `<span class="count">${scans.length}</span>` : ''}</div>
       <div class="docs">${lidar ? punkt('id="vScan"', 'ruler', 'brass', 'Raum scannen', 'Das iPhone misst Länge, Breite und Höhe') : ''}</div>
-      ${scans.length ? `<div class="card vo-scans" style="margin-top:8px">${scans.map((x) => `<div class="vo-scan">${icon('ruler')}<span><b>${esc(x.name)}</b> ${zahl(x.laenge)} × ${zahl(x.breite)} m${x.hoehe > 0 ? `, ${zahl(x.hoehe)} m hoch` : ''}${x.flaeche > 0 ? ` · ${zahl(x.flaeche)} m²` : ''}</span><button type="button" class="icon-btn" data-scandel="${x.id}" aria-label="Scan löschen">${icon('x')}</button></div>`).join('')}
+      ${scans.length ? `<div class="card vo-scans" style="margin-top:8px">${scans.map((x) => `<div class="vo-scan"><button type="button" class="vo-scan-o" data-scanauf="${x.id}"><canvas class="vo-scan-c" data-scanbild="${x.id}"></canvas><span><b>${esc(x.name)}</b> ${zahl(x.laenge)} × ${zahl(x.breite)} m${x.hoehe > 0 ? `, ${zahl(x.hoehe)} m hoch` : ''}${x.flaeche > 0 ? ` · ${zahl(x.flaeche)} m²` : ''}<small>${x.ganz ? `Ganze Wohnung, ${(x.raeume || []).length} Räume · ` : ''}Grundriss, 3D-Modell, reinzeichnen</small></span></button><button type="button" class="icon-btn" data-scandel="${x.id}" aria-label="Scan löschen">${icon('x')}</button></div>`).join('')}
         <p class="hint" style="margin:4px 0 0">Im Büro kannst du einen gescannten Raum mit seinen Maßen direkt ins Angebot nehmen.</p></div>` : ''}` : ''}
 
       ${gesperrt(w) ? '' : window.VorOrt?.karte(w, list) || ''}
@@ -704,11 +716,8 @@ window.Projekt = (() => {
     if (norm(w.status) === 'besichtigung') { w.status = 'entwurf'; (w.verlauf ??= []).push({ st: 'entwurf', t: Date.now() }); }
     if (v.startsWith('scan:')) {
       const s = scans.find((x) => 'scan:' + x.id === v);
-      const r = await raumAnlegen(w, roomTypeIdFromName(s.name), { room: s.name, scanId: s.id });
-      const A = window.Angebot._intern; await A.preisliste(); A.init(r);
-      r.aufmass.raeume[0].name = s.name; A.uebernimmSchaetzung(r.aufmass.raeume[0], s);
-      r.masse = { l: r.aufmass.raeume[0].teile[0].l, b: r.aufmass.raeume[0].teile[0].b, h: r.aufmass.raeume[0].h };
-      await kvSet('project:' + r.id, r);
+      const r = await raumAusScan(w, s); // Name, Raumtyp und Maße kommen vom Scan (raumscan.js)
+      r.scanId = s.id; await kvSet('project:' + r.id, r);
       return raumAngebot(r, w);
     }
     if (v === 'klein') return raumAngebot(await raumAnlegen(w, 'sonstiges', { room: titelFrei(list, String(vorgabe('kleinName') || 'Leistungen')), nurAngebot: true }), w);
@@ -1161,7 +1170,7 @@ window.Projekt = (() => {
   }
 
   const forget = (id) => rooms.delete(id);
-  return { automatik, anlegen, angebotVersendet, gesperrt, gesperrtFrage, angebotKopieren, dateiZeigen, nachfassen, seitTagen, STATUS, ANGEBOT, ALLE, PHASEN, phase, farbe, pill, norm, zugesagt, statusName, statusKurz, raumAngebot, angebotMerken, forget, neu, neuDirekt, neuFuer, kundeUebernehmen, oeffnen, view, mappeView, moodboardView, migrate, raum, raeume, raumGespeichert, raumEntfernt, save, wahl, PKG_IDS, _intern: { titel, addRoom, raumAnlegen, reiterSetzen, auftragsbestaetigung } };
+  return { automatik, anlegen, angebotVersendet, gesperrt, gesperrtFrage, angebotKopieren, dateiZeigen, nachfassen, seitTagen, STATUS, ANGEBOT, ALLE, PHASEN, phase, farbe, pill, norm, zugesagt, statusName, statusKurz, raumAngebot, angebotMerken, forget, neu, neuDirekt, neuFuer, kundeUebernehmen, oeffnen, view, mappeView, moodboardView, migrate, raum, raeume, raumGespeichert, raumEntfernt, save, wahl, PKG_IDS, _intern: { titel, addRoom, raumAusScan, raumAnlegen, reiterSetzen, auftragsbestaetigung } };
 })();
 // Ältere Aufrufe (PR „Wohnungen“) laufen weiter
 window.Wohnung = { neu: () => Projekt.neu(), oeffnen: (id) => Projekt.oeffnen(id), view: () => Projekt.view(), raumGespeichert: (p) => Projekt.raumGespeichert(p), raumEntfernt: (p) => Projekt.raumEntfernt(p) };

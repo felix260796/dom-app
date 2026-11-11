@@ -474,6 +474,7 @@ Gib Länge (längere Seite) und Breite der Grundfläche, Raumhöhe, Anzahl und G
         <div class="row" style="align-items:flex-end"><div style="flex:2"><label>Raum</label><input type="text" data-rf="name" value="${esc(r.name)}"></div>
           <div style="flex:2"><label>Raumtyp</label><select data-rf="typ">${typen.map((t) => `<option ${t === r.typ ? 'selected' : ''}>${esc(t)}</option>`).join('')}</select></div></div>
         ${scansVorOrt(p).length ? `<button class="btn small block" data-vscan style="margin-top:10px">${icon('ruler')} Maße vom Raumscan vor Ort übernehmen</button>` : ''}
+        ${scansVorOrt(p).some((x) => x.raumId === p.id) ? `<button class="btn small secondary block" data-vplan style="margin-top:10px">Grundriss und 3D-Modell ansehen</button>` : ''}
         ${window.Geraet?.kann('lidar') ? `<button class="btn small ${scansVorOrt(p).length ? 'secondary ' : ''}block" data-lidar style="margin-top:10px">Raum scannen (LiDAR)</button>` : ''}
         ${p.photos.length ? `<button class="btn small secondary block" data-schaetzen style="margin-top:10px">Maße grob aus den Fotos schätzen (KI)</button>` : ''}
         ${r.schaetzung?.quelle === 'lidar' ? `<p class="muted" style="color:#9a6a12">Mit dem LiDAR-Scanner gemessen. Die Grundfläche ist das Rechteck um den Raum, bei L-Form oder Nischen bitte als Teilflächen nachtragen.${r.schaetzung.text ? `<br><i>${esc(r.schaetzung.text)}</i>` : ''}</p>` : ''}
@@ -520,7 +521,8 @@ Gib Länge (längere Seite) und Breite der Grundfläche, Raumhöhe, Anzahl und G
       const vs = $('[data-vscan]', card);
       if (vs) vs.onclick = async () => {
         const l = scansVorOrt(p);
-        const id = l.length === 1 ? l[0].id : await sheet('Welcher Raumscan?', l.map((x) => ({ label: x.name, sub: `${fmtNum(x.laenge, 2)} × ${fmtNum(x.breite, 2)} m${x.flaeche > 0 ? ` · ${fmtNum(x.flaeche, 2)} m²` : ''}`, value: x.id })));
+        const eigen = l.find((x) => x.raumId === p.id);
+        const id = eigen ? eigen.id : l.length === 1 ? l[0].id : await sheet('Welcher Raumscan?', l.map((x) => ({ label: x.name, sub: `${fmtNum(x.laenge, 2)} × ${fmtNum(x.breite, 2)} m${x.flaeche > 0 ? ` · ${fmtNum(x.flaeche, 2)} m²` : ''}`, value: x.id })));
         const m = l.find((x) => x.id === id); if (!m) return;
         if (masse(r).boden && !confirm('Eingetragene Maße durch den Scan ersetzen?')) return;
         const rechteck = m.laenge * m.breite;
@@ -529,6 +531,8 @@ Gib Länge (längere Seite) und Breite der Grundfläche, Raumhöhe, Anzahl und G
         r.schaetzung.quelle = 'lidar';
         toast(`Maße aus dem Scan „${m.name}“ übernommen`); rerender();
       };
+      const vp = $('[data-vplan]', card);
+      if (vp) vp.onclick = () => window.Raumscan?.ansehen(state.wohnung, scansVorOrt(p).find((x) => x.raumId === p.id)?.id);
       const lb = $('[data-lidar]', card);
       if (lb) lb.onclick = async () => {
         if (masse(r).boden && !confirm('Eingetragene Maße durch den Scan ersetzen?')) return;
