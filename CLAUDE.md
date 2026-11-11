@@ -34,6 +34,7 @@ Per Sprache anlegen: Prüfseite mit Feldern untereinander, Anschrift wird über 
 Schutz vor versehentlichem Ändern: `textSchutz` in `core.js` läuft von selbst nach jedem Neuzeichnen von `#main`. Jedes `textarea` mit Inhalt ist erst nach „Bearbeiten“ änderbar („Rückgängig“, „Fertig“). Ausnahme mit `data-frei`. Ganze Blöcke mit `data-schutz="<schlüssel>"` (alle Felder darin, Teile mit `data-edit-nur` gesperrt unsichtbar, `data-schutz-ohne-undo`); offen halten über Neuzeichnen mit `schutzOffen.add(schlüssel)`. Alle `textarea` bekommen Autokorrektur (außer `data-roh`).
 Reihenfolge ändern: keine Pfeile mehr, sondern Griff `griffHtml()` und `ziehbar(box, zeilenSelektor, (von, nach) => …)` in `core.js` (Listen in den Einstellungen, Textfelder im Angebot).
 Kunde: weitere Nummern und E-Mails über das kleine Plus (`Kontakt.mehrLabel/mehrBinden`, Daten in `k.weitere`, Bezeichnungen Vorgaben `telArten`/`mailArten`). Schnellübersicht `historie(k, idx)` in `kunden.js`: Angebots-, Projekt-, Rechnungshistorie; abgesagte Angebote mit Grund (`w.absage = { grund, t }`) und PDF (`angpdf:<id>` bzw. `w.dokumente`). Auswertung: Karte „Abgesagte Angebote“ (`data-awab`).
+Route: `routeLink(adresse)` in `core.js` (Vorgabe `routeKarte`), jedes Anschriftfeld `.adr` bekommt von selbst ein Routen-Zeichen (`routeZeichen`), Schnellknopf „Route“ in `Kontakt.aktionen`.
 
 ## Bereiche
 

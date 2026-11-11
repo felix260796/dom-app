@@ -272,11 +272,33 @@ function textSchutz(wurzel = document.getElementById('main')) {
   });
 }
 document.addEventListener('input', (e) => { if (e.target.tagName === 'TEXTAREA' && !e.target.dataset.sz) e.target.dataset.getippt = '1'; }, true);
+
+// ---------- Route dorthin (Wunsch Felix) ----------
+/** Link zur Navigation vom eigenen Standort zur Anschrift. Karten-App aus der Vorgabe 'routeKarte' (Google Maps oder Apple Karten). */
+function routeLink(adresse) {
+  const ziel = encodeURIComponent(String(adresse || '').split(/\s*\n\s*/).filter(Boolean).join(', ').trim());
+  return vorgabe('routeKarte') === 'apple' ? `https://maps.apple.com/?daddr=${ziel}&dirflg=d` : `https://www.google.com/maps/dir/?api=1&travelmode=driving&destination=${ziel}`;
+}
+/** Jedes Anschriftfeld (.adr mit Eingabefeld) bekommt von selbst rechts ein kleines Routen-Zeichen, sobald etwas drinsteht. */
+function routeZeichen(wurzel = document.getElementById('main')) {
+  if (!wurzel) return;
+  $$('.adr', wurzel).forEach((box) => {
+    const inp = box.querySelector('input');
+    if (!inp || box.dataset.route) return;
+    box.dataset.route = '1';
+    const a = document.createElement('a');
+    a.className = 'adr-route'; a.target = '_blank'; a.rel = 'noopener'; a.setAttribute('aria-label', 'Route dorthin'); a.innerHTML = icon('route');
+    const stand = () => { const v = inp.value.trim(); a.hidden = v.length < 4; box.classList.toggle('mit-route', !a.hidden); if (!a.hidden) a.href = routeLink(v); };
+    a.addEventListener('click', stand); // Anschrift kann sich ohne Tippen geändert haben (Vorschlag gewählt)
+    inp.addEventListener('input', stand); inp.addEventListener('change', stand);
+    box.appendChild(a); stand();
+  });
+}
 document.addEventListener('DOMContentLoaded', () => {
   const m = document.getElementById('main');
   if (!m) return;
   let warte = 0;
-  new MutationObserver(() => { if (!warte) warte = requestAnimationFrame(() => { warte = 0; textSchutz(m); }); }).observe(m, { childList: true, subtree: true });
+  new MutationObserver(() => { if (!warte) warte = requestAnimationFrame(() => { warte = 0; textSchutz(m); routeZeichen(m); }); }).observe(m, { childList: true, subtree: true });
 });
 
 // ---------- Listen in den Einstellungen: jeder Eintrag ein eigenes Feld (Wunsch Felix) ----------

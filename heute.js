@@ -66,8 +66,8 @@ window.Heute = (() => {
   /** Öffnet die Navigation: Google Maps mit allen Stopps (Start = eigener Standort) oder Apple Karten zum nächsten Termin. */
   function route(orte) {
     const e = encodeURIComponent;
-    const url = vorgabe('routeKarte') === 'apple'
-      ? `https://maps.apple.com/?daddr=${e(orte[0])}&dirflg=d`
+    const url = vorgabe('routeKarte') === 'apple' || orte.length === 1
+      ? routeLink(orte[0])
       : `https://www.google.com/maps/dir/?api=1&travelmode=driving&destination=${e(orte[orte.length - 1])}${orte.length > 1 ? '&waypoints=' + e(orte.slice(0, -1).join('|')) : ''}`;
     window.open(url, '_blank');
   }

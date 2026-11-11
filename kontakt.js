@@ -136,14 +136,14 @@ window.Kontakt = (() => {
   }
 
   // ---------- Schnellknöpfe ----------
-  const mapLink = (a) => 'https://maps.apple.com/?q=' + encodeURIComponent(String(a || '').split(/\s*,\s*|\n/).filter(Boolean).join(', '));
+  const mapLink = (a) => routeLink(a); // Route vom eigenen Standort, Karten-App aus der Vorgabe 'routeKarte'
   /** tels/mails: [{ label, wert }] – bei mehr als einem Eintrag fragt der Knopf, welcher. */
   function aktionen({ tels = [], mails = [], adresse = '' }) {
     tels = tels.filter((x) => x.wert.trim()); mails = mails.filter((x) => x.wert.trim());
     const b = [
       tels.length && `<button type="button" class="kd-a" data-ka="tel">${icon('phone')}<span>Anrufen${tels.length > 1 ? ` (${tels.length})` : ''}</span></button>`,
       mails.length && `<button type="button" class="kd-a" data-ka="mail">${icon('mail')}<span>E-Mail${mails.length > 1 ? ` (${mails.length})` : ''}</span></button>`,
-      adresse.trim() && `<a class="kd-a" href="${esc(mapLink(adresse))}" target="_blank" rel="noopener">${icon('map')}<span>Karte</span></a>`,
+      adresse.trim() && `<a class="kd-a" href="${esc(mapLink(adresse))}" target="_blank" rel="noopener">${icon('route')}<span>Route</span></a>`,
     ].filter(Boolean);
     return { html: b.length ? `<div class="kd-row">${b.join('')}</div>` : '', binden: (el) => {
       const los = async (list, pre, ic) => {
