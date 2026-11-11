@@ -571,7 +571,8 @@ async function raumScan(w, list) {
 
 /** Karte in der Projektübersicht: Sammelstelle vor Ort (Gespräch, Fotos, Pläne, Raumscan), Ergebnis, Zusammenfassung. */
 window.Gespraech = {
-  karte(w, list) {
+  // einzeln = true: nur das Gespräch (Angebotsablauf „Vor Ort“: Fotos, Pläne und Raumscan sind dort eigene Punkte)
+  karte(w, list, { einzeln = false } = {}) {
     const owner = { id: w.id, projekt: true }, g = w.gespraech || {};
     const count = (s) => (s || '').split('\n').filter((l) => l.trim()).length;
     const offen = list.filter((r) => !g.zugeordnet?.includes(r.id));
@@ -581,9 +582,9 @@ window.Gespraech = {
     const scans = w.vorOrt?.scans || [];
     const zahl = (x) => (+x || 0).toLocaleString('de-DE', { maximumFractionDigits: 2 });
     return `
-      <div class="sec-h"><h2>Vor Ort aufnehmen</h2></div>
+      ${einzeln ? '' : '<div class="sec-h"><h2>Vor Ort aufnehmen</h2></div>'}
       <div class="card voice-p">
-        <p class="hint" style="margin-top:0">Hier sammelst du alles vom Termin: Gespräch, Fotos, Pläne und Raumscan. Das Gespräch einmal starten und laufen lassen, währenddessen fotografieren. Kunden vorher um Erlaubnis fragen.</p>
+        ${einzeln ? '<p class="hint" style="margin-top:0">Einmal starten und laufen lassen. Die Aufnahme läuft weiter, während du fotografierst. Kunden vorher um Erlaubnis fragen.</p>' : `<p class="hint" style="margin-top:0">Hier sammelst du alles vom Termin: Gespräch, Fotos, Pläne und Raumscan. Das Gespräch einmal starten und laufen lassen, währenddessen fotografieren. Kunden vorher um Erlaubnis fragen.</p>
         <div class="vo-sammel">
           <button type="button" class="vo-b" data-bilder>${icon('camera')}<b>Fotos</b><span>alle Räume</span></button>
           <button type="button" class="vo-b" id="vPlan">${icon('file')}<b>Pläne</b><span>${w.vorOrt?.plaene ? `${w.vorOrt.plaene} gescannt` : 'scannen'}</span></button>
@@ -591,8 +592,7 @@ window.Gespraech = {
         </div>
         ${scans.length ? `<div class="vo-scans">${scans.map((x) => `<div class="vo-scan">${icon('ruler')}<span><b>${esc(x.name)}</b> ${zahl(x.laenge)} × ${zahl(x.breite)} m${x.hoehe > 0 ? `, ${zahl(x.hoehe)} m hoch` : ''}${x.flaeche > 0 ? ` · ${zahl(x.flaeche)} m²` : ''}</span><button type="button" class="icon-btn" data-scandel="${x.id}" aria-label="Scan löschen">${icon('x')}</button></div>`).join('')}</div>
           <p class="hint" style="margin-top:4px">Im Angebot beim Aufmaß übernimmst du die Maße mit einem Tipp.</p>` : ''}
-
-        <h3 class="vo-h">${icon('mic')} Gespräch</h3>
+        <h3 class="vo-h">${icon('mic')} Gespräch</h3>`}
         <label style="margin-top:0">Was für ein Gespräch?</label>
         <select id="vArt">${[...new Set([...vorgabe('gespraechArten'), ...(voice.art ? [voice.art] : [])])].map((a) => `<option ${a === (voice.art || (window.Projekt?.zugesagt(w.status) ? '' : vorgabe('gespraechArten')[0])) ? 'selected' : ''}>${esc(a)}</option>`).join('')}<option value="__eigen">Eigene Bezeichnung …</option></select>
         <label>Wer ist dabei?</label>

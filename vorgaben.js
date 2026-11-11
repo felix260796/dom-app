@@ -61,6 +61,13 @@ const VORGABEN = {
       { k: 'vorortFotos', l: 'Wie viele Fotos schaut sich die KI vor Ort an?', t: 'zahl', d: 8, h: 'Mehr Fotos sind genauer, dauern aber länger.' },
       { k: 'entwurfFotos', l: 'Wie viele Fotos schaut sich die KI für den Angebotsentwurf an?', t: 'zahl', d: 12 },
       { k: 'entwurfHinweise', l: 'Das gilt für jeden Angebotsentwurf', t: 'text', d: 'Baustelleneinrichtung, Schutz der Laufwege, Entsorgung und Endreinigung mit anbieten, wenn es mehr als eine Kleinigkeit ist.\nBei Kleinigkeiten nur die Arbeit selbst und die Anfahrt.' },
+      { k: 'raeumeWohnung', l: 'Räume zum Anhaken bei „Ganze Wohnung“ (eine Zeile je Raum)', t: 'liste', d: ['Badezimmer', 'Gäste-WC', 'Küche', 'Wohnzimmer', 'Schlafzimmer', 'Kinderzimmer', 'Flur / Diele'] },
+      { k: 'raeumeHaus', l: 'Räume zum Anhaken bei „Ganzes Haus“ (eine Zeile je Raum)', t: 'liste', d: ['Badezimmer', 'Gäste-WC', 'Küche', 'Wohnzimmer', 'Schlafzimmer', 'Kinderzimmer', 'Flur / Diele', 'Treppenhaus', 'Keller', 'Dachgeschoss', 'Heizraum', 'Fassade / Außen', 'Garten'] },
+      { k: 'kleinName', l: 'So heißt eine Kleinigkeit im Angebot', t: 'zeile', d: 'Leistungen', h: 'Einzelne Arbeiten ohne Raum, z. B. Türgriffe oder Steckdosen.' },
+      { k: 'angebotGruss', l: 'Angebot endet mit Gruß und Unterschrift', t: 'janein', d: 'ja', h: 'Lässt sich in jedem Angebot unter „Schlusstexte“ abwählen.' },
+      { k: 'angebotAuftragsfeld', l: 'Angebot hat am Ende ein Feld, in dem der Kunde unterschreibt (Auftragserteilung)', t: 'janein', d: 'ja', h: 'Lässt sich in jedem Angebot unter „Schlusstexte“ abwählen.' },
+      { k: 'abEinleitung', l: 'Auftragsbestätigung: Text vor den Positionen', t: 'text', d: 'vielen Dank für Ihren Auftrag. Hiermit bestätigen wir Ihnen die folgenden Leistungen gemäß unserem Angebot Nr. {nr}:', h: 'Platzhalter: {nr} Angebotsnummer, {kunde} Kunde, {datum} heute.' },
+      { k: 'abSchluss', l: 'Auftragsbestätigung: Satz vor dem Gruß', t: 'zeile', d: 'Wir freuen uns auf die Zusammenarbeit.' },
       { k: 'nachfassenTage', l: 'Hinweis „Nachfassen“ nach wie vielen Tagen?', t: 'zahl', d: 7 },
       { k: 'absageGruende', l: 'Gründe für eine Absage (eine Zeile je Grund)', t: 'liste', d: ['Zu teuer', 'Anderer Anbieter', 'Macht es selbst', 'Kein Bedarf mehr', 'Zeitpunkt passt nicht', 'Keine Rückmeldung', 'Sonstiges'] },
     ]],
@@ -72,7 +79,7 @@ const VORGABEN = {
     ['Kalkulation', [
       { k: 'ampelGut', l: 'Marge grün ab %', t: 'zahl', d: 20 },
       { k: 'ampelKnapp', l: 'Marge gelb ab % (darunter rot)', t: 'zahl', d: 10 },
-      { k: 'subZuschlag', l: 'Zuschlag auf Positionen aus Partner-Angeboten in %', t: 'zahl', d: 20, h: 'Wird vorgeschlagen, wenn du Positionen eines Subunternehmers ins eigene Angebot übernimmst. Du kannst ihn jedes Mal ändern.' },
+      { k: 'subZuschlag', l: 'Zuschlag auf Positionen aus Partner-Angeboten in %', t: 'zahl', d: 0, h: '0 = kein Zuschlag, du kalkulierst selbst im Angebot. Sonst wird der Wert vorgeschlagen, wenn du ein Angebot eines Subunternehmers übernimmst. Preise aus der Preisliste eines Partners kommen immer ohne Zuschlag.' },
     ]],
     ['Kalender und Geburtstage', [
       { k: 'kalKW', l: 'Kalenderwoche (KW) im Kalender links anzeigen', t: 'janein', d: 'ja' },

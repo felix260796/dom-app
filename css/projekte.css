@@ -193,3 +193,36 @@ canvas.sig { display: block; width: 100%; height: 140px; border: 1.5px dashed #c
 .kf-c button.on i { opacity: 1; box-shadow: 0 0 0 2px #fff; }
 .kf-s { display: flex; gap: 16px; }
 .kf-s .link-add { margin: 0; }
+
+/* ---------- Angebotsablauf: drei Reiter Vor Ort, Büro, Angebote (Version 86) ---------- */
+.ab-reiter button { font-size: 15px; padding: 11px 2px; }
+.ab-warn { margin: 0 0 12px; font: inherit; color: inherit; cursor: pointer; }
+/* Zeile nach links wischen: „Löschen“ erscheint rechts */
+.wl { display: flex; align-items: stretch; overflow: hidden; border-radius: 18px; }
+.wl > .doc { flex: 1; min-width: 0; }
+.wl-del { flex: none; width: 0; overflow: hidden; border: 0; padding: 0; background: #c0392b; color: #fff; font: inherit; font-weight: 650; font-size: 12.5px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; transition: width .18s; }
+.wl-del svg.i { width: 20px; height: 20px; }
+.wl.auf .wl-del { width: 86px; margin-left: 6px; border-radius: 18px; }
+/* Angebote: eine Karte je Fassung mit Stand */
+.ang-v { border-left: 5px solid var(--muted); }
+.ang-v.entw { border-left-color: var(--brass); }
+.ang-v.raus { border-left-color: var(--navy); }
+.ang-v.ab { border-left-color: #c0392b; }
+.ang-k { display: flex; flex-direction: column; gap: 4px; align-items: flex-start; }
+.ang-k b { font-size: 19px; }
+.ang-st { font-size: 12px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; padding: 3px 9px; border-radius: 999px; background: var(--soft); color: var(--navy); }
+.ang-v.entw .ang-st { background: var(--brass-soft); color: #8a6420; }
+.ang-v.raus .ang-st { background: var(--navy); color: #fff; }
+.ang-v.ab .ang-st { background: #f8e1de; color: #c0392b; }
+.ang-i { margin: 6px 0 12px; color: var(--muted); font-size: 14px; }
+.ang-grund { display: flex; gap: 8px; align-items: center; margin: 0 0 12px; font-size: 14.5px; }
+.ang-grund svg.i { width: 18px; height: 18px; color: #c0392b; flex: none; }
+.ang-fuss { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; margin-top: 22px; }
+/* Textbausteine zum Anhaken (bausteine.js) */
+details.bs { margin-top: 10px; }
+.bs-z { border: 0; border-bottom: 1px solid var(--line); border-radius: 0; margin: 0; padding: 10px 0; }
+.bs-z small { color: var(--muted); font-size: 12.5px; font-weight: 400; }
+details.bs .link-add { margin-top: 10px; }
+details.bs .tot span:last-child { color: var(--muted); }
+.rw-l { margin-bottom: 4px; }
+.bs-z input { flex: none; margin-top: 2px; }

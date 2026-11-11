@@ -658,7 +658,7 @@ Gib Länge (längere Seite) und Breite der Grundfläche, Raumhöhe, Anzahl und G
   // ---------- Angebot als Tabelle (wie Excel, Wunsch Felix) ----------
   // Alle Positionen der Preisliste untereinander, nach Gewerk. Menge eintippen (0, 1 oder m²), die Summe läuft oben mit.
   // Darunter eigene Positionen mit Text, Einheit, Menge und Preis. Oben die Maße des Raums und „aus Paket vorbelegen“.
-  let nurGewaehlt = false, tabSuche = '';
+  let nurGewaehlt = false, tabSuche = '', plWahl = ''; // plWahl: Partner, dessen Preisliste gerade gezeigt wird ('' = allgemeine)
   function angebotTabelle(p) {
     const A = p.angebot, body = $('#aBody');
     if (!A.positionen) { const g = erzeuge(p, A.paket); A.positionen = g.positionen; A.fehler = g.fehler; }
@@ -668,6 +668,14 @@ Gib Länge (längere Seite) und Breite der Grundfläche, Raumhöhe, Anzahl und G
     const r0 = p.aufmass.raeume[0], m0 = r0 ? masse(r0) : null;
     const gewerke = [...new Set(PL.positionen.map((x) => x.gewerk))];
     const frei = A.positionen.filter((x) => x.frei);
+    // Aus dem Angebotsablauf geöffnet: Nummer, Betreff, Anrede, Aufschläge, Speichern und Senden stehen dort im Büro
+    const ausPrj = !!(state.angebotAusProjekt && state.wohnung);
+    // Preisliste wählbar (Wunsch Felix): die allgemeine oder die eines Partners. Partnerpreise ohne Zuschlag, kalkuliert wird im Angebot.
+    const plPartner = (window.Partner?.liste() || []).filter((x) => x.art !== 'aussen' && ((x.eigenePreise || []).length || Object.keys(x.preise || {}).length));
+    const plP = plPartner.find((x) => x.id === plWahl) || null;
+    const plZeilen = plP ? [...(plP.eigenePreise || []).map((x) => ({ key: 'e:' + x.id, text: x.text || '', einheit: x.einheit || 'Stück', ep: +x.preis || 0 })),
+      ...Object.entries(plP.preise || {}).map(([nr, preis]) => { const it = pos(nr); return it ? { key: 'p:' + nr, text: it.text, einheit: it.einheit, ep: +preis || 0 } : null; }).filter(Boolean)].filter((z) => z.text.trim()) : [];
+    const plPos = (key) => A.positionen.find((x) => x.sub && x.sub.partnerId === plP?.id && x.sub.key === key);
     const zeileHtml = (it) => {
       const q = mengeVon(it.nr), x = A.positionen.find((y) => y.nr === it.nr), e = x?.epFix > 0 ? x.epFix : ep(it, A.kalk);
       return `<div class="tb-z ${q ? 'an' : ''}" data-tz="${esc(it.nr)}" data-such="${esc(`${it.nr} ${it.text} ${it.gewerk}`.toLowerCase())}">
@@ -698,11 +706,14 @@ Gib Länge (längere Seite) und Breite der Grundfläche, Raumhöhe, Anzahl und G
         <p class="muted" style="white-space:pre-line;margin:8px 0 0">${esc([p.wishes?.trim(), p.otherNotes?.trim()].filter(Boolean).join('\n'))}</p>
         ${state.settings.apiKey ? `<button class="btn secondary block" id="aWunsch" style="margin-top:10px">${icon('sparkle')} Fehlende Positionen dazu vorschlagen</button>` : ''}</details>` : ''}
 
-      <div class="tb-kopf">
+      ${plPartner.length ? `<label class="tb-pl"><span>Preisliste</span><select id="tbPL"><option value="">Allgemeine Preisliste</option>${plPartner.map((x) => `<option value="${esc(x.id)}" ${x.id === plP?.id ? 'selected' : ''}>${esc(x.firma || x.inhaber || 'Partner')}</option>`).join('')}</select></label>` : ''}
+      <div class="tb-kopf" ${plP ? 'hidden' : ''}>
         <label class="search">${icon('search')}<input type="search" id="tbQ" value="${esc(tabSuche)}" placeholder="Position suchen, z. B. Fliesen" autocomplete="off"></label>
         <button type="button" class="qchip ${nurGewaehlt ? 'on' : ''}" id="tbNur">${icon('check')} Nur gewählte</button>
       </div>
-      <div id="tbListe">${gewerke.map((g) => {
+      ${plP ? `<div class="card tb-g tb-plp"><p class="hint" style="margin:0 0 6px">Preise von ${esc(plP.firma || plP.inhaber || 'Partner')}, ohne Zuschlag. Menge eintragen, die Zeile steht dann unten bei „Eigene Positionen“. Dort trägst du deinen Preis für den Kunden ein.</p>${plZeilen.map((z) => { const x = plPos(z.key); return `<div class="tb-z ${x ? 'an' : ''}"><span class="tb-t"><b>${esc(z.text)}</b><small>${fmtEur(z.ep)} je ${esc(z.einheit)}</small></span>
+        <input type="text" inputmode="decimal" data-pq="${esc(z.key)}" value="${x ? fmtIn(x.menge) : ''}" placeholder="0" aria-label="Menge ${esc(z.text)}"><span class="tb-e">${esc(z.einheit)}</span><span class="tb-gp"></span></div>`; }).join('')}</div>` : ''}
+      <div id="tbListe" ${plP ? 'hidden' : ''}>${gewerke.map((g) => {
         const its = PL.positionen.filter((x) => x.gewerk === g);
         const n = its.filter((it) => mengeVon(it.nr) > 0).length;
         return `<details class="card tb-g" data-gw="${esc(g)}" ${n ? 'open' : ''}><summary><b>${esc(g)}</b><span class="count" data-gn>${n || ''}</span></summary>${its.map(zeileHtml).join('')}</details>`;
@@ -712,7 +723,7 @@ Gib Länge (längere Seite) und Breite der Grundfläche, Raumhöhe, Anzahl und G
       <div class="card tb-frei">${frei.map((x) => `<div class="tb-fz" data-fz="${esc(x.nr)}">
           <input type="text" data-ff="text" value="${esc(x.frei.text || '')}" placeholder="Leistung, z. B. Nische mit LED" autocomplete="off">
           ${x.ki?.partner && !(x.sub?.ep > 0) ? '<small class="tb-sub"><span class="wf-b partner">Preis kommt von Partner</span></small>' : x.ki?.sicher === 'geschaetzt' ? '<small class="tb-sub"><span class="wf-b mittel">Menge geschätzt, bitte prüfen</span></small>' : ''}
-          ${x.sub && !(x.ki?.partner && !(x.sub.ep > 0)) ? `<small class="tb-sub">Von ${esc(window.Partner?.byId(x.sub.partnerId)?.firma || x.sub.firma || 'Partner')} · Einkauf ${fmtEur(x.sub.ep)} + ${fmtNum(x.sub.zuschlag, 0)} %</small>` : ''}
+          ${x.sub && !(x.ki?.partner && !(x.sub.ep > 0)) ? `<small class="tb-sub">Von ${esc(window.Partner?.byId(x.sub.partnerId)?.firma || x.sub.firma || 'Partner')} · Einkauf ${fmtEur(x.sub.ep)}${x.sub.zuschlag > 0 ? ` + ${fmtNum(x.sub.zuschlag, 0)} %` : ''}</small>` : ''}
           <div class="row"><div><input type="text" inputmode="decimal" data-ff="menge" value="${fmtIn(x.menge)}" placeholder="Menge"></div>
             <div><input type="text" data-ff="einheit" value="${esc(x.frei.einheit || '')}" placeholder="Einheit"></div>
             <div><input type="text" inputmode="decimal" data-ff="preis" value="${fmtIn(x.epFix)}" placeholder="€ netto je Einh."></div>
@@ -721,22 +732,23 @@ Gib Länge (längere Seite) und Breite der Grundfläche, Raumhöhe, Anzahl und G
         <button type="button" class="btn secondary block" id="tbSub" style="margin-top:8px">${icon('wrench')} Aus Angebot oder Preisliste eines Partners übernehmen</button>
       </div>
 
-      <div class="card">
+      ${ausPrj ? `<div class="card"><button class="btn big block" id="aFertig">${icon('check')} Fertig</button>
+        <p class="hint center" style="margin:6px 0 0">Nummer, Betreff, Texte, Speichern und Senden stehen eine Seite zurück im Büro.</p></div>` : `<div class="card">
         <button class="btn secondary big block" id="aSpeichern">${icon('download')} Speichern und ansehen</button>
         <button class="btn big block" id="aPdf" style="margin-top:8px">${icon('mail')} Senden</button>
         <p class="hint center" style="margin:6px 0 0">Nach dem Senden ist das Angebot gesperrt. Ändern geht dann über eine Kopie mit neuer Nummer.</p>
         <label class="check" style="margin-top:10px"><input type="checkbox" id="aMitBz" ${A.mitBauzeit ? 'checked' : ''}>Bauzeitenplan anhängen</label>
         ${A.versionen?.length ? `<p class="muted" style="margin:8px 0 0">${A.versionen.map((v, i) => `${i ? `Änderung ${i}` : 'Erste Fassung'} vom ${fmtDate(new Date(v.t))}: ${fmtEur(v.brutto)}`).join('<br>')}</p>` : ''}
-      </div>
-      <details class="more card"><summary>${icon('sliders')}<span>Weitere Einstellungen<small>Nummer, Betreff, Anrede, Aufschläge, Excel</small></span>${icon('chevron', 'more-chev')}</summary>
-        <div class="kform">
+      </div>`}
+      <details class="more card"><summary>${icon('sliders')}<span>${ausPrj ? 'Mehr<small>Alle Mengen auf 0, Excel</small>' : 'Weitere Einstellungen<small>Nummer, Betreff, Anrede, Aufschläge, Excel</small>'}</span>${icon('chevron', 'more-chev')}</summary>
+        ${ausPrj ? '' : `<div class="kform">
         <div class="row"><div><label>Angebotsnummer</label><input type="text" id="aNr" value="${esc(A.nr)}" placeholder="wird beim PDF vergeben"></div>
           <div><label>Ansprechpartner</label><select id="aAnspr">${ansprechpartner().map((x) => `<option ${x === (A.anspr || ansprechpartner()[0]) ? 'selected' : ''}>${esc(x)}</option>`).join('')}</select></div></div>
         <label>Betreff</label><input type="text" id="aTitel" value="${esc(A.titel)}" placeholder="${esc(titelDefault(p, pk))}">
         <label>Anrede</label><input type="text" id="aAnrede" value="${esc(A.anrede)}" placeholder="${esc(anredeDefault(p))}">
         <label>Aufschläge nur für dieses Angebot (leer = Standard)</label>
         <div class="row">${[['aufLohn', 'Lohn %'], ['aufMat', 'Material %'], ['wagnis', 'Wagnis %']].map(([n, l]) => `<div><label>${l}</label><input type="text" inputmode="decimal" data-nk="${n}" value="${A.kalk?.[n] !== undefined && A.kalk?.[n] !== null && A.kalk?.[n] !== '' ? String(Math.round(A.kalk[n] * 1000) / 10).replace('.', ',') : ''}" placeholder="${String(Math.round(PL.einstellungen[n] * 1000) / 10).replace('.', ',')}"></div>`).join('')}</div>
-        </div>
+        </div>`}
         <button class="btn secondary block" id="tbLeeren" style="margin-top:12px">${icon('x')} Alle Mengen auf 0</button>
         <button class="btn secondary block" id="aExcel" style="margin-top:10px">Positionen fürs Excel-Tool kopieren</button>
       </details>`;
@@ -756,6 +768,15 @@ Gib Länge (längere Seite) und Breite der Grundfläche, Raumhöhe, Anzahl und G
       $$('.tb-g', body).forEach((d) => { const sicht = $$('.tb-z', d).some((z) => !z.hidden); d.hidden = !sicht; if ((w.length || nurGewaehlt) && sicht) d.open = true; });
     };
     summe(); filtern();
+    if ($('#tbPL')) $('#tbPL').onchange = (e) => { plWahl = e.target.value; neu(); };
+    // Menge aus der Preisliste eines Partners: wird eine eigene Position zum Einkaufspreis, ohne Zuschlag
+    $$('[data-pq]', body).forEach((inp) => (inp.onchange = () => {
+      const z = plZeilen.find((y) => y.key === inp.dataset.pq), q = num(inp.value), alt = plPos(z.key);
+      if (alt && !(q > 0)) A.positionen = A.positionen.filter((y) => y !== alt);
+      else if (alt) alt.menge = q;
+      else if (q > 0) A.positionen.push({ nr: 'FREI-' + uid(), frei: { text: z.text, einheit: z.einheit }, raum: raumName, menge: q, bem: '', epFix: r2(z.ep), sub: { partnerId: plP.id, firma: plP.firma || plP.inhaber || '', ep: r2(z.ep), zuschlag: 0, key: z.key } });
+      A.geaendert = true; neu();
+    }));
     // Menge eintippen: eine Zeile je Position (Raum = dieser Raum, Allgemeines ohne Raum)
     $$('[data-q]', body).forEach((inp) => (inp.oninput = () => {
       const nr = inp.dataset.q, it = pos(nr), q = num(inp.value), alt = A.positionen.find((x) => x.nr === nr);
@@ -818,8 +839,8 @@ Gib Länge (längere Seite) und Breite der Grundfläche, Raumhöhe, Anzahl und G
     });
     // Rest wie bisher
     $('#aPaket').onchange = (e) => { A.paket = e.target.value; saveProject(p); toast('Paket geändert. Mit „Aus Paket vorbelegen“ werden die Mengen neu berechnet.', 4000); neu(); };
-    for (const [id, k] of [['aNr', 'nr'], ['aTitel', 'titel'], ['aAnrede', 'anrede']]) $('#' + id).oninput = (e) => { A[k] = e.target.value; persist(p); };
-    $('#aAnspr').onchange = (e) => { A.anspr = e.target.value; persist(p); };
+    for (const [id, k] of [['aNr', 'nr'], ['aTitel', 'titel'], ['aAnrede', 'anrede']]) if ($('#' + id)) $('#' + id).oninput = (e) => { A[k] = e.target.value; persist(p); };
+    if ($('#aAnspr')) $('#aAnspr').onchange = (e) => { A.anspr = e.target.value; persist(p); };
     $$('[data-nk]', body).forEach((el) => (el.onchange = () => {
       const v = el.value.trim(); A.kalk ??= {};
       if (v === '') delete A.kalk[el.dataset.nk]; else { const n = num(v); if (!Number.isFinite(n)) return toast('Bitte eine Zahl eintragen.'); A.kalk[el.dataset.nk] = n / 100; }
@@ -827,9 +848,10 @@ Gib Länge (längere Seite) und Breite der Grundfläche, Raumhöhe, Anzahl und G
     }));
     $('#tbLeeren').onclick = () => { if (!confirm('Alle Mengen auf 0 setzen? Eigene Positionen bleiben.')) return; A.positionen = A.positionen.filter((x) => x.frei); A.geaendert = true; neu(); };
     if ($('#aWunsch')) $('#aWunsch').onclick = () => wunschVorschlaege(p, neu).catch((e) => toast('Vorschläge gingen nicht: ' + e.message, 5000));
-    $('#aMitBz').onchange = (e) => { A.mitBauzeit = e.target.checked; persist(p); };
-    $('#aPdf').onclick = () => { if (!summen(A.positionen, A.kalk).zeilen.length) return toast('Bitte zuerst Mengen eintragen.'); teilePdf(p).catch((e) => toast('PDF-Fehler: ' + e.message, 5000)); };
-    $('#aSpeichern').onclick = () => { if (!summen(A.positionen, A.kalk).zeilen.length) return toast('Bitte zuerst Mengen eintragen.'); speicherePdf(p).catch((e) => toast('PDF-Fehler: ' + e.message, 5000)); };
+    if ($('#aFertig')) $('#aFertig').onclick = async () => { await saveProject(p); state.angebotAusProjekt = false; state.project = null; Projekt.view(); window.scrollTo(0, 0); };
+    if ($('#aMitBz')) $('#aMitBz').onchange = (e) => { A.mitBauzeit = e.target.checked; persist(p); };
+    if ($('#aPdf')) $('#aPdf').onclick = () => { if (!summen(A.positionen, A.kalk).zeilen.length) return toast('Bitte zuerst Mengen eintragen.'); teilePdf(p).catch((e) => toast('PDF-Fehler: ' + e.message, 5000)); };
+    if ($('#aSpeichern')) $('#aSpeichern').onclick = () => { if (!summen(A.positionen, A.kalk).zeilen.length) return toast('Bitte zuerst Mengen eintragen.'); speicherePdf(p).catch((e) => toast('PDF-Fehler: ' + e.message, 5000)); };
     $('#tbSub').onclick = () => subUebernehmen(p, neu).catch((e) => toast('Übernehmen ging nicht: ' + e.message, 5000));
     $('#aExcel').onclick = async () => {
       const tsv = A.positionen.filter((x) => !x.frei).map((x) => [x.nr, x.raum || 'Allgemein', String(x.menge).replace('.', ','), x.bem].join('\t')).join('\n');
@@ -885,14 +907,16 @@ Gib Länge (längere Seite) und Breite der Grundfläche, Raumhöhe, Anzahl und G
   const anredeAlt = (p) => (p.customer ? (/^(familie|herr|frau)\b/i.test(p.customer) ? `Sehr geehrte${/^herr/i.test(p.customer) ? 'r' : ''} ${p.customer},` : `Guten Tag ${p.customer},`) : 'Sehr geehrte Damen und Herren,');
 
   // ---------- PDF ----------
-  async function baueAngebotPdf(p) {
+  // opt.art = 'ab': dasselbe PDF als Auftragsbestätigung (andere Überschrift und Einleitung, ohne „gültig bis“ und ohne Auftragserteilung)
+  async function baueAngebotPdf(p, opt = {}) {
+    const ab = opt.art === 'ab';
     const A = p.angebot, E = PL.einstellungen, S = summen(A.positionen, A.kalk);
     const pk = pakete(p).find((x) => x.id === A.paket) || pakete(p)[0];
     if (!A.nr) { A.nr = await naechsteNummer(); if (!p._gesamt) await saveProject(p); }
     // Versionen (B8): jede geänderte Fassung bekommt „Änderung n“, damit man sieht, was der Kunde bekommen hat
     const sig = JSON.stringify(A.positionen.map((x) => [x.nr, x.raum, x.menge]));
     A.versionen ??= [];
-    if (A.versionen[A.versionen.length - 1]?.sig !== sig) { A.versionen.push({ t: Date.now(), brutto: S.brutto, sig }); if (!p._gesamt) await saveProject(p); }
+    if (!ab && A.versionen[A.versionen.length - 1]?.sig !== sig) { A.versionen.push({ t: Date.now(), brutto: S.brutto, sig }); if (!p._gesamt) await saveProject(p); }
     const nrText = A.nr + (A.versionen.length > 1 ? ` (Änderung ${A.versionen.length - 1})` : '');
     const { jsPDF } = window.jspdf;
     const doc = new jsPDF({ unit: 'mm', format: 'a4' });
@@ -921,20 +945,23 @@ Gib Länge (längere Seite) und Breite der Grundfläche, Raumhöhe, Anzahl und G
     const bauvorhaben = p.address && post && !adr.join(', ').toLowerCase().includes(Kunden.einzeilig(p.address).toLowerCase()) ? Kunden.einzeilig(p.address) : '';
     adr.forEach((l, i) => t(l, M, 55 + i * 5));
     doc.setFontSize(9);
-    const meta = [['Angebot Nr.', nrText], ...(kd?.nr ? [['Kunden-Nr.', kd.nr]] : []), ...(p.projektNr ? [['Projekt-Nr.', p.projektNr]] : []), ['Datum', fmtDate(heute)], ['Gültig bis', fmtDate(gueltig)], ['Ansprechpartner', A.anspr || ansprechpartner()[0]], ['Telefon', E.telefon], ['E-Mail', E.email]];
+    const meta = [[ab ? 'Zu Angebot Nr.' : 'Angebot Nr.', nrText], ...(kd?.nr ? [['Kunden-Nr.', kd.nr]] : []), ...(p.projektNr ? [['Projekt-Nr.', p.projektNr]] : []), ['Datum', fmtDate(heute)], ...(ab ? [] : [['Gültig bis', fmtDate(gueltig)]]), ['Ansprechpartner', A.anspr || ansprechpartner()[0]], ['Telefon', E.telefon], ['E-Mail', E.email]];
     let my = 52;
     for (const [k, v] of meta) { doc.setTextColor(120); t(k, 128, my); doc.setTextColor(30); const lines = doc.splitTextToSize(String(v), R - 158); t(lines, 158, my); my += 4.6 * lines.length; }
     y = Math.max(92, my + 8);
     doc.setFont('helvetica', 'bold'); doc.setFontSize(13); doc.setTextColor(...NAVY);
-    const titel = doc.splitTextToSize('Angebot: ' + (A.titel || titelDefault(p, pk)), R - M); t(titel, M, y); y += 6 * titel.length + 3;
+    const titel = doc.splitTextToSize((ab ? 'Auftragsbestätigung: ' : 'Angebot: ') + (A.titel || titelDefault(p, pk)), R - M); t(titel, M, y); y += 6 * titel.length + 3;
     if (bauvorhaben) { doc.setFont('helvetica', 'normal'); doc.setFontSize(9.5); doc.setTextColor(110); t('Bauvorhaben: ' + bauvorhaben, M, y - 1); y += 5; }
     doc.setFont('helvetica', 'normal'); doc.setFontSize(10); doc.setTextColor(30);
     t(A.anrede || anredeDefault(p), M, y); y += 5;
     // Textfelder (Wunsch Felix): frei festlegbar in den Einstellungen, je Auftrag anpassbar (w.angebotTexte)
     const WA = p.wohnungId && (state.wohnung?.id === p.wohnungId ? state.wohnung : await kvGet('wohnung:' + p.wohnungId));
-    const B = (Array.isArray(WA?.angebotTexte) && WA.angebotTexte.length ? WA.angebotTexte : bausteine()).filter((b) => String(b.text || '').trim() || String(b.titel || '').trim());
+    // Abgewählte Bausteine (b.aus, im Büro abgehakt) stehen nicht im PDF
+    const B = (Array.isArray(WA?.angebotTexte) && WA.angebotTexte.length ? WA.angebotTexte : bausteine()).filter((b) => !b.aus && (String(b.text || '').trim() || String(b.titel || '').trim()));
+    const wahl = (k, v) => WA?.angebotOpt?.[k] ?? vorgabe(v) !== 'nein';
+    const VOR = ab ? [{ titel: '', text: vorgabe('abEinleitung') }] : B.filter((x) => x.wo === 'vor');
     const platzh = (s) => String(s || '').replace(/\{(\w+)\}/g, (m, n) => ({ zeitraum: zeitraumText(bz) + (A.mitBauzeit ? ', siehe Bauzeitenplan' : ''), nr: nrText, gueltig: fmtDate(gueltig), datum: fmtDate(heute), kunde: (kd && Kunden.name(kd)) || p.customer || '' })[n] ?? m);
-    for (const b of B.filter((x) => x.wo === 'vor')) {
+    for (const b of VOR) {
       if (String(b.titel || '').trim()) { doc.setFont('helvetica', 'bold'); doc.setTextColor(...NAVY); t(b.titel, M, y); y += 5; doc.setFont('helvetica', 'normal'); doc.setTextColor(30); }
       for (const abs of platzh(b.text).split(/\n\s*\n/)) { const ls = doc.splitTextToSize(abs.trim(), R - M); t(ls, M, y); y += 4.6 * ls.length + 1.5; }
     }
@@ -988,15 +1015,24 @@ Gib Länge (längere Seite) und Breite der Grundfläche, Raumhöhe, Anzahl und G
       y += 3;
     };
     for (const b of B.filter((x) => x.wo !== 'vor')) await abschnitt(String(b.titel || '').trim(), platzh(b.text).split(/\n\s*\n/).map((s) => s.trim()));
-    const gruss = E.textSchluss || (E.hinweise || []).find((h) => /freuen uns/i.test(h)) || 'Wir freuen uns auf Ihren Auftrag.';
-    await platz(16); doc.setFontSize(10); doc.setTextColor(30); t(gruss, M, y); y += 5; t('Mit freundlichen Grüßen', M, y); y += 5; t(E.firma, M, y); y += 12;
-    // Auftragserteilung
-    await platz(40);
-    doc.setFont('helvetica', 'bold'); doc.setFontSize(10); doc.setTextColor(...NAVY); t('Auftragserteilung', M, y); y += 5;
-    doc.setFont('helvetica', 'normal'); doc.setFontSize(9); doc.setTextColor(40);
-    t(doc.splitTextToSize(`${E.textAuftrag} (Angebot Nr. ${nrText} vom ${fmtDate(heute)}, ${fmtEur(S.brutto)} brutto)`, R - M), M, y); y += 20;
-    doc.setDrawColor(120); doc.line(M, y, M + 60, y); doc.line(M + 80, y, R, y);
-    doc.setFontSize(8); doc.setTextColor(120); t('Ort, Datum', M, y + 4); t('Unterschrift Auftraggeber', M + 80, y + 4);
+    // Gruß mit Unterschrift (im Büro abwählbar). Unterschrift und Name kommen aus unterschrift.js, wenn es das gibt.
+    if (wahl('gruss', 'angebotGruss')) {
+      const gruss = ab ? vorgabe('abSchluss') : E.textSchluss || (E.hinweise || []).find((h) => /freuen uns/i.test(h)) || 'Wir freuen uns auf Ihren Auftrag.';
+      await platz(40); doc.setFont('helvetica', 'normal'); doc.setFontSize(10); doc.setTextColor(30);
+      if (String(gruss || '').trim()) { const ls = doc.splitTextToSize(String(gruss), R - M); t(ls, M, y); y += 5 * ls.length; }
+      if (window.Unterschrift?.pdf) y = (await window.Unterschrift.pdf(doc, M, y, { firma: E.firma })) || y + 12;
+      else { t(String(vorgabe('textGruss') || 'Mit freundlichen Grüßen'), M, y); y += 5; t(String(A.anspr || ansprechpartner()[0] || '').split(/\s*·\s*/)[0], M, y); y += 5; t(E.firma, M, y); y += 5; }
+      y += 7;
+    }
+    // Auftragserteilung: Feld, in dem der Kunde unterschreibt (im Büro abwählbar, nicht in der Auftragsbestätigung)
+    if (!ab && wahl('auftrag', 'angebotAuftragsfeld')) {
+      await platz(40);
+      doc.setFont('helvetica', 'bold'); doc.setFontSize(10); doc.setTextColor(...NAVY); t('Auftragserteilung', M, y); y += 5;
+      doc.setFont('helvetica', 'normal'); doc.setFontSize(9); doc.setTextColor(40);
+      t(doc.splitTextToSize(`${E.textAuftrag} (Angebot Nr. ${nrText} vom ${fmtDate(heute)}, ${fmtEur(S.brutto)} brutto)`, R - M), M, y); y += 20;
+      doc.setDrawColor(120); doc.line(M, y, M + 60, y); doc.line(M + 80, y, R, y);
+      doc.setFontSize(8); doc.setTextColor(120); t('Ort, Datum', M, y + 4); t('Unterschrift Auftraggeber', M + 80, y + 4);
+    }
 
     // Bauzeitenplan
     if (A.mitBauzeit) {
@@ -1360,6 +1396,6 @@ Gib Länge (längere Seite) und Breite der Grundfläche, Raumhöhe, Anzahl und G
     $('#vReset').onclick = async () => { if (!loeschFrage('Alle Paket-Vorlagen zurücksetzen?')) return; await kvDel('angebotVorlagen'); VORL = null; vorlagenView(pkgId, grp); };
   }
 
-  return { projektKarte, ansicht, einstellungenKarte, _intern: { init, gruppe, materialliste, uebernimmSchaetzung, masse, rechne, erzeuge, summen, bauzeit, ep, lohnEp, preisliste, vorlagen, neuerRaum, baueAngebotPdf, importExcel, naechsteNummer, mailText, bausteine, texteAuftrag, texteEinstellungen, subUebernehmen } };
+  return { projektKarte, ansicht, einstellungenKarte, _intern: { init, gruppe, materialliste, uebernimmSchaetzung, masse, rechne, erzeuge, summen, bauzeit, ep, lohnEp, preisliste, vorlagen, neuerRaum, baueAngebotPdf, importExcel, naechsteNummer, mailText, bausteine, texteAuftrag, texteEinstellungen, subUebernehmen, ansprechpartner, anredeDefault, einstellungen: () => PL.einstellungen } };
 })();
 window.Angebot = Angebot;

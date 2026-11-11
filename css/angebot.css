@@ -179,3 +179,9 @@ button.pg { border: 0; background: none; text-align: right; font: inherit; color
 .wf-o li.ok { color: var(--muted); text-decoration: line-through; }
 .wf-o label { display: inline; font-weight: 400; margin: 0; }
 .wf-offen { margin-top: 10px; border-left: 4px solid #c99a2e; }
+
+/* ---------- Preisliste wählen: allgemein oder Partner (Version 86) ---------- */
+.tb-pl { display: flex; align-items: center; gap: 10px; margin: 4px 0 10px; font-weight: 600; }
+.tb-pl select { flex: 1; }
+.tb-plp { padding: 12px 0 4px; }
+.tb-plp > .hint { padding: 0 12px; }

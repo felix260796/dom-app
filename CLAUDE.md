@@ -33,6 +33,15 @@ Bilder: `Bilder.alleView` (alle Bilder nach Datum), `raster` (Markieren, PDF üb
 Karte: Filter je Gruppe (`FILTER` in `karte.js`, gemerkt in localStorage `dom:karteFilter`). Auswertung: `auswertung(daten, rechnungen, jahr)` in `finanzen.js` mit Jahr-Auswahl. „Heute“ hat ein X (`#hZu`, zurück zu `window.__vorHeute`).
 Per Sprache anlegen: Prüfseite mit Feldern untereinander, Anschrift wird über `Kunden.sucheAdresse` um PLZ und Ort ergänzt (Vorgabe `spracheAdresse`).
 
+## Neuerungen aus Version 86
+
+Angebotsablauf (bis zur Zusage) hat drei Reiter statt vier Schritten: Vor Ort, Büro, Angebote (`REITER`, `reiterVon/reiterSetzen`, `vorOrtTab`, `bueroTab`, `angeboteTab` in `projekt.js`). Jeder Reiter ist eine eigene Seite. Felix will das genau so, nicht wieder zu einer langen Seite zusammenlegen.
+Vor Ort: einzelne Punkte, nicht eine Karte: Gespräch (`Gespraech.karte(w, list, { einzeln: true })`), Fotos (`Bilder.fotosMachen`), Plan scannen, Raum scannen, „Was fehlt noch?“. Visualisieren und Moodboard unten als Zusatz. Baumappe und Kundenmappe sind im Angebot vorerst weg (Felix später daran erinnern).
+Büro: „Was wird angeboten?“ mit „Neu“ (`angebotsRaum`: Kleinigkeit = Raumtyp `sonstiges`, einzelner Raum, ganze Wohnung/ganzes Haus mit `raeumeWaehlen`, gescannte Räume aus `w.vorOrt.scans` oben, `r.scanId`). Zeile nach links wischen löscht (`wischen`, `raumLoeschen`). Nummer, Betreff, Anrede, Ansprechpartner, Aufschläge gelten fürs ganze Angebot (`bueroFelder`); im Angebot eines Raums gibt es dafür nur noch „Fertig“ (`ausPrj` in `angebotTabelle`).
+Texte: `bausteine.js` (`Bausteine.block/bind`), aufklappbare Blöcke Anfangstexte und Schlusstexte zum Anhaken (`b.aus`), feste Zusätze Gruß mit Unterschrift und Auftragserteilung (`w.angebotOpt`, Vorgaben `angebotGruss`, `angebotAuftragsfeld`). Gleiches Muster ist für Rechnungen gedacht. Unterschrift im PDF über `window.Unterschrift?.pdf` (kommt aus dem Rechnungs-Thread).
+Preisliste im Angebot wählbar (`plWahl` in `angebotTabelle`): allgemeine oder die eines Partners, Partnerpreise ohne Zuschlag (`x.sub.zuschlag = 0`, `x.sub.key`). Vorgabe `subZuschlag` steht auf 0.
+Angebote: Stand Entwurf/Versendet/Abgesagt, frühere Fassungen aus `w.angebotArchiv` („überarbeitet“). Zugesagt → `zusage` → `auftragsbestaetigung` (`baueAngebotPdf(p, { art: 'ab' })`, Eintrag in `w.dokumente` mit `art: 'auftragsbestaetigung'`, `w.auftragsbestaetigung = { t, nr, dokId, gesendetAm }`, Vorgaben `abEinleitung`, `abSchluss`). Abgesagt: `w.absage = { grund, t }`, das PDF bleibt in `w.dokumente` (`pdfInDokumente`).
+
 ## Bereiche
 
 | Bereich | Dateien | Inhalt |
