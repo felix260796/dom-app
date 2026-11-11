@@ -78,27 +78,49 @@ jobs:
           $PB -c "Set :CFBundleDevelopmentRegion de" $P
           $PB -c "Delete :UIRequiredDeviceCapabilities" $P || true
 
-      - name: Bauen und signieren
+      - name: Signatur bei Apple holen
         if: steps.pruefen.outputs.los == 'ja'
+        env:
+          BUNDLE_ID: de.domprojektmanagement.app
         run: |
           KEY="$RUNNER_TEMP/AuthKey.p8"
           # Schlüssel sauber neu aufbauen (verträgt fehlende Kopfzeilen, Windows-Zeilenenden, alles in einer Zeile)
           B64=$(printf '%s' "$ASC_KEY_P8" | tr -d '\r' | sed -e 's/-----[A-Z ]*-----//g' | tr -d ' \n\t')
           { echo "-----BEGIN PRIVATE KEY-----"; printf '%s\n' "$B64" | fold -w 64; echo "-----END PRIVATE KEY-----"; } > "$KEY"
-          echo "Schlüssel: ${#B64} Zeichen (üblich sind etwa 200)"
           if ! openssl pkey -in "$KEY" -noout 2>/dev/null; then
             echo "::error::ASC_KEY_P8 ist kein gültiger Schlüssel. Bitte den ganzen Text der Datei AuthKey_....p8 als Secret eintragen."
             exit 1
           fi
+          # Verteilungszertifikat und Profil über die Apple-API (kein Mac, kein angemeldetes Gerät nötig)
+          python3 -m venv "$RUNNER_TEMP/venv"
+          "$RUNNER_TEMP/venv/bin/pip" install --quiet pyjwt cryptography
+          S="$RUNNER_TEMP/sign"
+          ASC_KEY_FILE="$KEY" "$RUNNER_TEMP/venv/bin/python" ios-resources/signatur.py "$S"
+          # Eigener Schlüsselbund nur für diesen Lauf
+          KC="$RUNNER_TEMP/dom.keychain-db"
+          PW=$(openssl rand -hex 16)
+          security create-keychain -p "$PW" "$KC"
+          security set-keychain-settings -lut 3600 "$KC"
+          security unlock-keychain -p "$PW" "$KC"
+          openssl rsa -in "$S/dist.key" -out "$S/dist.rsa.key" -traditional 2>/dev/null || openssl rsa -in "$S/dist.key" -out "$S/dist.rsa.key"
+          security import "$S/dist.rsa.key" -k "$KC" -T /usr/bin/codesign -T /usr/bin/security
+          security import "$S/dist.cer" -k "$KC" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple: -s -k "$PW" "$KC" >/dev/null
+          security list-keychains -d user -s "$KC" $(security list-keychains -d user | tr -d '"')
+          security find-identity -v -p codesigning "$KC" | sed 's/[0-9A-F]\{40\}/…/'
+          rm -f "$S/dist.key" "$S/dist.rsa.key"
+
+      - name: Bauen und signieren
+        if: steps.pruefen.outputs.los == 'ja'
+        run: |
           VER=$(sed -n "s/.*APP_VERSION *= *'\\([0-9]*\\)'.*/\\1/p" app.js | head -1)
           echo "App-Version $VER, Build ${{ github.run_number }}"
+          # Signatur nur am App-Ziel einstellen (nicht an den mitgebauten Paketen)
+          sed -i '' "s/CODE_SIGN_STYLE = Automatic;/CODE_SIGN_STYLE = Manual; DEVELOPMENT_TEAM = $APPLE_TEAM_ID; CODE_SIGN_IDENTITY = \"Apple Distribution\"; \"CODE_SIGN_IDENTITY[sdk=iphoneos*]\" = \"Apple Distribution\"; PROVISIONING_PROFILE_SPECIFIER = \"$SIGN_PROFILE_NAME\";/" ios/App/App.xcodeproj/project.pbxproj
           xcodebuild -project ios/App/App.xcodeproj -scheme App -configuration Release \
             -destination 'generic/platform=iOS' -archivePath "$RUNNER_TEMP/DOM.xcarchive" archive \
-            DEVELOPMENT_TEAM="$APPLE_TEAM_ID" CODE_SIGN_STYLE=Automatic \
             TARGETED_DEVICE_FAMILY=1 \
-            MARKETING_VERSION="$VER.0" CURRENT_PROJECT_VERSION="${{ github.run_number }}" \
-            -allowProvisioningUpdates \
-            -authenticationKeyPath "$KEY" -authenticationKeyID "$ASC_KEY_ID" -authenticationKeyIssuerID "$ASC_ISSUER_ID"
+            MARKETING_VERSION="$VER.0" CURRENT_PROJECT_VERSION="${{ github.run_number }}"
 
       - name: Zu TestFlight hochladen
         if: steps.pruefen.outputs.los == 'ja'
@@ -109,14 +131,25 @@ jobs:
           <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
           <plist version="1.0"><dict>
             <key>method</key><string>app-store-connect</string>
-            <key>destination</key><string>upload</string>
+            <key>destination</key><string>export</string>
             <key>teamID</key><string>$APPLE_TEAM_ID</string>
-            <key>signingStyle</key><string>automatic</string>
+            <key>signingStyle</key><string>manual</string>
+            <key>signingCertificate</key><string>Apple Distribution</string>
+            <key>provisioningProfiles</key><dict>
+              <key>de.domprojektmanagement.app</key><string>$SIGN_PROFILE_NAME</string>
+            </dict>
             <key>manageAppVersionAndBuildNumber</key><false/>
           </dict></plist>
           EOF
           xcodebuild -exportArchive -archivePath "$RUNNER_TEMP/DOM.xcarchive" \
-            -exportOptionsPlist "$RUNNER_TEMP/export.plist" -exportPath "$RUNNER_TEMP/export" \
-            -allowProvisioningUpdates \
-            -authenticationKeyPath "$KEY" -authenticationKeyID "$ASC_KEY_ID" -authenticationKeyIssuerID "$ASC_ISSUER_ID"
-          rm -f "$KEY"
+            -exportOptionsPlist "$RUNNER_TEMP/export.plist" -exportPath "$RUNNER_TEMP/export"
+          IPA=$(ls "$RUNNER_TEMP"/export/*.ipa | head -1)
+          mkdir -p ~/.appstoreconnect/private_keys
+          cp "$KEY" ~/.appstoreconnect/private_keys/AuthKey_"$ASC_KEY_ID".p8
+          xcrun altool --upload-app --type ios -f "$IPA" --apiKey "$ASC_KEY_ID" --apiIssuer "$ASC_ISSUER_ID"
+
+      - name: Aufräumen
+        if: always() && steps.pruefen.outputs.los == 'ja'
+        run: |
+          rm -f "$RUNNER_TEMP/AuthKey.p8" ~/.appstoreconnect/private_keys/AuthKey_*.p8
+          security delete-keychain "$RUNNER_TEMP/dom.keychain-db" 2>/dev/null || true
