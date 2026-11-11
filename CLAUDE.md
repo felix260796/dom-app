@@ -29,6 +29,12 @@ Bilder: `Bilder.alleView` (alle Bilder nach Datum), `raster` (Markieren, PDF üb
 Karte: Filter je Gruppe (`FILTER` in `karte.js`, gemerkt in localStorage `dom:karteFilter`). Auswertung: `auswertung(daten, rechnungen, jahr)` in `finanzen.js` mit Jahr-Auswahl. „Heute“ hat ein X (`#hZu`, zurück zu `window.__vorHeute`).
 Per Sprache anlegen: Prüfseite mit Feldern untereinander, Anschrift wird über `Kunden.sucheAdresse` um PLZ und Ort ergänzt (Vorgabe `spracheAdresse`).
 
+## Neuerungen aus Version 89
+
+QR-Codes: `qrcode.js` (`QR.giroCode({ iban, bic, name, betrag, zweck })` → PNG für jsPDF, `QR.ibanOk`), Kodierung in `vendor/qrcode-generator.js`. Der GiroCode steht auf Rechnung und Mahnung (`rechnung.js`).
+Visitenkarte: Die Kamera oben (`kamera.js`, `erkennen` mit art `visitenkarte` und `karte`) legt daraus einen Partner oder Kunden an (`visitenkarte`, `alsKunde`) und öffnet ihn zum Prüfen.
+Zeichnen mit Stift oder Finger: `zeichnen.js`, ein Werkzeug für alles: `Zeichnen.oeffnen(hintergrund, { titel, striche, masstab, onSave(striche, bild) })`; hintergrund = Bild-DataURL, `{ breite, hoehe, zeichne(ctx) }` oder leer (Skizze). Striche sind Vektoren in Blatt-Einheiten, das Original bleibt unverändert. In `bilder.js`: Knopf „Zeichnen“ in der großen Ansicht (`b.zeichnung = { von, striche }`, weiterzeichnen möglich) und „Skizze zeichnen“ (Vorgabe `ordnerSkizzen`). Farben und Strichstärke: Vorgaben `zeichnenFarben`, `zeichnenStaerke`. Kein zweites Zeichenwerkzeug bauen.
+
 ## Bereiche
 
 | Bereich | Dateien | Inhalt |
