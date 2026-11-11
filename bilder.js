@@ -7,7 +7,10 @@
  * und jedes Bild einzeln als 'bild:<id>' (verkleinert), damit der Cloud-Abgleich nur Neues überträgt.
  * Ältere Einträge (nur eine Liste mit „phase“) werden beim Lesen umgestellt.
  * Seit Version 85: „Alle Bilder“ (nach Datum, alles am Stück durchsehen), Bilder markieren und als PDF,
- * große Ansicht zum Durchwischen, „Fotos machen“ nimmt mehrere Fotos hintereinander auf (Kamera.serie). */
+ * große Ansicht zum Durchwischen, „Fotos machen“ nimmt mehrere Fotos hintereinander auf (Kamera.serie).
+ * Zeichnen (zeichnen.js, Stift oder Finger): in der großen Ansicht auf einem Foto oder Plan markieren; das Original
+ * bleibt, die Zeichnung liegt als neues Bild daneben (b.zeichnung = { von: Original-ID, striche }) und lässt sich
+ * weiterzeichnen. „Skizze zeichnen“ legt ein leeres Blatt in den Ordner aus Vorgabe `ordnerSkizzen`. */
 window.Bilder = (() => {
   const STANDARD = [['bestand', 'Bestand'], ['bau', 'Baufortschritt'], ['abnahme', 'Abnahme'], ['sonst', 'Sonstiges']];
   const listKey = (kid, oid) => `bilder:${kid}:${oid || 'ohne'}`;
@@ -76,6 +79,7 @@ window.Bilder = (() => {
         <button class="btn big secondary" id="gAlle" style="flex:1" ${nAlle ? '' : 'disabled'}>${icon('image')} Alle Bilder${nAlle ? ` (${nAlle})` : ''}</button>
       </div>
       <p class="hint" style="margin:6px 0 0">„Fotos machen“ nimmt mehrere Fotos hintereinander auf und legt sie in „${esc(fotoOrdner())}“.</p>
+      <button type="button" class="link-add" id="gSkizze" style="margin-top:8px">${icon('edit')} Skizze zeichnen</button>
       <div class="sec-h"><h2>Ordner</h2><span class="count">${ord.length}</span></div>
       <div class="fgrid">${ord.map((o) => { const l = imOrdner(o); return `
         <button class="fold" data-o="${o.id}">${deckel(l)}
@@ -88,6 +92,11 @@ window.Bilder = (() => {
     $$('[data-o]').forEach((b) => (b.onclick = () => { ordnerView(ctx, b.dataset.o); window.scrollTo(0, 0); }));
     $('#gAlle').onclick = () => { alleView(ctx); window.scrollTo(0, 0); };
     $('#gSerie').onclick = async () => { const n = await fotosMachen({ kundeId: kid, objektId: oid, projektId: pid && pid !== OHNE ? pid : '' }); if (n) view(ctx); };
+    $('#gSkizze').onclick = async () => {
+      const name = vorgabe('ordnerSkizzen') || 'Skizzen';
+      const r = await Zeichnen.oeffnen(null, { titel: 'Skizze', onSave: (striche, bild) => ablegen(kid, oid, bild, name, pid && pid !== OHNE ? pid : '', { zeichnung: { von: '', striche } }) });
+      if (r) { toast(`Skizze in „${name}“ gespeichert`, 3500); view(ctx); }
+    };
     $('#fNeu').onclick = async () => {
       const heute = new Date().toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' });
       const v = await sheet('Neuer Ordner', [], { text: `Name, z. B. Besichtigung (${heute})` });
@@ -332,7 +341,7 @@ window.Bilder = (() => {
               ${opt.pr.length ? `<select id="gvPr" aria-label="Projekt"><option value="">Ohne Projekt</option>${opt.pr.map((p) => `<option value="${p.id}" ${p.id === own.projektId ? 'selected' : ''}>${esc(p.name)}</option>`).join('')}</select>` : ''}
             </div>
             <input type="text" id="gvText" value="${esc(own.text)}" placeholder="Notiz, z. B. Wasserschaden hinter WC">` : `<span class="gv-l">${esc(x.label)}</span>`}
-          <div class="row"><button class="btn secondary" data-share style="flex:1">${icon('share')} Teilen / Sichern</button><button class="btn secondary" data-zoom aria-label="Vergrößern">${icon('search')}</button>${own ? `<button class="btn danger" data-del aria-label="Löschen">${icon('trash')}</button>` : ''}</div>`;
+          <div class="row"><button class="btn secondary" data-share style="flex:1">${icon('share')} Teilen / Sichern</button><button class="btn secondary" data-zoom aria-label="Vergrößern">${icon('search')}</button>${own && window.Zeichnen ? `<button class="btn secondary" data-zeichnen>${icon('edit')} Zeichnen</button>` : ''}${own ? `<button class="btn danger" data-del aria-label="Löschen">${icon('trash')}</button>` : ''}</div>`;
       $('[data-zoom]', bar).onclick = async () => pdfAnsicht(await voll(x), own ? `Bild ${tag(own.t)}` : x.label || 'Bild');
       $('[data-share]', bar).onclick = async () => {
         const blob = await (await fetch(await voll(x))).blob();
@@ -340,6 +349,24 @@ window.Bilder = (() => {
         const file = new File([blob], name, { type: blob.type || 'image/jpeg' });
         if (navigator.canShare?.({ files: [file] })) { try { await navigator.share({ files: [file] }); return; } catch (e) { if (e.name === 'AbortError') return; } }
         const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 60000);
+      };
+      if (own && $('[data-zeichnen]', bar)) $('[data-zeichnen]', bar).onclick = async () => {
+        // Schon eine Zeichnung: weiterzeichnen (auf dem Original bzw. dem leeren Blatt) und dieses Bild ersetzen.
+        // Sonst: Original bleibt, die Zeichnung kommt als neues Bild in denselben Ordner.
+        const zn = own.zeichnung;
+        const grund = zn?.von ? await kvGet('bild:' + zn.von) : null;
+        const weiter = !!zn && (!zn.von || !!grund);
+        const r = await Zeichnen.oeffnen(weiter ? grund : await voll(x), { titel: weiter ? 'Weiterzeichnen' : 'Zeichnen', striche: weiter ? zn.striche : [], onSave: async (striche, bild) => {
+          if (weiter) {
+            await kvSet('bild:' + own.id, bild);
+            const thumb = await resize(bild, 320, 'image/jpeg', 0.7);
+            await upd(own.id, (b) => { b.zeichnung = { von: zn.von, striche }; b.thumb = thumb; });
+          } else await ablegen(ctx.kundeId, ctx.objektId, bild, '', own.projektId, { zeichnung: { von: own.id, striche }, ordnerId: own.ordner, text: own.text });
+        } });
+        if (!r) return;
+        changed = true;
+        toast(weiter ? 'Zeichnung gespeichert' : 'Als neues Bild gespeichert, das Original bleibt', 3500);
+        close();
       };
       if (own) {
         $('#gvText', bar).oninput = debounce((e) => { own.text = e.target.value; upd(own.id, (b) => (b.text = own.text)); }, 500);
@@ -381,13 +408,13 @@ window.Bilder = (() => {
   }
 
   /** Ein fertiges Bild in einen Ordner legen (Ordner wird angelegt, wenn es ihn noch nicht gibt). Für die Kamera oben. */
-  async function ablegen(kid, oid, data, ordnerName, projektId = '') {
+  async function ablegen(kid, oid, data, ordnerName, projektId = '', { ordnerId = '', text = '', zeichnung } = {}) {
     const dd = await laden(kid, oid);
-    let o = dd.ordner.find((x) => x.name === ordnerName && (x.projektId || '') === projektId);
+    let o = ordnerId ? dd.ordner.find((x) => x.id === ordnerId) : dd.ordner.find((x) => x.name === ordnerName && (x.projektId || '') === projektId);
     if (!o) { o = { id: uid(), name: ordnerName, projektId }; dd.ordner.push(o); }
     const id = uid();
     await kvSet('bild:' + id, data);
-    dd.bilder.push({ id, t: Date.now(), ordner: o.id, projektId, text: '', thumb: await resize(data, 320, 'image/jpeg', 0.7) });
+    dd.bilder.push({ id, t: Date.now(), ordner: o.id, projektId, text, thumb: await resize(data, 320, 'image/jpeg', 0.7), ...(zeichnung ? { zeichnung } : {}) });
     await speichern(kid, oid, dd);
     return o;
   }
