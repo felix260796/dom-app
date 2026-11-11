@@ -106,7 +106,6 @@ window.Kontakt = (() => {
   }
 
   // ---------- Schnellknöpfe ----------
-  const telLink = (t) => 'tel:' + String(t).replace(/[^\d+]/g, '');
   const mapLink = (a) => 'https://maps.apple.com/?q=' + encodeURIComponent(String(a || '').split(/\s*,\s*|\n/).filter(Boolean).join(', '));
   /** tels/mails: [{ label, wert }] – bei mehr als einem Eintrag fragt der Knopf, welcher. */
   function aktionen({ tels = [], mails = [], adresse = '' }) {

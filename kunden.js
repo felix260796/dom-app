@@ -225,8 +225,9 @@ window.Kunden = (() => {
   // ---------- Auswahl (Kunde / Objekt) ----------
   /** Kunde wählen oder neu anlegen → Kunde | null. */
   async function waehlen(title = 'Für welchen Kunden?') {
-    const items = liste().map((k) => ({ label: name(k) || 'Ohne Namen', sub: ort(k), icon: `<span class="av sm">${esc(initialen(k))}</span>`, value: k.id }));
-    const v = await sheet(title, items, { text: 'Neuer Kunde, z. B. Familie Müller' });
+    const items = liste().map((k) => ({ label: name(k) || 'Ohne Namen', sub: ort(k), such: `${k.nr || ''} ${k.telefon || ''} ${k.email || ''} ${k.privat || ''} ${k.objekte.map((o) => `${o.name} ${o.adresse}`).join(' ')}`, icon: `<span class="av sm">${esc(initialen(k))}</span>`, value: k.id }));
+    // Suchfeld immer (auch bei wenigen Kunden), darunter das Feld für einen neuen Kunden
+    const v = await sheet(title, items, { suche: items.length ? 'Kunde suchen: Name, Ort oder Nummer' : '', text: 'Neuer Kunde, z. B. Familie Müller' });
     if (!v) return null;
     if (v.text) { const k = neu(ausName(v.text)); await speichern(k); return k; }
     return byId(v);
@@ -370,7 +371,6 @@ window.Kunden = (() => {
   }
 
   // ---------- Ansicht: Kundenkarte ----------
-  const telLink = (t) => 'tel:' + String(t).replace(/[^\d+]/g, '');
   const mapLink = (a) => 'https://maps.apple.com/?q=' + encodeURIComponent(einzeilig(a));
   async function detail(k) {
     if (!k) return listeView();
@@ -664,5 +664,5 @@ window.Kunden = (() => {
     return byId(id);
   }
 
-  return { adressVorschlaege, laden, migrate, nummern, projektNr, byId, liste, name, briefAnrede, postanschrift, istHv, zeilen, einzeilig, objekt, objektText, ort, initialen, ausName, speichern, waehlen, objektWaehlen, projektAnlegen, start, listeView, detail, objektView, objLabel, oeffnen, zu, bisGeburtstag };
+  return { adressVorschlaege, sucheAdresse, laden, migrate, nummern, projektNr, byId, liste, name, briefAnrede, postanschrift, istHv, zeilen, einzeilig, objekt, objektText, ort, initialen, ausName, speichern, waehlen, objektWaehlen, projektAnlegen, start, listeView, detail, objektView, objLabel, oeffnen, zu, bisGeburtstag };
 })();

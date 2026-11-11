@@ -44,3 +44,16 @@
 /* ---------- Abschlagsplan je Projekt ---------- */
 .rplan { display: flex; align-items: center; gap: 8px; margin-top: 12px; font-size: 14px; color: var(--muted); }
 .rplan input { flex: 1; }
+/* ---------- Auswertung: Jahr, Trichter, Monate ---------- */
+.aw-jahr { margin: 0 0 10px; }
+.aw-t { display: grid; grid-template-columns: 1fr auto; gap: 2px 10px; padding: 5px 0; font-size: 14.5px; border-top: 1px solid var(--line); }
+.aw-t:first-of-type { border-top: 0; }
+.aw-t b { color: var(--navy); }
+.aw-t i { grid-column: 1 / -1; display: block; height: 8px; border-radius: 4px; background: var(--c, var(--brass)); width: var(--w); min-width: 4px; }
+.aw-t small { color: var(--muted); font-weight: 500; }
+.aw-m { display: grid; grid-template-columns: repeat(12, 1fr); gap: 4px; align-items: end; height: 110px; margin-top: 6px; }
+.aw-m div { display: flex; flex-direction: column; justify-content: flex-end; align-items: center; height: 100%; gap: 3px; font-size: 10.5px; color: var(--muted); }
+.aw-m i { display: block; width: 100%; border-radius: 4px 4px 0 0; background: var(--navy); height: var(--h); min-height: 2px; }
+.aw-m i.leer { background: var(--line); }
+.aw-satz { margin: 0 0 8px; font-size: 15px; line-height: 1.45; }
+.aw-satz b { color: var(--navy); }
