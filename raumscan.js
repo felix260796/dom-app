@@ -1,7 +1,8 @@
 'use strict';
 /* DOM – Raumscan: Grundriss (2D), Modell (3D), Reinzeichnen, PDF.
  * Daten je Projekt in w.vorOrt.scans[]: { id, name, t, laenge, breite, hoehe, flaeche, tueren, fenster, raumId, geo, zeichnung }.
- * geo kommt aus DomGeraet.swift (RoomPlan): waende [{x1,z1,x2,z2,h}], oeffnungen [{art,x,z,a,b,h,u}], objekte [{k,x,z,a,b,h,t,u}], boden [[x,z]].
+ * geo kommt aus DomGeraet.swift (RoomPlan): waende [{x1,z1,x2,z2,h}], oeffnungen [{art,x,z,a,b,h,u}], objekte [{k,x,z,a,b,h,t,u}], boden [[x,z]], boeden [[[x,z]]].
+ * Ganze Wohnung: Scan mit ganz: true, geo aus StructureBuilder, dazu geo.namen [{ text, x, z, m2 }] für die Raumnamen im Plan.
  * Alles in Metern, von oben gesehen. Ältere Scans ohne geo werden als Rechteck aus Länge und Breite gezeichnet.
  * zeichnung: [{ art: 'stift'|'linie'|'mass'|'text', f: Farbe, p: [[x,z], …], text }] in Grundriss-Koordinaten (Metern). */
 window.Raumscan = (() => {
@@ -20,6 +21,8 @@ window.Raumscan = (() => {
     const regeln = [[/bad|dusch/, 'bad'], [/wc|toilette/, 'gaeste-wc'], [/küche|kueche/, 'kueche'], [/wohn/, 'wohnzimmer'], [/schlaf/, 'schlafzimmer'], [/kind/, 'kinderzimmer'], [/flur|diele|gang/, 'flur'], [/treppe/, 'treppenhaus'], [/heiz|technik/, 'heizraum']];
     const r = regeln.find(([re]) => re.test(n));
     if (r) return r[1];
+    const art = { bathroom: 'bad', kitchen: 'kueche', bedroom: 'schlafzimmer', livingRoom: 'wohnzimmer', diningRoom: 'wohnzimmer' }[scan?.art];
+    if (art) return art;
     const k = new Set((scan?.geo?.objekte || []).map((o) => o.k));
     if (k.has('bathtub') || (k.has('toilet') && k.has('sink'))) return 'bad';
     if (k.has('toilet')) return 'gaeste-wc';
@@ -34,7 +37,7 @@ window.Raumscan = (() => {
   /** Raum im Projekt, zu dem der Scan gehört (verknüpft oder gleicher Name). */
   const raumFuer = (scan, list) => list.find((r) => r.id === scan.raumId) || list.find((r) => raumName(r) === String(scan.name || '').trim().toLowerCase());
   /** Scans, zu denen es im Projekt noch keinen Raum gibt. */
-  const offene = (w, list) => (w.vorOrt?.scans || []).filter((s) => !raumFuer(s, list));
+  const offene = (w, list) => (w.vorOrt?.scans || []).filter((s) => !s.ganz && !raumFuer(s, list));
   /** Einträge für „Welcher Raum?“: gescannte Räume zuerst, value 'scan:<id>'. */
   const sheetEintraege = (w, list) => offene(w, list).map((s) => ({ label: s.name, sub: `Aus dem Raumscan, ${zahl(s.flaeche > 0 ? s.flaeche : s.laenge * s.breite)} m², Maße kommen mit`, icon: icon('ruler'), value: 'scan:' + s.id }));
   const scanVon = (w, v) => (typeof v === 'string' && v.startsWith('scan:') ? (w.vorOrt?.scans || []).find((s) => s.id === v.slice(5)) : null);
@@ -53,6 +56,21 @@ window.Raumscan = (() => {
     scan.raumId = p.id;
   }
 
+  /** Scan „ganze Wohnung“ aus den einzelnen Räumen (gleiche Koordinaten) und dem Gesamtgrundriss von RoomPlan. */
+  function wohnungAus(raeume, gesamt, name) {
+    const mitte = (g) => { const p = (g?.waende || []).flatMap((w) => [[w.x1, w.z1], [w.x2, w.z2]]); return p.length ? [p.reduce((n, q) => n + q[0], 0) / p.length, p.reduce((n, q) => n + q[1], 0) / p.length] : [0, 0]; };
+    const geo = gesamt?.waende?.length ? { ...gesamt } : {
+      waende: raeume.flatMap((r) => r.geo?.waende || []), oeffnungen: raeume.flatMap((r) => r.geo?.oeffnungen || []),
+      objekte: raeume.flatMap((r) => r.geo?.objekte || []), boden: [], boeden: raeume.flatMap((r) => r.geo?.boeden?.length ? r.geo.boeden : r.geo?.boden?.length ? [r.geo.boden] : []) };
+    geo.namen = raeume.map((r) => { const [x, z] = mitte(r.geo); return { text: r.name, x, z, m2: r.flaeche > 0 ? r.flaeche : r.laenge * r.breite }; });
+    const p = geo.waende.flatMap((w) => [[w.x1, w.z1], [w.x2, w.z2]]);
+    const ausd = (i) => Math.max(...p.map((q) => q[i])) - Math.min(...p.map((q) => q[i]));
+    const l = p.length ? ausd(0) : 0, b = p.length ? ausd(1) : 0;
+    return { id: uid(), name, ganz: true, t: Date.now(), laenge: Math.round(Math.max(l, b) * 100) / 100, breite: Math.round(Math.min(l, b) * 100) / 100,
+      hoehe: Math.max(0, ...raeume.map((r) => +r.hoehe || 0)), flaeche: Math.round(raeume.reduce((n, r) => n + (r.flaeche > 0 ? r.flaeche : r.laenge * r.breite), 0) * 100) / 100,
+      raeume: raeume.map((r) => r.id), tueren: [], fenster: [], geo };
+  }
+
   // ---------- Geometrie ----------
   /** Grundriss-Daten: längste Wand waagerecht, links oben bei 0/0. */
   function plan(scan) {
@@ -68,7 +86,9 @@ window.Raumscan = (() => {
     const W = g.waende.map((w) => ({ a: rot(w.x1, w.z1), b: rot(w.x2, w.z2), h: +w.h || 0 }));
     const O = (g.oeffnungen || []).map((o) => { const [x, z] = rot(o.x, o.z); return { ...o, x, z, a: (o.a || 0) - a0 }; });
     const M = (g.objekte || []).map((o) => { const [x, z] = rot(o.x, o.z); return { ...o, x, z, a: (o.a || 0) - a0 }; });
-    const B = (g.boden || []).map(([x, z]) => rot(x, z));
+    const polys = (g.boeden?.length ? g.boeden : g.boden?.length ? [g.boden] : []).map((pl) => pl.map(([x, z]) => rot(x, z)));
+    const B = polys.flat();
+    const L = (g.namen || []).map((n) => { const [x, z] = rot(n.x, n.z); return { ...n, x, z }; });
     const pts = [...W.flatMap((w) => [w.a, w.b]), ...B];
     const minX = Math.min(...pts.map((p) => p[0])), minZ = Math.min(...pts.map((p) => p[1]));
     const sh = ([x, z]) => [x - minX, z - minZ];
@@ -76,11 +96,13 @@ window.Raumscan = (() => {
     O.forEach((o) => { [o.x, o.z] = sh([o.x, o.z]); });
     M.forEach((o) => { [o.x, o.z] = sh([o.x, o.z]); });
     const boden = B.map(sh);
+    const boeden = polys.map((pl) => pl.map(sh));
+    L.forEach((n) => { [n.x, n.z] = sh([n.x, n.z]); });
     const alle = [...W.flatMap((w) => [w.a, w.b]), ...boden];
     const breite = Math.max(...alle.map((p) => p[0])), tiefe = Math.max(...alle.map((p) => p[1]));
     const mitte = [W.reduce((n, w) => n + w.a[0] + w.b[0], 0) / (2 * W.length), W.reduce((n, w) => n + w.a[1] + w.b[1], 0) / (2 * W.length)];
     const hoehe = Math.max(+scan.hoehe || 0, ...W.map((w) => w.h));
-    return { W, O, M, boden, breite, tiefe, mitte, hoehe };
+    return { W, O, M, boden, boeden, L, breite, tiefe, mitte, hoehe };
   }
   /** Wand, auf der eine Öffnung sitzt, und ihre Lage auf der Wand (t = Abstand vom Wandanfang). */
   function wandVon(P, o) {
@@ -111,10 +133,9 @@ window.Raumscan = (() => {
     const wd = Math.max(3 * k, px(0.12));
     ctx.lineJoin = 'round';
     // Boden
-    const bodenPkt = P.boden.length >= 3 ? P.boden : null;
+    const bodenPkt = P.boeden.length ? P.boeden : null;
     ctx.fillStyle = '#f4f1ea';
-    ctx.beginPath();
-    if (bodenPkt) { bodenPkt.forEach(([x, z], i) => (i ? ctx.lineTo(X(x), Y(z)) : ctx.moveTo(X(x), Y(z)))); ctx.closePath(); ctx.fill(); }
+    for (const pl of P.boeden) { ctx.beginPath(); pl.forEach(([x, z], i) => (i ? ctx.lineTo(X(x), Y(z)) : ctx.moveTo(X(x), Y(z)))); ctx.closePath(); ctx.fill(); }
     // Möbel
     if (opt.moebel !== false) {
       const fs = Math.max(9 * k, Math.min(14 * k, px(0.14)));
@@ -170,6 +191,15 @@ window.Raumscan = (() => {
         const ab = wd / 2 + fs * 0.9;
         let a = Math.atan2(dz, dx); if (a > Math.PI / 2) a -= Math.PI; if (a < -Math.PI / 2) a += Math.PI;
         ctx.save(); ctx.translate(X(mx) + nx * ab, Y(mz) + nz * ab); ctx.rotate(a); ctx.fillText(zahl(l), 0, 0); ctx.restore();
+      }
+    }
+    // Raumnamen mit Fläche (ganze Wohnung)
+    if (P.L.length) {
+      const fs = Math.max(11 * k, Math.min(17 * k, px(0.2)));
+      ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillStyle = NAVY;
+      for (const n of P.L) {
+        ctx.font = `700 ${fs}px -apple-system, Helvetica, Arial, sans-serif`; ctx.fillText(n.text, X(n.x), Y(n.z) - (n.m2 > 0 ? fs * 0.55 : 0));
+        if (n.m2 > 0) { ctx.font = `${fs * 0.85}px -apple-system, Helvetica, Arial, sans-serif`; ctx.fillText(zahl(n.m2) + ' m²', X(n.x), Y(n.z) + fs * 0.55); }
       }
     }
     // Eigene Zeichnung
@@ -242,11 +272,11 @@ window.Raumscan = (() => {
         <p class="hint">${esc(info)}${mb ? `<br>Erkannt: ${esc(mb)}` : ''}${scan.geo ? '' : '<br>Älterer Scan: nur Länge und Breite, ohne Türen und Fenster.'}</p>
         <div class="rs-knoepfe">
           <button type="button" class="btn secondary small" data-zeichnen>Reinzeichnen</button>
+          <button type="button" class="btn secondary small" data-ablegen>${icon('download')} Beim Objekt ablegen</button>
           <button type="button" class="btn secondary small" data-pdf>${icon('file')} Als PDF</button>
         </div>
       </div>`;
     document.body.appendChild(el);
-    zoomFrei(true);
     const cv = $('.rs-c', el), box = $('.rs-b', el);
     let v = null, cw = 0, ch = 0;
     const groesse = () => {
@@ -263,7 +293,7 @@ window.Raumscan = (() => {
     };
     const ro = new ResizeObserver(() => groesse()); ro.observe(box);
     let drei = null;
-    const zu = () => { ro.disconnect(); drei?.weg(); el.remove(); zoomFrei(false); };
+    const zu = () => { ro.disconnect(); drei?.weg(); el.remove(); };
     $('[data-x]', el).onclick = zu;
 
     // Grundriss: verschieben, zoomen, zeichnen
@@ -352,6 +382,7 @@ window.Raumscan = (() => {
     $$('[data-farbe]', el).forEach((b) => (b.onclick = () => { st.farbe = b.dataset.farbe; $$('[data-farbe]', el).forEach((x) => x.classList.toggle('on', x === b)); }));
     $('[data-zurueck]', el).onclick = () => { if (!verlauf.length) return toast('Nichts mehr rückgängig zu machen.'); striche = JSON.parse(verlauf.pop()); male(); speichern(); };
     $('[data-pdf]', el).onclick = () => pdf(w, scan, { moebel: st.moebel, masse: st.masse, striche });
+    $('[data-ablegen]', el).onclick = () => ablegen(w, scan, { moebel: st.moebel, masse: st.masse, striche });
     groesse();
   }
 
@@ -382,10 +413,11 @@ window.Raumscan = (() => {
       return m;
     };
     // Boden
-    const umriss = P.boden.length >= 3 ? P.boden : [[0, 0], [P.breite, 0], [P.breite, P.tiefe], [0, P.tiefe]];
-    const form = new T.Shape(umriss.map(([x, z]) => new T.Vector2(x, -z)));
-    const boden = new T.Mesh(new T.ShapeGeometry(form), new T.MeshLambertMaterial({ color: 0xd9cfbf, side: T.DoubleSide }));
-    boden.rotation.x = -Math.PI / 2; szene.add(boden);
+    const matBoden = new T.MeshLambertMaterial({ color: 0xd9cfbf, side: T.DoubleSide });
+    for (const umriss of P.boeden.length ? P.boeden : [[[0, 0], [P.breite, 0], [P.breite, P.tiefe], [0, P.tiefe]]]) {
+      const boden = new T.Mesh(new T.ShapeGeometry(new T.Shape(umriss.map(([x, z]) => new T.Vector2(x, -z)))), matBoden);
+      boden.rotation.x = -Math.PI / 2; szene.add(boden);
+    }
     // Wände mit Aussparungen für Türen und Fenster
     const zuWand = new Map();
     for (const o of P.O) { const ww = wandVon(P, o); if (ww) { if (!zuWand.has(ww.w)) zuWand.set(ww.w, []); zuWand.get(ww.w).push({ o, t: ww.t }); } }
@@ -428,6 +460,24 @@ window.Raumscan = (() => {
     };
   }
 
+  // ---------- Beim Objekt ablegen ----------
+  /** Grundriss als Bild in den Bilder-Ordner „Pläne“ des Objekts (Vorgabe ordnerPlaene). */
+  async function ablegen(w, scan, opt = {}, still = false) {
+    const k = window.Kunden?.byId(w.kundeId);
+    if (!k) { if (!still) toast('Bitte zuerst einen Kunden zuordnen.'); return false; }
+    const P = plan(scan);
+    const s = Math.min(2400 / Math.max(P.breite, 0.5), 1700 / Math.max(P.tiefe, 0.5)), r = 90;
+    const cv = document.createElement('canvas'); cv.width = Math.round(P.breite * s + 2 * r); cv.height = Math.round(P.tiefe * s + 2 * r + 60);
+    const ctx = cv.getContext('2d'); ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, cv.width, cv.height);
+    ctx.fillStyle = NAVY; ctx.font = '700 34px -apple-system, Helvetica, Arial, sans-serif'; ctx.textAlign = 'left'; ctx.textBaseline = 'top';
+    ctx.fillText(`Grundriss ${scan.name}`, 24, 20);
+    zeichne(ctx, P, { s, ox: r, oy: r + 60 }, { moebel: opt.moebel !== false, masse: opt.masse !== false, striche: opt.striche || scan.zeichnung, k: 2 });
+    const ordner = String(vorgabe('ordnerPlaene') || 'Pläne').trim() || 'Pläne';
+    await Bilder.ablegen(k.id, w.objektId, cv.toDataURL('image/jpeg', 0.9), ordner, w.id);
+    if (!still) toast(`Grundriss im Ordner „${ordner}“ beim Objekt abgelegt`);
+    return true;
+  }
+
   // ---------- PDF ----------
   /** Grundriss als PDF (A4 quer) in einem üblichen Maßstab, mit Kopf, Infozeile und Hinweis. */
   async function pdf(w, scan, opt) {
@@ -462,5 +512,5 @@ window.Raumscan = (() => {
     await shareDoc(doc, `Grundriss_${String(scan.name).replace(/[^\wäöüÄÖÜß-]+/g, '_')}.pdf`);
   }
 
-  return { ansehen, vorschau, plan, typFuer, erkannt, raumFuer, offene, sheetEintraege, scanVon, masseIn, pdf, MOEBEL };
+  return { ansehen, vorschau, plan, typFuer, erkannt, raumFuer, offene, sheetEintraege, scanVon, masseIn, pdf, ablegen, wohnungAus, MOEBEL };
 })();

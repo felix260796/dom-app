@@ -86,8 +86,10 @@ window.Geraet = (() => {
 
   // ---------- LiDAR-Raumscan ----------
   /** { laenge, breite, hoehe, flaeche, tueren:[{breite,hoehe}], fenster:[…], geo } oder null bei Abbruch. geo = ganzer Raum für raumscan.js */
-  async function raumScannen() {
-    const r = await P().raumScannen();
+  /** wohnung: true = Raum für Raum, Ergebnis { wohnung: true, raeume: [wie oben], gesamt: geo } (ab iOS 17, wohnungMoeglich) */
+  const wohnungMoeglich = () => kann('lidar') && !!faehig?.wohnungScan;
+  async function raumScannen(opt = {}) {
+    const r = await P().raumScannen({ wohnung: !!opt.wohnung });
     return r?.abgebrochen ? null : r;
   }
 
@@ -216,5 +218,5 @@ window.Geraet = (() => {
     },
   };
 
-  return { nativ, an, kann, faehigkeiten, aufnahme, scannen, raumScannen, kontaktWaehlen, kontaktSpeichern, kalenderAbgleich, karte, start };
+  return { nativ, an, kann, faehigkeiten, aufnahme, scannen, raumScannen, wohnungMoeglich, kontaktWaehlen, kontaktSpeichern, kalenderAbgleich, karte, start };
 })();
