@@ -11,13 +11,23 @@ Die Leiste unten hat fünf Reiter: Kunden, Partner, Projekte, Angebote, Rechnung
 Angebot: „Speichern und ansehen“ legt das PDF unter `w.dokumente` ab, „Senden“ verschickt. Nach dem Senden ist das Angebot gesperrt (`w.angebotGesperrt`, `Projekt.gesperrt/gesperrtFrage/angebotKopieren`); ändern nur über eine Kopie mit neuer Nummer (`w.angebotArchiv`, `w.angebotKopieVon`).
 Textfelder vor und nach den Positionen: Standard `PL.einstellungen.bausteine`, je Auftrag `w.angebotTexte` (`Angebot._intern.texteAuftrag`, `texteEinstellungen`).
 Partner-Angebote übernehmen: `Angebot._intern.subUebernehmen` (Foto, PDF oder Partner-Preisliste, KI liest, Zuschlag `subZuschlag`), Zeilen als eigene Positionen mit `x.sub`.
-Dokumente ansehen mit Zoom: `pdfAnsicht` in `core.js` (Zoom nur, solange ein Dokument offen ist). Listen in den Einstellungen: `listenFeld`/`listenBinden` in `core.js`.
+Dokumente ansehen mit Zoom: `pdfAnsicht` in `core.js` (seit Version 85 mit PDF.js, siehe unten). Listen in den Einstellungen: `listenFeld`/`listenBinden` in `core.js`.
 
 ## Neuerungen aus Version 83
 
 Angebotsablauf Schritt 1 „Vor Ort“: Karte „Vor Ort aufnehmen“ (`Gespraech.karte` in `voice.js`) sammelt Gespräch, Fotos, Pläne und Raumscan. „Visualisieren“ ist darunter zugeklappt (`details#wVis` in `projekt.js`) und hat mit dem Angebot nichts zu tun.
 Per Sprache anlegen: Auf der Prüfseite per Sprache oder Text korrigieren (`korrigieren` in `sprache.js`).
 Handler wie `onkeydown = (e) => bedingung && tu()` sind verboten: Rückgabe `false` blockiert jede Taste (so war „Ordner benennen“ kaputt).
+
+## Neuerungen aus Version 85
+
+Dokumente ansehen: `pdfAnsicht` in `core.js` zeichnet PDFs mit PDF.js (`vendor/pdfjs`, wird erst beim Öffnen geladen) Seite für Seite als Bild; Zoom per Knopf, zwei Finger, Doppeltipp. Kein iframe und kein „neues Fenster“ mehr (geht in der iPhone-App nicht), stattdessen Teilen-Menü. Die Seite selbst zoomt nie.
+Zurück an dieselbe Stelle: `core.js` merkt bei jedem Tipp die Scroll-Stelle je Seite (Reiter + Titel + Untertitel aus `header()`) und stellt sie nach einem Tipp auf `#topback` wieder her. Neue Seiten brauchen dafür nur `header(titel, sub, { label, fn })`.
+Suchfelder (`input type="search"`): Enter schließt die Tastatur (global in `core.js`). Auswahlfenster `sheet`: Textfeld ohne Autofokus, Suchfeld filtert immer (`suche`, Einträge mit `such`).
+`telLink(t)` in `core.js`: Anrufen immer mit Ländervorwahl (Vorgabe `telVorwahl`).
+Bilder: `Bilder.alleView` (alle Bilder nach Datum), `raster` (Markieren, PDF über `bilderPdf`), `gross` zum Durchwischen (scroll-snap), `Bilder.fotosMachen({ kundeId, objektId, projektId, ordnerId?, ordnerName? })` mit `Kamera.serie` (mehrere Fotos hintereinander, Ordner aus Vorgabe `ordnerFotos`).
+Karte: Filter je Gruppe (`FILTER` in `karte.js`, gemerkt in localStorage `dom:karteFilter`). Auswertung: `auswertung(daten, rechnungen, jahr)` in `finanzen.js` mit Jahr-Auswahl. „Heute“ hat ein X (`#hZu`, zurück zu `window.__vorHeute`).
+Per Sprache anlegen: Prüfseite mit Feldern untereinander, Anschrift wird über `Kunden.sucheAdresse` um PLZ und Ort ergänzt (Vorgabe `spracheAdresse`).
 
 ## Bereiche
 

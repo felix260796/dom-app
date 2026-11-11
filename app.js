@@ -105,6 +105,8 @@ function switchTab(tab, restore) {
   tab = TAB_ALIAS[tab] || tab;
   // Einstellungen sind kein Reiter unten: merken, woher man kam, damit „Zurück“ dorthin führt
   if (tab === 'einstellungen' && state.tab !== 'einstellungen') window.__vorEinst = { tab: state.tab, s: { project: state.project, wohnung: state.wohnung, kunde: state.kunde, objekt: state.objekt, partner: state.partner } };
+  // „Heute“ lässt sich mit dem X schließen: merken, welcher Reiter davor offen war
+  if (tab === 'heute' && state.tab !== 'heute') window.__vorHeute = ['kunden', 'partner', 'projekt', 'angebote', 'rechnungen'].includes(state.tab) ? state.tab : 'kunden';
   if (state.tab !== tab || restore) {
     tabState[state.tab] = { project: state.project, wohnung: state.wohnung, kunde: state.kunde, objekt: state.objekt, partner: state.partner };
     const s = restore || tabState[tab] || {};
@@ -125,34 +127,33 @@ $$('.tabbar button').forEach((b) => (b.onclick = () => {
 }));
 
 /** Auswahlfenster von unten. items: [{ label, sub?, icon?, color?, value }] → Promise<value|null>.
- * text: Platzhalter für ein freies Textfeld (Ergebnis dann { text }). */
+ * text: Platzhalter für ein freies Textfeld (Ergebnis dann { text }). suche: Platzhalter für ein Suchfeld über der Liste
+ * (kommt bei langen Listen von selbst). Einträge können zusätzlich `such` tragen: Text, der nur für die Suche zählt. */
 function sheet(title, items, { text, value = '', suche } = {}) {
   // Lange Listen (ab 7 Einträgen) bekommen ein Suchfeld oben. Gibt es schon ein Textfeld (z. B. „Neuer Kunde“), filtert das beim Tippen mit.
-  suche ??= items.length > 6 && !text ? 'Suchen …' : '';
+  suche ??= items.length > 6 ? 'Suchen …' : '';
   return new Promise((res) => {
     const el = document.createElement('div');
     el.className = 'sheet-bg';
     el.innerHTML = `<div class="sheet" role="dialog" aria-label="${esc(title)}"><div class="sheet-h"><b>${esc(title)}</b><button class="icon-btn" data-x aria-label="Schließen">${icon('x')}</button></div>
       ${suche ? `<label class="search sheet-such">${icon('search')}<input type="search" id="sheetSuche" placeholder="${esc(suche)}" autocomplete="off"></label>` : ''}
-      ${text ? `<div class="sheet-text"><input type="text" id="sheetText" placeholder="${esc(text)}" value="${esc(value)}"><button class="btn" id="sheetOk">OK</button></div>` : ''}
-      <div class="sheet-list">${items.map((it, i) => `<button class="sheet-item" data-i="${i}">${it.icon ? `<span class="si-ico" ${it.color ? `style="--c:${it.color}"` : ''}>${it.icon}</span>` : ''}<span class="si-t"><b>${esc(it.label)}</b>${it.sub ? `<span>${esc(it.sub)}</span>` : ''}</span></button>`).join('')}</div></div>`;
+      ${text ? `<div class="sheet-text"><input type="text" id="sheetText" placeholder="${esc(text)}" value="${esc(value)}" autocomplete="off" enterkeyhint="done"><button class="btn" id="sheetOk">OK</button></div>` : ''}
+      <div class="sheet-list"><p class="sheet-leer hint" hidden>Nichts gefunden.</p>${items.map((it, i) => `<button class="sheet-item" data-i="${i}">${it.icon ? `<span class="si-ico" ${it.color ? `style="--c:${it.color}"` : ''}>${it.icon}</span>` : ''}<span class="si-t"><b>${esc(it.label)}</b>${it.sub ? `<span>${esc(it.sub)}</span>` : ''}</span></button>`).join('')}</div></div>`;
     const close = (v) => { el.classList.remove('on'); setTimeout(() => el.remove(), 180); res(v); };
     el.onclick = (e) => { if (e.target === el || e.target.closest('[data-x]')) close(null); };
     $$('[data-i]', el).forEach((b) => (b.onclick = () => close(items[+b.dataset.i].value)));
     const filtern = (q) => {
       const w = q.trim().toLowerCase().split(/\s+/).filter(Boolean);
-      $$('[data-i]', el).forEach((b) => { const it = items[+b.dataset.i]; b.hidden = w.length > 0 && !w.every((x) => `${it.label} ${it.sub || ''}`.toLowerCase().includes(x)); });
+      let n = 0;
+      $$('[data-i]', el).forEach((b) => { const it = items[+b.dataset.i]; b.hidden = w.length > 0 && !w.every((x) => `${it.label} ${it.sub || ''} ${it.such || ''}`.toLowerCase().includes(x)); if (!b.hidden) n++; });
+      const leer = $('.sheet-leer', el); if (leer) leer.hidden = n > 0 || !items.length;
     };
     if (suche) $('#sheetSuche', el).oninput = (e) => filtern(e.target.value);
-    else if (text && items.length > 6) $('#sheetText', el).addEventListener('input', (e) => filtern(e.target.value));
     if (text) { const ok = () => { const v = $('#sheetText', el).value.trim(); if (v) close({ text: v }); }; $('#sheetOk', el).onclick = ok; $('#sheetText', el).onkeydown = (e) => { if (e.key === 'Enter') { e.preventDefault(); ok(); } }; } // Achtung: kein „return false“, das blockiert jede Taste
     document.body.appendChild(el);
-    if (text) {
-      // Fenster mit Textfeld ohne Hochfahr-Bewegung zeigen und das Feld gleich bereit machen. Auf dem iPhone
-      // ging sonst die Tastatur auf, das Getippte kam aber nicht im Feld an (Feld war noch in Bewegung).
-      el.classList.add('fest', 'on');
-      setTimeout(() => { const f = $('#sheetText', el); try { f.focus({ preventScroll: true }); f.setSelectionRange(f.value.length, f.value.length); } catch {} }, 60);
-    } else requestAnimationFrame(() => el.classList.add('on'));
+    // Die Tastatur geht erst auf, wenn man das Feld antippt (Wunsch Felix), nicht schon beim Öffnen des Fensters.
+    if (text) el.classList.add('fest', 'on'); // ohne Hochfahr-Bewegung, damit das Feld beim Antippen schon ruhig steht
+    else requestAnimationFrame(() => el.classList.add('on'));
   });
 }
 

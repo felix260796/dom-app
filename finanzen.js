@@ -112,36 +112,79 @@ window.Finanzen = (() => {
   };
 
   // ---------- Auswertung (B25) ----------
-  function auswertung(idx, kalk, rechnungen) {
-    const jahr = String(new Date().getFullYear());
-    const umsatz = rechnungen.filter((r) => (r.datum || '').startsWith(jahr)).reduce((s, r) => s + r.netto - (r.abzuege || []).reduce((t, a) => t + a.netto, 0), 0);
-    const eingang = rechnungen.filter((r) => (r.bezahlt || '').startsWith(jahr)).reduce((s, r) => s + Rechnung.zahlbetrag(r), 0);
-    const zu = idx.filter((x) => Projekt.zugesagt(x.status)).length, ab = idx.filter((x) => Projekt.norm(x.status) === 'abgesagt').length;
+  // Seit Version 85 (Wunsch Felix): Jahr wählbar, „Aus Angeboten wurden Projekte“, Dauer bis zur Zusage,
+  // Werte der Angebote und Aufträge, offene Forderungen, Umsatz je Monat.
+  let awJahr = '';
+  /** daten: [{ x (Eintrag aus projectIndex), w (Projekt), k (Kalkulation) }] für alle Projekte. */
+  function auswertung(daten, rechnungen, jahr) {
+    const imJahr = (t) => !jahr || (t && String(typeof t === 'number' ? new Date(t).getFullYear() : t).startsWith(jahr));
+    const norm = (e) => Projekt.norm(e.x.status);
+    const wann = (e, sts) => (e.w.verlauf || []).find((v) => sts.includes(v.st))?.t || 0;
+    const ZU = ['geplant', '', 'fertig', 'rechnung', 'bezahlt'];
+    // Angebote: alles, was als Anfrage/Angebot angelegt wurde (ohne direkt angelegte Projekte), nach Anlagejahr
+    const ang = daten.filter((e) => !e.w.ohneAngebot && imJahr(e.w.created));
+    const verschickt = ang.filter((e) => e.w.versendetAm || wann(e, ['angebot']) || Projekt.zugesagt(e.x.status));
+    const zuL = ang.filter((e) => Projekt.zugesagt(e.x.status)), abL = ang.filter((e) => norm(e) === 'abgesagt');
+    const offenL = ang.filter((e) => !Projekt.zugesagt(e.x.status) && norm(e) !== 'abgesagt');
+    const zu = zuL.length, ab = abL.length;
     const quote = zu + ab ? Math.round((zu / (zu + ab)) * 100) : null;
-    const marge = kalk.filter((e) => e.k.soll.netto && e.k.ist.netto);
+    const tage = zuL.map((e) => { const a = wann(e, ['angebot']) || (e.w.versendetAm ? new Date(e.w.versendetAm + 'T12:00').getTime() : 0), z = wann(e, ZU); return a && z > a ? (z - a) / 864e5 : null; }).filter((d) => d !== null);
+    const tageSchnitt = tage.length ? Math.round(tage.reduce((s, d) => s + d, 0) / tage.length) : null;
+    const wert = (l) => l.reduce((s, e) => s + (e.k.soll.netto || 0), 0);
+    // Geld
+    const umsatzR = rechnungen.filter((r) => imJahr(r.datum || ''));
+    const netto = (r) => r.netto - (r.abzuege || []).reduce((t, a) => t + a.netto, 0);
+    const umsatz = umsatzR.reduce((s, r) => s + netto(r), 0);
+    const eingang = rechnungen.filter((r) => r.bezahlt && imJahr(r.bezahlt)).reduce((s, r) => s + Rechnung.zahlbetrag(r), 0);
+    const offenR = rechnungen.filter((r) => !r.bezahlt), ueberR = offenR.filter(Rechnung.ueberfaellig);
+    const sum = (l) => l.reduce((s, r) => s + Rechnung.zahlbetrag(r), 0);
+    const auftraege = daten.filter((e) => Projekt.zugesagt(e.x.status) && imJahr(wann(e, ZU) || e.w.created));
+    const marge = auftraege.filter((e) => e.k.soll.netto && e.k.ist.netto);
     const margeSum = marge.reduce((s, e) => s + e.k.marge, 0), sollSum = marge.reduce((s, e) => s + e.k.soll.netto, 0);
+    const mitWert = auftraege.filter((e) => e.k.soll.netto);
     const zaehl = (arr) => Object.entries(arr.reduce((m, v) => ((m[v] = (m[v] || 0) + 1), m), {})).sort((a, b) => b[1] - a[1]);
-    const kunden = Kunden.liste();
+    const kunden = Kunden.liste().filter((k) => imJahr(k.created));
     const quellen = zaehl(kunden.map((k) => k.quelle).filter(Boolean));
-    const quelleZu = (q) => idx.filter((x) => Projekt.zugesagt(x.status) && Kunden.byId(x.kundeId)?.quelle === q).length;
-    const gruende = zaehl(idx.map((x) => x.absage).filter(Boolean));
+    const quelleZu = (q) => zuL.filter((e) => Kunden.byId(e.x.kundeId)?.quelle === q).length;
+    const gruende = zaehl(abL.map((e) => e.x.absage).filter(Boolean));
     const balken = (liste, gesamt, extra) => liste.map(([n, c]) => `<div class="aw-b"><span>${esc(n)}</span><i style="--w:${Math.round((c / gesamt) * 100)}%"></i><b>${c}${extra ? extra(n) : ''}</b></div>`).join('');
-    return `<div class="sec-h"><h2>Auswertung ${jahr}</h2></div>
-      <div class="phasen zwei"><div class="fz"><b>${eur0(umsatz)}</b><span>Umsatz netto (Rechnungen)</span></div><div class="fz"><b>${eur0(eingang)}</b><span>Zahlungseingang</span></div></div>
-      <div class="phasen zwei" style="margin-top:8px"><div class="fz"><b>${quote == null ? '–' : quote + ' %'}</b><span>Zusagen (${zu} zu, ${ab} ab)</span></div><div class="fz"><b>${sollSum ? Math.round((margeSum / sollSum) * 100) + ' %' : '–'}</b><span>Marge Ø (${marge.length} ${marge.length === 1 ? 'Projekt' : 'Projekte'})</span></div></div>
+    const stufe = (name, n, von, farbe, zusatz = '') => `<div class="aw-t" style="--c:${farbe};--w:${von ? Math.max(2, Math.round((n / von) * 100)) : 0}%"><span>${name}${zusatz ? ` <small>${zusatz}</small>` : ''}</span><b>${n}</b><i></i></div>`;
+    const proz = (n, von) => (von ? ` (${Math.round((n / von) * 100)} %)` : '');
+    // Umsatz je Monat (nur wenn ein Jahr gewählt ist)
+    const monate = Array.from({ length: 12 }, (_, m) => umsatzR.filter((r) => +(r.datum || '').slice(5, 7) === m + 1).reduce((s, r) => s + netto(r), 0));
+    const maxM = Math.max(...monate, 1);
+    return `
+      <div class="card aw"><b class="aw-h">Aus Angeboten wurden Projekte</b>
+        ${ang.length ? `<p class="aw-satz">Von <b>${ang.length}</b> ${ang.length === 1 ? 'Angebot' : 'Angeboten'} ${ang.length === 1 ? 'wurde' : 'wurden'} <b>${zu}</b> zum Projekt${proz(zu, ang.length)}.${tageSchnitt !== null ? ` Von „verschickt“ bis zur Zusage dauert es im Schnitt <b>${tageSchnitt} ${tageSchnitt === 1 ? 'Tag' : 'Tage'}</b>.` : ''}</p>
+        ${stufe('Angelegt', ang.length, ang.length, 'var(--navy)')}
+        ${stufe('Verschickt', verschickt.length, ang.length, '#b7791f')}
+        ${stufe('Zugesagt', zu, ang.length, '#1b5e3a', wert(zuL) ? eur0(wert(zuL)) + ' netto' : '')}
+        ${stufe('Abgesagt', ab, ang.length, '#c0392b', wert(abL) ? eur0(wert(abL)) + ' netto' : '')}
+        ${stufe('Noch offen', offenL.length, ang.length, '#8a94a3', wert(offenL) ? eur0(wert(offenL)) + ' netto' : '')}` : '<p class="hint" style="margin:0">In diesem Zeitraum wurde noch kein Angebot angelegt.</p>'}
+      </div>
+      <div class="phasen zwei"><div class="fz"><b>${quote == null ? '–' : quote + ' %'}</b><span>Zusagequote (${zu} zu, ${ab} ab)</span></div><div class="fz"><b>${mitWert.length ? eur0(wert(mitWert) / mitWert.length) : '–'}</b><span>Ø Auftragswert netto</span></div></div>
+      <div class="phasen zwei" style="margin-top:8px"><div class="fz"><b>${eur0(umsatz)}</b><span>Umsatz netto (Rechnungen)</span></div><div class="fz"><b>${eur0(eingang)}</b><span>Zahlungseingang</span></div></div>
+      <div class="phasen zwei" style="margin-top:8px"><div class="fz ${ueberR.length ? 'rot' : ''}"><b>${eur0(sum(offenR))}</b><span>Offen bei Kunden${ueberR.length ? `, davon ${eur0(sum(ueberR))} überfällig` : ''}</span></div><div class="fz"><b>${sollSum ? Math.round((margeSum / sollSum) * 100) + ' %' : '–'}</b><span>Marge Ø (${marge.length} ${marge.length === 1 ? 'Projekt' : 'Projekte'})</span></div></div>
+      ${jahr && umsatz ? `<div class="card aw"><b class="aw-h">Umsatz je Monat ${jahr}</b><div class="aw-m">${monate.map((v, m) => `<div title="${eur0(v)}"><i class="${v ? '' : 'leer'}" style="--h:${Math.round((v / maxM) * 100)}%"></i>${['J', 'F', 'M', 'A', 'M', 'J', 'J', 'A', 'S', 'O', 'N', 'D'][m]}</div>`).join('')}</div><p class="hint" style="margin:6px 0 0">Bester Monat: ${eur0(maxM)}</p></div>` : ''}
       ${quellen.length ? `<div class="card aw"><b class="aw-h">Woher kommen die Kunden?</b>${balken(quellen, kunden.filter((k) => k.quelle).length, (q) => { const n = quelleZu(q); return n ? ` <small>· ${n} Auftr.</small>` : ''; })}</div>` : ''}
       ${gruende.length ? `<div class="card aw"><b class="aw-h">Warum abgesagt?</b>${balken(gruende, ab || 1)}</div>` : ''}`;
   }
 
   // ---------- Eigene Seite (Menü › Auswertung) ----------
   async function auswertungView() {
-    header('Auswertung', String(new Date().getFullYear()));
+    const heuer = String(new Date().getFullYear());
+    awJahr ||= heuer;
+    header('Auswertung', awJahr === 'alle' ? 'Gesamter Zeitraum' : awJahr);
     const idx = await projectIndex();
     await Promise.all([laden(), Rechnung.laden()]);
-    const kalk = await Promise.all(idx.filter((x) => Projekt.zugesagt(x.status)).map(async (x) => { const w = await kvGet('wohnung:' + x.id); return w ? { x, k: await kalkulation(w) } : null; }));
+    const daten = (await Promise.all(idx.map(async (x) => { const w = await kvGet('wohnung:' + x.id); return w ? { x, w, k: await kalkulation(w) } : null; }))).filter(Boolean);
     if (state.tab !== 'auswertung') return;
-    main().innerHTML = auswertung(idx, kalk.filter(Boolean), Rechnung.liste()).replace(/^<div class="sec-h">.*?<\/div>/, '')
-      + `<p class="hint">Umsatz zählt die Rechnungen dieses Jahres, Zahlungseingang die bezahlten. Die Marge kommt aus der Kalkulation je Projekt (Angebot gegen Eingangsrechnungen).</p>`;
+    // Jahre, in denen es etwas gibt (Projekte oder Rechnungen), dazu „Alles“
+    const jahre = [...new Set([heuer, ...daten.map((e) => String(new Date(e.w.created || Date.now()).getFullYear())), ...Rechnung.liste().map((r) => (r.datum || '').slice(0, 4)).filter(Boolean)])].sort().reverse().slice(0, 4);
+    main().innerHTML = `<div class="seg2 full aw-jahr" style="grid-template-columns:repeat(${jahre.length + 1},1fr)">${[...jahre.map((j) => [j, j]), ['alle', 'Alles']].map(([id, n]) => `<button data-awj="${id}" class="${awJahr === id ? 'on' : ''}">${n}</button>`).join('')}</div>`
+      + auswertung(daten, Rechnung.liste(), awJahr === 'alle' ? '' : awJahr)
+      + `<p class="hint">Angebote zählen nach dem Jahr, in dem sie angelegt wurden, Umsatz nach Rechnungsdatum, Zahlungseingang nach Zahltag. Die Werte der Angebote sind die Netto-Summen der Positionen. Die Marge kommt aus der Kalkulation je Projekt (Angebot gegen Eingangsrechnungen).</p>`;
+    $$('[data-awj]').forEach((b) => (b.onclick = () => { awJahr = b.dataset.awj; auswertungView(); }));
   }
 
   // ---------- Übersicht ----------

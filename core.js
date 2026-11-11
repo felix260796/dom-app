@@ -50,58 +50,138 @@ const loeschFrage = (text) => confirm(text) && confirm('Bist du sicher? Das läs
 // Dann erscheint dieses Fenster: Ansehen, Senden oder Schließen. Gesendet wird nur, wenn du „Senden“ tippst.
 function pdfVorschau(files, gespeichert = false) {
   return new Promise((res) => {
-    const urls = files.map((f) => URL.createObjectURL(f));
     const bg = document.createElement('div');
     bg.className = 'sheet-bg on pdfv';
     bg.innerHTML = `<div class="sheet"><div class="sheet-h"><b>${gespeichert ? 'Gespeichert beim Auftrag' : 'Dokument fertig'}</b></div>
-      <div class="pdfv-zoom"><button type="button" class="icon-btn" data-vz="-1" aria-label="Kleiner">−</button><span data-vzt>100 %</span><button type="button" class="icon-btn" data-vz="1" aria-label="Größer">+</button><span class="hint">oder mit zwei Fingern</span></div>
-      <div class="pdfv-b"><div class="pdfv-in"><iframe src="${urls[0]}#view=FitH" title="Vorschau"></iframe></div></div>
-      <div class="pdfv-l">${files.map((f, i) => `<button type="button" class="doc" data-pv="${i}"><span class="d-ico navy">${icon('file')}</span><span class="d-t"><b>${esc(f.name)}</b><span>Ansehen in voller Größe</span></span>${icon('chevron', 'pc-chev')}</button>`).join('')}</div>
+      <button type="button" class="pdfv-b" data-pv="0" aria-label="Groß ansehen"><div class="pdfv-in"><p class="hint center">Vorschau wird geladen …</p></div></button>
+      <div class="pdfv-l">${files.map((f, i) => `<button type="button" class="doc" data-pv="${i}"><span class="d-ico navy">${icon('search')}</span><span class="d-t"><b>${esc(f.name)}</b><span>Groß ansehen und zoomen</span></span>${icon('chevron', 'pc-chev')}</button>`).join('')}</div>
       <button class="btn big block" data-ok>${icon('mail')} Senden (Mail, WhatsApp …)</button>
       <button class="btn secondary block" data-zu style="margin-top:8px">${gespeichert ? 'Schließen, später senden' : 'Schließen'}</button>
       ${gespeichert ? '<p class="hint center" style="margin:8px 0 0">Du findest es jederzeit im Auftrag unter „Dokumente“.</p>' : ''}</div>`;
     document.body.appendChild(bg);
-    zoomFrei(true);
-    const ende = (ok) => { bg.remove(); zoomFrei(false); setTimeout(() => urls.forEach((u) => URL.revokeObjectURL(u)), 60000); res(ok); };
+    const ende = (ok) => { bg.remove(); res(ok); };
     $$('[data-pv]', bg).forEach((b) => (b.onclick = () => pdfAnsicht(files[+b.dataset.pv], files[+b.dataset.pv].name)));
-    let z = 1;
-    $$('[data-vz]', bg).forEach((b) => (b.onclick = () => {
-      z = Math.min(4, Math.max(1, z + (+b.dataset.vz) * 0.5));
-      const inn = $('.pdfv-in', bg); inn.style.width = z * 100 + '%'; $('iframe', inn).style.height = `calc(52vh * ${z})`;
-      $('[data-vzt]', bg).textContent = Math.round(z * 100) + ' %';
-    }));
+    // kleine Vorschau: die ersten Seiten als Bild (Antippen öffnet die große Ansicht mit Zoom)
+    const inn = $('.pdfv-in', bg);
+    pdfSeiten(files[0], inn, { breite: Math.min(innerWidth, 560) - 28, max: 3 }).catch(() => { inn.innerHTML = '<p class="hint center">Antippen zum Ansehen</p>'; });
     $('[data-ok]', bg).onclick = () => ende(true);
     $('[data-zu]', bg).onclick = () => ende(false);
   });
 }
 // ---------- Dokument ansehen mit Zoom (Wunsch Felix) ----------
-// In der App ist Zoomen aus. Solange ein Dokument offen ist, geht Zwei-Finger-Zoom, dazu die Knöpfe − und +.
-let zoomOffen = 0;
-function zoomFrei(an) {
-  zoomOffen = Math.max(0, zoomOffen + (an ? 1 : -1));
-  const m = document.querySelector('meta[name="viewport"]');
-  if (m) m.content = zoomOffen ? 'width=device-width, initial-scale=1, maximum-scale=6, user-scalable=yes, viewport-fit=cover' : 'width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover';
+// PDFs werden mit PDF.js (vendor/pdfjs) Seite für Seite als Bild gezeichnet. So geht das Zoomen überall gleich,
+// auch in der iPhone-App: Knöpfe − und +, zwei Finger oder Doppeltipp. (Ein PDF im iframe zeigt auf dem iPhone
+// nur die erste Seite und lässt sich nicht zoomen, „neues Fenster“ gibt es in der App nicht.)
+let pdfjsLaden;
+function pdfjs() {
+  if (window.pdfjsLib) return Promise.resolve(window.pdfjsLib);
+  return (pdfjsLaden ||= new Promise((res, rej) => {
+    const s = document.createElement('script'); s.src = 'vendor/pdfjs/pdf.min.js';
+    s.onload = () => { window.pdfjsLib.GlobalWorkerOptions.workerSrc = 'vendor/pdfjs/pdf.worker.min.js'; res(window.pdfjsLib); };
+    s.onerror = () => { pdfjsLaden = null; rej(new Error('PDF-Anzeige konnte nicht geladen werden')); };
+    document.head.appendChild(s);
+  }));
 }
-/** Vollbild-Ansicht für ein PDF oder Bild (Blob, File oder data:-URL). Zoom per Knopf und mit zwei Fingern. */
+/** Zeichnet die Seiten eines PDFs als Bilder in ein Element. breite = Breite in CSS-Pixeln, max = höchstens so viele Seiten.
+ * Gibt { neu(breite) } zurück, um nach dem Zoomen schärfer nachzuzeichnen. */
+async function pdfSeiten(blob, ziel, { breite, max = 0 } = {}) {
+  const lib = await pdfjs();
+  const doc = await lib.getDocument({ data: new Uint8Array(await blob.arrayBuffer()) }).promise;
+  const n = max ? Math.min(max, doc.numPages) : doc.numPages;
+  ziel.innerHTML = '';
+  const cs = [];
+  for (let i = 1; i <= n; i++) { const c = document.createElement('canvas'); c.className = 'pdf-seite'; ziel.appendChild(c); cs.push(c); }
+  let lauf = 0;
+  const zeichne = async (b) => {
+    const mein = ++lauf;
+    const dpr = Math.min(window.devicePixelRatio || 1, 3);
+    for (let i = 0; i < n; i++) {
+      const page = await doc.getPage(i + 1);
+      if (mein !== lauf || !ziel.isConnected) return;
+      const v1 = page.getViewport({ scale: 1 });
+      // Schärfe begrenzen: iPhone verträgt je Bild höchstens rund 16 Millionen Punkte
+      const s = Math.min((b * dpr) / v1.width, Math.sqrt(12e6 / (v1.width * v1.height)));
+      const vp = page.getViewport({ scale: s });
+      const tmp = document.createElement('canvas');
+      tmp.width = Math.round(vp.width); tmp.height = Math.round(vp.height);
+      await page.render({ canvasContext: tmp.getContext('2d'), viewport: vp }).promise;
+      if (mein !== lauf) return;
+      const c = cs[i]; c.width = tmp.width; c.height = tmp.height; c.getContext('2d').drawImage(tmp, 0, 0);
+    }
+  };
+  await zeichne(breite);
+  return { neu: zeichne, seiten: doc.numPages };
+}
+/** Vollbild-Ansicht für ein PDF oder Bild (Blob, File oder data:-URL). Zoom per Knopf, mit zwei Fingern oder Doppeltipp. */
 async function pdfAnsicht(quelle, name = 'Dokument') {
   const blob = typeof quelle === 'string' ? await (await fetch(quelle)).blob() : quelle;
   const bild = /^image\//.test(blob.type);
   const url = URL.createObjectURL(blob);
-  let z = 1;
+  let z = 1, seiten = null;
   const bg = document.createElement('div');
   bg.className = 'pdfz';
   bg.innerHTML = `<div class="pdfz-h"><b>${esc(String(name).replace(/\.pdf$/i, '').replace(/_/g, ' '))}</b>
       <button type="button" class="icon-btn" data-z="-1" aria-label="Kleiner">−</button><span data-zt>100 %</span><button type="button" class="icon-btn" data-z="1" aria-label="Größer">+</button>
       <button type="button" class="icon-btn" data-x aria-label="Schließen">${icon('x')}</button></div>
-    <div class="pdfz-b"><div class="pdfz-in">${bild ? `<img src="${url}" alt="">` : `<iframe src="${url}#view=FitH" title="${esc(name)}"></iframe>`}</div></div>
-    ${bild ? '' : '<button type="button" class="pdfz-voll" data-voll>In eigenem Fenster öffnen</button>'}`;
+    <div class="pdfz-b"><div class="pdfz-in">${bild ? `<img src="${url}" alt="">` : '<p class="pdfz-warte">Dokument wird geladen …</p>'}</div></div>
+    <button type="button" class="pdfz-voll" data-voll>${icon('share')} Teilen oder in anderer App öffnen</button>`;
   document.body.appendChild(bg);
-  zoomFrei(true);
-  // Breiter und im gleichen Maß höher, damit die Seite wirklich größer wird (nicht nur gestaucht)
-  const zeig = () => { const inn = $('.pdfz-in', bg); inn.style.width = z * 100 + '%'; const f = $('iframe', inn); if (f) f.style.height = `calc(var(--voll, 100vh) * 1.6 * ${z})`; $('[data-zt]', bg).textContent = Math.round(z * 100) + ' %'; };
-  $$('[data-z]', bg).forEach((b) => (b.onclick = () => { z = Math.min(4, Math.max(1, z + (+b.dataset.z) * 0.5)); zeig(); }));
-  $('[data-x]', bg).onclick = () => { bg.remove(); zoomFrei(false); setTimeout(() => URL.revokeObjectURL(url), 60000); };
-  if ($('[data-voll]', bg)) $('[data-voll]', bg).onclick = () => { if (!window.open(url, '_blank')) toast('Das Fenster wurde blockiert.'); };
+  const b = $('.pdfz-b', bg), inn = $('.pdfz-in', bg);
+  const schaerfen = debounce(() => seiten?.neu(b.clientWidth * z), 250);
+  /** Zoom setzen; (fx, fy) = Punkt im Fenster, der an seiner Stelle bleiben soll. */
+  const setz = (neu, fx = b.clientWidth / 2, fy = b.clientHeight / 2, scharf = true) => {
+    neu = Math.min(5, Math.max(1, neu));
+    const f = neu / z, x = b.scrollLeft + fx, y = b.scrollTop + fy;
+    z = neu;
+    inn.style.width = z * 100 + '%';
+    b.scrollLeft = x * f - fx; b.scrollTop = y * f - fy;
+    $('[data-zt]', bg).textContent = Math.round(z * 100) + ' %';
+    if (scharf) schaerfen();
+  };
+  $$('[data-z]', bg).forEach((k) => (k.onclick = () => setz(z + (+k.dataset.z) * 0.5)));
+  // Zwei Finger: auseinander = größer, zusammen = kleiner. Doppeltipp: groß und wieder klein.
+  let d0 = 0, z0 = 1, tipp = 0;
+  const abstand = (t) => Math.hypot(t[0].clientX - t[1].clientX, t[0].clientY - t[1].clientY);
+  const mitte = (t) => { const r = b.getBoundingClientRect(); return [(t[0].clientX + t[1].clientX) / 2 - r.left, (t[0].clientY + t[1].clientY) / 2 - r.top]; };
+  b.addEventListener('touchstart', (e) => { if (e.touches.length === 2) { d0 = abstand(e.touches); z0 = z; } }, { passive: true });
+  b.addEventListener('touchmove', (e) => {
+    if (e.touches.length !== 2 || !d0) return;
+    e.preventDefault(); e.stopPropagation();
+    const [fx, fy] = mitte(e.touches);
+    setz(z0 * (abstand(e.touches) / d0), fx, fy, false);
+  }, { passive: false });
+  b.addEventListener('touchend', (e) => {
+    if (d0 && e.touches.length < 2) { d0 = 0; schaerfen(); return; }
+    if (e.touches.length || e.changedTouches.length !== 1) return;
+    const jetzt = Date.now(), t = e.changedTouches[0], r = b.getBoundingClientRect();
+    if (jetzt - tipp < 320) { e.preventDefault(); setz(z > 1.2 ? 1 : 2.5, t.clientX - r.left, t.clientY - r.top); tipp = 0; } else tipp = jetzt;
+  });
+  b.addEventListener('dblclick', (e) => { const r = b.getBoundingClientRect(); setz(z > 1.2 ? 1 : 2.5, e.clientX - r.left, e.clientY - r.top); });
+  $('[data-x]', bg).onclick = () => { bg.remove(); setTimeout(() => URL.revokeObjectURL(url), 60000); };
+  $('[data-voll]', bg).onclick = async () => {
+    const datei = blob instanceof File ? blob : new File([blob], /\.\w{2,4}$/.test(name) ? name : name + (bild ? '.jpg' : '.pdf'), { type: blob.type });
+    const nativ = !!window.Capacitor?.isNativePlatform?.() || navigator.standalone === true;
+    // Am PC: neues Fenster. Auf dem iPhone: Teilen-Menü (dort auch „In Dateien sichern“, Drucken, andere App).
+    if (!nativ && window.open(url, '_blank')) return;
+    try { await navigator.share({ files: [datei], ohneDialog: true }); }
+    catch (e) { if (e.name !== 'AbortError') toast('Teilen ging nicht: ' + (e.message || e), 5000); }
+  };
+  if (!bild) {
+    try { seiten = await pdfSeiten(blob, inn, { breite: b.clientWidth }); }
+    catch (e) {
+      // Ersatz, falls PDF.js nicht lädt (z. B. offline beim ersten Mal): das PDF direkt einbetten
+      console.warn('PDF-Anzeige', e);
+      inn.innerHTML = `<iframe src="${url}#view=FitH" title="${esc(name)}"></iframe>`;
+    }
+  }
+}
+/** Telefon-Link zum Anrufen: immer mit Ländervorwahl (Vorgabe „telVorwahl“, Standard +49). Aus 0711 123 wird +49711123. */
+function telLink(t) {
+  let n = String(t || '').replace(/[^\d+]/g, '');
+  const vw = String((typeof vorgabe === 'function' ? vorgabe('telVorwahl') : '') || '+49').replace(/[^\d+]/g, '') || '+49';
+  if (n.startsWith('00')) n = '+' + n.slice(2);
+  else if (n.startsWith('0')) n = vw + n.slice(1);
+  return 'tel:' + n;
 }
 
 // ---------- Listen in den Einstellungen: jeder Eintrag ein eigenes Feld (Wunsch Felix) ----------
@@ -154,10 +234,37 @@ async function dokMerken(files) {
     } });
   } catch (e) { console.warn('Vorschau nicht möglich', e); }
 })();
-// Zoomen aus (Wunsch Felix): Zwei-Finger-Zoom und Doppeltipp-Zoom auf dem iPhone verhindern
-// Ausnahme: Solange ein Dokument offen ist (pdfAnsicht, Vorschau), darf gezoomt werden.
-document.addEventListener('gesturestart', (e) => { if (!zoomOffen) e.preventDefault(); }, { passive: false });
-document.addEventListener('touchmove', (e) => { if (!zoomOffen && e.touches && e.touches.length > 1) e.preventDefault(); }, { passive: false });
+// Zoomen aus (Wunsch Felix): Zwei-Finger-Zoom und Doppeltipp-Zoom auf dem iPhone verhindern.
+// Dokumente und Bilder zoomen in ihrer eigenen Ansicht (pdfAnsicht), nicht über die ganze Seite.
+document.addEventListener('gesturestart', (e) => e.preventDefault(), { passive: false });
+document.addEventListener('touchmove', (e) => { if (e.touches && e.touches.length > 1) e.preventDefault(); }, { passive: false });
+
+// ---------- Zurück an dieselbe Stelle (Wunsch Felix) ----------
+// Bei jedem Tipp merkt sich die App, wie weit die aktuelle Seite gescrollt ist (Seite = Reiter + Titel + Untertitel).
+// Nach „Zurück“ (Knopf oben links) springt sie auf der Seite davor wieder genau dorthin statt nach ganz oben.
+(() => {
+  const stellen = new Map();
+  let zurueck = 0;
+  const seite = () => `${typeof state === 'object' ? state.tab : ''}|${$('#title')?.textContent || ''}|${$('#subtitle')?.hidden ? '' : $('#subtitle')?.textContent || ''}`;
+  document.addEventListener('click', (e) => {
+    stellen.set(seite(), window.scrollY);
+    zurueck = e.target.closest?.('#topback, #aBack, #vBack, #soBack, [data-zurueck]') ? Date.now() : 0;
+  }, true);
+  const lass = () => { zurueck = 0; };
+  addEventListener('touchstart', lass, { passive: true }); addEventListener('wheel', lass, { passive: true });
+  document.addEventListener('DOMContentLoaded', () => {
+    const m = document.getElementById('main');
+    if (!m) return;
+    new MutationObserver(() => {
+      if (!zurueck || Date.now() - zurueck > 3000) return;
+      const y = stellen.get(seite());
+      if (!y) return;
+      requestAnimationFrame(() => { if (zurueck && Math.abs(window.scrollY - y) > 2) window.scrollTo(0, y); });
+    }).observe(m, { childList: true, subtree: true });
+  });
+})();
+// Suchfelder: „Suchen“/Enter auf der Tastatur schließt die Tastatur (Wunsch Felix). Die Treffer stehen schon beim Tippen da.
+document.addEventListener('keydown', (e) => { if (e.key === 'Enter' && e.target.matches?.('input[type="search"]')) { e.preventDefault(); e.target.blur(); } });
 const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
 const main = () => $('#main');
 
