@@ -19,6 +19,10 @@ Angebotsablauf Schritt 1 „Vor Ort“: Karte „Vor Ort aufnehmen“ (`Gespraec
 Per Sprache anlegen: Auf der Prüfseite per Sprache oder Text korrigieren (`korrigieren` in `sprache.js`).
 Handler wie `onkeydown = (e) => bedingung && tu()` sind verboten: Rückgabe `false` blockiert jede Taste (so war „Ordner benennen“ kaputt).
 
+## Neuerungen aus Version 84
+
+Mitdenken vor Ort und Angebotsentwurf: `vorort.js` (`VorOrt`). „Was fehlt noch?“ in Schritt 1 (`VorOrt.karte/bind`, Fragen in `w.vorOrt.fragen`, eigene Notizen `w.vorOrt.notiz`, startet nach jeder Aufnahme über `VorOrt.nachAufnahme` aus `voice.js`). „Angebotsentwurf erstellen“ in Schritt 2 (`bueroKarte/bueroBind`): Die KI schlägt je Bereich Positionen vor, Mengen aus dem Aufmaß (`mengeAus`), Prüfseite, erst „übernehmen“ schreibt in `r.angebot.positionen` (Kennzeichen `x.ki = { sicher, partner, grund }`). Bereiche ohne Raum werden als Raumtyp `sonstiges` angelegt („Leistungen“, „Allgemein“). Offenes in `w.entwurf.offen`. Vorgaben: `vorortAuto`, `vorortFragenMax`, `vorortPruefliste`, `vorortFotos`, `entwurfFotos`, `entwurfHinweise`, Prompts `promptVorOrt`, `promptEntwurf`. Nicht auf Bäder beschränken.
+
 ## Neuerungen aus Version 85
 
 Dokumente ansehen: `pdfAnsicht` in `core.js` zeichnet PDFs mit PDF.js (`vendor/pdfjs`, wird erst beim Öffnen geladen) Seite für Seite als Bild; Zoom per Knopf, zwei Finger, Doppeltipp. Kein iframe und kein „neues Fenster“ mehr (geht in der iPhone-App nicht), stattdessen Teilen-Menü. Die Seite selbst zoomt nie.
@@ -35,6 +39,15 @@ Schutz vor versehentlichem Ändern: `textSchutz` in `core.js` läuft von selbst 
 Reihenfolge ändern: keine Pfeile mehr, sondern Griff `griffHtml()` und `ziehbar(box, zeilenSelektor, (von, nach) => …)` in `core.js` (Listen in den Einstellungen, Textfelder im Angebot).
 Kunde: weitere Nummern und E-Mails über das kleine Plus (`Kontakt.mehrLabel/mehrBinden`, Daten in `k.weitere`, Bezeichnungen Vorgaben `telArten`/`mailArten`). Schnellübersicht `historie(k, idx)` in `kunden.js`: Angebots-, Projekt-, Rechnungshistorie; abgesagte Angebote mit Grund (`w.absage = { grund, t }`) und PDF (`angpdf:<id>` bzw. `w.dokumente`). Auswertung: Karte „Abgesagte Angebote“ (`data-awab`).
 Route: `routeLink(adresse)` in `core.js` (Vorgabe `routeKarte`), jedes Anschriftfeld `.adr` bekommt von selbst ein Routen-Zeichen (`routeZeichen`), Schnellknopf „Route“ in `Kontakt.aktionen`.
+
+## Neuerungen aus Version 89 (Angebotsablauf)
+
+Angebotsablauf (bis zur Zusage) hat drei Reiter statt vier Schritten: Vor Ort, Büro, Angebote (`REITER`, `reiterVon/reiterSetzen`, `vorOrtTab`, `bueroTab`, `angeboteTab` in `projekt.js`). Jeder Reiter ist eine eigene Seite. Felix will das genau so, nicht wieder zu einer langen Seite zusammenlegen.
+Vor Ort: einzelne Punkte, nicht eine Karte: Gespräch (`Gespraech.karte(w, list, { einzeln: true })`), Fotos (`Bilder.fotosMachen`), Plan scannen, Raum scannen, „Was fehlt noch?“. Visualisieren und Moodboard unten als Zusatz. Baumappe und Kundenmappe sind im Angebot vorerst weg (Felix später daran erinnern).
+Büro: „Was wird angeboten?“ mit „Neu“ (`angebotsRaum`: Kleinigkeit = Raumtyp `sonstiges`, einzelner Raum, ganze Wohnung/ganzes Haus mit `raeumeWaehlen`, gescannte Räume aus `w.vorOrt.scans` oben, `r.scanId`). Zeile nach links wischen löscht (`wischen`, `raumLoeschen`). Nummer, Betreff, Anrede, Ansprechpartner, Aufschläge gelten fürs ganze Angebot (`bueroFelder`); im Angebot eines Raums gibt es dafür nur noch „Fertig“ (`ausPrj` in `angebotTabelle`).
+Texte: `bausteine.js` (`Bausteine.block/bind`), aufklappbare Blöcke Anfangstexte und Schlusstexte zum Anhaken (`b.aus`), feste Zusätze Gruß mit Unterschrift und Auftragserteilung (`w.angebotOpt`, Vorgaben `angebotGruss`, `angebotAuftragsfeld`). Gleiches Muster ist für Rechnungen gedacht. Unterschrift im PDF über `window.Unterschrift?.pdf` (kommt aus dem Rechnungs-Thread).
+Preisliste im Angebot wählbar (`plWahl` in `angebotTabelle`): allgemeine oder die eines Partners, Partnerpreise ohne Zuschlag (`x.sub.zuschlag = 0`, `x.sub.key`). Vorgabe `subZuschlag` steht auf 0.
+Angebote: Stand Entwurf/Versendet/Abgesagt, frühere Fassungen aus `w.angebotArchiv` („überarbeitet“). Zugesagt → `zusage` → `auftragsbestaetigung` (`baueAngebotPdf(p, { art: 'ab' })`, Eintrag in `w.dokumente` mit `art: 'auftragsbestaetigung'`, `w.auftragsbestaetigung = { t, nr, dokId, gesendetAm }`, Vorgaben `abEinleitung`, `abSchluss`). Abgesagt: `w.absage = { grund, t }`, das PDF bleibt in `w.dokumente` (`pdfInDokumente`).
 
 ## Bereiche
 
