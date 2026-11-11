@@ -8,6 +8,10 @@
 # passiert. Darum schaltet sich dieser Workflow jeden Tag selbst neu ein (und den
 # iPhone-Bau gleich mit), das setzt die Frist zurück. Es ist nichts von Hand nötig.
 #
+# Außerdem prüft er jeden Tag von außen, ob ein Fremder ohne Passwort an Daten,
+# Mails oder Mitteilungen kommt (Registrierung aus, Speicher privat, Funktionen
+# abgewiesen). Ist etwas offen, wird der Lauf rot und GitHub schickt eine Mail.
+#
 # Von Hand starten: Actions > "Supabase wach halten" > "Run workflow".
 
 name: Supabase wach halten
@@ -23,7 +27,7 @@ permissions:
 jobs:
   anpingen:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 8
     env:
       # Öffentliche Werte, stehen auch in sync.js (kein Geheimnis).
       SB_URL: https://flqjnhetnqdcgskjsgkv.supabase.co
@@ -55,3 +59,52 @@ jobs:
             "$SB_URL/auth/v1/health" -H "apikey: $SB_KEY")
           echo "Auth-Health: $code"
           [ "$code" = "200" ] || { echo "::error::Auth antwortet mit $code"; exit 1; }
+
+      # Täglicher Sicherheits-Check von außen, so wie ein Fremder ohne Passwort es versuchen würde.
+      # Schlägt etwas fehl, wird der Lauf rot und GitHub schickt Felix eine Mail ("Run failed").
+      # Es wird nichts angelegt, verschickt oder geändert: Alle Aufrufe sollen abgewiesen werden.
+      - name: Sicherheits-Check (darf ein Fremder etwas?)
+        run: |
+          fehler=0
+          rot() { echo "::error::$1"; fehler=1; }
+          ok() { echo "OK: $1"; }
+
+          # 1) Registrierung neuer Benutzer und anonyme Anmeldung müssen aus sein
+          curl -sS --retry 3 --retry-delay 10 "$SB_URL/auth/v1/settings" -H "apikey: $SB_KEY" -o auth.json
+          signup=$(jq -r '.disable_signup' auth.json); anonym=$(jq -r '.external.anonymous_users // false' auth.json)
+          [ "$signup" = "true" ] && ok "Registrierung neuer Benutzer ist aus" \
+            || rot "Jeder kann sich ein Konto anlegen und dann alle Firmendaten sehen. Supabase > Authentication > Sign In / Providers > 'Allow new users to sign up' ausschalten."
+          [ "$anonym" = "false" ] && ok "Anonyme Anmeldung ist aus" \
+            || rot "Anonyme Anmeldung ist an. Supabase > Authentication > Sign In / Providers > 'Allow anonymous sign-ins' ausschalten."
+
+          # 2) Ohne Anmeldung keine Dateien sehen
+          liste=$(curl -sS -X POST "$SB_URL/storage/v1/object/list/dom" -H "apikey: $SB_KEY" -H "Content-Type: application/json" -d '{"prefix":"team","limit":5}')
+          [ "$(echo "$liste" | jq -r 'if type=="array" then length else 0 end')" = "0" ] && ok "Firmenspeicher ohne Anmeldung leer" \
+            || rot "Ohne Anmeldung sind Dateien im Firmenspeicher sichtbar. Zugriffsregeln (Storage > Policies) prüfen."
+          code=$(curl -sS -o /dev/null -w '%{http_code}' "$SB_URL/storage/v1/object/public/dom/team/projectIndex.json")
+          [ "$code" != "200" ] && ok "Speicher 'dom' ist nicht öffentlich ($code)" \
+            || rot "Der Speicher 'dom' ist öffentlich lesbar. Supabase > Storage > dom > Edit bucket > 'Public bucket' ausschalten."
+
+          # 3) Mail- und Mitteilungs-Funktion lassen Fremde nicht ran (ohne Anmeldung, ohne Cron-Passwort)
+          for f in termin-mail push; do
+            for body in '{"aktion":"test","an":[]}' '{"aktion":"erinnerungen"}' '{"aktion":"lauf"}'; do
+              code=$(curl -sS -o antwort.txt -w '%{http_code}' -X POST "$SB_URL/functions/v1/$f" -H "apikey: $SB_KEY" -H "Content-Type: application/json" -d "$body")
+              case "$code" in
+                401|403) ok "$f $body abgewiesen ($code)";;
+                404) echo "Hinweis: Funktion $f nicht gefunden (404)";;
+                *) rot "$f nimmt ohne Anmeldung $body an (Code $code): $(head -c 200 antwort.txt)";;
+              esac
+            done
+          done
+
+          # 4) Datenbank-Tabellen, die der öffentliche Schlüssel sieht (die App braucht keine)
+          code=$(curl -sS -o rest.json -w '%{http_code}' "$SB_URL/rest/v1/" -H "apikey: $SB_KEY")
+          if [ "$code" = "200" ]; then
+            t=$(jq -r '(.paths // {}) | keys[] | select(. != "/")' rest.json 2>/dev/null | tr '\n' ' ')
+            [ -z "$t" ] && ok "Keine Tabellen öffentlich sichtbar" \
+              || echo "::warning::Tabellen über die öffentliche Schnittstelle sichtbar: $t. In Supabase > Advisors > Security Advisor prüfen, ob RLS an ist."
+          else
+            ok "Tabellenübersicht ohne Anmeldung gesperrt ($code)"
+          fi
+
+          exit $fehler
