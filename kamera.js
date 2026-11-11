@@ -2,7 +2,8 @@
 /* DOM – Kamera oben in der Kopfzeile (neben Kalender und Mikrofon).
  * Foto machen → die KI erkennt, ob es eine Rechnung, ein anderes Dokument oder ein normales Foto ist.
  * Dokumente werden wie gescannt aufbereitet (gerade, hell, gut lesbar). Danach fragt die App, wohin es gehört:
- * Eingangsrechnung (finanzen.js), zu einem Kunden in „Bilder & Dokumentation“ (bilder.js). */
+ * Eingangsrechnung (finanzen.js), zu einem Kunden in „Bilder & Dokumentation“ (bilder.js).
+ * In der iPhone-App: Apples Dokumentenscanner (Geraet.scannen) und über „Teilen“ geschickte Dateien (ausDatei). */
 window.Kamera = (() => {
   /** Dokument-Look: Graustufen, mehr Kontrast, helles Papier. */
   async function scan(data) {
@@ -42,7 +43,7 @@ window.Kamera = (() => {
       .map((x) => [x, treffer(x)]).sort((p, q) => q[1] - p[1] || (q[0].updated || 0) - (p[0].updated || 0));
   }
   /** Partner-Angebot: Auftrag und Raum wählen, dann die Positionen mit Zuschlag ins eigene Angebot übernehmen. */
-  async function insAngebot(data, e) {
+  async function insAngebot(data, e, mime = 'image/jpeg') {
     const k = kundeZu(e.kunde);
     const kand = await auftraegeZu(e, k, ['besichtigung', 'entwurf']);
     if (!kand.length) return toast('Gerade ist kein Angebot in Arbeit. Lege zuerst unter „Aufträge“ eine Anfrage an.', 5000);
@@ -61,18 +62,43 @@ window.Kamera = (() => {
     Object.assign(r, { customer: w.customer, address: w.address, kundeId: w.kundeId, projektNr: w.nr || '' });
     state.project = r; state.angebotAusProjekt = true;
     await Angebot.ansicht(r);
-    await Angebot._intern.subUebernehmen(r, () => { saveProject(r); Angebot.ansicht(r, false); }, { data, mime: 'image/jpeg', partnerId: partnerZu(e.firma)?.id || '' });
+    await Angebot._intern.subUebernehmen(r, () => { saveProject(r); Angebot.ansicht(r, false); }, { data, mime, partnerId: partnerZu(e.firma)?.id || '' });
   }
 
   async function start() {
+    // In der iPhone-App mit eingeschaltetem Scanner (geraet.js): erst fragen, ob Dokument oder Foto
+    if (window.Geraet?.kann('scanner')) {
+      const w = await sheet('Kamera', [
+        { label: 'Dokument scannen', sub: 'Rechnung, Angebot, Brief: Ränder und mehrere Seiten erkennt das iPhone', icon: icon('file'), value: 'scan' },
+        { label: 'Foto aufnehmen', sub: 'Raum, Baustelle, Gegenstand', icon: icon('camera'), value: 'foto' },
+      ]);
+      if (!w) return;
+      if (w === 'scan') { const data = await Geraet.scannen(); if (data) await verarbeiten(data, { gescannt: true }); return; }
+    }
     const [f] = await pickFiles({ camera: true, accept: 'image/*' });
     if (!f) return;
+    return verarbeiten(await resize(await fileToDataUrl(f), 2000, 'image/jpeg', 0.85));
+  }
+
+  /** Über „Teilen“ an DOM geschickte Datei (geraet.js): Bilder wie ein Foto, PDFs als Rechnung oder Partner-Angebot. */
+  async function ausDatei({ data, mime = '', name = '' }) {
+    if (mime.startsWith('image/')) return verarbeiten(await resize(data, 2000, 'image/jpeg', 0.85));
+    if (mime !== 'application/pdf') return toast('Diese Datei kann DOM nicht öffnen. Geht: PDF und Bilder.', 5000);
+    const wohin = await sheet(`Geteilt: ${name || 'PDF'}`, [
+      { label: 'Als Eingangsrechnung erfassen', sub: 'Die KI liest Betrag, Datum und Absender aus', icon: icon('euro'), value: 'rechnung' },
+      { label: 'Positionen in ein Angebot übernehmen', sub: 'Angebot eines Partners, mit deinem Zuschlag', icon: icon('wrench'), value: 'angebot' },
+    ]);
+    if (wohin === 'rechnung') { switchTab('rechnungen'); return Finanzen.ausBild(data, () => switchTab('rechnungen'), 'application/pdf', name); }
+    if (wohin === 'angebot') return insAngebot(data, {}, 'application/pdf');
+  }
+
+  async function verarbeiten(data, { gescannt = false } = {}) {
     toast('Bild wird angesehen …', 15000);
-    let data = await resize(await fileToDataUrl(f), 2000, 'image/jpeg', 0.85);
     const e = await erkennen(data);
     $('#toast').hidden = true;
+    if (gescannt && !['rechnung', 'angebot'].includes(e.art)) e.art = 'dokument';
     const doc = ['rechnung', 'dokument', 'angebot'].includes(e.art);
-    if (doc) data = await scan(data);
+    if (doc && !gescannt) data = await scan(data);
     const vorschlag = kundeZu(e.kunde);
     // Passende offene Aufträge des erkannten Kunden (oder der Anschrift) gleich als Ziel anbieten
     const zuAuftrag = vorschlag || e.adresse ? (await auftraegeZu(e, vorschlag)).filter(([, t]) => t > 0).slice(0, 2).map(([x]) => x) : [];
@@ -108,5 +134,5 @@ window.Kamera = (() => {
     toast(`In „${o.name}“ bei ${Kunden.name(k) || 'Kunde'} gespeichert`, 4000);
     zurueck();
   }
-  return { start, scan };
+  return { start, scan, ausDatei };
 })();

@@ -20,6 +20,7 @@ const EINST = [
   ['team', 'Terminmails & Team', 'mail', 'navy', 'Abläufe', 'Personen, Terminmails an Team, Kunde und Subunternehmer, Texte, Erinnerungen'],
   ['bau', 'Baufortschritt', 'check', 'grey', 'Abläufe', 'Vorlagen der Arbeitsschritte je Raumtyp'],
   ['ki', 'KI', 'sparkle', 'navy', 'Technik', 'Schlüssel und Modell für Bilder und Texte'],
+  ['iphone', 'iPhone-Funktionen', 'phone', 'navy', 'Technik', 'Scanner, LiDAR-Aufmaß, Face ID, Kalender, Kontakte, Teilen: je Gerät ein- und ausschalten'],
   ['cloud', 'Cloud-Abgleich', 'refresh', 'brass', 'Technik', 'Anmelden, Abgleich mit dem Kollegen'],
   ['sicherung', 'Datensicherung', 'download', 'grey', 'Technik', 'Excel-Sicherung aller Daten, Sicherung als Datei'],
 ];

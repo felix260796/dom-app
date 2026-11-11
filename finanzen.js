@@ -379,7 +379,7 @@ Datum als JJJJ-MM-TT. faellig = Fälligkeitsdatum, falls angegeben (oder Datum +
     if (b._daten && b.isNew && state.settings.apiKey) ki();
   }
   /** Eingangsrechnung aus einem fertigen Bild anlegen (Kamera oben in der Kopfzeile). */
-  function ausBild(data, fertig) { const b = neu(); b._daten = data; b.datei = { typ: 'image/jpeg', name: 'Rechnung (Kamera)' }; return erfassen(b, fertig); }
+  function ausBild(data, fertig, typ = 'image/jpeg', name = 'Rechnung (Kamera)') { const b = neu(); b._daten = data; b.datei = { typ, name }; return erfassen(b, fertig); }
 
   // ---------- Abschnitt im Projekt: Kosten & Kalkulation ----------
   async function projektAbschnitt(el, w) {

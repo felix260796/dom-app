@@ -25,6 +25,10 @@ window.Heute = (() => {
     // Termine
     const termine = (window.Kalender?.eintraege(h, morgen) || []).filter((t) => t.typ === 'termin' || t.art?.startsWith('geb')).sort((a, b) => (a.datum + (a.von || '')).localeCompare(b.datum + (b.von || '')));
     block('Termine heute und morgen', termine.map((t) => zeile(`kal:${t.datum}`, t.art?.startsWith('geb') ? 'cake' : 'calendar', t.titel || 'Termin', `${t.datum === h ? 'Heute' : 'Morgen'}${t.ganztag || !t.von ? '' : `, ${t.von} Uhr`}${t.ort ? ' · ' + t.ort : ''}`)));
+    // Route für heute: noch anstehende Termine mit Ort in zeitlicher Reihenfolge (Vorgabe 'routeKarte')
+    const jetzt = new Date().toTimeString().slice(0, 5);
+    const stopps = termine.filter((t) => t.typ === 'termin' && t.datum === h && String(t.ort || '').trim() && (t.ganztag || !t.von || (t.bis || t.von) >= jetzt));
+    if (stopps.length) bloecke.push(`<button class="btn secondary block" id="hRoute" style="margin-top:8px">${icon('map')} Route für heute (${stopps.length} ${stopps.length === 1 ? 'Termin' : 'Termine'})</button>`);
     // Nachfassen
     const nachf = idx.filter((x) => Projekt.norm(x.status) === 'angebot' && Projekt.seitTagen(x.versendetAm) >= Projekt.nachfassen());
     block('Angebote nachfassen', nachf
@@ -55,6 +59,16 @@ window.Heute = (() => {
     window.Push?.badge(termine.filter((t) => t.datum === h && t.typ === 'termin').length + nachf.length + geld.length + bau.length + fdok.length);
     main().innerHTML = (bloecke.join('') || `<div class="empty-state">${icon('check')}<b>Heute ist nichts offen</b><span>Termine, Nachfassen, Rechnungen und Baustellen erscheinen hier, sobald etwas ansteht.</span></div>`);
     $$('[data-hz]').forEach((b) => (b.onclick = () => oeffnen(b.dataset.hz)));
+    if ($('#hRoute')) $('#hRoute').onclick = () => route(stopps.map((t) => String(t.ort).split(/\s*\n\s*/).join(', ').trim()));
+  }
+
+  /** Öffnet die Navigation: Google Maps mit allen Stopps (Start = eigener Standort) oder Apple Karten zum nächsten Termin. */
+  function route(orte) {
+    const e = encodeURIComponent;
+    const url = vorgabe('routeKarte') === 'apple'
+      ? `https://maps.apple.com/?daddr=${e(orte[0])}&dirflg=d`
+      : `https://www.google.com/maps/dir/?api=1&travelmode=driving&destination=${e(orte[orte.length - 1])}${orte.length > 1 ? '&waypoints=' + e(orte.slice(0, -1).join('|')) : ''}`;
+    window.open(url, '_blank');
   }
 
   async function oeffnen(z) {

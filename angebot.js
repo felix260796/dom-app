@@ -471,8 +471,10 @@ Gib Länge (längere Seite) und Breite der Grundfläche, Raumhöhe, Anzahl und G
         return `<div class="card" data-raum="${ri}">
         <div class="row" style="align-items:flex-end"><div style="flex:2"><label>Raum</label><input type="text" data-rf="name" value="${esc(r.name)}"></div>
           <div style="flex:2"><label>Raumtyp</label><select data-rf="typ">${typen.map((t) => `<option ${t === r.typ ? 'selected' : ''}>${esc(t)}</option>`).join('')}</select></div></div>
+        ${window.Geraet?.kann('lidar') ? `<button class="btn small block" data-lidar style="margin-top:10px">Raum scannen (LiDAR)</button>` : ''}
         ${p.photos.length ? `<button class="btn small secondary block" data-schaetzen style="margin-top:10px">Maße grob aus den Fotos schätzen (KI)</button>` : ''}
-        ${r.schaetzung ? `<p class="muted" style="color:#9a6a12">Geschätzt aus Fotos${r.schaetzung.genau ? `, ca. ±${Math.round(r.schaetzung.genau)} %` : ''}. Bitte mit dem Meterstab prüfen und korrigieren.${r.schaetzung.text ? `<br><i>${esc(r.schaetzung.text)}</i>` : ''}</p>` : ''}
+        ${r.schaetzung?.quelle === 'lidar' ? `<p class="muted" style="color:#9a6a12">Mit dem LiDAR-Scanner gemessen. Die Grundfläche ist das Rechteck um den Raum, bei L-Form oder Nischen bitte als Teilflächen nachtragen.${r.schaetzung.text ? `<br><i>${esc(r.schaetzung.text)}</i>` : ''}</p>` : ''}
+        ${r.schaetzung && r.schaetzung.quelle !== 'lidar' ? `<p class="muted" style="color:#9a6a12">Geschätzt aus Fotos${r.schaetzung.genau ? `, ca. ±${Math.round(r.schaetzung.genau)} %` : ''}. Bitte mit dem Meterstab prüfen und korrigieren.${r.schaetzung.text ? `<br><i>${esc(r.schaetzung.text)}</i>` : ''}</p>` : ''}
         <h3>Grundfläche</h3>
         ${r.teile.map((t, ti) => `<div class="mrow"><span class="muted">${ti ? 'Teilfl. ' + (ti + 1) : 'Länge × Breite'}</span>${numIn(`data-teil="${ti}" data-k="l"`, t.l, 'Länge')}<span>×</span>${numIn(`data-teil="${ti}" data-k="b"`, t.b, 'Breite')}${ti ? `<button class="x" data-delteil="${ti}" aria-label="Entfernen">✕</button>` : '<span class="x"></span>'}</div>`).join('')}
         <button class="btn small secondary" data-addteil>＋ Teilfläche (L-Form, Nische)</button>
@@ -512,6 +514,19 @@ Gib Länge (längere Seite) und Breite der Grundfläche, Raumhöhe, Anzahl und G
       });
       $$('[data-teil]', card).forEach((el) => (el.oninput = () => { r.teile[+el.dataset.teil][el.dataset.k] = el.value; if (r.schaetzung) r.schaetzung.bearbeitet = true; updSum(ri); persist(p); }));
       $$('[data-oe]', card).forEach((el) => (el.oninput = el.onchange = () => { r.oeff[+el.dataset.oe][el.dataset.k] = el.value; updSum(ri); persist(p); }));
+      const lb = $('[data-lidar]', card);
+      if (lb) lb.onclick = async () => {
+        if (masse(r).boden && !confirm('Eingetragene Maße durch den Scan ersetzen?')) return;
+        try {
+          const m = await Geraet.raumScannen();
+          if (!m) return;
+          const rechteck = m.laenge * m.breite;
+          uebernimmSchaetzung(r, { ...m, genauigkeit_prozent: null,
+            begruendung: m.flaeche > 0 && rechteck > 0 && m.flaeche < rechteck * 0.92 ? `Gescannte Bodenfläche ${fmtNum(m.flaeche, 2)} m², das Rechteck ist ${fmtNum(rechteck, 2)} m². Der Raum ist also nicht rechteckig.` : '' });
+          r.schaetzung.quelle = 'lidar';
+          toast('Maße aus dem Scan übernommen'); rerender();
+        } catch (e) { toast('' + (e.message || e), 6000); }
+      };
       const sb = $('[data-schaetzen]', card);
       if (sb) sb.onclick = async () => {
         if (masse(r).boden && !confirm('Eingetragene Maße durch die KI-Schätzung ersetzen?')) return;

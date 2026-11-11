@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- Wird beim Bau in die Info.plist der iPhone-App übernommen (geraet.js, DomGeraet.swift). -->
+<plist version="1.0">
+<dict>
+	<key>NSFaceIDUsageDescription</key>
+	<string>DOM fragt beim Öffnen nach Face ID, wenn du das in den Einstellungen für dieses Gerät eingeschaltet hast.</string>
+	<key>NSCalendarsFullAccessUsageDescription</key>
+	<string>DOM trägt deine Termine in einen eigenen Kalender „DOM“ auf diesem iPhone ein, wenn du das für dieses Gerät eingeschaltet hast.</string>
+	<key>NSCalendarsUsageDescription</key>
+	<string>DOM trägt deine Termine in einen eigenen Kalender „DOM“ auf diesem iPhone ein, wenn du das für dieses Gerät eingeschaltet hast.</string>
+	<key>NSContactsUsageDescription</key>
+	<string>DOM übernimmt Kunden aus deinen Kontakten und speichert Kunden dort, wenn du das für dieses Gerät eingeschaltet hast.</string>
+	<key>LSSupportsOpeningDocumentsInPlace</key>
+	<false/>
+	<key>CFBundleDocumentTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleTypeName</key>
+			<string>PDF</string>
+			<key>LSHandlerRank</key>
+			<string>Alternate</string>
+			<key>LSItemContentTypes</key>
+			<array>
+				<string>com.adobe.pdf</string>
+			</array>
+		</dict>
+		<dict>
+			<key>CFBundleTypeName</key>
+			<string>Bild</string>
+			<key>LSHandlerRank</key>
+			<string>Alternate</string>
+			<key>LSItemContentTypes</key>
+			<array>
+				<string>public.jpeg</string>
+				<string>public.png</string>
+				<string>public.heic</string>
+			</array>
+		</dict>
+	</array>
+</dict>
+</plist>
