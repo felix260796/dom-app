@@ -4,9 +4,12 @@
  * - Schlussrechnung aus den Raum-Angeboten des Projekts plus Nachträge, abzüglich der Abschläge, mit Lohnanteil (§ 35a)
  * - Nachträge je Projekt (w.nachtraege), zählen auch in der Kalkulation
  * - Zahlungsziel und Fälligkeit, überfällig = rot, Zahlungserinnerung und Mahnungen als PDF zum Senden
- * Speicher: 'rechnung:<id>' { id, kind:'rechnung', projektId, nr, art: 'abschlag'|'schluss', stufe, prozent, titel, zeitraum,
- *   datum, faellig, netto, satz, positionen (nur Schluss: [{raum, text, menge, einheit, ep, gp}]), nachtraege, abzuege, lohn,
- *   bezahlt ('JJJJ-MM-TT' oder ''), mahnungen [{stufe, datum}], notiz, created, updated }
+ * - Ein Weg für jede neue Rechnung (neu): Projekt suchen, Art wählen (Abschlag nach Plan, Abschlag frei, Schlussrechnung,
+ *   ohne Angebot mit eigenen Positionen), Betrag steht schon da. Aus dem Reiter Rechnungen und aus dem Projekt, man bleibt, wo man war.
+ * - Verschickte Rechnungen werden nicht gelöscht, sondern storniert (Stornorechnung mit eigener Nummer, art 'storno').
+ * Speicher: 'rechnung:<id>' { id, kind:'rechnung', projektId, nr, art: 'abschlag'|'schluss'|'storno', artName, stufe, prozent, titel, zeitraum,
+ *   datum, faellig, netto, satz, positionen (nur Schluss: [{raum, text, menge, einheit, ep, gp}]), eigen, nachtraege, abzuege, lohn,
+ *   bezahlt ('JJJJ-MM-TT' oder ''), gesendet, storniert {nr, datum, id}, bezugNr/bezugId (Storno), mahnungen [{stufe, datum}], notiz, created, updated }
  * Nummern fortlaufend je Jahr über 'rechnungZaehler' (R2026-001). Einstellungen: settings.zahlungsziel, settings.abschlagPlan.
  * Baut auf app.js, core.js, projekt.js, kunden.js, angebot.js (summen, preisliste) und finanzen.js auf. */
 window.Rechnung = (() => {
@@ -24,8 +27,12 @@ window.Rechnung = (() => {
   const brutto = (r) => r2(r.netto * (1 + (r.satz ?? 19) / 100));
   /** Zahlbetrag: bei der Schlussrechnung abzüglich der Abschläge. */
   const zahlbetrag = (r) => r2(brutto(r) - (r.abzuege || []).reduce((s, a) => s + a.brutto, 0));
-  const ueberfaellig = (r) => !r.bezahlt && r.faellig && r.faellig < heute();
-  const artName = (r) => (r.art === 'schluss' ? 'Schlussrechnung' : `${r.stufe}. Abschlagsrechnung`);
+  const ueberfaellig = (r) => istOffen(r) && r.faellig && r.faellig < heute();
+  const artName = (r) => r.artName || (r.art === 'storno' ? 'Stornorechnung' : r.art === 'schluss' ? 'Schlussrechnung' : `${r.stufe}. Abschlagsrechnung`);
+  /** Zählt mit (nicht storniert und keine Stornorechnung). */
+  const gilt = (r) => r.art !== 'storno' && !r.storniert;
+  /** Kunde muss noch zahlen. Storniertes gilt als erledigt (beide tragen das Stornodatum unter „bezahlt“, Summen gleichen sich aus). */
+  const istOffen = (r) => !r.bezahlt && gilt(r);
   const MAHN = ['Zahlungserinnerung', '1. Mahnung', '2. Mahnung'];
 
   // ---------- Speicher ----------
@@ -63,54 +70,92 @@ window.Rechnung = (() => {
     return { zeilen, nachtraege, netto, lohn: r2(lohn + nachtraege.reduce((s, n) => s + (n.lohnBetrag ?? (n.lohn ? n.gp : 0)), 0)) };
   }
 
+  // ---------- Stand der Abrechnung eines Projekts ----------
+  const proz = (x) => (+x || 0).toLocaleString('de-DE', { maximumFractionDigits: 1 }) + ' %';
+  /** Was ist schon berechnet, was kommt als Nächstes (Abschlag nach Plan oder Schlussrechnung)? */
+  function stand(w, a, re) {
+    const abschl = re.filter((r) => r.art === 'abschlag' && gilt(r));
+    const schluss = re.find((r) => r.art === 'schluss' && gilt(r));
+    const P = plan(w), stufe = abschl.length + 1;
+    // Der letzte Teil des Plans kommt mit der Schlussrechnung (30 / 40 / 30 = zwei Abschläge, dann Schluss)
+    const planStufe = !!a.netto && stufe <= P.length - 1;
+    const planProzent = planStufe ? +P[stufe - 1] : 0;
+    const planNetto = r2((a.netto * planProzent) / 100);
+    const abschlNetto = r2(abschl.reduce((s, r) => s + r.netto, 0));
+    const berechnet = r2(re.filter(gilt).reduce((s, r) => s + r.netto, 0));
+    const offen = r2(re.filter(istOffen).reduce((s, r) => s + zahlbetrag(r), 0));
+    const vorschlag = schluss ? '' : !a.zeilen.length && !a.netto ? 'Kein Angebot im Projekt: Abschlag mit eigenem Betrag oder Rechnung mit eigenen Positionen.'
+      : planStufe ? `Als Nächstes laut Plan: ${stufe}. Abschlag, ${proz(planProzent)} = ${eur(planNetto)} netto` : 'Als Nächstes: Schlussrechnung';
+    return { abschl, schluss, stufe, planStufe, planProzent, planNetto, abschlNetto, berechnet, offen, vorschlag };
+  }
+
   // ---------- Abschnitt im Projekt ----------
   async function projektAbschnitt(el, w) {
     if (!el) return;
     await laden();
     const a = await auftrag(w);
     if (!el.isConnected) return;
-    const re = fuerProjekt(w.id);
-    const abschl = re.filter((r) => r.art === 'abschlag'), schluss = re.find((r) => r.art === 'schluss');
-    const P = plan(w), naechster = abschl.length + 1;
-    // Abschläge sind aus dem Projekt herausgenommen (Wunsch Felix). Alte Abschlagsrechnungen bleiben sichtbar.
-    const kannAbschlag = false;
-    const offen = re.filter((r) => !r.bezahlt);
-    el.innerHTML = `<div class="sec-h"><h2>Rechnungen an den Kunden</h2>${re.length ? `<span class="count">${re.length}</span>` : ''}</div>
+    const re = fuerProjekt(w.id), st = stand(w, a, re);
+    el.innerHTML = `<div class="sec-h"><h2>Rechnungen</h2>${re.length ? `<span class="count">${re.length}</span>` : ''}</div>
       <div class="card">
-        <div class="kalk-z"><span>Auftragssumme netto</span><b>${eur(a.netto)}</b></div>
-        ${a.nachtraege.length ? `<div class="kalk-z"><span>davon Nachträge</span><b>${eur(a.nachtraege.reduce((s, n) => s + n.gp, 0))}</b></div>` : ''}
-        <div class="kalk-z"><span>Berechnet brutto</span><b>${eur(re.reduce((s, r) => s + brutto(r) - (r.abzuege || []).reduce((t, x) => t + x.brutto, 0), 0))}</b></div>
-        ${offen.length ? `<div class="kalk-z"><span>Noch offen</span><b style="color:#d2691e">${eur(offen.reduce((s, r) => s + zahlbetrag(r), 0))}</b></div>` : ''}
-        ${a.netto ? '' : '<p class="hint" style="margin:6px 0 0">Noch kein Angebot mit Positionen. Rechnungen entstehen aus dem Angebot.</p>'}
+        <div class="kalk-z"><span>Auftragssumme netto${a.nachtraege.length ? ` (mit ${a.nachtraege.length} ${a.nachtraege.length === 1 ? 'Nachtrag' : 'Nachträgen'})` : ''}</span><b>${eur(a.netto)}</b></div>
+        <div class="kalk-z"><span>Schon berechnet netto</span><b>${eur(st.berechnet)}${a.netto ? ` · ${proz((st.berechnet / a.netto) * 100)}` : ''}</b></div>
+        ${st.offen ? `<div class="kalk-z"><span>Kunde zahlt noch</span><b style="color:#d2691e">${eur(st.offen)}</b></div>` : ''}
       </div>
       <div class="plist">${re.map(zeile).join('')}</div>
-      <div class="rbtns">
-        ${kannAbschlag ? `<button class="btn" id="rAb">${icon('plus')} ${naechster}. Abschlag (${P[naechster - 1]} %)</button>` : ''}
-        ${!schluss && a.netto ? `<button class="btn ${kannAbschlag ? 'secondary' : ''}" id="rSchluss">${icon('file')} Schlussrechnung</button>` : ''}
-      </div>
+      ${st.schluss ? '' : `<button class="btn block" id="rNeuP" style="margin-top:8px">${icon('plus')} Rechnung schreiben</button>
+        <p class="hint center">${esc(st.vorschlag)}</p>`}
       <div class="sec-h" style="margin-top:18px"><h2>Nachträge</h2>${w.nachtraege?.length ? `<span class="count">${w.nachtraege.length}</span>` : ''}</div>
       <div class="plist">${(w.nachtraege || []).map((n) => `<button class="pcard" data-nt="${n.id}"><span class="pc-ph">${icon('plus')}</span>
         <span class="pc-t"><b>${esc(n.text || 'Nachtrag')}</b><span class="muted">${esc(String(n.menge).replace('.', ','))} ${esc(n.einheit)} × ${eur(n.ep)}${n.datum ? ' · ' + tag(n.datum) : ''}</span><span class="ang-sum">${eur(r2(n.menge * n.ep))} netto</span></span>${icon('chevron', 'pc-chev')}</button>`).join('')}</div>
-      ${schluss ? '' : `<button class="add-room" id="rNt" style="width:100%;margin-top:8px">${icon('plus')} Nachtrag (Zusatzleistung)</button>`}`;
+      ${st.schluss ? '' : `<button class="add-room" id="rNt" style="width:100%;margin-top:8px">${icon('plus')} Nachtrag (Zusatzleistung)</button>`}`;
     const zurueck = () => Projekt.view();
-    if ($('#rPlanW', el)) $('#rPlanW', el).onchange = async (e) => {
-      if (!e.target.value.trim()) { delete w.abschlagPlan; await Projekt.save(w); toast('Standard-Plan'); return projektAbschnitt(el, w); }
-      const p = planLesen(e.target.value);
-      if (!p) return toast('Die Anteile müssen zusammen 100 % ergeben.', 4000);
-      w.abschlagPlan = p; await Projekt.save(w); toast('Plan für dieses Projekt gespeichert'); projektAbschnitt(el, w);
-    };
-    if ($('#rAb', el)) $('#rAb', el).onclick = () => erstellen(w, 'abschlag', zurueck);
-    if ($('#rSchluss', el)) $('#rSchluss', el).onclick = () => erstellen(w, 'schluss', zurueck);
+    if ($('#rNeuP', el)) $('#rNeuP', el).onclick = () => neu(w, zurueck);
     if ($('#rNt', el)) $('#rNt', el).onclick = () => nachtrag(w, null, zurueck);
     $$('[data-nt]', el).forEach((b) => (b.onclick = () => nachtrag(w, w.nachtraege.find((n) => n.id === b.dataset.nt), zurueck)));
     $$('[data-rech]', el).forEach((b) => (b.onclick = () => detail(alle.get(b.dataset.rech), zurueck)));
   }
   function zeile(r) {
-    const st = r.bezahlt ? ['Bezahlt', '#1b5e3a'] : ueberfaellig(r) ? [r.mahnungen?.length ? MAHN[r.mahnungen.length - 1] : 'Überfällig', '#c0392b'] : ['Offen', '#d2691e'];
+    const st = r.art === 'storno' ? ['Storno', '#8a8f98'] : r.storniert ? ['Storniert', '#8a8f98'] : r.bezahlt ? ['Bezahlt', '#1b5e3a']
+      : ueberfaellig(r) ? [r.mahnungen?.length ? MAHN[r.mahnungen.length - 1] : 'Überfällig', '#c0392b'] : ['Offen', '#d2691e'];
     return `<button class="pcard" data-rech="${r.id}"><span class="pc-ph">${icon('file')}</span>
       <span class="pc-t"><b>${esc(artName(r))}</b>
         <span class="pills"><span class="st-pill" style="--c:${st[1]}">${st[0]}</span><span class="muted">${esc(r.nr)} · ${esc(tag(r.datum))}</span></span>
-        <span class="ang-sum">${eur(zahlbetrag(r))}${r.bezahlt ? '' : ` · <span class="muted">fällig ${esc(tag(r.faellig))}</span>`}</span></span>${icon('chevron', 'pc-chev')}</button>`;
+        <span class="ang-sum">${eur(zahlbetrag(r))}${istOffen(r) ? ` · <span class="muted">fällig ${esc(tag(r.faellig))}</span>` : ''}</span></span>${icon('chevron', 'pc-chev')}</button>`;
+  }
+
+  // ---------- Neue Rechnung: Projekt wählen, Art wählen, Betrag herleiten ----------
+  /** Ein Weg für jede neue Rechnung an Kunden, aus dem Reiter Rechnungen und aus dem Projekt.
+   * w = Projekt (fehlt es, wird gefragt), fertig = zurück dorthin, wo man herkam (man bleibt im Reiter). */
+  async function neu(w, fertig) {
+    await laden();
+    if (!w) {
+      const REIHE = ['fertig', '', 'geplant', 'rechnung', 'bezahlt'];
+      const idx = (await projectIndex()).filter((x) => Projekt.zugesagt(x.status))
+        .sort((x, y) => REIHE.indexOf(Projekt.norm(x.status)) - REIHE.indexOf(Projekt.norm(y.status)) || (y.updated || 0) - (x.updated || 0));
+      if (!idx.length) return toast('Rechnungen an Kunden gibt es, sobald ein Projekt zugesagt ist.', 4000);
+      const pid = await sheet('Rechnung für welches Projekt?', idx.map((x) => {
+        const n = fuerProjekt(x.id).filter(gilt).length;
+        return { label: Kunden.name(Kunden.byId(x.kundeId)) || x.customer || 'Ohne Namen', icon: icon('home'), color: Projekt.farbe(x.status), value: x.id,
+          sub: [x.titel || x.room, x.nr && `Nr. ${x.nr}`, Projekt.norm(x.status) === 'fertig' ? 'fertig, abzurechnen' : Projekt.statusKurz(x.status), n && `${n} ${n === 1 ? 'Rechnung' : 'Rechnungen'}`].filter(Boolean).join(' · ') };
+      }), { suche: 'Kunde, Projekt oder Nummer' });
+      if (!pid) return;
+      w = await kvGet('wohnung:' + pid);
+      if (!w) return toast('Projekt nicht gefunden.');
+    }
+    const a = await auftrag(w);
+    const st = stand(w, a, fuerProjekt(w.id));
+    if (st.schluss) { toast(`Die Schlussrechnung ${st.schluss.nr} ist schon gestellt. Zum Ändern dort stornieren.`, 5000); return detail(st.schluss, fertig); }
+    const abBrutto = st.abschl.reduce((s, r) => s + brutto(r), 0);
+    const opts = [];
+    if (st.planStufe) opts.push({ label: `${st.stufe}. Abschlag nach Plan`, sub: `${proz(st.planProzent)} von ${eur(a.netto)} = ${eur(st.planNetto)} netto`, icon: icon('euro'), value: 'plan' });
+    opts.push({ label: st.planStufe ? `${st.stufe}. Abschlag, Betrag selbst wählen` : `${st.stufe}. Abschlag`, sub: a.netto ? 'Prozent vom Auftrag oder Betrag eintragen' : 'Betrag eintragen', icon: icon('edit'), value: 'frei' });
+    if (a.zeilen.length) opts.push({ label: st.abschl.length ? 'Schlussrechnung' : 'Rechnung über den ganzen Auftrag', icon: icon('file'), value: 'schluss',
+      sub: st.abschl.length ? `${eur(r2(a.netto * 1.19))} brutto minus ${st.abschl.length} ${st.abschl.length === 1 ? 'Abschlag' : 'Abschläge'} = noch ${eur(r2(a.netto * 1.19 - abBrutto))}` : `${eur(a.netto)} netto, alle Positionen aus dem Angebot${a.nachtraege.length ? ' und die Nachträge' : ''}` });
+    else opts.push({ label: st.abschl.length ? 'Schlussrechnung mit eigenen Positionen' : 'Rechnung mit eigenen Positionen', sub: 'Kein Angebot im Projekt: Leistungen selbst eintragen', icon: icon('list'), value: 'eigen' });
+    const v = await sheet(`Welche Rechnung für ${Kunden.name(Kunden.byId(w.kundeId)) || w.customer || 'den Kunden'}?`, opts);
+    if (!v) return;
+    erstellen(w, v === 'plan' || v === 'frei' ? 'abschlag' : 'schluss', fertig, { eigen: v === 'eigen', frei: v === 'frei' });
   }
 
   // ---------- Nachtrag ----------
@@ -237,47 +282,107 @@ window.Rechnung = (() => {
   }
 
   // ---------- Rechnung erstellen ----------
-  async function erstellen(w, art, fertig) {
+  /** Rechnung vorbereiten und prüfen. art 'abschlag' | 'schluss'; o.frei = Abschlag mit eigenem Betrag, o.eigen = Positionen selbst eintragen (kein Angebot). */
+  async function erstellen(w, art, fertig, o = {}) {
     const a = await auftrag(w);
-    const re = fuerProjekt(w.id), abschl = re.filter((r) => r.art === 'abschlag');
-    const P = plan(w), stufe = abschl.length + 1;
-    const r = { id: uid(), kind: 'rechnung', projektId: w.id, nr: '', art, stufe, prozent: art === 'abschlag' ? P[stufe - 1] : 100, titel: w.titel || 'Sanierung',
+    const re = fuerProjekt(w.id), st = stand(w, a, re);
+    const k = Kunden.byId(w.kundeId);
+    const stufe = st.stufe;
+    const r = { id: uid(), kind: 'rechnung', projektId: w.id, nr: '', art, stufe, prozent: art === 'abschlag' ? (st.planStufe ? st.planProzent : 0) : 100, titel: w.titel || 'Sanierung',
       zeitraum: [w.baustart && tag(w.baustart), art === 'schluss' ? tag(heute()) : ''].filter(Boolean).join(' bis ') || '', datum: heute(), faellig: plusTage(heute(), ziel()),
-      netto: 0, satz: 19, positionen: [], nachtraege: [], abzuege: [], lohn: 0, bezahlt: '', mahnungen: [], notiz: '', created: Date.now() };
+      netto: 0, satz: 19, positionen: [], nachtraege: [], abzuege: [], lohn: 0, bezahlt: '', gesendet: '', mahnungen: [], notiz: '', created: Date.now() };
     if (art === 'schluss') {
-      r.positionen = a.zeilen.map(({ raum, text, menge, einheit, ep, gp }) => ({ raum, text, menge, einheit, ep, gp }));
+      r.abzuege = st.abschl.map((x) => ({ nr: x.nr, datum: x.datum, netto: x.netto, brutto: brutto(x), bezahlt: !!x.bezahlt }));
+      r.artName = r.abzuege.length ? 'Schlussrechnung' : 'Rechnung';
       r.nachtraege = a.nachtraege.map(({ text, menge, einheit, ep, gp }) => ({ text, menge, einheit, ep, gp }));
-      r.netto = a.netto; r.lohn = r2(a.lohn * 1.19);
-      r.abzuege = abschl.map((x) => ({ nr: x.nr, datum: x.datum, netto: x.netto, brutto: brutto(x), bezahlt: !!x.bezahlt }));
-    } else r.netto = r2((a.netto * r.prozent) / 100);
-    header(art === 'schluss' ? 'Schlussrechnung' : `${stufe}. Abschlagsrechnung`, w.titel || '', { label: 'Zurück', fn: fertig });
+      if (o.eigen) { r.eigen = true; r.positionen = [{ raum: '', text: '', menge: 1, einheit: 'pauschal', ep: 0, gp: 0 }]; }
+      else { r.positionen = a.zeilen.map(({ raum, text, menge, einheit, ep, gp }) => ({ raum, text, menge, einheit, ep, gp })); r.lohn = r2(a.lohn * 1.19); }
+    }
+    const summe = () => {
+      if (art !== 'schluss') return;
+      for (const z of r.positionen) z.gp = r2(z.menge * z.ep);
+      r.netto = r2(r.positionen.reduce((s, z) => s + z.gp, 0) + r.nachtraege.reduce((s, n) => s + n.gp, 0));
+    };
+    if (art === 'abschlag') r.netto = r2((a.netto * r.prozent) / 100);
+    summe();
+    const titel = art === 'schluss' ? r.artName : `${stufe}. Abschlagsrechnung`;
+    header(titel, [Kunden.name(k) || w.customer, w.titel].filter(Boolean).join(' · '), { label: 'Zurück', fn: fertig });
+    const f = window.Fortschritt?.kurz(w);
+    const anschrift = () => Kunden.postanschrift(k) || [Kunden.name(k) || w.customer, ...String(w.address || '').split(/\s*,\s*|\n/)].filter(Boolean);
+    const hinweisAbschlag = () => {
+      const zusammen = st.abschlNetto + r.netto;
+      const t = [];
+      if (a.netto) t.push(`Auftrag ${eur(a.netto)} netto. Mit diesem Abschlag sind ${proz((zusammen / a.netto) * 100)} berechnet.`);
+      if (f?.n && vorgabe('abschlagFortschritt') !== 'nein') t.push(`Baufortschritt: ${f.fertig} von ${f.n} Schritten erledigt (${Math.round((f.fertig / f.n) * 100)} %).`);
+      if (a.netto && zusammen > a.netto * 0.9) t.push('Achtung: Die Abschläge sind zusammen über 90 % des Auftrags. Bei Privatkunden ist das oft nicht erlaubt (§ 650m BGB).');
+      return t.map((x) => esc(x)).join('<br>');
+    };
+    const posZeile = (z, i) => `<div class="rpos">
+        <textarea data-pt="${i}" rows="2" placeholder="Leistung, z. B. Wasserhahn im Bad getauscht">${esc(z.text)}</textarea>
+        <div class="row"><div><label>Menge</label><input type="text" inputmode="decimal" data-pm="${i}" value="${esc(String(z.menge).replace('.', ','))}"></div>
+          <div><label>Einheit</label><input type="text" data-pe="${i}" value="${esc(z.einheit)}"></div>
+          <div><label>Preis netto</label><input type="text" inputmode="decimal" data-pp="${i}" value="${z.ep ? esc(String(z.ep).replace('.', ',')) : ''}" placeholder="0,00"></div></div>
+        ${r.positionen.length > 1 ? `<button type="button" class="link-danger" data-pdel="${i}" style="margin:2px 0 0">${icon('trash')} Position entfernen</button>` : ''}</div>`;
+    const summenHtml = () => `
+        <div class="kalk-z"><span>Summe netto</span><b>${eur(r.netto)}</b></div>
+        <div class="kalk-z"><span>Brutto</span><b>${eur(brutto(r))}</b></div>
+        ${r.abzuege.map((x) => `<div class="kalk-z"><span>abzüglich Abschlag ${esc(x.nr)}</span><b>- ${eur(x.brutto)}</b></div>`).join('')}
+        <div class="kalk-z big" style="--c:var(--navy)"><span>Noch zu zahlen</span><b>${eur(zahlbetrag(r))}</b></div>`;
     const render = () => {
-      main().innerHTML = `<div class="card kform">
-          ${art === 'abschlag' ? `<div class="row"><div><label style="margin-top:0">Anteil vom Auftrag</label><input type="text" inputmode="decimal" id="rPro" value="${String(r.prozent).replace('.', ',')}"></div>
-            <div><label style="margin-top:0">Betrag netto</label><input type="text" inputmode="decimal" id="rNetto" value="${String(r.netto).replace('.', ',')}"></div></div>
-            <p class="hint" style="margin:4px 0 0">Auftragssumme ${eur(a.netto)} netto</p>` : `
-            <div class="kalk-z"><span>Leistungen laut Angebot</span><b>${eur(a.zeilen.reduce((s, z) => s + z.gp, 0))}</b></div>
-            ${a.nachtraege.length ? `<div class="kalk-z"><span>Nachträge (${a.nachtraege.length})</span><b>${eur(a.nachtraege.reduce((s, n) => s + n.gp, 0))}</b></div>` : ''}
-            <div class="kalk-z"><span>Summe netto</span><b>${eur(r.netto)}</b></div>
-            <div class="kalk-z"><span>Brutto</span><b>${eur(brutto(r))}</b></div>
-            ${r.abzuege.map((x) => `<div class="kalk-z"><span>abzüglich Abschlag ${esc(x.nr)}</span><b>- ${eur(x.brutto)}</b></div>`).join('')}
-            <div class="kalk-z big" style="--c:var(--navy)"><span>Noch zu zahlen</span><b>${eur(zahlbetrag(r))}</b></div>`}
+      const fehlt = !Kunden.postanschrift(k);
+      main().innerHTML = `<div class="card radr">
+          <small class="muted">Rechnung an</small>
+          <p>${anschrift().map((l) => esc(l)).join('<br>')}</p>
+          ${fehlt ? `<p class="warn" style="margin:4px 0 0">Keine eigene Rechnungsanschrift beim Kunden. Es wird die Anschrift der Baustelle genommen.</p>` : ''}
+          ${k ? `<button type="button" class="link-add" id="rAdr">${icon('edit')} ${fehlt ? 'Rechnungsanschrift eintragen' : 'Rechnungsanschrift ändern'}</button>` : ''}
+          ${w.nr ? `<small class="muted">Projekt-Nr. ${esc(w.nr)}${k?.nr ? ` · Kunden-Nr. ${esc(k.nr)}` : ''}</small>` : ''}
+        </div>
+        ${art === 'schluss' && r.eigen ? `<div class="sec-h"><h2>Leistungen</h2></div>
+          <div class="card kform" id="rPosBox">${r.positionen.map(posZeile).join('')}
+            <button type="button" class="link-add" id="rPosNeu">${icon('plus')} Weitere Position</button></div>
+          ${r.nachtraege.length ? `<p class="hint">Dazu kommen ${r.nachtraege.length} ${r.nachtraege.length === 1 ? 'Nachtrag' : 'Nachträge'} aus dem Projekt (${eur(r.nachtraege.reduce((s, n) => s + n.gp, 0))} netto).</p>` : ''}` : ''}
+        <div class="card kform">
+          ${art === 'abschlag' ? `<div class="row">${a.netto ? `<div><label style="margin-top:0">Anteil vom Auftrag in %</label><input type="text" inputmode="decimal" id="rPro" value="${String(r.prozent).replace('.', ',')}"></div>` : ''}
+            <div><label style="margin-top:0">Betrag netto</label><input type="text" inputmode="decimal" id="rNetto" value="${r.netto ? String(r.netto).replace('.', ',') : ''}" placeholder="0,00"></div></div>
+            <p class="hint" id="rBr" style="margin:6px 0 0">Brutto ${eur(brutto(r))}</p>
+            <p class="hint" id="rAbH" style="margin:6px 0 0">${hinweisAbschlag()}</p>`
+          : `<div id="rSum">${r.eigen ? '' : `<div class="kalk-z"><span>Leistungen laut Angebot</span><b>${eur(a.zeilen.reduce((s, z) => s + z.gp, 0))}</b></div>
+            ${a.nachtraege.length ? `<div class="kalk-z"><span>Nachträge (${a.nachtraege.length})</span><b>${eur(a.nachtraege.reduce((s, n) => s + n.gp, 0))}</b></div>` : ''}`}${summenHtml()}</div>`}
           <label>Bezeichnung</label><input type="text" id="rTitel" value="${esc(r.titel)}">
           <label>Leistungszeitraum</label><input type="text" id="rZeit" value="${esc(r.zeitraum)}" placeholder="z. B. 12.01.2027 bis 06.02.2027">
           <div class="row"><div><label>Rechnungsdatum</label><input type="date" id="rDatum" value="${r.datum}"></div>
             <div><label>Zahlbar bis</label><input type="date" id="rFaellig" value="${r.faellig}"></div></div>
-          ${art === 'abschlag' ? `<p class="hint" id="rBr" style="margin:6px 0 0">Brutto ${eur(brutto(r))}</p>` : ''}
         </div>
         <button class="btn big block" id="rSave">${icon('check')} Rechnung erstellen</button>
         <p class="hint center">Die Rechnung bekommt danach eine feste Nummer und lässt sich als PDF senden.</p>`;
+      const merken = () => { r.titel = $('#rTitel').value.trim() || r.titel; r.zeitraum = $('#rZeit').value.trim(); r.datum = $('#rDatum').value || heute(); r.faellig = $('#rFaellig').value; };
+      if ($('#rAdr')) $('#rAdr').onclick = async () => {
+        merken();
+        const v = await sheet('Rechnungsanschrift', [], { text: 'Straße Nr., PLZ Ort', value: Kunden.zeilen(k.privat || '').join(', ') });
+        if (!v?.text) return;
+        k.privat = v.text.split(/\s*,\s*/).filter(Boolean).join('\n');
+        await Kunden.speichern(k); toast('Rechnungsanschrift gespeichert'); render();
+      };
       if (art === 'abschlag') {
-        $('#rPro').oninput = () => { r.prozent = num($('#rPro').value); r.netto = r2((a.netto * r.prozent) / 100); $('#rNetto').value = String(r.netto).replace('.', ','); $('#rBr').textContent = `Brutto ${eur(brutto(r))}`; };
-        $('#rNetto').oninput = () => { r.netto = r2(num($('#rNetto').value)); r.prozent = a.netto ? Math.round((r.netto / a.netto) * 1000) / 10 : 0; $('#rPro').value = String(r.prozent).replace('.', ','); $('#rBr').textContent = `Brutto ${eur(brutto(r))}`; };
+        const neuZeigen = () => { $('#rBr').textContent = `Brutto ${eur(brutto(r))}`; $('#rAbH').innerHTML = hinweisAbschlag(); };
+        if ($('#rPro')) $('#rPro').oninput = () => { r.prozent = num($('#rPro').value); r.netto = r2((a.netto * r.prozent) / 100); $('#rNetto').value = String(r.netto).replace('.', ','); neuZeigen(); };
+        $('#rNetto').oninput = () => { r.netto = r2(num($('#rNetto').value)); r.prozent = a.netto ? Math.round((r.netto / a.netto) * 1000) / 10 : 0; if ($('#rPro')) $('#rPro').value = String(r.prozent).replace('.', ','); neuZeigen(); };
+      }
+      if (r.eigen) {
+        const neuRechnen = () => { summe(); $('#rSum').innerHTML = summenHtml(); };
+        $$('[data-pt]').forEach((el) => (el.oninput = () => { r.positionen[+el.dataset.pt].text = el.value; }));
+        $$('[data-pe]').forEach((el) => (el.oninput = () => { r.positionen[+el.dataset.pe].einheit = el.value.trim(); }));
+        $$('[data-pm]').forEach((el) => (el.oninput = () => { r.positionen[+el.dataset.pm].menge = num(el.value); neuRechnen(); }));
+        $$('[data-pp]').forEach((el) => (el.oninput = () => { r.positionen[+el.dataset.pp].ep = num(el.value); neuRechnen(); }));
+        $$('[data-pdel]').forEach((b) => (b.onclick = () => { merken(); r.positionen.splice(+b.dataset.pdel, 1); summe(); render(); }));
+        $('#rPosNeu').onclick = () => { merken(); r.positionen.push({ raum: '', text: '', menge: 1, einheit: 'pauschal', ep: 0, gp: 0 }); render(); setTimeout(() => $$('[data-pt]').pop()?.focus(), 50); };
       }
       $('#rDatum').onchange = (e) => { $('#rFaellig').value = plusTage(e.target.value, ziel()); };
       $('#rSave').onclick = async () => {
-        r.titel = $('#rTitel').value.trim() || r.titel; r.zeitraum = $('#rZeit').value.trim(); r.datum = $('#rDatum').value || heute(); r.faellig = $('#rFaellig').value;
+        merken();
+        if (r.eigen) { r.positionen = r.positionen.filter((z) => z.text.trim()).map((z) => ({ ...z, text: z.text.trim() })); summe(); if (!r.positionen.length && !r.nachtraege.length) { r.positionen.push({ raum: '', text: '', menge: 1, einheit: 'pauschal', ep: 0, gp: 0 }); return toast('Bitte mindestens eine Leistung eintragen.'); } }
         if (!r.netto) return toast('Der Betrag ist 0.');
+        if (!r.zeitraum) r.zeitraum = tag(r.datum);
         r.nr = await naechsteNummer();
         await speichern(r);
         if (art === 'schluss' && ['', 'geplant', 'fertig'].includes(Projekt.norm(w.status))) { w.status = 'rechnung'; (w.verlauf ??= []).push({ st: 'rechnung', t: Date.now() }); await Projekt.save(w); }
@@ -292,41 +397,46 @@ window.Rechnung = (() => {
   async function detail(r, fertig) {
     if (!r) return fertig();
     const w = await kvGet('wohnung:' + r.projektId);
-    header(artName(r), `${r.nr} · ${tag(r.datum)}`, { label: 'Zurück', fn: fertig });
-    const st = r.bezahlt ? `Bezahlt am ${tag(r.bezahlt)}` : ueberfaellig(r) ? `Überfällig seit ${tag(r.faellig)}` : `Fällig am ${tag(r.faellig)}`;
+    const k = w ? Kunden.byId(w.kundeId) : null;
+    header(artName(r), [r.nr, Kunden.name(k) || w?.customer].filter(Boolean).join(' · '), { label: 'Zurück', fn: fertig });
+    const storno = r.art === 'storno', erledigt = storno || r.storniert;
+    const st = storno ? `Hebt Rechnung ${r.bezugNr} auf` : r.storniert ? `Storniert am ${tag(r.storniert.datum)} mit Nr. ${r.storniert.nr}`
+      : r.bezahlt ? `Bezahlt am ${tag(r.bezahlt)}` : ueberfaellig(r) ? `Überfällig seit ${tag(r.faellig)}` : `Fällig am ${tag(r.faellig)}`;
+    const farbe = erledigt ? '#8a8f98' : r.bezahlt ? '#1b5e3a' : ueberfaellig(r) ? '#c0392b' : '#d2691e';
     const naechsteMahn = r.mahnungen?.length || 0;
     main().innerHTML = `<div class="card">
         <div class="kalk-z"><span>${esc(r.titel)}</span><b></b></div>
         <div class="kalk-z"><span>Netto</span><b>${eur(r.netto)}</b></div>
         <div class="kalk-z"><span>Brutto</span><b>${eur(brutto(r))}</b></div>
-        ${(r.abzuege || []).length ? `<div class="kalk-z"><span>abzüglich Abschläge</span><b>- ${eur((r.abzuege || []).reduce((s, a) => s + a.brutto, 0))}</b></div>` : ''}
-        <div class="kalk-z big" style="--c:${r.bezahlt ? '#1b5e3a' : ueberfaellig(r) ? '#c0392b' : 'var(--navy)'}"><span>Zahlbetrag</span><b>${eur(zahlbetrag(r))}</b></div>
-        <p class="kalk-amp" style="--c:${r.bezahlt ? '#1b5e3a' : ueberfaellig(r) ? '#c0392b' : '#d2691e'}"><i></i>${esc(st)}</p>
+        ${(r.abzuege || []).length && !storno ? `<div class="kalk-z"><span>abzüglich Abschläge</span><b>- ${eur((r.abzuege || []).reduce((s, a) => s + a.brutto, 0))}</b></div>` : ''}
+        <div class="kalk-z big" style="--c:${erledigt ? '#8a8f98' : r.bezahlt ? '#1b5e3a' : ueberfaellig(r) ? '#c0392b' : 'var(--navy)'}"><span>Zahlbetrag</span><b>${eur(zahlbetrag(r))}</b></div>
+        <p class="kalk-amp" style="--c:${farbe}"><i></i>${esc(st)}</p>
       </div>
       <div class="docs">
-        <button class="doc" id="rPdf"><span class="d-ico navy">${icon('file')}</span><span class="d-t"><b>Rechnung als PDF senden</b><span>Per Mail, WhatsApp oder speichern</span></span>${icon('chevron', 'pc-chev')}</button>
-        ${!r.bezahlt && ueberfaellig(r) && naechsteMahn < MAHN.length ? `<button class="doc" id="rMahn"><span class="d-ico brass">${icon('mail')}</span><span class="d-t"><b>${MAHN[naechsteMahn]} senden</b><span>${naechsteMahn ? `Zuletzt: ${esc(MAHN[naechsteMahn - 1])} am ${tag(r.mahnungen[naechsteMahn - 1].datum)}` : 'Freundlich, mit neuer Frist von 7 Tagen'}</span></span>${icon('chevron', 'pc-chev')}</button>` : ''}
+        <button class="doc" id="rPdf"><span class="d-ico navy">${icon('file')}</span><span class="d-t"><b>${storno ? 'Stornorechnung' : 'Rechnung'} als PDF senden</b><span>${r.gesendet ? `Zuletzt gesendet am ${tag(r.gesendet)}` : 'Per Mail, WhatsApp oder speichern'}</span></span>${icon('chevron', 'pc-chev')}</button>
+        ${!erledigt && !r.bezahlt && ueberfaellig(r) && naechsteMahn < MAHN.length ? `<button class="doc" id="rMahn"><span class="d-ico brass">${icon('mail')}</span><span class="d-t"><b>${MAHN[naechsteMahn]} senden</b><span>${naechsteMahn ? `Zuletzt: ${esc(MAHN[naechsteMahn - 1])} am ${tag(r.mahnungen[naechsteMahn - 1].datum)}` : `Freundlich, mit neuer Frist von ${+vorgabe('mahnFrist') || 7} Tagen`}</span></span>${icon('chevron', 'pc-chev')}</button>` : ''}
       </div>
-      <div class="card kform" style="margin-top:12px">
+      ${erledigt ? '' : `<div class="card kform" style="margin-top:12px">
         <div class="row"><div><label style="margin-top:0">Zahlbar bis</label><input type="date" id="rFaellig" value="${esc(r.faellig)}"></div>
           <div><label style="margin-top:0">Bezahlt am</label><input type="date" id="rBez" value="${esc(r.bezahlt)}"></div></div>
         ${r.bezahlt ? '' : `<button class="btn secondary block" id="rJetzt" style="margin-top:10px">${icon('check')} Zahlung heute eingegangen</button>`}
         <label>Notiz</label><textarea id="rNotiz" placeholder="z. B. Teilzahlung, Skonto">${esc(r.notiz)}</textarea>
-      </div>
-      <button class="link-danger" id="rDel">${icon('trash')} Rechnung löschen</button>`;
+      </div>`}
+      ${erledigt ? '' : `<button class="link-danger" id="rStorno">${icon('x')} Rechnung stornieren</button>
+        <p class="hint center">Rechnungen werden nie gelöscht (Nummern lückenlos, 8 Jahre aufbewahren). Das Storno hebt sie mit eigener Nummer auf, danach schreibst du eine neue.</p>`}`;
     const speichernUndStatus = async () => {
       await speichern(r);
       // Alle Rechnungen inkl. Schlussrechnung bezahlt → Projekt „Bezahlt“
-      const re = fuerProjekt(r.projektId);
+      const re = fuerProjekt(r.projektId).filter(gilt);
       if (w && re.some((x) => x.art === 'schluss') && re.every((x) => x.bezahlt) && Projekt.norm(w.status) !== 'bezahlt') {
         w.status = 'bezahlt'; (w.verlauf ??= []).push({ st: 'bezahlt', t: Date.now() }); await Projekt.save(w); toast('Alles bezahlt. Projekt ist erledigt.', 4000);
       }
     };
-    $('#rFaellig').onchange = async (e) => { r.faellig = e.target.value; await speichern(r); };
-    $('#rBez').onchange = async (e) => { r.bezahlt = e.target.value; await speichernUndStatus(); detail(r, fertig); };
+    if ($('#rFaellig')) $('#rFaellig').onchange = async (e) => { r.faellig = e.target.value; await speichern(r); };
+    if ($('#rBez')) $('#rBez').onchange = async (e) => { r.bezahlt = e.target.value; await speichernUndStatus(); detail(r, fertig); };
     if ($('#rJetzt')) $('#rJetzt').onclick = async () => { r.bezahlt = heute(); await speichernUndStatus(); detail(r, fertig); };
-    $('#rNotiz').oninput = debounce(async (e) => { r.notiz = e.target.value.trim(); await speichern(r); }, 500);
-    $('#rPdf').onclick = async () => senden(r, w, null);
+    if ($('#rNotiz')) $('#rNotiz').oninput = debounce(async (e) => { r.notiz = e.target.value.trim(); await speichern(r); }, 500);
+    $('#rPdf').onclick = async () => { if (await senden(r, w, null)) { r.gesendet = heute(); await speichern(r); detail(r, fertig); } };
     if ($('#rMahn')) $('#rMahn').onclick = async () => {
       const stufe = naechsteMahn;
       const ok = await senden(r, w, stufe);
@@ -334,9 +444,20 @@ window.Rechnung = (() => {
       (r.mahnungen ??= []).push({ stufe, datum: heute() });
       await speichern(r); detail(r, fertig);
     };
-    $('#rDel').onclick = async () => {
-      if (!loeschFrage(`Rechnung ${r.nr} löschen? Die Nummer wird nicht neu vergeben.`)) return;
-      alle.delete(r.id); await kvDel('rechnung:' + r.id); fertig();
+    if ($('#rStorno')) $('#rStorno').onclick = async () => {
+      if (!confirm(`Rechnung ${r.nr} stornieren?\n\nEs entsteht eine Stornorechnung mit eigener Nummer über ${eur(-zahlbetrag(r))}. Die schickst du dem Kunden. Danach kannst du eine neue Rechnung schreiben.`)) return;
+      const s = { id: uid(), kind: 'rechnung', projektId: r.projektId, nr: await naechsteNummer(), art: 'storno', stufe: r.stufe, prozent: r.prozent, titel: r.titel, zeitraum: r.zeitraum,
+        datum: heute(), faellig: '', netto: -r.netto, satz: r.satz, positionen: [], nachtraege: [],
+        // Abzüge umgedreht: Der Zahlbetrag des Stornos ist genau der negative Zahlbetrag der Rechnung (Summen gleichen sich aus)
+        abzuege: (r.abzuege || []).map((x) => ({ ...x, netto: -x.netto, brutto: -x.brutto })), lohn: 0, bezahlt: heute(), mahnungen: [], notiz: '',
+        bezugNr: r.nr, bezugId: r.id, bezugArt: artName(r), bezugDatum: r.datum, created: Date.now() };
+      await speichern(s);
+      r.storniert = { nr: s.nr, datum: s.datum, id: s.id }; if (!r.bezahlt) r.bezahlt = s.datum;
+      await speichern(r);
+      // Schlussrechnung storniert: Projekt wieder auf „Abgeschlossen“ (abzurechnen)
+      if (w && r.art === 'schluss' && ['rechnung', 'bezahlt'].includes(Projekt.norm(w.status))) { w.status = 'fertig'; (w.verlauf ??= []).push({ st: 'fertig', t: Date.now() }); await Projekt.save(w); }
+      toast(`Stornorechnung ${s.nr} erstellt. Bitte dem Kunden senden.`, 4500);
+      detail(s, fertig);
     };
     window.scrollTo(0, 0);
   }
@@ -346,14 +467,20 @@ window.Rechnung = (() => {
     let doc;
     try { doc = await pdf(r, w, mahnStufe); } catch (e) { toast('PDF ging nicht: ' + e.message, 5000); return false; }
     const k = w ? Kunden.byId(w.kundeId) : null;
-    const name = `${mahnStufe == null ? 'Rechnung' : MAHN[mahnStufe].replace(/\.\s*/g, '_').replace(/\s+/g, '_')}_${r.nr}_${(Kunden.name(k) || w?.customer || 'Kunde').replace(/[^\wäöüÄÖÜß-]+/g, '_')}.pdf`;
+    const name = `${mahnStufe == null ? (r.art === 'storno' ? 'Stornorechnung' : 'Rechnung') : MAHN[mahnStufe].replace(/\.\s*/g, '_').replace(/\s+/g, '_')}_${r.nr}_${(Kunden.name(k) || w?.customer || 'Kunde').replace(/[^\wäöüÄÖÜß-]+/g, '_')}.pdf`;
     const blob = doc.output('blob');
     const file = new File([blob], name, { type: 'application/pdf' });
     const anrede = k ? Kunden.briefAnrede(k) : 'Sehr geehrte Damen und Herren,';
     const vars = { anrede, art: artName(r), nr: r.nr, betrag: eur(zahlbetrag(r)), faellig: tag(r.faellig), datum: tag(r.datum), stufe: mahnStufe == null ? '' : MAHN[mahnStufe], firma: state.settings.company || '' };
     const text = vorgabeText(mahnStufe == null ? 'mailRechnung' : 'mailMahnung', vars);
     $('#toast').hidden = true;
-    if (navigator.canShare?.({ files: [file] })) { try { await navigator.share({ files: [file], title: name, text }); return true; } catch (e) { if (e.name === 'AbortError') return false; } }
+    // Das PDF landet beim Senden auch unter „Dokumente“ im Projekt (core.js legt es beim gerade offenen Projekt ab).
+    // Aus dem Reiter Rechnungen ist kein Projekt offen: kurz dieses Projekt setzen, danach zurück.
+    const vorher = state.wohnung, fremd = w && vorher?.id !== w.id;
+    if (fremd) state.wohnung = w;
+    try {
+      if (navigator.canShare?.({ files: [file] })) { try { await navigator.share({ files: [file], title: name, text }); return true; } catch (e) { if (e.name === 'AbortError') return false; } }
+    } finally { if (fremd) state.wohnung = vorher; }
     const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name; a.click();
     setTimeout(() => URL.revokeObjectURL(a.href), 60000);
     return true;
@@ -387,7 +514,7 @@ window.Rechnung = (() => {
     const bauvorhaben = objekt?.adresse ? Kunden.einzeilig(objekt.adresse) : w?.address || '';
     doc.setFontSize(9);
     const meta = mahnStufe == null
-      ? [['Rechnung Nr.', r.nr], ...(kd?.nr ? [['Kunden-Nr.', kd.nr]] : []), ...(w?.nr ? [['Projekt-Nr.', w.nr]] : []), ['Rechnungsdatum', tag(r.datum)], ['Leistungszeitraum', r.zeitraum || tag(r.datum)], ['Zahlbar bis', tag(r.faellig)]]
+      ? [['Rechnung Nr.', r.nr], ...(r.art === 'storno' ? [['Storno zu Nr.', `${r.bezugNr} vom ${tag(r.bezugDatum)}`]] : []), ...(kd?.nr ? [['Kunden-Nr.', kd.nr]] : []), ...(w?.nr ? [['Projekt-Nr.', w.nr]] : []), ['Rechnungsdatum', tag(r.datum)], ['Leistungszeitraum', r.zeitraum || tag(r.datum)], ...(r.faellig ? [['Zahlbar bis', tag(r.faellig)]] : [])]
       : [['Datum', tag(heute())], ['Rechnung Nr.', r.nr], ['vom', tag(r.datum)], ...(kd?.nr ? [['Kunden-Nr.', kd.nr]] : [])];
     let my = 52;
     for (const [k, v] of meta) { doc.setTextColor(120); t(k, 128, my); doc.setTextColor(30); const lines = doc.splitTextToSize(String(v), R - 160); t(lines, 160, my); my += 4.6 * lines.length; }
@@ -395,7 +522,7 @@ window.Rechnung = (() => {
     const neueSeite = async () => { doc.addPage(); await kopf(false); y = 34; };
     const platz = async (h, f) => { if (y + h > H - 28) { await neueSeite(); f?.(); } };
     doc.setFont('helvetica', 'bold'); doc.setFontSize(13); doc.setTextColor(...NAVY);
-    const ueber = mahnStufe == null ? `${artName(r)}: ${r.titel}` : `${MAHN[mahnStufe]} zur Rechnung Nr. ${r.nr}`;
+    const ueber = mahnStufe == null ? (r.art === 'storno' ? `Stornorechnung zur ${r.bezugArt} Nr. ${r.bezugNr}` : `${artName(r)}: ${r.titel}`) : `${MAHN[mahnStufe]} zur Rechnung Nr. ${r.nr}`;
     const tl = doc.splitTextToSize(ueber, R - M); t(tl, M, y); y += 6 * tl.length + 2;
     if (bauvorhaben) { doc.setFont('helvetica', 'normal'); doc.setFontSize(9.5); doc.setTextColor(110); t('Bauvorhaben: ' + bauvorhaben, M, y); y += 7; }
     doc.setFont('helvetica', 'normal'); doc.setFontSize(10); doc.setTextColor(30);
@@ -412,7 +539,7 @@ window.Rechnung = (() => {
       doc.setFont('helvetica', 'bold'); t('Offener Betrag', M, y); t(eur(zahlbetrag(r)), R, y, { align: 'right' }); y += 5.5;
       doc.setFont('helvetica', 'normal'); t('Zahlbar bis', M, y); t(frist, R, y, { align: 'right' }); y += 10;
     } else {
-      await absatz(vorgabeText(r.art === 'schluss' ? 'textRechnungSchluss' : 'textRechnungAbschlag', { prozent: String(r.prozent).replace('.', ','), nr: r.nr }));
+      await absatz(vorgabeText(r.art === 'storno' ? 'textStorno' : r.art === 'schluss' ? 'textRechnungSchluss' : 'textRechnungAbschlag', { prozent: String(r.prozent).replace('.', ','), nr: r.art === 'storno' ? r.bezugNr : r.nr, art: r.bezugArt || artName(r), datum: tag(r.bezugDatum || r.datum) }));
       const C = { pos: M, txt: M + 11, menge: 136, einh: 139, ep: 172, gp: R };
       const tabKopf = () => {
         doc.setFillColor(...NAVY); doc.rect(M - 1, y - 4.2, R - M + 2, 6.2, 'F');
@@ -442,6 +569,12 @@ window.Rechnung = (() => {
           await platz(12, tabKopf); doc.setFont('helvetica', 'bold'); doc.setFontSize(9); doc.setTextColor(...BRASS); t('Nachträge', C.txt, y + 1); doc.setFont('helvetica', 'normal'); doc.setTextColor(30); y += 6;
           for (const z of r.nachtraege) await zeilenDruck(z);
         }
+      } else if (r.art === 'storno') {
+        tabKopf(); doc.setFontSize(9);
+        t('1', C.pos + 3, y, { align: 'center' });
+        t(doc.splitTextToSize(`Storno der ${r.bezugArt} Nr. ${r.bezugNr} vom ${tag(r.bezugDatum)} (${r.titel})`, C.menge - C.txt - 14), C.txt, y);
+        t('1', C.menge, y, { align: 'right' }); t('pauschal', C.einh, y); t(eur(r.netto), C.ep, y, { align: 'right' }); t(eur(r.netto), C.gp, y, { align: 'right' });
+        y += 8; doc.setDrawColor(230); doc.line(M - 1, y - 3.2, R + 1, y - 3.2);
       } else {
         tabKopf(); doc.setFontSize(9);
         t('1', C.pos + 3, y, { align: 'center' });
@@ -456,14 +589,17 @@ window.Rechnung = (() => {
       sumZ(`zzgl. ${r.satz} % USt.`, eur(r2(brutto(r) - r.netto)));
       doc.setDrawColor(...NAVY); doc.line(C.txt, y - 3.8, R, y - 3.8);
       sumZ('Rechnungsbetrag brutto', eur(brutto(r)), true);
-      for (const a of r.abzuege || []) sumZ(`abzüglich Abschlagsrechnung ${a.nr} vom ${tag(a.datum)}`, '- ' + eur(a.brutto));
-      if (r.abzuege?.length) { doc.line(C.txt, y - 3.8, R, y - 3.8); doc.setTextColor(...NAVY); sumZ('Noch zu zahlen', eur(zahlbetrag(r)), true); doc.setTextColor(30); }
+      if (r.art !== 'storno') for (const a of r.abzuege || []) sumZ(`abzüglich Abschlagsrechnung ${a.nr} vom ${tag(a.datum)}`, '- ' + eur(a.brutto));
+      if (r.abzuege?.length && r.art !== 'storno') { doc.line(C.txt, y - 3.8, R, y - 3.8); doc.setTextColor(...NAVY); sumZ('Noch zu zahlen', eur(zahlbetrag(r)), true); doc.setTextColor(30); }
       if (r.art === 'schluss' && r.lohn) { doc.setFontSize(8.5); doc.setTextColor(90); sumZ('Darin enthaltener Lohnanteil brutto (§ 35a EStG)', eur(r.lohn)); doc.setTextColor(30); }
       y += 4; doc.setFontSize(10);
-      await absatz(vorgabeText('textZahlung', { betrag: eur(zahlbetrag(r)), faellig: tag(r.faellig), nr: r.nr }));
-      if (r.art === 'schluss' && vorgabe('textAufbewahrung')) await absatz(vorgabeText('textAufbewahrung'));
+      if (r.art !== 'storno') await absatz(vorgabeText('textZahlung', { betrag: eur(zahlbetrag(r)), faellig: tag(r.faellig), nr: r.nr }));
+      // Hinweis zur Aufbewahrung: Pflicht auf jeder Rechnung über Bauleistungen an Privatkunden (§ 14 Abs. 4 Nr. 9 UStG), nicht bei Hausverwaltungen
+      if (r.art !== 'storno' && !(kd && Kunden.istHv(kd)) && vorgabe('textAufbewahrung')) await absatz(vorgabeText('textAufbewahrung'));
     }
-    await platz(16); doc.setFontSize(10); doc.setTextColor(30); t(vorgabeText('textGruss'), M, y); y += 5; t(E.firma, M, y);
+    await platz(34); y += 2;
+    if (window.Unterschrift) y = await Unterschrift.pdf(doc, M, y, { firma: E.firma });
+    else { doc.setFontSize(10); doc.setTextColor(30); t(vorgabeText('textGruss'), M, y); y += 5; t(E.firma, M, y); }
     const pages = doc.getNumberOfPages();
     for (let i = 1; i <= pages; i++) {
       doc.setPage(i);
@@ -481,10 +617,10 @@ window.Rechnung = (() => {
   async function uebersicht() {
     await laden();
     const idx = await projectIndex();
-    const name = (r) => { const x = idx.find((y) => y.id === r.projektId); return x ? [x.titel || x.room || 'Projekt', Kunden.name(Kunden.byId(x.kundeId)) || x.customer].filter(Boolean).join(' · ') : 'Projekt gelöscht'; };
-    const offen = liste().filter((r) => !r.bezahlt).sort((a, b) => (a.faellig || '').localeCompare(b.faellig || ''));
+    const name = (r) => { const x = idx.find((y) => y.id === r.projektId); return x ? [Kunden.name(Kunden.byId(x.kundeId)) || x.customer, x.titel || x.room || 'Projekt'].filter(Boolean).join(' · ') : 'Projekt gelöscht'; };
+    const offen = liste().filter(istOffen).sort((a, b) => (a.faellig || '').localeCompare(b.faellig || ''));
     return { offen, name, html: offen.map((r) => zeile(r).replace('<b>', `<b>${esc(name(r))} · `)).join('') };
   }
 
-  return { laden, liste, fuerProjekt, projektAbschnitt, uebersicht, detail, auftrag, zahlbetrag, ueberfaellig };
+  return { laden, liste, fuerProjekt, projektAbschnitt, uebersicht, detail, auftrag, zahlbetrag, ueberfaellig, istOffen, gilt, neu, nachtrag, _intern: { pdf, stand } };
 })();

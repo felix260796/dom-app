@@ -193,3 +193,24 @@ canvas.sig { display: block; width: 100%; height: 140px; border: 1.5px dashed #c
 .kf-c button.on i { opacity: 1; box-shadow: 0 0 0 2px #fff; }
 .kf-s { display: flex; gap: 16px; }
 .kf-s .link-add { margin: 0; }
+
+/* ---------- Zugesagtes Projekt: Kacheln und „Was ist zu tun?“ ---------- */
+.pj-kacheln { margin: 0 0 4px; }
+.pj-todo { padding: 12px 12px 6px; }
+.pj-todo-h { display: block; font-size: 14px; color: var(--navy); margin: 0 0 4px; }
+.pj-tp { display: flex; align-items: center; gap: 10px; width: 100%; border: 0; border-top: 1px solid var(--line); background: none; font: inherit; text-align: left; padding: 10px 2px; color: var(--text); }
+.pj-tp:first-of-type { border-top: 0; }
+.pj-tp i { flex: none; width: 22px; height: 22px; border-radius: 50%; border: 2px solid #cfc9bd; display: flex; align-items: center; justify-content: center; }
+.pj-tp i svg.i { width: 14px; height: 14px; }
+.pj-tp.ok i { background: #2f8a57; border-color: #2f8a57; color: #fff; }
+.pj-tp.ok span { color: var(--muted); }
+.pj-tp span { flex: 1; font-size: 14.5px; }
+.pj-tp .pc-chev { width: 16px; height: 16px; color: var(--muted); }
+
+/* ---------- Rechnung schreiben ---------- */
+.radr p { margin: 4px 0 6px; font-size: 15px; line-height: 1.45; }
+.radr small { display: block; }
+.rpos { border-bottom: 1px solid var(--line); padding: 4px 0 10px; margin-bottom: 8px; }
+.rpos textarea { min-height: 54px; }
+.rpos .row > div { min-width: 0; }
+img.sig-zeig { display: block; max-width: 220px; max-height: 70px; background: #fff; border: 1px solid var(--line); border-radius: 10px; padding: 4px; margin: 2px 0; }

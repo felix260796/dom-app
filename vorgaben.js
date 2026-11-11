@@ -10,13 +10,15 @@ const VORGABEN = {
     ['Zahlung', [
       { k: 'zahlungsziel', l: 'Zahlungsziel in Tagen', t: 'zahl', d: 14 },
       { k: 'abschlagPlan', l: 'Abschläge in % (der letzte Teil kommt mit der Schlussrechnung)', t: 'plan', d: [30, 40, 30], h: 'Je Projekt kannst du im Projekt einen eigenen Plan eintragen.' },
+      { k: 'abschlagFortschritt', l: 'Beim Abschlag den Baufortschritt anzeigen (z. B. „60 % fertig“)', t: 'janein', d: 'ja' },
       { k: 'mahnFrist', l: 'Neue Frist bei Erinnerung und Mahnung in Tagen', t: 'zahl', d: 7 },
     ]],
     ['Texte auf der Rechnung', [
       { k: 'textRechnungAbschlag', l: 'Einleitung Abschlagsrechnung', t: 'text', d: 'vielen Dank für Ihren Auftrag. Vereinbarungsgemäß berechnen wir Ihnen eine Abschlagszahlung von {prozent} % der Auftragssumme.' },
       { k: 'textRechnungSchluss', l: 'Einleitung Schlussrechnung', t: 'text', d: 'vielen Dank für Ihren Auftrag. Für die ausgeführten Leistungen berechnen wir Ihnen:' },
+      { k: 'textStorno', l: 'Einleitung Stornorechnung', t: 'text', d: 'hiermit stornieren wir unsere {art} Nr. {nr} vom {datum}. Sie wird mit dieser Stornorechnung vollständig aufgehoben.' },
       { k: 'textZahlung', l: 'Zahlungsaufforderung', t: 'text', d: 'Bitte überweisen Sie den Betrag von {betrag} bis zum {faellig} unter Angabe der Rechnungsnummer {nr}.' },
-      { k: 'textAufbewahrung', l: 'Hinweis auf der Schlussrechnung', t: 'text', d: 'Bitte bewahren Sie diese Rechnung zwei Jahre auf (§ 14b UStG).' },
+      { k: 'textAufbewahrung', l: 'Hinweis zur Aufbewahrung (auf jeder Rechnung an Privatkunden)', t: 'text', d: 'Bitte bewahren Sie diese Rechnung zwei Jahre auf (§ 14b UStG).' },
       { k: 'textGruss', l: 'Grußformel', t: 'zeile', d: 'Mit freundlichen Grüßen' },
     ]],
     ['Zahlungserinnerung und Mahnungen', [
@@ -369,7 +371,9 @@ window.Vorgaben = (() => {
     const PL = await window.Angebot._intern.preisliste();
     const E = PL.einstellungen;
     box.innerHTML = `<div class="sec-h"><h2>Auf Angebot, Rechnung und Protokoll</h2></div>
-      <div class="card kform vg">${PL_FIRMA.map(([k, l]) => `<label>${esc(l)}</label><input type="text" data-plf="${k}" value="${esc(E[k] || '')}">`).join('')}</div>`;
+      <div class="card kform vg">${PL_FIRMA.map(([k, l]) => `<label>${esc(l)}</label><input type="text" data-plf="${k}" value="${esc(E[k] || '')}">`).join('')}</div>
+      <div id="sigBox"></div>`;
+    window.Unterschrift?.karte($('#sigBox', box));
     $$('[data-plf]', box).forEach((el) => (el.onchange = async () => { E[el.dataset.plf] = el.value.trim(); await kvSet('preisliste', PL); toast('Gespeichert'); }));
   }
   async function preisliste(filter) {
@@ -434,6 +438,7 @@ window.Vorgaben = (() => {
     for (const [k, l] of PL_FIRMA) out.push(['firma', l, 'Firmendaten Briefkopf Fußzeile Angebot Rechnung', 'plf:' + k]);
     const fest = [
       ['firma', 'Firmenname und Logo', 'Logo Briefkopf'],
+      ['firma', 'Unterschrift', 'Unterschrift Gruß Name Angebot Rechnung zeichnen'],
       ['preisliste', 'Preise einzelner Positionen', 'Lohn Material Einheitspreis Position neu löschen'],
       ['pakete', 'Excel-Angebotstool laden', 'Import Excel Preisliste zurücksetzen'],
       ['pakete', 'Was gehört in welches Paket?', 'Paket Vorlagen Basic Standard Premium Positionen'],

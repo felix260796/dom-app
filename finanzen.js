@@ -225,9 +225,9 @@ window.Finanzen = (() => {
       ${ein.length ? `<div class="seg2 full" style="margin-top:12px"><button data-fa="0" class="${alleZeigen ? '' : 'on'}">Offen (${einOffen.length})</button><button data-fa="1" class="${alleZeigen ? 'on' : ''}">Alle (${ein.length})</button></div>` : ''}
       <div class="plist">${zeigeEin.map((b) => belegZeile(b)).join('') || (ein.length ? '<p class="hint">Alles bezahlt.</p>' : '<p class="hint">Fotografiere die Rechnung eines Subunternehmers oder Lieferanten. Die KI liest Betrag, Datum und Absender aus.</p>')}</div>
 
-      ${abrechnen.length ? `<div class="sec-h"><h2>Abgeschlossen, noch keine Rechnung</h2></div><div class="plist">${abrechnen.map(zeile).join('')}</div>` : ''}
+      ${abrechnen.length ? `<div class="sec-h"><h2>Abgeschlossen, noch keine Rechnung</h2></div><div class="plist">${abrechnen.map((x) => zeile(x).replace('data-fp=', 'data-fr=')).join('')}</div>` : ''}
       <div class="sec-h"><h2>Rechnungen an Kunden, offen</h2>${aus.offen.length ? `<span class="count">${eur0(aus.offen.reduce((s, r) => s + Rechnung.zahlbetrag(r), 0))}</span>` : ''}</div>
-      <div class="plist">${aus.html || '<p class="hint">Keine offenen Rechnungen. Rechnungen erstellst du im Projekt (Abschlag oder Schlussrechnung).</p>'}</div>
+      <div class="plist">${aus.html || '<p class="hint">Keine offenen Rechnungen. Oben „Neue Rechnung“ tippen: Projekt suchen, Art wählen, fertig.</p>'}</div>
 
       <div class="sec-h"><h2>Kalkulation je Projekt</h2></div>
       ${kalkShown.length ? `<div class="plist">${kalkShown.map(({ x, k }) => `<button class="pcard" data-fp="${x.id}">
@@ -253,15 +253,13 @@ window.Finanzen = (() => {
     $('#fNeuR').onclick = async () => {
       const v = await sheet('Neue Rechnung', [
         { label: 'Eingangsrechnung erfassen', sub: 'Rechnung von Subunternehmer oder Lieferant, Foto genügt', icon: icon('camera'), value: 'ein' },
-        { label: 'Rechnung an einen Kunden', sub: 'Schlussrechnung im Projekt', icon: icon('file'), value: 'aus' },
+        { label: 'Rechnung an einen Kunden', sub: 'Abschlag, Schlussrechnung oder eigene Positionen', icon: icon('file'), value: 'aus' },
       ]);
       if (v === 'ein') return erfassen(neu(), () => view());
-      if (v !== 'aus') return;
-      const offen = idx.filter((x) => Projekt.zugesagt(x.status));
-      if (!offen.length) return toast('Rechnungen an Kunden gibt es, sobald ein Projekt zugesagt ist.', 4000);
-      const pid = await sheet('Für welches Projekt?', offen.map((x) => ({ label: x.titel || x.room || 'Projekt', sub: [Kunden.name(Kunden.byId(x.kundeId)) || x.customer, x.nr].filter(Boolean).join(' · '), icon: icon('home'), value: x.id })));
-      if (pid) { switchTab('projekt', { wohnung: null }); Projekt.oeffnen(pid); }
+      // Rechnung an Kunden: Projekt suchen, Art wählen, Betrag steht schon da. Man bleibt im Reiter Rechnungen.
+      if (v === 'aus') Rechnung.neu(null, () => view());
     };
+    $$('[data-fr]').forEach((b) => (b.onclick = async () => { const w = await kvGet('wohnung:' + b.dataset.fr); if (w) Rechnung.neu(w, () => view()); }));
     $$('[data-beleg]').forEach((b) => (b.onclick = () => erfassen(belege.get(b.dataset.beleg), () => view())));
     $$('[data-fp]').forEach((b) => (b.onclick = () => { switchTab('projekt', { wohnung: null }); Projekt.oeffnen(b.dataset.fp); }));
   }
