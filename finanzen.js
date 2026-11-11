@@ -146,7 +146,14 @@ window.Finanzen = (() => {
     const kunden = Kunden.liste().filter((k) => imJahr(k.created));
     const quellen = zaehl(kunden.map((k) => k.quelle).filter(Boolean));
     const quelleZu = (q) => zuL.filter((e) => Kunden.byId(e.x.kundeId)?.quelle === q).length;
-    const gruende = zaehl(abL.map((e) => e.x.absage).filter(Boolean));
+    const grund = (e) => e.w.absage?.grund || e.x.absage || '';
+    const gruende = zaehl(abL.map(grund).filter(Boolean));
+    const tagK = (t) => (t ? new Date(t).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' }) : '');
+    // Abgesagte Angebote einzeln: Kunde, Titel, Datum, Grund, Wert. Tippen öffnet das Angebot.
+    const abListe = [...abL].sort((a, b) => (b.w.absage?.t || 0) - (a.w.absage?.t || 0)).map((e) => `<button type="button" class="hi-z aw-ab" data-awab="${esc(e.x.id)}">
+        <span class="hi-t"><b>${esc(Kunden.name(Kunden.byId(e.x.kundeId)) || e.x.customer || 'Kunde')} · ${esc(e.x.titel || e.x.room || 'Angebot')}</b>
+        <span style="--c:#c0392b"><i></i>${esc([tagK(e.w.absage?.t), grund(e) ? 'Grund: ' + grund(e) : 'ohne Grund'].filter(Boolean).join(' · '))}</span></span>
+        ${e.k.soll.netto ? `<span class="hi-b">${eur0(e.k.soll.netto)}</span>` : ''}</button>`).join('');
     const balken = (liste, gesamt, extra) => liste.map(([n, c]) => `<div class="aw-b"><span>${esc(n)}</span><i style="--w:${Math.round((c / gesamt) * 100)}%"></i><b>${c}${extra ? extra(n) : ''}</b></div>`).join('');
     const stufe = (name, n, von, farbe, zusatz = '') => `<div class="aw-t" style="--c:${farbe};--w:${von ? Math.max(2, Math.round((n / von) * 100)) : 0}%"><span>${name}${zusatz ? ` <small>${zusatz}</small>` : ''}</span><b>${n}</b><i></i></div>`;
     const proz = (n, von) => (von ? ` (${Math.round((n / von) * 100)} %)` : '');
@@ -167,7 +174,7 @@ window.Finanzen = (() => {
       <div class="phasen zwei" style="margin-top:8px"><div class="fz ${ueberR.length ? 'rot' : ''}"><b>${eur0(sum(offenR))}</b><span>Offen bei Kunden${ueberR.length ? `, davon ${eur0(sum(ueberR))} überfällig` : ''}</span></div><div class="fz"><b>${sollSum ? Math.round((margeSum / sollSum) * 100) + ' %' : '–'}</b><span>Marge Ø (${marge.length} ${marge.length === 1 ? 'Projekt' : 'Projekte'})</span></div></div>
       ${jahr && umsatz ? `<div class="card aw"><b class="aw-h">Umsatz je Monat ${jahr}</b><div class="aw-m">${monate.map((v, m) => `<div title="${eur0(v)}"><i class="${v ? '' : 'leer'}" style="--h:${Math.round((v / maxM) * 100)}%"></i>${['J', 'F', 'M', 'A', 'M', 'J', 'J', 'A', 'S', 'O', 'N', 'D'][m]}</div>`).join('')}</div><p class="hint" style="margin:6px 0 0">Bester Monat: ${eur0(maxM)}</p></div>` : ''}
       ${quellen.length ? `<div class="card aw"><b class="aw-h">Woher kommen die Kunden?</b>${balken(quellen, kunden.filter((k) => k.quelle).length, (q) => { const n = quelleZu(q); return n ? ` <small>· ${n} Auftr.</small>` : ''; })}</div>` : ''}
-      ${gruende.length ? `<div class="card aw"><b class="aw-h">Warum abgesagt?</b>${balken(gruende, ab || 1)}</div>` : ''}`;
+      ${ab ? `<div class="card aw"><b class="aw-h">Abgesagte Angebote</b>${gruende.length ? balken(gruende, ab) : ''}<div class="aw-abl">${abListe}</div></div>` : ''}`;
   }
 
   // ---------- Eigene Seite (Menü › Auswertung) ----------
@@ -185,6 +192,7 @@ window.Finanzen = (() => {
       + auswertung(daten, Rechnung.liste(), awJahr === 'alle' ? '' : awJahr)
       + `<p class="hint">Angebote zählen nach dem Jahr, in dem sie angelegt wurden, Umsatz nach Rechnungsdatum, Zahlungseingang nach Zahltag. Die Werte der Angebote sind die Netto-Summen der Positionen. Die Marge kommt aus der Kalkulation je Projekt (Angebot gegen Eingangsrechnungen).</p>`;
     $$('[data-awj]').forEach((b) => (b.onclick = () => { awJahr = b.dataset.awj; auswertungView(); }));
+    $$('[data-awab]').forEach((b) => (b.onclick = () => window.Projekt.oeffnen(b.dataset.awab)));
   }
 
   // ---------- Übersicht ----------

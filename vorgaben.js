@@ -39,7 +39,7 @@ const VORGABEN = {
     ['Für alle Geräte', [
       { k: 'faceIdNach', l: 'Face ID wieder verlangen nach so vielen Minuten außerhalb der App (0 = jedes Mal)', t: 'zahl', d: 5, h: 'Gilt nur auf Geräten, auf denen Face ID oben eingeschaltet ist.' },
       { k: 'kalenderErinnerung', l: 'Erinnerung im iPhone-Kalender so viele Minuten vor dem Termin (0 = keine)', t: 'zahl', d: 0, h: 'Die Mitteilung von DOM vor Terminen stellst du unter „Mitteilungen aufs iPhone“ ein. Meist reicht eine der beiden.' },
-      { k: 'routeKarte', l: 'Route für heute öffnen in', t: 'wahl', d: 'google', o: [['google', 'Google Maps (alle Termine als Stopps)'], ['apple', 'Apple Karten (nur der nächste Termin)']], h: 'Der Knopf „Route für heute“ steht auf der Seite „Heute“ über den Terminen.' },
+      { k: 'routeKarte', l: 'Routen öffnen in', t: 'wahl', d: 'google', o: [['google', 'Google Maps'], ['apple', 'Apple Karten']], h: 'Gilt für das Routen-Zeichen neben jeder Anschrift (Kunde, Partner, Termin) und für „Route für heute“. Die Route startet an deinem Standort. Bei „Route für heute“ nimmt Google Maps alle Termine als Stopps, Apple Karten nur den nächsten.' },
     ]],
   ],
   push: [
@@ -113,6 +113,8 @@ const VORGABEN = {
   kundenEinst: [
     ['Kunden', [
       { k: 'telVorwahl', l: 'Ländervorwahl beim Anrufen', t: 'zeile', d: '+49', h: 'Beim Tippen auf „Anrufen“ wird aus 0711 123456 automatisch +49 711 123456.' },
+      { k: 'telArten', l: 'Bezeichnungen für weitere Telefonnummern (eine Zeile je Bezeichnung)', t: 'liste', d: ['Handy', 'Zuhause', 'Geschäftlich'], h: 'Weitere Nummern legst du beim Kunden mit dem kleinen Plus neben „Telefon“ an.' },
+      { k: 'mailArten', l: 'Bezeichnungen für weitere E-Mail-Adressen (eine Zeile je Bezeichnung)', t: 'liste', d: ['Privat', 'Geschäftlich'] },
       { k: 'kundenQuellen', l: 'Wie kommen Kunden zu uns? (eine Zeile je Quelle)', t: 'liste', d: ['Empfehlung', 'Google / Internet', 'Bauschild', 'Hausverwaltung', 'Stammkunde', 'Flyer / Anzeige', 'Sonstiges'] },
     ]],
     ['Geburtstage', [

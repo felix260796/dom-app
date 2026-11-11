@@ -184,14 +184,132 @@ function telLink(t) {
   return 'tel:' + n;
 }
 
+// ---------- Ziehen statt Pfeile (Wunsch Felix) ----------
+/** Griff mit drei Strichen. In die Zeile setzen, danach ziehbar(...) aufrufen. */
+const griffHtml = () => `<span class="zgriff" data-griff aria-label="Zum Verschieben ziehen">${icon('grip')}</span>`;
+/** Zeilen einer Liste am Griff hoch und runter ziehen (wie beim Baufortschritt).
+ * box: Element mit den Zeilen · zeile: Selektor der Zeilen (alle untereinander) · fertig(von, nach): Positionen in dieser Zeilenliste.
+ * Gezogen wird nur am Griff ([data-griff]), darum verschiebt ein versehentlicher Tipp nichts. */
+function ziehbar(box, zeile, fertig) {
+  if (!box) return;
+  $$('[data-griff]', box).forEach((g) => (g.onpointerdown = (e) => {
+    const rows = $$(zeile, box), z = g.closest(zeile), von = rows.indexOf(z);
+    if (von < 0 || rows.length < 2) return;
+    e.preventDefault();
+    const mitten = rows.map((r) => { const q = r.getBoundingClientRect(); return q.top + q.height / 2; });
+    const hoehe = z.getBoundingClientRect().height + (parseFloat(getComputedStyle(z).marginBottom) || 0), y0 = e.clientY;
+    let nach = von;
+    z.classList.add('zieht');
+    try { g.setPointerCapture(e.pointerId); } catch {}
+    const bewegen = (m) => {
+      const dy = m.clientY - y0, mitte = mitten[von] + dy;
+      z.style.transform = `translateY(${dy}px)`;
+      nach = von;
+      for (let j = 0; j < rows.length; j++) { if (j > von && mitte > mitten[j]) nach = j; if (j < von && mitte < mitten[j]) { nach = j; break; } }
+      rows.forEach((r, j) => { if (r === z) return; r.style.transform = j > von && j <= nach ? `translateY(${-hoehe}px)` : j < von && j >= nach ? `translateY(${hoehe}px)` : ''; });
+    };
+    // An window hängen, damit das Ziehen auch klappt, wenn der Finger den Griff verlässt
+    const ende = () => {
+      window.removeEventListener('pointermove', bewegen); window.removeEventListener('pointerup', ende); window.removeEventListener('pointercancel', ende);
+      rows.forEach((r) => (r.style.transform = '')); z.classList.remove('zieht');
+      if (nach !== von) fertig(von, nach);
+    };
+    window.addEventListener('pointermove', bewegen); window.addEventListener('pointerup', ende); window.addEventListener('pointercancel', ende);
+  }));
+}
+
+// ---------- Schutz vor versehentlichem Ändern (Wunsch Felix) ----------
+// Texte, die schon etwas enthalten, sind erst nach „Bearbeiten“ änderbar. „Rückgängig“ holt den Stand von vor dem
+// Bearbeiten zurück, „Fertig“ sperrt wieder. Gilt in der ganzen App von selbst für:
+//   - jedes mehrzeilige Textfeld (textarea) mit Inhalt; ausnehmen mit data-frei
+//   - jeden Block mit data-schutz="<schlüssel>": alle Felder darin; Teile mit data-edit-nur sind gesperrt unsichtbar.
+//     Der Schlüssel merkt sich über ein Neuzeichnen hinweg, dass der Block gerade offen ist.
+//     data-schutz-ohne-undo: ohne „Rückgängig“ (z. B. Listen, die bei jeder Änderung neu gezeichnet werden).
+// Dazu bekommen mehrzeilige Textfelder überall Autokorrektur und Rechtschreibprüfung.
+const schutzOffen = new Set();
+function textSchutz(wurzel = document.getElementById('main')) {
+  if (!wurzel) return;
+  const felder = (el) => (el.matches('textarea') ? [el] : $$('input, textarea, select', el).filter((f) => !f.closest('.sz-b')));
+  const sperren = (el, zu) => {
+    el.classList.toggle('sz-zu', zu); el.classList.toggle('sz-auf', !zu);
+    for (const f of felder(el)) { if (f.tagName === 'SELECT' || /checkbox|radio/.test(f.type)) f.disabled = zu; else f.readOnly = zu; }
+    $$('[data-edit-nur]', el).forEach((x) => (x.hidden = zu));
+  };
+  const einrichten = (el, key) => {
+    if (el.dataset.sz) return;
+    el.dataset.sz = '1';
+    const leiste = document.createElement('div');
+    leiste.className = 'sz-b';
+    // Tipp auf die Knöpfe nimmt dem Feld nicht den Fokus (sonst speichert und zeichnet die Seite neu, bevor „Rückgängig“ ankommt)
+    leiste.addEventListener('mousedown', (e) => e.preventDefault());
+    if (el.matches('textarea')) el.after(leiste); else el.appendChild(leiste);
+    let stand = null;
+    const zeichne = (offen) => {
+      sperren(el, !offen);
+      leiste.innerHTML = offen
+        ? `<button type="button" class="btn small" data-sz="zu">${icon('check')} Fertig</button>${el.dataset.schutzOhneUndo !== undefined ? '' : `<button type="button" class="btn small secondary" data-sz="undo">${icon('refresh')} Rückgängig</button>`}`
+        : `<button type="button" class="btn small secondary" data-sz="auf">${icon('edit')} Bearbeiten</button>`;
+      $$('[data-sz]', leiste).forEach((b) => (b.onclick = () => {
+        if (b.dataset.sz === 'auf') { stand = felder(el).map((f) => f.value); if (key) schutzOffen.add(key); zeichne(true); if (el.matches('textarea')) el.focus(); }
+        else if (b.dataset.sz === 'zu') { if (key) schutzOffen.delete(key); document.activeElement?.blur?.(); zeichne(false); }
+        else if (stand) {
+          felder(el).forEach((f, i) => { if (stand[i] === undefined || f.value === stand[i]) return; f.value = stand[i]; f.dispatchEvent(new Event('input', { bubbles: true })); f.dispatchEvent(new Event('change', { bubbles: true })); });
+          toast('Wieder wie vor dem Bearbeiten');
+        }
+      }));
+    };
+    const offen = !!key && schutzOffen.has(key);
+    if (offen) stand = felder(el).map((f) => f.value);
+    zeichne(offen);
+  };
+  $$('[data-schutz]', wurzel).forEach((el) => einrichten(el, el.dataset.schutz));
+  $$('textarea', wurzel).forEach((ta) => {
+    if (ta.dataset.roh === undefined) { ta.setAttribute('autocorrect', 'on'); ta.setAttribute('autocapitalize', 'sentences'); ta.spellcheck = true; }
+    // Ein Feld, in dem gerade geschrieben wird (oder das hier eben erst gefüllt wurde), bleibt offen bis zum nächsten Neuzeichnen
+    if (ta === document.activeElement || ta.dataset.getippt) return;
+    if (ta.dataset.sz || ta.dataset.frei !== undefined || ta.closest('[data-schutz]') || ta.readOnly || ta.disabled || !ta.value.trim()) return;
+    einrichten(ta, '');
+  });
+}
+document.addEventListener('input', (e) => { if (e.target.tagName === 'TEXTAREA' && !e.target.dataset.sz) e.target.dataset.getippt = '1'; }, true);
+
+// ---------- Route dorthin (Wunsch Felix) ----------
+/** Link zur Navigation vom eigenen Standort zur Anschrift. Karten-App aus der Vorgabe 'routeKarte' (Google Maps oder Apple Karten). */
+function routeLink(adresse) {
+  const ziel = encodeURIComponent(String(adresse || '').split(/\s*\n\s*/).filter(Boolean).join(', ').trim());
+  return vorgabe('routeKarte') === 'apple' ? `https://maps.apple.com/?daddr=${ziel}&dirflg=d` : `https://www.google.com/maps/dir/?api=1&travelmode=driving&destination=${ziel}`;
+}
+/** Jedes Anschriftfeld (.adr mit Eingabefeld) bekommt von selbst rechts ein kleines Routen-Zeichen, sobald etwas drinsteht. */
+function routeZeichen(wurzel = document.getElementById('main')) {
+  if (!wurzel) return;
+  $$('.adr', wurzel).forEach((box) => {
+    const inp = box.querySelector('input');
+    if (!inp || box.dataset.route) return;
+    box.dataset.route = '1';
+    const a = document.createElement('a');
+    a.className = 'adr-route'; a.target = '_blank'; a.rel = 'noopener'; a.setAttribute('aria-label', 'Route dorthin'); a.innerHTML = icon('route');
+    const stand = () => { const v = inp.value.trim(); a.hidden = v.length < 4; box.classList.toggle('mit-route', !a.hidden); if (!a.hidden) a.href = routeLink(v); };
+    a.addEventListener('click', stand); // Anschrift kann sich ohne Tippen geändert haben (Vorschlag gewählt)
+    inp.addEventListener('input', stand); inp.addEventListener('change', stand);
+    box.appendChild(a); stand();
+  });
+}
+document.addEventListener('DOMContentLoaded', () => {
+  const m = document.getElementById('main');
+  if (!m) return;
+  let warte = 0;
+  new MutationObserver(() => { if (!warte) warte = requestAnimationFrame(() => { warte = 0; textSchutz(m); routeZeichen(m); }); }).observe(m, { childList: true, subtree: true });
+});
+
 // ---------- Listen in den Einstellungen: jeder Eintrag ein eigenes Feld (Wunsch Felix) ----------
-/** HTML für eine Liste mit einzelnen Feldern. id = Schlüssel, liste = Texte. */
+/** HTML für eine Liste mit einzelnen Feldern. id = Schlüssel, liste = Texte.
+ * Reihenfolge: am Griff (drei Striche) ziehen. Ändern, Entfernen und Neues erst nach „Bearbeiten“ (textSchutz). */
 function listenFeld(id, liste, platzhalter = 'Neuer Eintrag') {
-  return `<div class="lf" data-lf="${esc(id)}">${(liste || []).map((x, i) => `<div class="lf-z">
+  return `<div class="lf" data-lf="${esc(id)}" data-schutz="lf:${esc(id)}" data-schutz-ohne-undo>${(liste || []).map((x, i) => `<div class="lf-z">
+      ${(liste || []).length > 1 ? griffHtml() : ''}
       <input type="text" data-lfi="${i}" value="${esc(x)}" aria-label="Eintrag ${i + 1}">
-      ${i ? `<button type="button" class="icon-btn" data-lfup="${i}" aria-label="Nach oben">${icon('up')}</button>` : '<span class="lf-leer"></span>'}
-      <button type="button" class="icon-btn" data-lfdel="${i}" aria-label="Entfernen">${icon('trash')}</button></div>`).join('')}
-    <div class="lf-neu"><input type="text" data-lfneu placeholder="${esc(platzhalter)}" autocomplete="off"><button type="button" class="btn small" data-lfadd>${icon('plus')} Dazu</button></div></div>`;
+      <button type="button" class="icon-btn" data-lfdel="${i}" data-edit-nur aria-label="Entfernen">${icon('trash')}</button></div>`).join('')}
+    <div class="lf-neu" data-edit-nur><input type="text" data-lfneu placeholder="${esc(platzhalter)}" autocomplete="off"><button type="button" class="btn small" data-lfadd>${icon('plus')} Dazu</button></div></div>`;
 }
 /** Knöpfe einer Liste binden. fertig(neueListe) speichert und zeichnet neu. */
 function listenBinden(box, liste, fertig) {
@@ -199,7 +317,7 @@ function listenBinden(box, liste, fertig) {
   const l = [...(liste || [])];
   $$('[data-lfi]', box).forEach((inp) => (inp.onchange = () => { const v = inp.value.trim(); if (v) l[+inp.dataset.lfi] = v; else l.splice(+inp.dataset.lfi, 1); fertig(l); }));
   $$('[data-lfdel]', box).forEach((b) => (b.onclick = () => { const i = +b.dataset.lfdel; if (!confirm(`„${l[i]}“ entfernen?`)) return; l.splice(i, 1); fertig(l); }));
-  $$('[data-lfup]', box).forEach((b) => (b.onclick = () => { const i = +b.dataset.lfup; [l[i - 1], l[i]] = [l[i], l[i - 1]]; fertig(l); }));
+  ziehbar(box, '.lf-z', (von, nach) => { l.splice(nach, 0, l.splice(von, 1)[0]); fertig(l); });
   const neu = $('[data-lfneu]', box);
   const dazu = () => { const v = neu.value.trim(); if (!v) return neu.focus(); if (l.includes(v)) return toast('Den Eintrag gibt es schon.'); l.push(v); fertig(l); };
   $('[data-lfadd]', box).onclick = dazu;

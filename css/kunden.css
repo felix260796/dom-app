@@ -122,3 +122,13 @@
 /* ---------- Telefon mit Vorwahl, Kundennummer ---------- */
 .tel-in { display: grid; grid-template-columns: 104px 1fr; gap: 8px; }
 .k-nr { padding: 12px 14px; border-radius: 12px; background: var(--soft); color: var(--muted); font-weight: 600; }
+/* ---------- Schnellübersicht beim Kunden (Historie), auch Auswertung „Abgesagte Angebote“ ---------- */
+.hi { margin-top: 8px !important; }
+.hi-z { display: flex; align-items: center; gap: 10px; width: 100%; padding: 10px 0; border: 0; border-top: 1px solid var(--line); background: none; text-align: left; font: inherit; color: inherit; }
+.hi-t { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; border: 0; background: none; padding: 0; text-align: left; font: inherit; color: inherit; }
+.hi-t b { font-weight: 600; overflow-wrap: anywhere; }
+.hi-t > span { font-size: 13px; color: var(--muted); line-height: 1.35; }
+.hi-t > span i { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--c, var(--muted)); margin-right: 6px; }
+.hi-b { font-size: 13px; font-weight: 600; white-space: nowrap; }
+.hi-pdf { flex: none; }
+.aw-abl { margin-top: 10px; }
