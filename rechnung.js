@@ -318,7 +318,7 @@ window.Rechnung = (() => {
       return t.map((x) => esc(x)).join('<br>');
     };
     const posZeile = (z, i) => `<div class="rpos">
-        <textarea data-pt="${i}" rows="2" placeholder="Leistung, z. B. Wasserhahn im Bad getauscht">${esc(z.text)}</textarea>
+        <textarea data-frei data-pt="${i}" rows="2" placeholder="Leistung, z. B. Wasserhahn im Bad getauscht">${esc(z.text)}</textarea>
         <div class="row"><div><label>Menge</label><input type="text" inputmode="decimal" data-pm="${i}" value="${esc(String(z.menge).replace('.', ','))}"></div>
           <div><label>Einheit</label><input type="text" data-pe="${i}" value="${esc(z.einheit)}"></div>
           <div><label>Preis netto</label><input type="text" inputmode="decimal" data-pp="${i}" value="${z.ep ? esc(String(z.ep).replace('.', ',')) : ''}" placeholder="0,00"></div></div>
