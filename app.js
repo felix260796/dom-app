@@ -6,7 +6,7 @@
  * Kern-Funktionen (Speicher, KI, Bilder) stehen in core.js. */
 
 // ---------- Symbole (einfache Linien-Icons) ----------
-const APP_VERSION = '79';
+const APP_VERSION = '80';
 const ICONS = {
   plus: '<path d="M12 5v14M5 12h14"/>',
   camera: '<path d="M3 8.5A2 2 0 0 1 5 6.5h2l1.6-2h6.8l1.6 2h2a2 2 0 0 1 2 2V18a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><circle cx="12" cy="13" r="3.6"/>',
@@ -274,9 +274,10 @@ function zielOeffnen(z) {
   try { await Partner.laden(); await Kalender.laden(); Kalender.punkt(); } catch (e) { console.error('Kalender', e); }
   navigator.storage?.persist?.();
   // Aus einer Mitteilung geöffnet: ?ziel=heute|kalender
-  const ziel = new URLSearchParams(location.search).get('ziel');
-  if (ziel) history.replaceState(null, '', location.pathname);
+  const ziel = new URLSearchParams(location.search).get('ziel') || window.pushZiel; // pushZiel: iPhone-App, siehe push.js
+  if (new URLSearchParams(location.search).get('ziel')) history.replaceState(null, '', location.pathname);
   zielOeffnen(ziel || (vorgabe('heuteStart') === 'nein' ? 'kunden' : 'heute'));
+  window.appGestartet = true;
   navigator.serviceWorker?.addEventListener('message', (e) => { if (e.data?.ziel) zielOeffnen(e.data.ziel); });
   setTimeout(() => window.Push?.abgleich(), 4000);
   if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost')) {

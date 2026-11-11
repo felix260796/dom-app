@@ -65,6 +65,10 @@ def anlegen(ordner):
     if not ids:
         sys.exit(f'Die Bundle-ID {bundle} ist bei Apple nicht angelegt.')
 
+    # Mitteilungen (Push) für die App freischalten, falls noch nicht geschehen. Muss vor dem Profil passieren.
+    api('POST', '/bundleIdCapabilities', {'data': {'type': 'bundleIdCapabilities', 'attributes': {'capabilityType': 'PUSH_NOTIFICATIONS'},
+        'relationships': {'bundleId': {'data': {'type': 'bundleIds', 'id': ids[0]['id']}}}}}, fehler_ok=True)
+
     name = PRAEFIX + cert_id
     prof = api('POST', '/profiles', {'data': {'type': 'profiles', 'attributes': {'name': name, 'profileType': 'IOS_APP_STORE'},
         'relationships': {'bundleId': {'data': {'type': 'bundleIds', 'id': ids[0]['id']}},

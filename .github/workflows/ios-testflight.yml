@@ -17,6 +17,13 @@ on:
       - 'docs/**'
       - '.github/workflows/supabase-wach-halten.yml'
   workflow_dispatch:
+  # Jeden Monat neu bauen: Eine TestFlight-Version läuft nach 90 Tagen ab. So liegt immer eine frische bereit.
+  schedule:
+    - cron: '0 4 1 * *'
+
+permissions:
+  contents: read
+  actions: write
 
 concurrency:
   group: ios-testflight
@@ -32,6 +39,18 @@ jobs:
       ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
       ASC_KEY_P8: ${{ secrets.ASC_KEY_P8 }}
     steps:
+      # GitHub schaltet geplante Läufe nach 60 Tagen ohne Änderung am Repository ab.
+      # Neu einschalten setzt diese Frist zurück, auch für den Supabase-Wachhalter.
+      - name: Geplante Läufe aktiv halten
+        if: github.event_name == 'schedule'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          for w in ios-testflight.yml supabase-wach-halten.yml; do
+            curl -fsS -o /dev/null -X PUT -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github+json" \
+              "https://api.github.com/repos/${{ github.repository }}/actions/workflows/$w/enable" && echo "$w aktiv" || echo "::warning::$w konnte nicht aktiv gehalten werden"
+          done
+
       - name: Geheimnisse da?
         id: pruefen
         run: |
@@ -42,10 +61,10 @@ jobs:
             echo "los=ja" >> "$GITHUB_OUTPUT"
           fi
 
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         if: steps.pruefen.outputs.los == 'ja'
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         if: steps.pruefen.outputs.los == 'ja'
         with:
           node-version: 22
@@ -77,6 +96,10 @@ jobs:
           $PB -c "Add :ITSAppUsesNonExemptEncryption bool false" $P
           $PB -c "Set :CFBundleDevelopmentRegion de" $P
           $PB -c "Delete :UIRequiredDeviceCapabilities" $P || true
+          # Mitteilungen (Push): Berechtigung und Weitergabe des Geräte-Tokens an die App
+          cp ios-resources/App.entitlements ios/App/App/App.entitlements
+          perl -0pi -e 's/\}\s*\z/\n    func application(_ application: UIApplication, didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data) {\n        NotificationCenter.default.post(name: .capacitorDidRegisterForRemoteNotifications, object: deviceToken)\n    }\n\n    func application(_ application: UIApplication, didFailToRegisterForRemoteNotificationsWithError error: Error) {\n        NotificationCenter.default.post(name: .capacitorDidFailToRegisterForRemoteNotifications, object: error)\n    }\n}\n/' ios/App/App/AppDelegate.swift
+          grep -q capacitorDidRegisterForRemoteNotifications ios/App/App/AppDelegate.swift
 
       - name: Signatur bei Apple holen
         if: steps.pruefen.outputs.los == 'ja'
@@ -116,7 +139,7 @@ jobs:
           VER=$(sed -n "s/.*APP_VERSION *= *'\\([0-9]*\\)'.*/\\1/p" app.js | head -1)
           echo "App-Version $VER, Build ${{ github.run_number }}"
           # Signatur nur am App-Ziel einstellen (nicht an den mitgebauten Paketen)
-          sed -i '' "s/CODE_SIGN_STYLE = Automatic;/CODE_SIGN_STYLE = Manual; DEVELOPMENT_TEAM = $APPLE_TEAM_ID; CODE_SIGN_IDENTITY = \"Apple Distribution\"; \"CODE_SIGN_IDENTITY[sdk=iphoneos*]\" = \"Apple Distribution\"; PROVISIONING_PROFILE_SPECIFIER = \"$SIGN_PROFILE_NAME\";/" ios/App/App.xcodeproj/project.pbxproj
+          sed -i '' "s/CODE_SIGN_STYLE = Automatic;/CODE_SIGN_STYLE = Manual; DEVELOPMENT_TEAM = $APPLE_TEAM_ID; CODE_SIGN_IDENTITY = \"Apple Distribution\"; \"CODE_SIGN_IDENTITY[sdk=iphoneos*]\" = \"Apple Distribution\"; PROVISIONING_PROFILE_SPECIFIER = \"$SIGN_PROFILE_NAME\"; CODE_SIGN_ENTITLEMENTS = \"App\/App.entitlements\";/" ios/App/App.xcodeproj/project.pbxproj
           xcodebuild -project ios/App/App.xcodeproj -scheme App -configuration Release \
             -destination 'generic/platform=iOS' -archivePath "$RUNNER_TEMP/DOM.xcarchive" archive \
             TARGETED_DEVICE_FAMILY=1 \
