@@ -259,7 +259,20 @@ input, select, textarea { font-size: max(16px, 1em); }
 .lf { display: flex; flex-direction: column; gap: 6px; margin-top: 4px; }
 .lf-z { display: flex; align-items: center; gap: 4px; }
 .lf-z input { flex: 1; min-width: 0; }
-.lf-z .icon-btn, .lf-leer { width: 38px; flex: 0 0 38px; color: var(--muted); }
+.lf-z .icon-btn { width: 38px; flex: 0 0 38px; color: var(--muted); }
+/* ---------- Ziehen am Griff (drei Striche) ---------- */
+.zgriff { flex: none; display: flex; align-items: center; justify-content: center; width: 36px; min-height: 40px; align-self: stretch; color: var(--muted); touch-action: none; cursor: grab; -webkit-user-select: none; user-select: none; }
+.zieht { position: relative; z-index: 6; box-shadow: 0 8px 22px rgba(30, 53, 80, .22); background: #fff; border-radius: 10px; }
+/* ---------- Schutz vor versehentlichem Ändern ---------- */
+textarea.sz-zu, .sz-zu input[readonly], .sz-zu textarea[readonly] { background: var(--soft); color: var(--text); border-style: dashed; -webkit-user-select: none; user-select: none; }
+.sz-zu select:disabled { opacity: 1; background: var(--soft); color: var(--text); border-style: dashed; }
+.sz-b { display: flex; gap: 8px; margin-top: 6px; flex-wrap: wrap; }
+.sz-b .btn { padding: 7px 12px; }
+textarea.sz-auf, .sz-auf input:not([readonly]), .sz-auf textarea { border-color: var(--brass); }
+.lab-plus { display: flex; align-items: center; justify-content: space-between; }
+.plus-mini { border: 1.5px solid var(--line); background: #fff; color: var(--navy); width: 30px; height: 30px; border-radius: 50%; font-size: 20px; line-height: 1; font-weight: 600; display: grid; place-items: center; padding: 0; }
+.mehr-z { display: grid; grid-template-columns: minmax(96px, 34%) 1fr 38px; gap: 6px; align-items: center; margin-top: 6px; }
+.mehr-z .icon-btn { color: var(--muted); }
 .lf-neu { display: flex; gap: 6px; margin-top: 2px; }
 .lf-neu input { flex: 1; min-width: 0; border-style: dashed; }
 .lf-neu .btn { white-space: nowrap; }
