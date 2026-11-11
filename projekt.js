@@ -692,7 +692,7 @@ window.Projekt = (() => {
     if (gesperrt(w)) return gesperrtFrage(w);
     const list = await raeume(w);
     const zahl = (x) => (+x || 0).toLocaleString('de-DE', { maximumFractionDigits: 2 });
-    const scans = (w.vorOrt?.scans || []).filter((s) => !list.some((r) => r.scanId === s.id));
+    const scans = (w.vorOrt?.scans || []).filter((s) => !s.ganz && !list.some((r) => r.scanId === s.id));
     const v = await sheet('Was wird angeboten?', [
       ...scans.map((s) => ({ label: s.name, sub: `Gescannt vor Ort: ${zahl(s.laenge)} × ${zahl(s.breite)} m, Maße werden übernommen`, icon: icon('ruler'), value: 'scan:' + s.id })),
       { label: 'Kleinigkeit', sub: 'Einzelne Arbeiten ohne Raum, z. B. Türgriffe, Steckdosen, Rollladen', icon: icon('wrench'), value: 'klein' },
