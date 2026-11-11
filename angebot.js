@@ -1172,10 +1172,10 @@ Gib Länge (längere Seite) und Breite der Grundfläche, Raumhöhe, Anzahl und G
     const sichern = debounce(() => speichern(), 500);
     const zeichne = () => {
       header(titel, sub, { label: 'Zurück', fn: zurueck });
-      const karte = (b, i) => `<div class="card kform tx" data-tx="${i}">
-          <div class="tx-k"><input type="text" data-txf="titel" value="${esc(b.titel || '')}" placeholder="Überschrift, z. B. Gewährleistung" aria-label="Überschrift">
-            <button type="button" class="icon-btn" data-txup="${i}" aria-label="Nach oben">${icon('up')}</button>
-            <button type="button" class="icon-btn" data-txdel="${i}" aria-label="Entfernen">${icon('trash')}</button></div>
+      // Reihenfolge: am Griff ziehen (nicht mehr mit Pfeil). Ändern erst nach „Bearbeiten“ (data-schutz, core.js textSchutz).
+      const karte = (b, i) => `<div class="card kform tx" data-tx="${i}" data-wo="${b.wo === 'vor' ? 'vor' : 'nach'}" data-schutz="tx:${esc(b.id || i)}">
+          <div class="tx-k">${griffHtml()}<input type="text" data-txf="titel" value="${esc(b.titel || '')}" placeholder="Überschrift, z. B. Gewährleistung" aria-label="Überschrift">
+            <button type="button" class="icon-btn" data-txdel="${i}" data-edit-nur aria-label="Entfernen">${icon('trash')}</button></div>
           <textarea data-txf="text" rows="${Math.min(12, Math.max(3, Math.ceil(String(b.text || '').length / 42) + String(b.text || '').split('\n').length - 1))}" placeholder="Text">${esc(b.text || '')}</textarea>
           <select data-txf="wo" aria-label="Wo im Angebot"><option value="vor" ${b.wo === 'vor' ? 'selected' : ''}>Steht vor den Positionen</option><option value="nach" ${b.wo !== 'vor' ? 'selected' : ''}>Steht nach den Positionen</option></select></div>`;
       main().innerHTML = `<p class="hint" style="margin-top:0">Jedes Textfeld hat eine Überschrift und einen Text. Ohne Überschrift steht nur der Text da. Eine Leerzeile beginnt einen neuen Absatz. Platzhalter: {zeitraum} Ausführungszeitraum, {gueltig} gültig bis, {nr} Angebotsnummer, {kunde} Kunde.</p>
@@ -1190,12 +1190,14 @@ Gib Länge (längere Seite) und Breite der Grundfläche, Raumhöhe, Anzahl und G
           if (el.dataset.txf === 'wo') el.onchange = async () => { b.wo = el.value; await speichern(); zeichne(); };
         });
       });
-      $$('[data-txup]').forEach((btn) => (btn.onclick = async () => {
-        const i = +btn.dataset.txup, b = liste[i];
-        const j = liste.slice(0, i).map((x, k) => [x, k]).filter(([x]) => (x.wo === 'vor') === (b.wo === 'vor')).pop()?.[1];
-        if (j === undefined) return;
-        [liste[j], liste[i]] = [liste[i], liste[j]]; await speichern(); zeichne();
-      }));
+      // Ziehen innerhalb von „vor“ bzw. „nach den Positionen“
+      for (const wo of ['vor', 'nach']) ziehbar(main(), `.tx[data-wo="${wo}"]`, async (von, nach) => {
+        const gruppe = liste.filter((x) => (x.wo === 'vor') === (wo === 'vor'));
+        gruppe.splice(nach, 0, gruppe.splice(von, 1)[0]);
+        let n = 0;
+        liste.forEach((x, k) => { if ((x.wo === 'vor') === (wo === 'vor')) liste[k] = gruppe[n++]; });
+        const y = window.scrollY; await speichern(); zeichne(); window.scrollTo(0, y);
+      });
       $$('[data-txdel]').forEach((btn) => (btn.onclick = async () => {
         const b = liste[+btn.dataset.txdel];
         if (!confirm(`Textfeld „${b.titel || String(b.text || '').slice(0, 40) || 'leer'}“ entfernen?`)) return;
@@ -1210,7 +1212,7 @@ Gib Länge (längere Seite) und Breite der Grundfläche, Raumhöhe, Anzahl und G
           if (v === null) return;
           if (v !== 'leer') neu = { ...frei[+v], id: uid(), wo };
         }
-        liste.push(neu); await speichern(); zeichne();
+        liste.push(neu); schutzOffen.add('tx:' + neu.id); await speichern(); zeichne(); // neues Feld ist gleich offen zum Schreiben
         setTimeout(() => $(`[data-tx="${liste.length - 1}"] [data-txf="${neu.titel ? 'text' : 'titel'}"]`)?.focus(), 60);
       }));
       if ($('#txStd')) $('#txStd').onclick = std.fn;

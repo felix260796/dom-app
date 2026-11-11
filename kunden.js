@@ -191,6 +191,61 @@ window.Kunden = (() => {
     const teil = (t, l) => `<div class="sec-h"><h2>${t}</h2><span class="count">${l.length}</span></div><div class="plist">${l.map((x) => pcard(x, wo(x))).join('')}</div>`;
     return (ang.length ? teil('Angebote', ang) : '') + (prj.length ? teil('Projekte', prj) : '') + (list.length ? '' : '<p class="hint">Noch keine Angebote oder Projekte.</p>');
   };
+  /** Schnellübersicht beim Kunden (Wunsch Felix): Angebotshistorie, Projekthistorie, Rechnungshistorie.
+   * Jede Zeile mit Datum, Stand und Betrag. Abgesagte Angebote bleiben mit Grund und PDF stehen.
+   * Füllt #kHist (dort steht bis zum Laden die einfache Liste). idx = Projekte des Kunden aus projectIndex. */
+  async function historie(k, idx) {
+    const box = $('#kHist');
+    if (!box || !window.Projekt) return;
+    const P = window.Projekt;
+    const eur = (x) => Math.round(x).toLocaleString('de-DE') + ' €';
+    const tagK = (t) => (t ? new Date(typeof t === 'number' ? t : t + 'T12:00').toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' }) : '');
+    const daten = (await Promise.all(idx.map(async (x) => { const w = await kvGet('wohnung:' + x.id); if (!w) return null; let netto = 0; try { netto = (await window.Finanzen.kalkulation(w)).soll.netto || 0; } catch {} return { x, w, netto }; }))).filter(Boolean);
+    try { await window.Rechnung?.laden(); } catch {}
+    if (state.kunde !== k || !box.isConnected) return;
+    const wann = (w, sts) => (w.verlauf || []).find((v) => sts.includes(v.st))?.t || 0;
+    const ZU = ['geplant', '', 'fertig', 'rechnung', 'bezahlt'];
+    const wo = (x) => (einObjekt(k) ? '' : objLabel(objekt(k, x.objektId)));
+    // Angebot: PDF = das verschickte (angpdf), sonst das zuletzt gespeicherte Angebots-PDF unter „Dokumente“
+    const pdfVon = (w) => (w.angebotPdf ? { key: 'angpdf:' + w.id, name: w.angebotPdf.name || 'Angebot.pdf' } : [...(w.dokumente || [])].reverse().find((d) => /^Angebot/i.test(d.name)) || null);
+    const ang = daten.filter((e) => !e.w.ohneAngebot).sort((a, b) => (b.w.created || 0) - (a.w.created || 0));
+    const prj = daten.filter((e) => P.zugesagt(e.x.status)).sort((a, b) => (wann(b.w, ZU) || b.w.created || 0) - (wann(a.w, ZU) || a.w.created || 0));
+    const ids = new Set(daten.map((e) => e.x.id));
+    const rStand = (r) => (r.art === 'storno' ? ['Stornorechnung', '#6b7380'] : r.storniert ? ['storniert', '#6b7380'] : r.bezahlt ? ['bezahlt am ' + tagK(r.bezahlt), '#1b5e3a'] : Rechnung.ueberfaellig(r) ? ['überfällig seit ' + tagK(r.faellig), '#c0392b'] : ['offen, fällig ' + tagK(r.faellig), '#d2691e']);
+    const rech = (window.Rechnung?.liste() || []).filter((r) => ids.has(r.projektId)).sort((a, b) => String(b.datum || '').localeCompare(String(a.datum || '')));
+    const standAng = (e) => {
+      const st = P.norm(e.x.status);
+      if (st === 'abgesagt') return [`Abgesagt${e.w.absage?.t ? ' am ' + tagK(e.w.absage.t) : ''}${e.w.absage?.grund ? ' · Grund: ' + e.w.absage.grund : ''}`, '#c0392b'];
+      if (P.zugesagt(st)) return [`Zugesagt${wann(e.w, ZU) ? ' am ' + tagK(wann(e.w, ZU)) : ''}`, '#1b5e3a'];
+      if (st === 'angebot') return [`Verschickt${e.w.versendetAm ? ' am ' + tagK(e.w.versendetAm) : ''}, noch offen`, '#b7791f'];
+      return ['In Arbeit, noch nicht verschickt', '#6b7380'];
+    };
+    const zeile = (art, id, titel, unter, farbe, betrag, pdf) => `<div class="hi-z">
+        <button type="button" class="hi-t" data-hi="${art}:${esc(id)}"><b>${esc(titel)}</b><span style="--c:${farbe}"><i></i>${esc(unter)}</span></button>
+        ${betrag ? `<span class="hi-b">${esc(betrag)}</span>` : ''}
+        ${pdf ? `<button type="button" class="icon-btn hi-pdf" data-hipdf="${esc(pdf.key)}" data-hiname="${esc(pdf.name)}" aria-label="Angebot als PDF ansehen">${icon('file')}</button>` : ''}</div>`;
+    const teil = (titel, n, inhalt, leer, offen) => `<details class="more card hi" ${offen && n ? 'open' : ''}><summary>${icon('list')}<span>${titel}<small>${n ? `${n} ${n === 1 ? 'Eintrag' : 'Einträge'}` : leer}</small></span>${icon('chevron', 'more-chev')}</summary>${inhalt}</details>`;
+    const phasen = Object.fromEntries(P.PHASEN.map(([id, n]) => [id, n.replace(/­/g, '')]));
+    box.innerHTML = `<div class="sec-h"><h2>Schnellübersicht</h2></div>`
+      + teil('Angebotshistorie', ang.length, ang.map((e) => { const [t, f] = standAng(e); return zeile('a', e.x.id, e.x.titel || e.x.room || 'Angebot', [tagK(e.w.created), wo(e.x), t].filter(Boolean).join(' · '), f, e.netto ? eur(e.netto) + ' netto' : '', pdfVon(e.w)); }).join(''), 'Noch kein Angebot', true)
+      + teil('Projekthistorie', prj.length, prj.map((e) => zeile('p', e.x.id, e.x.titel || e.x.room || 'Projekt', [e.x.nr, wo(e.x), phasen[P.phase(e.x)] || P.statusName(e.x.status), e.w.baustart ? 'Baustart ' + tagK(e.w.baustart) : ''].filter(Boolean).join(' · '), P.farbe(e.x.status), e.netto ? eur(e.netto) + ' netto' : '', null)).join(''), 'Noch kein Projekt', false)
+      + teil('Rechnungshistorie', rech.length, rech.map((r) => zeile('r', r.id, [r.nr || 'Rechnung', r.art === 'schluss' ? 'Schlussrechnung' : r.art === 'storno' ? 'Storno' : `${r.stufe || ''}. Abschlag`].join(' · '), [tagK(r.datum), rStand(r)[0]].filter(Boolean).join(' · '), rStand(r)[1], eur(Rechnung.zahlbetrag(r)), null)).join(''), 'Noch keine Rechnung', false);
+    const hier = () => { window.openTab('kunden', { kunde: k }); };
+    $$('[data-hi]', box).forEach((b) => (b.onclick = async () => {
+      const [art, id] = [b.dataset.hi[0], b.dataset.hi.slice(2)];
+      if (art === 'r') { const r = Rechnung.liste().find((y) => y.id === id); if (r) { Rechnung.detail(r, hier); window.scrollTo(0, 0); } return; }
+      // Angebot und Projekt: über die normale Projektkarte öffnen (führt mit „Zurück“ wieder zum Kunden)
+      const w = await kvGet('wohnung:' + id);
+      if (!w) return toast('Nicht gefunden.');
+      w.mappe ??= {}; state.project = null; state.wohnung = w;
+      P.view(); window.scrollTo(0, 0);
+    }));
+    $$('[data-hipdf]', box).forEach((b) => (b.onclick = async () => {
+      const data = await kvGet(b.dataset.hipdf);
+      if (!data) return toast('Das PDF ist auf diesem Gerät noch nicht da. Bitte kurz warten (Cloud-Abgleich).', 4000);
+      pdfAnsicht(new File([await (await fetch(data)).blob()], b.dataset.hiname, { type: 'application/pdf' }), b.dataset.hiname);
+    }));
+  }
   /** Gleicher Name = gleicher Kunde, die Projektadresse wird sein Objekt.
    * Die IDs werden aus Name und Adresse abgeleitet, damit zwei Geräte (Cloud-Abgleich) dasselbe Ergebnis erzeugen. */
   async function migrate() {
@@ -400,11 +455,12 @@ window.Kunden = (() => {
             <div><label>E-Mail</label><input type="email" data-hv="email" value="${esc(k.hv.email)}" autocomplete="off" inputmode="email" placeholder="info@…"></div></div>
           <label>Anschrift der Hausverwaltung</label><div class="adr"><input type="text" data-hv="anschrift" value="${esc(k.hv.anschrift)}" autocomplete="off" placeholder="Straße Nr., der Ort wird ergänzt"></div>
         </div>
-        <label>Telefon</label>${Kontakt.telInput('kTel', k.telefon)}
+        ${Kontakt.mehrLabel('Telefon', 'tel')}${Kontakt.telInput('kTel', k.telefon)}
+        <div id="kTelMehr"></div>
         <label>Geburtstag${a !== null ? ` <span class="muted" id="kAlter">(${a} Jahre)</span>` : ` <span class="muted" id="kAlter"></span>`}</label>${Kontakt.datumInput('kGeb', k.geburtstag)}
         <div id="kGebArtBox" ${k.geburtstag ? '' : 'hidden'}><label>Am Geburtstag</label>${Kontakt.gebArtSelect(k.gebArt, 'kGebArt')}</div>
-        <label>E-Mail</label><input type="email" id="kMail" value="${esc(k.email)}" autocomplete="off" inputmode="email" placeholder="name@beispiel.de">
-        <div id="kWeitere">${Kontakt.weitereHtml()}</div>
+        ${Kontakt.mehrLabel('E-Mail', 'mail')}<input type="email" id="kMail" value="${esc(k.email)}" autocomplete="off" inputmode="email" placeholder="name@beispiel.de">
+        <div id="kMailMehr"></div>
         <label id="kPrivatL">${privatLabel(k)}</label><div class="adr"><input type="text" id="kPrivat" value="${esc(k.privat)}" autocomplete="off" placeholder="Straße Nr., der Ort wird ergänzt"></div>
         <label>Wie ist der Kunde auf uns gekommen?</label><select id="kQuelle"><option value="">Bitte wählen</option>${[...new Set([...vorgabe('kundenQuellen'), ...(k.quelle ? [k.quelle] : [])])].map((q) => `<option ${q === k.quelle ? 'selected' : ''}>${esc(q)}</option>`).join('')}</select>
         <label>Notiz</label><textarea id="kNotiz" placeholder="z. B. erreichbar ab 17 Uhr, Schlüssel beim Nachbarn">${esc(k.notiz)}</textarea>
@@ -431,7 +487,7 @@ window.Kunden = (() => {
 
       ${Array.isArray(k.schnell) && k.schnell.length ? `<div class="sec-h"><h2>Am Telefon genannt</h2><span class="count">${k.schnell.length}</span></div>
       <div class="card">${k.schnell.slice().reverse().map((s) => `<div class="tot"><span>${esc(new Date(s.t).toLocaleDateString('de-DE'))}${s.text ? ` · ${esc(s.text)}` : ''}</span><b>ca. ${Math.round(s.von).toLocaleString('de-DE')} – ${Math.round(s.bis).toLocaleString('de-DE')} €</b></div>`).join('')}</div>` : ''}
-      ${angebotePrj(idx, einfach ? () => '' : (x) => objLabel(objekt(k, x.objektId)) || 'Ohne Objekt')}
+      <div id="kHist">${angebotePrj(idx, einfach ? () => '' : (x) => objLabel(objekt(k, x.objektId)) || 'Ohne Objekt')}</div>
       <button class="btn big block" id="kProj" style="margin-top:12px">${icon('plus')} Neues Angebot für ${esc(name(k) || 'diesen Kunden')}</button>
       ${!k.isNew && window.Geraet?.kann('kontakte') ? `<button type="button" class="link-add" id="kInKontakte" style="margin-top:10px">${icon('user')} In iPhone-Kontakten speichern</button>` : ''}
       ${k.isNew ? '' : `<button class="notice plain" id="kRech" style="margin-top:12px">${icon('euro')}<span><b>Rechnungen dieses Kunden</b> · zu den Rechnungen springen</span>${icon('chevron')}</button>`}
@@ -475,7 +531,9 @@ window.Kunden = (() => {
       $('#kAlter').textContent = alter(k) !== null ? `(${alter(k)} Jahre)` : '';
     });
     $$('[data-hv]').forEach((inp) => (inp.oninput = () => { k.hv[inp.dataset.hv] = inp.value; persist(); actions(); }));
-    Kontakt.weitereBinden($('#kWeitere'), k.weitere, () => { persist(); actions(); });
+    Kontakt.mehrBinden($('#kTelMehr'), $('[data-mehr="tel"]'), k.weitere, 'tel', () => { persist(); actions(); });
+    Kontakt.mehrBinden($('#kMailMehr'), $('[data-mehr="mail"]'), k.weitere, 'mail', () => { persist(); actions(); });
+    historie(k, idx);
     if (k.isNew) setTimeout(() => $('#kName')?.focus(), 50);
     $$('.adr input').forEach(adressVorschlaege);
     $$('[data-obj]').forEach((b) => (b.onclick = () => { objektView(k, objekt(k, b.dataset.obj)); window.scrollTo(0, 0); }));
