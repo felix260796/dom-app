@@ -10,6 +10,7 @@ const VORGABEN = {
     ['Zahlung', [
       { k: 'zahlungsziel', l: 'Zahlungsziel in Tagen', t: 'zahl', d: 14 },
       { k: 'abschlagPlan', l: 'Abschläge in % (der letzte Teil kommt mit der Schlussrechnung)', t: 'plan', d: [30, 40, 30], h: 'Je Projekt kannst du im Projekt einen eigenen Plan eintragen.' },
+      { k: 'rechnungQr', l: 'QR-Code zum Bezahlen auf Rechnung und Mahnung (GiroCode, IBAN in den Firmendaten)', t: 'janein', d: 'ja' },
       { k: 'abschlagFortschritt', l: 'Beim Abschlag den Baufortschritt anzeigen (z. B. „60 % fertig“)', t: 'janein', d: 'ja' },
       { k: 'mahnFrist', l: 'Neue Frist bei Erinnerung und Mahnung in Tagen', t: 'zahl', d: 7 },
     ]],
@@ -349,7 +350,7 @@ window.Vorgaben = (() => {
   // Die Textfelder vor und nach den Positionen haben seit Version 75 eine eigene Seite (Angebot._intern.texteEinstellungen).
   // Hier bleiben nur der Schlusssatz und der Text über der Unterschrift.
   const PL_TEXTE = [['textSchluss', 'Schlusssatz vor dem Gruß'], ['textAuftrag', 'Text über der Unterschrift (Auftragserteilung)']];
-  const PL_FIRMA = [['firma', 'Firmenname'], ['strasse', 'Straße'], ['ort', 'PLZ und Ort'], ['telefon', 'Telefon'], ['email', 'E-Mail'], ['ansprechpartner', 'Ansprechpartner'], ['ustid', 'USt-IdNr.'], ['sitz', 'Sitz'], ['hrb', 'Handelsregister'], ['gf', 'Geschäftsführer'], ['bank', 'Bankverbindung']];
+  const PL_FIRMA = [['firma', 'Firmenname'], ['strasse', 'Straße'], ['ort', 'PLZ und Ort'], ['telefon', 'Telefon'], ['email', 'E-Mail'], ['ansprechpartner', 'Ansprechpartner'], ['ustid', 'USt-IdNr.'], ['sitz', 'Sitz'], ['hrb', 'Handelsregister'], ['gf', 'Geschäftsführer'], ['bank', 'Bankverbindung (Text in der Fußzeile)'], ['iban', 'IBAN (für den QR-Code zum Bezahlen)'], ['bic', 'BIC (freiwillig)']];
   async function preisKarten(box) {
     const PL = await window.Angebot._intern.preisliste();
     const E = PL.einstellungen;
@@ -374,7 +375,11 @@ window.Vorgaben = (() => {
       <div class="card kform vg">${PL_FIRMA.map(([k, l]) => `<label>${esc(l)}</label><input type="text" data-plf="${k}" value="${esc(E[k] || '')}">`).join('')}</div>
       <div id="sigBox"></div>`;
     window.Unterschrift?.karte($('#sigBox', box));
-    $$('[data-plf]', box).forEach((el) => (el.onchange = async () => { E[el.dataset.plf] = el.value.trim(); await kvSet('preisliste', PL); toast('Gespeichert'); }));
+    $$('[data-plf]', box).forEach((el) => (el.onchange = async () => {
+      let v = el.value.trim();
+      if (el.dataset.plf === 'iban') { v = v.replace(/\s+/g, '').toUpperCase(); if (v && window.QR && !QR.ibanOk(v)) return toast('Die IBAN stimmt nicht (Prüfziffer). Bitte noch einmal prüfen.', 4500); }
+      E[el.dataset.plf] = v; await kvSet('preisliste', PL); toast('Gespeichert');
+    }));
   }
   async function preisliste(filter) {
     const PL = await window.Angebot._intern.preisliste();

@@ -520,6 +520,19 @@ window.Rechnung = (() => {
     for (const [k, v] of meta) { doc.setTextColor(120); t(k, 128, my); doc.setTextColor(30); const lines = doc.splitTextToSize(String(v), R - 160); t(lines, 160, my); my += 4.6 * lines.length; }
     y = Math.max(92, my + 8);
     const neueSeite = async () => { doc.addPage(); await kopf(false); y = 34; };
+    // GiroCode (EPC-QR): Der Kunde scannt ihn mit der Banking-App, IBAN, Betrag und Verwendungszweck sind ausgefüllt. Abschaltbar (Vorgabe rechnungQr).
+    const giro = async (betrag) => {
+      if (vorgabe('rechnungQr') === 'nein' || !window.QR || !(betrag > 0)) return;
+      const iban = E.iban || (String(E.bank || '').replace(/\s+/g, '').match(/[A-Z]{2}\d{2}[A-Z0-9]{11,30}/) || [])[0] || '';
+      const zweck = `Rechnung ${r.nr}`;
+      const png = QR.giroCode({ iban, bic: E.bic || '', name: E.firma || '', betrag, zweck });
+      if (!png) return;
+      await platz(36);
+      doc.addImage(png, 'PNG', M, y, 30, 30);
+      doc.setFontSize(9); doc.setTextColor(90);
+      t(['Mit der Banking-App scannen und bezahlen:', `${eur(betrag)}, Verwendungszweck ${zweck}`], M + 35, y + 13);
+      doc.setTextColor(30); doc.setFontSize(10); y += 35;
+    };
     const platz = async (h, f) => { if (y + h > H - 28) { await neueSeite(); f?.(); } };
     doc.setFont('helvetica', 'bold'); doc.setFontSize(13); doc.setTextColor(...NAVY);
     const ueber = mahnStufe == null ? (r.art === 'storno' ? `Stornorechnung zur ${r.bezugArt} Nr. ${r.bezugNr}` : `${artName(r)}: ${r.titel}`) : `${MAHN[mahnStufe]} zur Rechnung Nr. ${r.nr}`;
@@ -538,6 +551,7 @@ window.Rechnung = (() => {
       await platz(30);
       doc.setFont('helvetica', 'bold'); t('Offener Betrag', M, y); t(eur(zahlbetrag(r)), R, y, { align: 'right' }); y += 5.5;
       doc.setFont('helvetica', 'normal'); t('Zahlbar bis', M, y); t(frist, R, y, { align: 'right' }); y += 10;
+      await giro(zahlbetrag(r));
     } else {
       await absatz(vorgabeText(r.art === 'storno' ? 'textStorno' : r.art === 'schluss' ? 'textRechnungSchluss' : 'textRechnungAbschlag', { prozent: String(r.prozent).replace('.', ','), nr: r.art === 'storno' ? r.bezugNr : r.nr, art: r.bezugArt || artName(r), datum: tag(r.bezugDatum || r.datum) }));
       const C = { pos: M, txt: M + 11, menge: 136, einh: 139, ep: 172, gp: R };
@@ -593,7 +607,8 @@ window.Rechnung = (() => {
       if (r.abzuege?.length && r.art !== 'storno') { doc.line(C.txt, y - 3.8, R, y - 3.8); doc.setTextColor(...NAVY); sumZ('Noch zu zahlen', eur(zahlbetrag(r)), true); doc.setTextColor(30); }
       if (r.art === 'schluss' && r.lohn) { doc.setFontSize(8.5); doc.setTextColor(90); sumZ('Darin enthaltener Lohnanteil brutto (§ 35a EStG)', eur(r.lohn)); doc.setTextColor(30); }
       y += 4; doc.setFontSize(10);
-      if (r.art !== 'storno') await absatz(vorgabeText('textZahlung', { betrag: eur(zahlbetrag(r)), faellig: tag(r.faellig), nr: r.nr }));
+      doc.setFont('helvetica', 'normal'); doc.setTextColor(30);
+      if (r.art !== 'storno') { await absatz(vorgabeText('textZahlung', { betrag: eur(zahlbetrag(r)), faellig: tag(r.faellig), nr: r.nr })); if (!r.bezahlt) await giro(zahlbetrag(r)); }
       // Hinweis zur Aufbewahrung: Pflicht auf jeder Rechnung über Bauleistungen an Privatkunden (§ 14 Abs. 4 Nr. 9 UStG), nicht bei Hausverwaltungen
       if (r.art !== 'storno' && !(kd && Kunden.istHv(kd)) && vorgabe('textAufbewahrung')) await absatz(vorgabeText('textAufbewahrung'));
     }
