@@ -98,6 +98,7 @@ public class DomGeraetPlugin: CAPPlugin, CAPBridgedPlugin, VNDocumentCameraViewC
             call.resolve([
                 "scanner": VNDocumentCameraViewController.isSupported,
                 "lidar": RoomCaptureSession.isSupported,
+                "wohnungScan": DomRaumScan.wohnungMoeglich,
                 "biometrie": bio,
                 "biometrieArt": art,
             ])
@@ -163,6 +164,14 @@ public class DomGeraetPlugin: CAPPlugin, CAPBridgedPlugin, VNDocumentCameraViewC
             }
             let vc = DomRaumScan()
             vc.modalPresentationStyle = .fullScreen
+            vc.wohnung = (call.getBool("wohnung") ?? false) && DomRaumScan.wohnungMoeglich
+            vc.fertigWohnung = { raeume, gesamt, fehler in
+                if let fehler = fehler { call.reject("Der Scan hat nicht geklappt: " + fehler); return }
+                if raeume.isEmpty { call.resolve(["abgebrochen": true]); return }
+                var r: [String: Any] = ["wohnung": true, "raeume": raeume.map { DomRaumScan.masse($0) }]
+                if let gesamt = gesamt { r["gesamt"] = gesamt }
+                call.resolve(r)
+            }
             vc.fertig = { raum, fehler in
                 if let raum = raum {
                     call.resolve(DomRaumScan.masse(raum))
@@ -550,9 +559,18 @@ final class DomAufnahme: NSObject, AVAudioRecorderDelegate {
 /// Vollbild mit Apples Raumscan. „Fertig“ beendet den Scan, danach werden die Maße zurückgegeben.
 final class DomRaumScan: UIViewController, RoomCaptureViewDelegate {
     var fertig: ((CapturedRoom?, String?) -> Void)?
+    /// Ganze Wohnung: Raum für Raum in derselben AR-Sitzung, am Ende ein gemeinsamer Grundriss (ab iOS 17).
+    var wohnung = false
+    var fertigWohnung: (([CapturedRoom], [String: Any]?, String?) -> Void)?
+    static var wohnungMoeglich: Bool { if #available(iOS 17.0, *) { return RoomCaptureSession.isSupported } else { return false } }
     private var scanView: RoomCaptureView!
     private var erledigt = false
     private let knopf = UIButton(type: .system)
+    private let weiterKnopf = UIButton(type: .system)
+    private let hinweis = UILabel()
+    private var bauen: [Task<CapturedRoom?, Never>] = []
+    private var naechster = false
+    private var ende = false
 
     init() { super.init(nibName: nil, bundle: nil) }
     required init?(coder: NSCoder) { super.init(coder: coder) }
@@ -579,6 +597,37 @@ final class DomRaumScan: UIViewController, RoomCaptureViewDelegate {
             view.addSubview(b)
         }
         let g = view.safeAreaLayoutGuide
+        if wohnung {
+            weiterKnopf.setTitle("Nächster Raum", for: .normal)
+            weiterKnopf.addTarget(self, action: #selector(weiterTippen), for: .touchUpInside)
+            weiterKnopf.titleLabel?.font = .systemFont(ofSize: 17, weight: .semibold)
+            weiterKnopf.setTitleColor(.white, for: .normal)
+            weiterKnopf.backgroundColor = UIColor(red: 0.69, green: 0.553, blue: 0.341, alpha: 0.95)
+            weiterKnopf.layer.cornerRadius = 12
+            weiterKnopf.translatesAutoresizingMaskIntoConstraints = false
+            view.addSubview(weiterKnopf)
+            hinweis.text = "Raum 1. Danach „Nächster Raum“, durch die Tür gehen, weiter scannen."
+            hinweis.textColor = .white
+            hinweis.numberOfLines = 0
+            hinweis.textAlignment = .center
+            hinweis.font = .systemFont(ofSize: 15, weight: .semibold)
+            hinweis.backgroundColor = UIColor(red: 0.118, green: 0.208, blue: 0.314, alpha: 0.85)
+            hinweis.layer.cornerRadius = 10
+            hinweis.clipsToBounds = true
+            hinweis.translatesAutoresizingMaskIntoConstraints = false
+            view.addSubview(hinweis)
+            knopf.setTitle("Fertig", for: .normal)
+            NSLayoutConstraint.activate([
+                weiterKnopf.centerXAnchor.constraint(equalTo: g.centerXAnchor),
+                weiterKnopf.bottomAnchor.constraint(equalTo: g.bottomAnchor, constant: -16),
+                weiterKnopf.heightAnchor.constraint(equalToConstant: 48),
+                weiterKnopf.widthAnchor.constraint(equalToConstant: 170),
+                hinweis.topAnchor.constraint(equalTo: g.topAnchor, constant: 12),
+                hinweis.leadingAnchor.constraint(equalTo: g.leadingAnchor, constant: 16),
+                hinweis.trailingAnchor.constraint(equalTo: g.trailingAnchor, constant: -16),
+                hinweis.heightAnchor.constraint(greaterThanOrEqualToConstant: 44),
+            ])
+        }
         NSLayoutConstraint.activate([
             abbrechen.leadingAnchor.constraint(equalTo: g.leadingAnchor, constant: 16),
             abbrechen.bottomAnchor.constraint(equalTo: g.bottomAnchor, constant: -16),
@@ -598,21 +647,63 @@ final class DomRaumScan: UIViewController, RoomCaptureViewDelegate {
 
     @objc private func fertigTippen() {
         knopf.isEnabled = false
+        weiterKnopf.isEnabled = false
         knopf.setTitle("Wird berechnet …", for: .normal)
+        ende = true
         scanView.captureSession.stop()
+    }
+
+    @objc private func weiterTippen() {
+        guard #available(iOS 17.0, *) else { return }
+        weiterKnopf.isEnabled = false
+        naechster = true
+        scanView.captureSession.stop(pauseARSession: false)
+    }
+
+    /// Alle Räume fertig berechnen, gemeinsamen Grundriss bauen, zurückgeben.
+    private func abschliessen() {
+        guard #available(iOS 17.0, *) else { return }
+        let aufgaben = bauen
+        Task { @MainActor in
+            var raeume: [CapturedRoom] = []
+            for t in aufgaben { if let r = await t.value, !r.walls.isEmpty { raeume.append(r) } }
+            var gesamt: [String: Any]? = nil
+            if raeume.count > 1, let s = try? await StructureBuilder(options: [.beautifyObjects]).capturedStructure(from: raeume) {
+                gesamt = DomRaumScan.geoTeile(walls: s.walls, doors: s.doors, windows: s.windows, openings: s.openings, objects: s.objects, floors: s.floors)
+            }
+            self.erledigt = true
+            let fehler = raeume.isEmpty ? "Keine Wände erkannt. Bitte langsam alle Wände abfahren." : nil
+            self.dismiss(animated: true) { self.fertigWohnung?(raeume, gesamt, fehler) }
+        }
     }
 
     @objc private func abbrechenTippen() {
         guard !erledigt else { return }
         erledigt = true
         scanView.captureSession.stop()
-        dismiss(animated: true) { self.fertig?(nil, nil) }
+        dismiss(animated: true) { if self.wohnung { self.fertigWohnung?([], nil, nil) } else { self.fertig?(nil, nil) } }
     }
 
-    func captureView(shouldPresent roomDataForProcessing: CapturedRoomData, error: Error?) -> Bool { !erledigt }
+    func captureView(shouldPresent roomDataForProcessing: CapturedRoomData, error: Error?) -> Bool {
+        guard wohnung else { return !erledigt }
+        if #available(iOS 17.0, *) {
+            bauen.append(Task { try? await RoomBuilder(options: [.beautifyObjects]).capturedRoom(from: roomDataForProcessing) })
+            if naechster {
+                naechster = false
+                DispatchQueue.main.async {
+                    self.hinweis.text = "Raum \(self.bauen.count + 1). Langsam alle Wände abfahren."
+                    self.weiterKnopf.isEnabled = true
+                    self.scanView.captureSession.run(configuration: RoomCaptureSession.Configuration())
+                }
+            } else if ende {
+                DispatchQueue.main.async { self.abschliessen() }
+            }
+        }
+        return false
+    }
 
     func captureView(didPresent processedResult: CapturedRoom, error: Error?) {
-        guard !erledigt else { return }
+        guard !erledigt, !wohnung else { return }
         erledigt = true
         let fehler = processedResult.walls.isEmpty ? (error?.localizedDescription ?? "Keine Wände erkannt. Bitte langsam alle Wände abfahren.") : nil
         dismiss(animated: true) { self.fertig?(fehler == nil ? processedResult : nil, fehler) }
@@ -657,6 +748,57 @@ final class DomRaumScan: UIViewController, RoomCaptureViewDelegate {
             "waende": r.walls.count,
             "tueren": r.doors.map { ["breite": rund($0.dimensions.x), "hoehe": rund($0.dimensions.y)] },
             "fenster": r.windows.map { ["breite": rund($0.dimensions.x), "hoehe": rund($0.dimensions.y)] },
+            "geo": geo(r),
+            "art": raumArt(r),
         ]
+    }
+
+    /// Ganzer Raum für Grundriss und 3D-Ansicht: Wände, Türen, Fenster, Durchgänge, Möbel, Boden.
+    /// Alles in Metern, von oben gesehen (x, z), Höhen ab Fußboden (y).
+    static func raumArt(_ r: CapturedRoom) -> String {
+        if #available(iOS 17.0, *), let s = r.sections.first { return "\(s.label)" }
+        return ""
+    }
+
+    static func geo(_ r: CapturedRoom) -> [String: Any] {
+        var floors: [CapturedRoom.Surface] = []
+        if #available(iOS 17.0, *) { floors = r.floors }
+        return geoTeile(walls: r.walls, doors: r.doors, windows: r.windows, openings: r.openings, objects: r.objects, floors: floors)
+    }
+
+    static func geoTeile(walls: [CapturedRoom.Surface], doors: [CapturedRoom.Surface], windows: [CapturedRoom.Surface], openings: [CapturedRoom.Surface], objects: [CapturedRoom.Object], floors: [CapturedRoom.Surface]) -> [String: Any] {
+        let cm = { (x: Float) -> Double in (Double(x) * 100).rounded() / 100 }
+        var boden: Float = .greatestFiniteMagnitude
+        for w in walls { boden = min(boden, w.transform.columns.3.y - w.dimensions.y / 2) }
+        if boden == .greatestFiniteMagnitude { boden = 0 }
+        let waende: [[String: Any]] = walls.map { w in
+            let t = w.transform
+            let m = SIMD2<Float>(t.columns.3.x, t.columns.3.z)
+            let d = simd_normalize(SIMD2<Float>(t.columns.0.x, t.columns.0.z)) * (w.dimensions.x / 2)
+            return ["x1": cm(m.x - d.x), "z1": cm(m.y - d.y), "x2": cm(m.x + d.x), "z2": cm(m.y + d.y), "h": cm(w.dimensions.y)]
+        }
+        func oeffnung(_ s: CapturedRoom.Surface, _ art: String) -> [String: Any] {
+            let t = s.transform
+            return ["art": art, "x": cm(t.columns.3.x), "z": cm(t.columns.3.z), "a": Double(atan2(t.columns.0.z, t.columns.0.x)),
+                    "b": cm(s.dimensions.x), "h": cm(s.dimensions.y), "u": cm(max(0, t.columns.3.y - s.dimensions.y / 2 - boden))]
+        }
+        let oeffnungen = doors.map { oeffnung($0, "tuer") } + windows.map { oeffnung($0, "fenster") } + openings.map { oeffnung($0, "durchgang") }
+        let objekte: [[String: Any]] = objects.map { o in
+            let t = o.transform
+            return ["k": "\(o.category)", "x": cm(t.columns.3.x), "z": cm(t.columns.3.z), "a": Double(atan2(t.columns.0.z, t.columns.0.x)),
+                    "b": cm(o.dimensions.x), "h": cm(o.dimensions.y), "t": cm(o.dimensions.z), "u": cm(max(0, t.columns.3.y - o.dimensions.y / 2 - boden))]
+        }
+        var boeden: [[[Double]]] = []
+        if #available(iOS 17.0, *) {
+            for f in floors {
+                var ecken: [[Double]] = []
+                for c in f.polygonCorners {
+                    let p = f.transform * SIMD4<Float>(c.x, c.y, c.z, 1)
+                    ecken.append([cm(p.x), cm(p.z)])
+                }
+                if ecken.count >= 3 { boeden.append(ecken) }
+            }
+        }
+        return ["waende": waende, "oeffnungen": oeffnungen, "objekte": objekte, "boden": boeden.first ?? [], "boeden": boeden]
     }
 }
