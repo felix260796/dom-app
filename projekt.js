@@ -217,6 +217,18 @@ window.Projekt = (() => {
     await save(w);
     raumOeffnen(normalizeProject(r), w);
   }
+  /** Raum aus einem Raumscan anlegen (ohne ihn zu öffnen): Name und Typ vom Scan, Maße gleich im Aufmaß. */
+  async function raumAusScan(w, scan) {
+    const list = await raeume(w);
+    const rt = window.Raumscan?.typFuer(scan) || 'sonstiges';
+    const name = (scan.name || '').trim();
+    const frei = name && !list.some((r) => (r.room || '').trim().toLowerCase() === name.toLowerCase());
+    const r = { id: uid(), created: Date.now(), wohnungId: w.id, kundeId: w.kundeId || '', customer: w.customer, address: w.address, roomType: rt, room: frei ? name : titel(list, rt), note: '', photos: [], thumb: '', results: {}, selected: packagesFor(rt).map((x) => x.id), pdfProducts: true, pdfPrices: false };
+    window.Raumscan?.masseIn(r, scan);
+    rooms.set(r.id, r); w.rooms.push(r.id); delete w.isNew;
+    await kvSet('project:' + r.id, r); await save(w);
+    return normalizeProject(r);
+  }
   async function pickRoomType(w) {
     const rt = await sheet('Welcher Raum?', ROOM_TYPES.map((r) => ({ label: r.name, icon: roomIcon(r.id), value: r.id })));
     if (rt) addRoom(w, rt);
@@ -979,7 +991,7 @@ window.Projekt = (() => {
   }
 
   const forget = (id) => rooms.delete(id);
-  return { automatik, anlegen, angebotVersendet, gesperrt, gesperrtFrage, angebotKopieren, dateiZeigen, nachfassen, seitTagen, STATUS, ANGEBOT, ALLE, PHASEN, phase, farbe, pill, norm, zugesagt, statusName, statusKurz, raumAngebot, angebotMerken, forget, neu, neuDirekt, neuFuer, kundeUebernehmen, oeffnen, view, mappeView, moodboardView, migrate, raum, raeume, raumGespeichert, raumEntfernt, save, wahl, PKG_IDS, _intern: { titel, addRoom } };
+  return { automatik, anlegen, angebotVersendet, gesperrt, gesperrtFrage, angebotKopieren, dateiZeigen, nachfassen, seitTagen, STATUS, ANGEBOT, ALLE, PHASEN, phase, farbe, pill, norm, zugesagt, statusName, statusKurz, raumAngebot, angebotMerken, forget, neu, neuDirekt, neuFuer, kundeUebernehmen, oeffnen, view, mappeView, moodboardView, migrate, raum, raeume, raumGespeichert, raumEntfernt, save, wahl, PKG_IDS, _intern: { titel, addRoom, raumAusScan } };
 })();
 // Ältere Aufrufe (PR „Wohnungen“) laufen weiter
 window.Wohnung = { neu: () => Projekt.neu(), oeffnen: (id) => Projekt.oeffnen(id), view: () => Projekt.view(), raumGespeichert: (p) => Projekt.raumGespeichert(p), raumEntfernt: (p) => Projekt.raumEntfernt(p) };
