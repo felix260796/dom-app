@@ -142,6 +142,7 @@ termin.anlegen nur true, wenn ein Termin genannt wird. projekt.anlegen true, wen
     if (te.anlegen && (te.art || 'kunde') === 'kunde' && vorgabe('spracheProjekt') !== 'nein') pr.anlegen = true;
     const tr = treffer(kd);
     let kundeId = tr.length === 1 ? tr[0].id : '';
+    let adrWahl = [], adrInfo = '';
     const f = (id, l, v, typ = 'text') => `<label>${l}</label><input type="${typ}" id="${id}" value="${esc(v || '')}" autocomplete="off">`;
     const render = () => {
       const k = Kunden.byId(kundeId);
@@ -159,10 +160,13 @@ termin.anlegen nur true, wenn ein Termin genannt wird. projekt.anlegen true, wen
           ${tr.length ? `<label>Bekannter Kunde?</label><select id="spK"><option value="">Neuer Kunde</option>${tr.map((x) => `<option value="${x.id}" ${x.id === kundeId ? 'selected' : ''}>${esc(Kunden.name(x))} (${esc(x.nr)})</option>`).join('')}</select>` : ''}
           ${k ? `<p class="muted" style="margin:8px 0 0">${esc(Kunden.name(k))}, Kundennummer ${esc(k.nr)}. Telefon und E-Mail ergänze ich, falls sie fehlen.</p>` : `
             <label>Anrede</label><select id="spAnrede">${['', 'Herr', 'Frau', 'Herr und Frau', 'Familie', 'Firma', 'Hausverwaltung'].map((a) => `<option ${a === kd.anrede ? 'selected' : ''}>${a}</option>`).join('')}</select>
-            <div class="row"><div>${f('spVor', 'Vorname', kd.vorname)}</div><div>${f('spName', 'Name', kd.name)}</div></div>`}
-          <div class="row"><div>${f('spTel', 'Telefon', kd.telefon, 'tel')}</div><div>${f('spMail', 'E-Mail', kd.email, 'email')}</div></div>
+            ${f('spVor', 'Vorname', kd.vorname)}
+            ${f('spName', 'Name', kd.name)}`}
+          ${f('spTel', 'Telefon', kd.telefon, 'tel')}
+          ${f('spMail', 'E-Mail', kd.email, 'email')}
           ${k && k.objekte.length ? `<label>Objekt (Baustelle)</label><select id="spObj">${k.objekte.map((o) => `<option value="${o.id}" ${o.id === oid ? 'selected' : ''}>${esc(Kunden.objLabel(o))}</option>`).join('')}<option value="" ${oid ? '' : 'selected'}>Neue Anschrift</option></select>` : ''}
-          <div id="spAdrBox" ${k && oid ? 'hidden' : ''}>${f('spAdr', 'Anschrift der Baustelle', d.adresse)}</div>
+          <div id="spAdrBox" ${k && oid ? 'hidden' : ''}><label>Anschrift der Baustelle</label><div class="adr"><input type="text" id="spAdr" value="${esc(d.adresse || '')}" autocomplete="off" placeholder="Straße Nr., der Ort wird ergänzt"></div>
+            <div id="spAdrInfo">${adrInfo ? `<p class="sp-adr-h">${esc(adrInfo)}</p>` : ''}${adrWahl.length ? `<div class="sp-adr-v">${adrWahl.map((z, i) => `<button type="button" data-spadr="${i}">${esc(z)}</button>`).join('')}</div>` : ''}</div></div>
         </div>
         <div class="card kform">
           <label class="chk sp-chk"><input type="checkbox" id="spP" ${pr.anlegen ? 'checked' : ''}> <b>Projekt anlegen</b></label>
@@ -181,6 +185,9 @@ termin.anlegen nur true, wenn ein Termin genannt wird. projekt.anlegen true, wen
         <button class="btn big" id="spOk" style="width:100%">Anlegen</button>`;
       if ($('#spK')) $('#spK').onchange = (e) => { merken(); kundeId = e.target.value; render(); };
       if ($('#spObj')) $('#spObj').onchange = (e) => { $('#spAdrBox').hidden = !!e.target.value; };
+      // Beim Tippen: Vorschläge mit Postleitzahl und Ort (wie auf der Kundenkarte)
+      Kunden.adressVorschlaege($('#spAdr'));
+      $$('[data-spadr]').forEach((b) => (b.onclick = () => { merken(); d.adresse = adrWahl[+b.dataset.spadr]; adrWahl = []; adrInfo = 'Anschrift übernommen.'; render(); }));
       $('#spP').onchange = (e) => { $('#spPBox').hidden = !e.target.checked; };
       $('#spT').onchange = (e) => { $('#spTBox').hidden = !e.target.checked; };
       $('#spOk').onclick = () => anlegen();
@@ -196,6 +203,25 @@ termin.anlegen nur true, wenn ein Termin genannt wird. projekt.anlegen true, wen
       $('#spKGo').onclick = kText;
       $('#spKText').onkeydown = (e) => { if (e.key === 'Enter') { e.preventDefault(); kText(); } };
     };
+    /** Anschrift aus der Sprache automatisch vervollständigen (Postleitzahl und Ort), über die Adresssuche der Kundenkarte.
+     * Ein eindeutiger Treffer wird gleich eingetragen, bei mehreren stehen sie zum Antippen unter dem Feld. */
+    async function adresseErgaenzen() {
+      const a = String(d.adresse || '').trim();
+      if (vorgabe('spracheAdresse') === 'nein' || a.length < 5 || !/\d/.test(a) || /\b\d{5}\b/.test(a)) return;
+      let list = [];
+      try { list = (await Kunden.sucheAdresse(a.replace(/\s+in\s+/i, ', '))).map((x) => x.zeile); } catch { return; }
+      if (!list.length || $('#spAdr') === null) return;
+      merken();
+      if (String(d.adresse || '').trim() !== a) return; // inzwischen selbst geändert
+      // eindeutig: nur ein Treffer, oder der gesagte Ort steht im ersten Treffer
+      const ortGesagt = klein(a).split(/[,\s]+/).filter((w) => w.length > 2 && !/\d/.test(w)).pop() || '';
+      const erster = klein(list[0]);
+      if (list.length === 1 || (ortGesagt && erster.split(',').pop().includes(ortGesagt) && a.includes(','))) { d.adresse = list[0]; adrWahl = []; adrInfo = 'Postleitzahl und Ort ergänzt. Bitte kurz prüfen.'; }
+      else { adrWahl = list.slice(0, 4); adrInfo = 'Welche Anschrift ist gemeint? Antippen übernimmt sie mit Postleitzahl.'; }
+      const y = window.scrollY, fokus = document.activeElement?.id;
+      render(); window.scrollTo(0, y);
+      if (fokus && fokus !== 'spAdr') $('#' + fokus)?.focus({ preventScroll: true });
+    }
     const wert = (id) => $('#' + id)?.value.trim() ?? null;
     /** Eingaben vor einem Neuzeichnen übernehmen. */
     const merken = () => {
@@ -234,6 +260,7 @@ termin.anlegen nur true, wenn ein Termin genannt wird. projekt.anlegen true, wen
       } else fertig();
     }
     render(); window.scrollTo(0, 0);
+    adresseErgaenzen();
   }
 
   return { view, _intern: { pruefen } };

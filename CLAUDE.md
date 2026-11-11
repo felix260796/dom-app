@@ -11,7 +11,7 @@ Die Leiste unten hat fünf Reiter: Kunden, Partner, Projekte, Angebote, Rechnung
 Angebot: „Speichern und ansehen“ legt das PDF unter `w.dokumente` ab, „Senden“ verschickt. Nach dem Senden ist das Angebot gesperrt (`w.angebotGesperrt`, `Projekt.gesperrt/gesperrtFrage/angebotKopieren`); ändern nur über eine Kopie mit neuer Nummer (`w.angebotArchiv`, `w.angebotKopieVon`).
 Textfelder vor und nach den Positionen: Standard `PL.einstellungen.bausteine`, je Auftrag `w.angebotTexte` (`Angebot._intern.texteAuftrag`, `texteEinstellungen`).
 Partner-Angebote übernehmen: `Angebot._intern.subUebernehmen` (Foto, PDF oder Partner-Preisliste, KI liest, Zuschlag `subZuschlag`), Zeilen als eigene Positionen mit `x.sub`.
-Dokumente ansehen mit Zoom: `pdfAnsicht` in `core.js` (Zoom nur, solange ein Dokument offen ist). Listen in den Einstellungen: `listenFeld`/`listenBinden` in `core.js`.
+Dokumente ansehen mit Zoom: `pdfAnsicht` in `core.js` (seit Version 85 mit PDF.js, siehe unten). Listen in den Einstellungen: `listenFeld`/`listenBinden` in `core.js`.
 
 ## Neuerungen aus Version 83
 
@@ -22,6 +22,16 @@ Handler wie `onkeydown = (e) => bedingung && tu()` sind verboten: Rückgabe `fal
 ## Neuerungen aus Version 84
 
 Mitdenken vor Ort und Angebotsentwurf: `vorort.js` (`VorOrt`). „Was fehlt noch?“ in Schritt 1 (`VorOrt.karte/bind`, Fragen in `w.vorOrt.fragen`, eigene Notizen `w.vorOrt.notiz`, startet nach jeder Aufnahme über `VorOrt.nachAufnahme` aus `voice.js`). „Angebotsentwurf erstellen“ in Schritt 2 (`bueroKarte/bueroBind`): Die KI schlägt je Bereich Positionen vor, Mengen aus dem Aufmaß (`mengeAus`), Prüfseite, erst „übernehmen“ schreibt in `r.angebot.positionen` (Kennzeichen `x.ki = { sicher, partner, grund }`). Bereiche ohne Raum werden als Raumtyp `sonstiges` angelegt („Leistungen“, „Allgemein“). Offenes in `w.entwurf.offen`. Vorgaben: `vorortAuto`, `vorortFragenMax`, `vorortPruefliste`, `vorortFotos`, `entwurfFotos`, `entwurfHinweise`, Prompts `promptVorOrt`, `promptEntwurf`. Nicht auf Bäder beschränken.
+
+## Neuerungen aus Version 85
+
+Dokumente ansehen: `pdfAnsicht` in `core.js` zeichnet PDFs mit PDF.js (`vendor/pdfjs`, wird erst beim Öffnen geladen) Seite für Seite als Bild; Zoom per Knopf, zwei Finger, Doppeltipp. Kein iframe und kein „neues Fenster“ mehr (geht in der iPhone-App nicht), stattdessen Teilen-Menü. Die Seite selbst zoomt nie.
+Zurück an dieselbe Stelle: `core.js` merkt bei jedem Tipp die Scroll-Stelle je Seite (Reiter + Titel + Untertitel aus `header()`) und stellt sie nach einem Tipp auf `#topback` wieder her. Neue Seiten brauchen dafür nur `header(titel, sub, { label, fn })`.
+Suchfelder (`input type="search"`): Enter schließt die Tastatur (global in `core.js`). Auswahlfenster `sheet`: Textfeld ohne Autofokus, Suchfeld filtert immer (`suche`, Einträge mit `such`).
+`telLink(t)` in `core.js`: Anrufen immer mit Ländervorwahl (Vorgabe `telVorwahl`).
+Bilder: `Bilder.alleView` (alle Bilder nach Datum), `raster` (Markieren, PDF über `bilderPdf`), `gross` zum Durchwischen (scroll-snap), `Bilder.fotosMachen({ kundeId, objektId, projektId, ordnerId?, ordnerName? })` mit `Kamera.serie` (mehrere Fotos hintereinander, Ordner aus Vorgabe `ordnerFotos`).
+Karte: Filter je Gruppe (`FILTER` in `karte.js`, gemerkt in localStorage `dom:karteFilter`). Auswertung: `auswertung(daten, rechnungen, jahr)` in `finanzen.js` mit Jahr-Auswahl. „Heute“ hat ein X (`#hZu`, zurück zu `window.__vorHeute`).
+Per Sprache anlegen: Prüfseite mit Feldern untereinander, Anschrift wird über `Kunden.sucheAdresse` um PLZ und Ort ergänzt (Vorgabe `spracheAdresse`).
 
 ## Bereiche
 

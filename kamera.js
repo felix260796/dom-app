@@ -3,7 +3,8 @@
  * Foto machen → die KI erkennt, ob es eine Rechnung, ein anderes Dokument oder ein normales Foto ist.
  * Dokumente werden wie gescannt aufbereitet (gerade, hell, gut lesbar). Danach fragt die App, wohin es gehört:
  * Eingangsrechnung (finanzen.js), zu einem Kunden in „Bilder & Dokumentation“ (bilder.js).
- * In der iPhone-App: Apples Dokumentenscanner (Geraet.scannen) und über „Teilen“ geschickte Dateien (ausDatei). */
+ * In der iPhone-App: Apples Dokumentenscanner (Geraet.scannen) und über „Teilen“ geschickte Dateien (ausDatei).
+ * serie(): mehrere Fotos hintereinander in einer eigenen Kamera-Ansicht (für Bilder.fotosMachen). */
 window.Kamera = (() => {
   /** Dokument-Look: Graustufen, mehr Kontrast, helles Papier. */
   async function scan(data) {
@@ -134,5 +135,60 @@ window.Kamera = (() => {
     toast(`In „${o.name}“ bei ${Kunden.name(k) || 'Kunde'} gespeichert`, 4000);
     zurueck();
   }
-  return { start, scan, ausDatei };
+  /** Mehrere Fotos hintereinander (Wunsch Felix): eigene Kamera-Ansicht mit Auslöser, Zähler und „Fertig“.
+   * onFoto(dataUrl) wird je Foto aufgerufen und speichert es. Gibt die Anzahl der Fotos zurück.
+   * Geht die Kamera im Fenster nicht (kein Zugriff, älteres Gerät), öffnet sich die normale iPhone-Kamera;
+   * nach jedem Foto fragt die App dann, ob noch eins dazukommt. Eine laufende Gesprächsaufnahme läuft weiter. */
+  async function serie({ titel = 'Fotos', onFoto }) {
+    let stream = null;
+    try {
+      if (!navigator.mediaDevices?.getUserMedia) throw new Error('keine Kamera');
+      stream = await navigator.mediaDevices.getUserMedia({ audio: false, video: { facingMode: { ideal: 'environment' }, width: { ideal: 2560 }, height: { ideal: 1440 } } });
+    } catch (e) {
+      console.warn('Kamera im Fenster geht nicht', e);
+      let n = 0;
+      for (;;) {
+        const [f] = await pickFiles({ camera: true, accept: 'image/*' });
+        if (!f) break;
+        try { await onFoto(await fileToDataUrl(f)); n++; } catch (err) { toast('Foto nicht gespeichert: ' + (err.message || err), 5000); }
+        const w = await sheet(`${n} ${n === 1 ? 'Foto' : 'Fotos'} gespeichert`, [{ label: 'Noch ein Foto', icon: icon('camera'), value: 'ja' }, { label: 'Fertig', icon: icon('check'), value: '' }]);
+        if (!w) break;
+      }
+      return n;
+    }
+    return new Promise((res) => {
+      const el = document.createElement('div');
+      el.className = 'kserie';
+      el.innerHTML = `<div class="ks-top"><b>${esc(titel)}</b><span data-n>Noch kein Foto</span></div>
+        <div class="ks-bild"><video autoplay playsinline muted></video><i class="ks-blitz"></i></div>
+        <div class="ks-bar"><span class="ks-letztes" data-l></span><button type="button" class="ks-ausl" data-ausl aria-label="Foto aufnehmen"><i></i></button><button type="button" class="btn ks-fertig" data-fertig>Fertig</button></div>`;
+      document.body.appendChild(el);
+      const video = $('video', el);
+      video.srcObject = stream;
+      video.play?.().catch(() => {});
+      let n = 0, kette = Promise.resolve(), zu = false;
+      const zaehler = () => { $('[data-n]', el).textContent = n ? `${n} ${n === 1 ? 'Foto' : 'Fotos'}` : 'Noch kein Foto'; };
+      $('[data-ausl]', el).onclick = () => {
+        if (zu || !video.videoWidth) return;
+        const c = document.createElement('canvas');
+        c.width = video.videoWidth; c.height = video.videoHeight;
+        c.getContext('2d').drawImage(video, 0, 0);
+        const data = c.toDataURL('image/jpeg', 0.88);
+        n++; zaehler();
+        $('[data-l]', el).innerHTML = `<img src="${data}" alt="">`;
+        const b = $('.ks-blitz', el); b.classList.remove('an'); void b.offsetWidth; b.classList.add('an');
+        // nacheinander speichern, der Auslöser bleibt frei
+        kette = kette.then(() => onFoto(data)).catch((err) => { n--; zaehler(); toast('Foto nicht gespeichert: ' + (err.message || err), 5000); });
+      };
+      $('[data-fertig]', el).onclick = async () => {
+        if (zu) return; zu = true;
+        $('[data-fertig]', el).textContent = 'Speichert …';
+        stream.getTracks().forEach((t) => t.stop());
+        await kette;
+        el.remove();
+        res(n);
+      };
+    });
+  }
+  return { start, scan, ausDatei, serie };
 })();

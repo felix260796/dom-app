@@ -92,6 +92,7 @@ const VORGABEN = {
     ]],
     ['Per Sprache anlegen (Mikrofon oben)', [
       { k: 'spracheDauer', l: 'Termin dauert so viele Minuten, wenn keine Endzeit gesagt wird', t: 'zahl', d: 60 },
+      { k: 'spracheAdresse', l: 'Anschrift automatisch vervollständigen (Postleitzahl und Ort)', t: 'janein', d: 'ja', h: 'Sagst du nur Straße, Hausnummer und Ort, sucht die App die Postleitzahl dazu. Bei mehreren Treffern wählst du auf der Prüfseite aus.' },
       { k: 'spracheProjekt', l: 'Bei Kundenterminen gleich ein Projekt „Besichtigung“ vorschlagen', t: 'janein', d: 'ja' },
     ]],
     ['Baustelle', [
@@ -101,6 +102,7 @@ const VORGABEN = {
   // Bereichs-Einstellungen (Schnellzugriff: Tipp auf den Titel der Übersichtsseite)
   kundenEinst: [
     ['Kunden', [
+      { k: 'telVorwahl', l: 'Ländervorwahl beim Anrufen', t: 'zeile', d: '+49', h: 'Beim Tippen auf „Anrufen“ wird aus 0711 123456 automatisch +49 711 123456.' },
       { k: 'kundenQuellen', l: 'Wie kommen Kunden zu uns? (eine Zeile je Quelle)', t: 'liste', d: ['Empfehlung', 'Google / Internet', 'Bauschild', 'Hausverwaltung', 'Stammkunde', 'Flyer / Anzeige', 'Sonstiges'] },
     ]],
     ['Geburtstage', [
@@ -123,6 +125,8 @@ const VORGABEN = {
       { k: 'gespraechArten', l: 'Arten der Gesprächsaufnahme (eine Zeile je Art)', t: 'liste', d: ['Vor-Ort-Besichtigung', 'Abnahmegespräch', 'Krisengespräch', 'Baubesprechung'] },
       { k: 'gespraechDabei', l: 'Weitere Personen, die bei Gesprächen oft dabei sind (eine Zeile je Person)', t: 'liste', d: ['Ehepartner', 'Architekt', 'Hausverwaltung', 'Subunternehmer'], h: 'Vor der Aufnahme tippst du an, wer dabei ist. Felix, Deniel und der Kunde stehen immer zur Wahl. Die KI schreibt dann im Transkript vor jede Aussage, wer spricht.' },
       { k: 'gespraechZusammenfassung', l: 'Zusammenfassung und Aufgaben nach jeder Aufnahme automatisch erstellen', t: 'janein', d: 'ja', h: 'Steht danach als Text im Projekt unter „Gespräch vor Ort“, zum Ausklappen.' },
+      { k: 'ordnerFotos', l: 'Bilder-Ordner für „Fotos machen“', t: 'zeile', d: 'Fotos ({datum})', h: 'In diesen Ordner kommen die Fotos, wenn du unter „Bilder & Dokumentation“ auf „Fotos machen“ tippst. {datum} = heutiges Datum, so entsteht je Tag ein Ordner.' },
+      { k: 'bilderPdfJeSeite', l: 'PDF aus Bildern: wie viele Bilder je Seite (1, 2, 4 oder 6)', t: 'zahl', d: 2 },
       { k: 'ordnerPlaene', l: 'Bilder-Ordner für gescannte Pläne', t: 'zeile', d: 'Pläne', h: 'Pläne, die du unter „Gespräch vor Ort“ scannst oder fotografierst, landen in diesem Ordner beim Projekt.' },
       { k: 'nachfassenKalender', l: 'Nachfassen als Eintrag in den Kalender', t: 'janein', d: 'ja', h: 'Am Tag, an dem nachgefasst werden soll (Tage siehe Abläufe & Listen), steht ein Eintrag im Kalender.' },
     ]],
