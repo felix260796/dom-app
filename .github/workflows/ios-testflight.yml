@@ -105,12 +105,11 @@ jobs:
           cp ios-resources/DomGeraet.swift ios/App/App/DomGeraet.swift
           gem list -i xcodeproj >/dev/null || sudo gem install xcodeproj --no-document
           ruby ios-resources/projekt-ergaenzen.rb DomGeraet.swift
-          # Start über den eigenen Bildschirm, der das Plugin anmeldet
-          perl -pi -e 's/customClass="CAPBridgeViewController" customModule="Capacitor"/customClass="DomBridgeViewController" customModule="App" customModuleProvider="target"/' ios/App/App/Base.lproj/Main.storyboard
-          grep -q DomBridgeViewController ios/App/App/Base.lproj/Main.storyboard
-          # Über „Teilen“ geöffnete Dateien merken
-          perl -0pi -e 's/(\n(\s*)return ApplicationDelegateProxy\.shared\.application\(app, open: url, options: options\))/\n$2DomAblage.merken(url)$1/' ios/App/App/AppDelegate.swift
-          grep -q 'DomAblage.merken' ios/App/App/AppDelegate.swift
+          # Plugin anmelden: Capacitor lädt alle Klassen aus packageClassList
+          node -e 'const f="ios/App/App/capacitor.config.json",c=JSON.parse(require("fs").readFileSync(f));c.packageClassList=[...new Set([...(c.packageClassList||[]),"DomGeraetPlugin"])];require("fs").writeFileSync(f,JSON.stringify(c,null,2))'
+          grep -q DomGeraetPlugin ios/App/App/capacitor.config.json
+          # Über „Teilen“ geöffnete Dateien merken (SceneDelegate der Capacitor-Vorlage)
+          python3 ios-resources/scene-ergaenzen.py ios/App/App/SceneDelegate.swift
           # LiDAR-Raumscan (RoomPlan) braucht iOS 16
           sed -i '' 's/IPHONEOS_DEPLOYMENT_TARGET = [0-9.]*;/IPHONEOS_DEPLOYMENT_TARGET = 16.0;/g' ios/App/App.xcodeproj/project.pbxproj
 

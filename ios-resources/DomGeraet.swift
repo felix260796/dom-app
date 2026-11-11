@@ -19,7 +19,7 @@ import UniformTypeIdentifiers
 import RoomPlan
 import simd
 
-/// Startet die App wie bisher und meldet zusätzlich das DOM-Plugin an (Main.storyboard zeigt beim Bau hierher).
+/// Nicht in Gebrauch: Das Plugin wird über packageClassList in capacitor.config.json angemeldet (siehe Bau). Bleibt als Rückweg.
 class DomBridgeViewController: CAPBridgeViewController {
     override open func capacitorDidLoad() {
         bridge?.registerPluginInstance(DomGeraetPlugin())
