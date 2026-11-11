@@ -283,6 +283,46 @@ window.Rechnung = (() => {
 
   // ---------- Rechnung erstellen ----------
   /** Rechnung vorbereiten und prüfen. art 'abschlag' | 'schluss'; o.frei = Abschlag mit eigenem Betrag, o.eigen = Positionen selbst eintragen (kein Angebot). */
+  // ---------- Texte auf der Rechnung: Anfang und Schluss zum Anhaken (gleiches Muster wie im Angebot, bausteine.js) ----------
+  // Je Rechnung in r.texte (Bausteine { id, wo, titel, text, aus }), Standard aus den Vorgaben. Platzhalter bleiben im Text
+  // und werden erst im PDF gefüllt. Feste Zusätze in r.opt: qr (GiroCode), gruss (Gruß mit Unterschrift und Stempel).
+  const TX_EINL = { abschlag: 'textRechnungAbschlag', schluss: 'textRechnungSchluss', storno: 'textStorno' };
+  const TX_STD = ['einl', 'zahl', 'aufb'];
+  function texteStd(r, kd) {
+    return [
+      { id: 'einl', wo: 'vor', titel: 'Einleitung', text: String(vorgabe(TX_EINL[r.art] || 'textRechnungSchluss') || '') },
+      ...(r.art === 'storno' ? [] : [
+        { id: 'zahl', wo: 'nach', titel: 'Zahlungsaufforderung', text: String(vorgabe('textZahlung') || '') },
+        { id: 'aufb', wo: 'nach', titel: 'Hinweis zur Aufbewahrung', text: String(vorgabe('textAufbewahrung') || ''), ...(kd && Kunden.istHv(kd) ? { aus: true } : {}) }]),
+    ].filter((b) => b.text.trim());
+  }
+  const texteVon = (r, kd) => (Array.isArray(r.texte) ? r.texte : texteStd(r, kd));
+  const optVon = (r, k) => r.opt?.[k] ?? (k === 'qr' ? vorgabe('rechnungQr') !== 'nein' : true);
+  function texteHtml(r, kd) {
+    if (!window.Bausteine) return '';
+    if (!Array.isArray(r.texte)) r.texte = texteStd(r, kd);
+    return `<div class="sec-h"><h2>Texte auf der Rechnung</h2></div>
+      ${Bausteine.block({ wo: 'vor', titel: 'Anfang', liste: r.texte, leer: 'Kein Text' })}
+      ${Bausteine.block({ wo: 'nach', titel: 'Schluss', liste: r.texte, leer: 'Kein Text', fest: [
+        ...(r.art === 'storno' ? [] : [{ k: 'qr', label: 'QR-Code zum Bezahlen', sub: 'GiroCode: IBAN, Betrag und Rechnungsnummer sind ausgefüllt', an: optVon(r, 'qr') }]),
+        { k: 'gruss', label: 'Gruß mit Unterschrift und Stempel', sub: 'Unterschrift und Stempel in Einstellungen › Firmendaten', an: optVon(r, 'gruss') }] })}`;
+  }
+  function texteBind(r, kd, { sichern, zurueck, vorher }) {
+    if (!window.Bausteine || !Array.isArray(r.texte)) return;
+    Bausteine.bind(main(), {
+      liste: r.texte, speichern: sichern,
+      fest: async (k, an) => { (r.opt ??= {})[k] = an; await sichern?.(); },
+      bearbeiten: () => {
+        vorher?.();
+        const ed = window.Angebot?._intern?.textEditor;
+        if (!ed) return;
+        ed({ titel: 'Texte auf der Rechnung', sub: r.nr || 'Neue Rechnung', liste: r.texte, zurueck, speichern: async () => { await sichern?.(); },
+          hinweis: 'Jedes Textfeld hat eine Überschrift und einen Text. Bei Einleitung, Zahlungsaufforderung und Aufbewahrung steht die Überschrift nicht auf der Rechnung. Platzhalter: {betrag} Zahlbetrag, {faellig} zahlbar bis, {nr} Rechnungsnummer, {prozent} Anteil in %.',
+          std: { label: 'Wieder die Standardtexte aus den Einstellungen', fn: async () => { if (!confirm('Die Texte dieser Rechnung auf die Standardtexte zurücksetzen?')) return; r.texte = texteStd(r, kd); await sichern?.(); zurueck(); } } });
+      },
+    });
+  }
+
   async function erstellen(w, art, fertig, o = {}) {
     const a = await auftrag(w);
     const re = fuerProjekt(w.id), st = stand(w, a, re);
@@ -305,6 +345,7 @@ window.Rechnung = (() => {
     };
     if (art === 'abschlag') r.netto = r2((a.netto * r.prozent) / 100);
     summe();
+    r.texte = texteStd(r, k);
     const titel = art === 'schluss' ? r.artName : `${stufe}. Abschlagsrechnung`;
     header(titel, [Kunden.name(k) || w.customer, w.titel].filter(Boolean).join(' · '), { label: 'Zurück', fn: fertig });
     const f = window.Fortschritt?.kurz(w);
@@ -353,6 +394,7 @@ window.Rechnung = (() => {
           <div class="row"><div><label>Rechnungsdatum</label><input type="date" id="rDatum" value="${r.datum}"></div>
             <div><label>Zahlbar bis</label><input type="date" id="rFaellig" value="${r.faellig}"></div></div>
         </div>
+        ${texteHtml(r, k)}
         <button class="btn big block" id="rSave">${icon('check')} Rechnung erstellen</button>
         <p class="hint center">Die Rechnung bekommt danach eine feste Nummer und lässt sich als PDF senden.</p>`;
       const merken = () => { r.titel = $('#rTitel').value.trim() || r.titel; r.zeitraum = $('#rZeit').value.trim(); r.datum = $('#rDatum').value || heute(); r.faellig = $('#rFaellig').value; };
@@ -378,6 +420,7 @@ window.Rechnung = (() => {
         $('#rPosNeu').onclick = () => { merken(); r.positionen.push({ raum: '', text: '', menge: 1, einheit: 'pauschal', ep: 0, gp: 0 }); render(); setTimeout(() => $$('[data-pt]').pop()?.focus(), 50); };
       }
       $('#rDatum').onchange = (e) => { $('#rFaellig').value = plusTage(e.target.value, ziel()); };
+      texteBind(r, k, { vorher: merken, zurueck: () => { header(titel, [Kunden.name(k) || w.customer, w.titel].filter(Boolean).join(' · '), { label: 'Zurück', fn: fertig }); render(); window.scrollTo(0, 0); } });
       $('#rSave').onclick = async () => {
         merken();
         if (r.eigen) { r.positionen = r.positionen.filter((z) => z.text.trim()).map((z) => ({ ...z, text: z.text.trim() })); summe(); if (!r.positionen.length && !r.nachtraege.length) { r.positionen.push({ raum: '', text: '', menge: 1, einheit: 'pauschal', ep: 0, gp: 0 }); return toast('Bitte mindestens eine Leistung eintragen.'); } }
@@ -416,6 +459,7 @@ window.Rechnung = (() => {
         <button class="doc" id="rPdf"><span class="d-ico navy">${icon('file')}</span><span class="d-t"><b>${storno ? 'Stornorechnung' : 'Rechnung'} als PDF senden</b><span>${r.gesendet ? `Zuletzt gesendet am ${tag(r.gesendet)}` : 'Per Mail, WhatsApp oder speichern'}</span></span>${icon('chevron', 'pc-chev')}</button>
         ${!erledigt && !r.bezahlt && ueberfaellig(r) && naechsteMahn < MAHN.length ? `<button class="doc" id="rMahn"><span class="d-ico brass">${icon('mail')}</span><span class="d-t"><b>${MAHN[naechsteMahn]} senden</b><span>${naechsteMahn ? `Zuletzt: ${esc(MAHN[naechsteMahn - 1])} am ${tag(r.mahnungen[naechsteMahn - 1].datum)}` : `Freundlich, mit neuer Frist von ${+vorgabe('mahnFrist') || 7} Tagen`}</span></span>${icon('chevron', 'pc-chev')}</button>` : ''}
       </div>
+      ${erledigt || r.gesendet || r.bezahlt ? '' : texteHtml(r, k)}
       ${erledigt ? '' : `<div class="card kform" style="margin-top:12px">
         <div class="row"><div><label style="margin-top:0">Zahlbar bis</label><input type="date" id="rFaellig" value="${esc(r.faellig)}"></div>
           <div><label style="margin-top:0">Bezahlt am</label><input type="date" id="rBez" value="${esc(r.bezahlt)}"></div></div>
@@ -433,6 +477,7 @@ window.Rechnung = (() => {
       }
     };
     if ($('#rFaellig')) $('#rFaellig').onchange = async (e) => { r.faellig = e.target.value; await speichern(r); };
+    if (!(erledigt || r.gesendet || r.bezahlt)) texteBind(r, k, { sichern: () => speichern(r), zurueck: () => detail(r, fertig) });
     if ($('#rBez')) $('#rBez').onchange = async (e) => { r.bezahlt = e.target.value; await speichernUndStatus(); detail(r, fertig); };
     if ($('#rJetzt')) $('#rJetzt').onclick = async () => { r.bezahlt = heute(); await speichernUndStatus(); detail(r, fertig); };
     if ($('#rNotiz')) $('#rNotiz').oninput = debounce(async (e) => { r.notiz = e.target.value.trim(); await speichern(r); }, 500);
@@ -522,7 +567,7 @@ window.Rechnung = (() => {
     const neueSeite = async () => { doc.addPage(); await kopf(false); y = 34; };
     // GiroCode (EPC-QR): Der Kunde scannt ihn mit der Banking-App, IBAN, Betrag und Verwendungszweck sind ausgefüllt. Abschaltbar (Vorgabe rechnungQr).
     const giro = async (betrag) => {
-      if (vorgabe('rechnungQr') === 'nein' || !window.QR || !(betrag > 0)) return;
+      if (!window.QR || !(betrag > 0)) return;
       const iban = E.iban || (String(E.bank || '').replace(/\s+/g, '').match(/[A-Z]{2}\d{2}[A-Z0-9]{11,30}/) || [])[0] || '';
       const zweck = `Rechnung ${r.nr}`;
       const png = QR.giroCode({ iban, bic: E.bic || '', name: E.firma || '', betrag, zweck });
@@ -551,9 +596,17 @@ window.Rechnung = (() => {
       await platz(30);
       doc.setFont('helvetica', 'bold'); t('Offener Betrag', M, y); t(eur(zahlbetrag(r)), R, y, { align: 'right' }); y += 5.5;
       doc.setFont('helvetica', 'normal'); t('Zahlbar bis', M, y); t(frist, R, y, { align: 'right' }); y += 10;
-      await giro(zahlbetrag(r));
+      if (optVon(r, 'qr')) await giro(zahlbetrag(r));
     } else {
-      await absatz(vorgabeText(r.art === 'storno' ? 'textStorno' : r.art === 'schluss' ? 'textRechnungSchluss' : 'textRechnungAbschlag', { prozent: String(r.prozent).replace('.', ','), nr: r.art === 'storno' ? r.bezugNr : r.nr, art: r.bezugArt || artName(r), datum: tag(r.bezugDatum || r.datum) }));
+      // Textbausteine (r.texte, sonst die Standardtexte): Platzhalter erst hier füllen
+      const fuell = (x, v) => String(x || '').replace(/\{(\w+)\}/g, (m, n) => (v[n] != null ? String(v[n]) : m));
+      const tx = texteVon(r, kd).filter((b) => !b.aus && String(b.text || '').trim());
+      const druck = async (b, v) => {
+        if (b.titel && !TX_STD.includes(b.id)) { await platz(12); doc.setFont('helvetica', 'bold'); t(b.titel, M, y); y += 5; doc.setFont('helvetica', 'normal'); }
+        await absatz(fuell(b.text, v));
+      };
+      const vVor = { prozent: String(r.prozent).replace('.', ','), nr: r.art === 'storno' ? r.bezugNr : r.nr, art: r.bezugArt || artName(r), datum: tag(r.bezugDatum || r.datum), betrag: eur(zahlbetrag(r)), faellig: tag(r.faellig) };
+      for (const b of tx.filter((x) => x.wo === 'vor')) await druck(b, vVor);
       const C = { pos: M, txt: M + 11, menge: 136, einh: 139, ep: 172, gp: R };
       const tabKopf = () => {
         doc.setFillColor(...NAVY); doc.rect(M - 1, y - 4.2, R - M + 2, 6.2, 'F');
@@ -608,13 +661,19 @@ window.Rechnung = (() => {
       if (r.art === 'schluss' && r.lohn) { doc.setFontSize(8.5); doc.setTextColor(90); sumZ('Darin enthaltener Lohnanteil brutto (§ 35a EStG)', eur(r.lohn)); doc.setTextColor(30); }
       y += 4; doc.setFontSize(10);
       doc.setFont('helvetica', 'normal'); doc.setTextColor(30);
-      if (r.art !== 'storno') { await absatz(vorgabeText('textZahlung', { betrag: eur(zahlbetrag(r)), faellig: tag(r.faellig), nr: r.nr })); if (!r.bezahlt) await giro(zahlbetrag(r)); }
-      // Hinweis zur Aufbewahrung: Pflicht auf jeder Rechnung über Bauleistungen an Privatkunden (§ 14 Abs. 4 Nr. 9 UStG), nicht bei Hausverwaltungen
-      if (r.art !== 'storno' && !(kd && Kunden.istHv(kd)) && vorgabe('textAufbewahrung')) await absatz(vorgabeText('textAufbewahrung'));
+      // Schlusstexte. Der QR-Code steht direkt unter der Zahlungsaufforderung (ohne sie am Ende).
+      // Hinweis zur Aufbewahrung: Pflicht auf jeder Rechnung über Bauleistungen an Privatkunden (§ 14 Abs. 4 Nr. 9 UStG), Standard aus bei Hausverwaltungen
+      const vNach = { ...vVor, nr: r.nr, art: artName(r), datum: tag(r.datum) };
+      const qr = r.art !== 'storno' && !r.bezahlt && optVon(r, 'qr');
+      const nach = tx.filter((x) => x.wo !== 'vor');
+      for (const b of nach) { await druck(b, vNach); if (qr && b.id === 'zahl') await giro(zahlbetrag(r)); }
+      if (qr && !nach.some((b) => b.id === 'zahl')) await giro(zahlbetrag(r));
     }
-    await platz(34); y += 2;
-    if (window.Unterschrift) y = await Unterschrift.pdf(doc, M, y, { firma: E.firma });
-    else { doc.setFontSize(10); doc.setTextColor(30); t(vorgabeText('textGruss'), M, y); y += 5; t(E.firma, M, y); }
+    if (mahnStufe != null || optVon(r, 'gruss')) {
+      await platz(34); y += 2;
+      if (window.Unterschrift) y = await Unterschrift.pdf(doc, M, y, { firma: E.firma });
+      else { doc.setFontSize(10); doc.setTextColor(30); t(vorgabeText('textGruss'), M, y); y += 5; t(E.firma, M, y); }
+    }
     const pages = doc.getNumberOfPages();
     for (let i = 1; i <= pages; i++) {
       doc.setPage(i);
@@ -637,5 +696,5 @@ window.Rechnung = (() => {
     return { offen, name, html: offen.map((r) => zeile(r).replace('<b>', `<b>${esc(name(r))} · `)).join('') };
   }
 
-  return { laden, liste, fuerProjekt, projektAbschnitt, uebersicht, detail, auftrag, zahlbetrag, ueberfaellig, istOffen, gilt, neu, nachtrag, zeile, _intern: { pdf, stand } };
+  return { laden, liste, fuerProjekt, projektAbschnitt, uebersicht, detail, auftrag, zahlbetrag, ueberfaellig, istOffen, gilt, neu, nachtrag, zeile, _intern: { pdf, stand, texteStd } };
 })();

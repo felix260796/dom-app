@@ -1168,7 +1168,7 @@ Gib Länge (längere Seite) und Breite der Grundfläche, Raumhöhe, Anzahl und G
   const kopieB = (l) => l.map((b) => ({ ...b, id: uid() }));
 
   /** Seite zum Bearbeiten der Textfelder. liste wird direkt verändert, speichern() sichert sie. */
-  function textEditor({ titel, sub, liste, speichern, zurueck, std, vorlagen }) {
+  function textEditor({ titel, sub, liste, speichern, zurueck, std, vorlagen, hinweis }) {
     const sichern = debounce(() => speichern(), 500);
     const zeichne = () => {
       header(titel, sub, { label: 'Zurück', fn: zurueck });
@@ -1178,7 +1178,7 @@ Gib Länge (längere Seite) und Breite der Grundfläche, Raumhöhe, Anzahl und G
             <button type="button" class="icon-btn" data-txdel="${i}" aria-label="Entfernen">${icon('trash')}</button></div>
           <textarea data-txf="text" rows="${Math.min(12, Math.max(3, Math.ceil(String(b.text || '').length / 42) + String(b.text || '').split('\n').length - 1))}" placeholder="Text">${esc(b.text || '')}</textarea>
           <select data-txf="wo" aria-label="Wo im Angebot"><option value="vor" ${b.wo === 'vor' ? 'selected' : ''}>Steht vor den Positionen</option><option value="nach" ${b.wo !== 'vor' ? 'selected' : ''}>Steht nach den Positionen</option></select></div>`;
-      main().innerHTML = `<p class="hint" style="margin-top:0">Jedes Textfeld hat eine Überschrift und einen Text. Ohne Überschrift steht nur der Text da. Eine Leerzeile beginnt einen neuen Absatz. Platzhalter: {zeitraum} Ausführungszeitraum, {gueltig} gültig bis, {nr} Angebotsnummer, {kunde} Kunde.</p>
+      main().innerHTML = `<p class="hint" style="margin-top:0">${esc(hinweis || 'Jedes Textfeld hat eine Überschrift und einen Text. Ohne Überschrift steht nur der Text da. Eine Leerzeile beginnt einen neuen Absatz. Platzhalter: {zeitraum} Ausführungszeitraum, {gueltig} gültig bis, {nr} Angebotsnummer, {kunde} Kunde.')}</p>
         ${[['vor', 'Vor den Positionen'], ['nach', 'Nach den Positionen']].map(([wo, n]) => `<div class="sec-h"><h2>${n}</h2></div>
           ${liste.map((b, i) => [b, i]).filter(([b]) => (b.wo === 'vor') === (wo === 'vor')).map(([b, i]) => karte(b, i)).join('') || '<p class="hint">Noch kein Textfeld.</p>'}
           <button type="button" class="link-add" data-txneu="${wo}">${icon('plus')} Textfeld ${wo === 'vor' ? 'vor' : 'nach'} den Positionen</button>`).join('')}
@@ -1400,6 +1400,6 @@ Gib Länge (längere Seite) und Breite der Grundfläche, Raumhöhe, Anzahl und G
     $('#vReset').onclick = async () => { if (!loeschFrage('Alle Paket-Vorlagen zurücksetzen?')) return; await kvDel('angebotVorlagen'); VORL = null; vorlagenView(pkgId, grp); };
   }
 
-  return { projektKarte, ansicht, einstellungenKarte, _intern: { init, gruppe, materialliste, uebernimmSchaetzung, masse, rechne, erzeuge, summen, bauzeit, ep, lohnEp, preisliste, vorlagen, neuerRaum, baueAngebotPdf, importExcel, naechsteNummer, mailText, bausteine, texteAuftrag, texteEinstellungen, subUebernehmen, ansprechpartner, anredeDefault, einstellungen: () => PL.einstellungen } };
+  return { projektKarte, ansicht, einstellungenKarte, _intern: { init, gruppe, materialliste, uebernimmSchaetzung, masse, rechne, erzeuge, summen, bauzeit, ep, lohnEp, preisliste, vorlagen, neuerRaum, baueAngebotPdf, importExcel, naechsteNummer, mailText, bausteine, textEditor, texteAuftrag, texteEinstellungen, subUebernehmen, ansprechpartner, anredeDefault, einstellungen: () => PL.einstellungen } };
 })();
 window.Angebot = Angebot;
