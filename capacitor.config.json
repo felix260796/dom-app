@@ -1,0 +1,10 @@
+{
+  "appId": "de.domprojektmanagement.app",
+  "appName": "DOM",
+  "webDir": "www",
+  "backgroundColor": "#14263b",
+  "ios": {
+    "backgroundColor": "#14263b",
+    "contentInset": "never"
+  }
+}

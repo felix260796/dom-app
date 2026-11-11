@@ -1,0 +1,10 @@
+{
+  "name": "dom-app",
+  "private": true,
+  "description": "Nur für den iPhone-Bau über GitHub (TestFlight). Die App selbst braucht keinen Build-Schritt.",
+  "devDependencies": {
+    "@capacitor/cli": "^8.0.0",
+    "@capacitor/core": "^8.0.0",
+    "@capacitor/ios": "^8.0.0"
+  }
+}
