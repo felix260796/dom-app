@@ -402,8 +402,12 @@ window.Projekt = (() => {
     };
     $$('[data-angraum]').forEach((b) => (b.onclick = () => raumAngebot(rooms.get(b.dataset.angraum), w)));
     if ($('#wZeigen')) $('#wZeigen').onclick = () => (anyResult ? mappeView(w) : toast('Zuerst einen Raum visualisieren, dann gibt es die Mappe.', 4000));
-    $$('[data-room]').forEach((el) => (el.onclick = (e) => { if (e.target.closest('[data-up]')) return; raumOeffnen(rooms.get(el.dataset.room), w); }));
-    $$('[data-up]').forEach((b) => (b.onclick = async () => { const i = +b.dataset.up; [w.rooms[i - 1], w.rooms[i]] = [w.rooms[i], w.rooms[i - 1]]; await save(w); view(); }));
+    $$('[data-room]').forEach((el) => (el.onclick = (e) => { if (e.target.closest('[data-griff]')) return; raumOeffnen(rooms.get(el.dataset.room), w); }));
+    // Räume ordnen: am Griff ziehen (wie überall in der App, keine Pfeile)
+    $$('.rlist').forEach((box) => ziehbar(box, '.rcard', async (von, nach) => {
+      const ids = list.map((r) => r.id), [x] = ids.splice(von, 1); ids.splice(nach, 0, x);
+      w.rooms = [...ids, ...w.rooms.filter((id) => !ids.includes(id))]; await save(w); view();
+    }));
     $$('[data-rt]').forEach((b) => (b.onclick = () => addRoom(w, b.dataset.rt)));
     $$('[data-board]').forEach((b) => (b.onclick = () => moodboardView(w, b.dataset.board)));
     if ($('#wAdd')) $('#wAdd').onclick = () => pickRoomType(w);
@@ -497,7 +501,7 @@ window.Projekt = (() => {
         <div class="rcard" data-room="${r.id}" role="button" tabindex="0">
           ${r.thumb ? `<img src="${r.thumb}" alt="">` : `<span class="rc-ph">${roomIcon(r.roomType)}</span>`}
           <span class="rc-t"><b>${esc(r.room || roomType(r.roomType).name)}</b><span class="rc-s">${stand(r)}</span></span>
-          ${i > 0 ? `<button class="icon-btn up" data-up="${i}" aria-label="Nach oben">${icon('up')}</button>` : ''}
+          ${list.length > 1 ? griffHtml() : ''}
           ${icon('chevron', 'pc-chev')}
         </div>`).join('')}
         <button class="add-room" id="wAdd">${icon('plus')} Raum hinzufügen</button>
@@ -625,7 +629,7 @@ window.Projekt = (() => {
         <div class="rcard" data-room="${r.id}" role="button" tabindex="0">
           ${r.thumb ? `<img src="${r.thumb}" alt="">` : `<span class="rc-ph">${roomIcon(r.roomType)}</span>`}
           <span class="rc-t"><b>${esc(raumTitel(r))}</b><span class="rc-s">${stand(r)}</span></span>
-          ${i > 0 ? `<button class="icon-btn up" data-up="${i}" aria-label="Nach oben">${icon('up')}</button>` : ''}
+          ${list.length > 1 ? griffHtml() : ''}
           ${icon('chevron', 'pc-chev')}
         </div>`).join('')}
         ${list.length ? `<button class="add-room" id="wAdd">${icon('plus')} Raum hinzufügen</button>` : ''}
