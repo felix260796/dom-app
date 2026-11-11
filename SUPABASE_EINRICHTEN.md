@@ -34,7 +34,7 @@ Es sollte „Success“ erscheinen. Damit gibt es einen privaten Firmenspeicher 
 1. Links auf **Authentication** und dann auf **Users**.
 2. **Add user** und dann **Create new user**.
 3. Deine E-Mail und ein eigenes Passwort eintragen und **Auto Confirm User** anhaken. Dann **Create user**.
-4. Empfohlen: Unter **Authentication → Sign In / Providers** die Option **Allow new users to sign up** ausschalten. Dann kann sich niemand Fremdes registrieren.
+4. **Pflicht:** Unter **Authentication → Sign In / Providers** die Option **Allow new users to sign up** ausschalten und **Allow anonymous sign-ins** ebenfalls aus lassen. Sonst könnte sich jeder mit dem öffentlichen Schlüssel aus der App ein Konto anlegen und alle Firmendaten lesen. Der tägliche Lauf „Supabase wach halten“ auf GitHub prüft das und wird rot, wenn es offen ist.
 
 ## 5. Zugangsdaten für die App kopieren
 1. Links unten auf **Project Settings** (Zahnrad) und dann auf **API Keys** (bzw. **Data API**).
