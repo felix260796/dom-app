@@ -124,6 +124,10 @@ const VORGABEN = {
       { k: 'ordnerPlaene', l: 'Bilder-Ordner für gescannte Pläne', t: 'zeile', d: 'Pläne', h: 'Pläne, die du unter „Gespräch vor Ort“ scannst oder fotografierst, landen in diesem Ordner beim Projekt.' },
       { k: 'nachfassenKalender', l: 'Nachfassen als Eintrag in den Kalender', t: 'janein', d: 'ja', h: 'Am Tag, an dem nachgefasst werden soll (Tage siehe Abläufe & Listen), steht ein Eintrag im Kalender.' },
     ]],
+    ['Raumscan und Grundriss', [
+      { k: 'raumscanRaumAnlegen', l: 'Nach dem Scan fragen, ob der Raum im Projekt angelegt werden soll', t: 'janein', d: 'ja', h: 'Gibt es im Projekt noch keinen Raum mit dem Namen des Scans, fragt die App nach dem Scan, ob sie ihn anlegt. Die Maße stehen dann gleich im Aufmaß.' },
+      { k: 'grundrissHinweis', l: 'Hinweis unten auf dem Grundriss-PDF', t: 'zeile', d: 'Maße aus dem Raumscan, ohne Gewähr. Vor der Ausführung nachmessen.' },
+    ]],
   ],
   // KI-Anweisungen (Prompts). Englisch, weil die Bild-KI Englisch am genauesten umsetzt. Deutsche Erklärung jeweils darunter.
   prompts: [
