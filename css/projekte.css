@@ -280,7 +280,7 @@ details.bs .tot span:last-child { color: var(--muted); }
 .pj-jetzt b { font-size: 17px; }
 .pj-jetzt span { color: var(--muted); font-size: 14px; }
 .pj-jetzt .btn { margin-top: 10px; }
-.pj-anspr { display: flex; align-items: center; gap: 8px; margin: 8px 0 0; color: var(--muted); font-size: 14px; }
+.pj-anspr { display: flex; align-items: center; gap: 8px; margin: 8px 0 0; padding: 0; border: 0; background: none; font: inherit; text-align: left; color: var(--muted); font-size: 14px; cursor: pointer; }
 .pj-anspr svg.i { width: 18px; height: 18px; }
 .bf-raum { font-weight: 700; font-size: 14px; color: var(--navy); margin: 12px 0 4px; padding-bottom: 4px; border-bottom: 1px solid var(--line, #e3e6ea); }
 .bf-raum:first-child { margin-top: 0; }

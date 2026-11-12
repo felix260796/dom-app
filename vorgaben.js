@@ -70,8 +70,10 @@ const VORGABEN = {
       { k: 'raeumeWohnung', l: 'Räume zum Anhaken bei „Ganze Wohnung“ (eine Zeile je Raum)', t: 'liste', d: ['Badezimmer', 'Gäste-WC', 'Küche', 'Wohnzimmer', 'Schlafzimmer', 'Kinderzimmer', 'Flur / Diele'] },
       { k: 'raeumeHaus', l: 'Räume zum Anhaken bei „Ganzes Haus“ (eine Zeile je Raum)', t: 'liste', d: ['Badezimmer', 'Gäste-WC', 'Küche', 'Wohnzimmer', 'Schlafzimmer', 'Kinderzimmer', 'Flur / Diele', 'Treppenhaus', 'Keller', 'Dachgeschoss', 'Heizraum', 'Fassade / Außen', 'Garten'] },
       { k: 'kleinName', l: 'So heißt eine Kleinigkeit im Angebot', t: 'zeile', d: 'Leistungen', h: 'Einzelne Arbeiten ohne Raum, z. B. Türgriffe oder Steckdosen.' },
-      { k: 'angebotGruss', l: 'Angebot endet mit Gruß und Unterschrift', t: 'janein', d: 'ja', h: 'Lässt sich in jedem Angebot unter „Schlusstexte“ abwählen.' },
-      { k: 'angebotAuftragsfeld', l: 'Angebot hat am Ende ein Feld, in dem der Kunde unterschreibt (Auftragserteilung)', t: 'janein', d: 'ja', h: 'Lässt sich in jedem Angebot unter „Schlusstexte“ abwählen.' },
+      { k: 'ansprechAngebot', l: 'Ansprechpartner im Angebot (Standard, eine Person)', t: 'zeile', d: 'Felix Brenzinger', h: 'Steht oben im Angebot und unterschreibt am Schluss. In jedem Angebot in Schritt 1 änderbar.' },
+      { k: 'ansprechProjekt', l: 'Ansprechpartner im Projekt nach der Zusage (Standard, eine Person)', t: 'zeile', d: 'Deniel Kovacic' },
+      { k: 'angebotGruss', l: 'Angebot endet mit Gruß, Unterschrift und Stempel', t: 'janein', d: 'ja', h: 'Text und Abwählen: Schlusstexte im Angebot bzw. Einstellungen › Aufschläge & Angebotstexte › Textfelder.' },
+      { k: 'angebotAuftragsfeld', l: 'Angebot hat am Ende ein Feld, in dem der Kunde unterschreibt (Auftragserteilung)', t: 'janein', d: 'ja', h: 'Text und Abwählen: Schlusstexte im Angebot bzw. Einstellungen › Aufschläge & Angebotstexte › Textfelder.' },
       { k: 'abEinleitung', l: 'Auftragsbestätigung: Text vor den Positionen', t: 'text', d: 'vielen Dank für Ihren Auftrag. Hiermit bestätigen wir Ihnen die folgenden Leistungen gemäß unserem Angebot Nr. {nr}:', h: 'Platzhalter: {nr} Angebotsnummer, {kunde} Kunde, {datum} heute.' },
       { k: 'abSchluss', l: 'Auftragsbestätigung: Satz vor dem Gruß', t: 'zeile', d: 'Wir freuen uns auf die Zusammenarbeit.' },
       { k: 'nachfassenTage', l: 'Hinweis „Nachfassen“ nach wie vielen Tagen?', t: 'zahl', d: 7 },
@@ -389,9 +391,9 @@ window.Vorgaben = (() => {
   // ---------- Preisliste & Angebot: Aufschläge, Texte, Firmendaten, Positionen ----------
   const PL_ZAHLEN = [['aufLohn', 'Aufschlag auf Lohn (Subunternehmer) in %', true], ['aufMat', 'Aufschlag auf Material in %', true], ['wagnis', 'Wagnis und Gewinn in %', true], ['mwst', 'Mehrwertsteuer in %', true], ['spanne', 'Spanne der Preisrichtung vor Ort ± %', true], ['gueltig', 'Angebot gültig (Tage)', false]];
   // Die Textfelder vor und nach den Positionen haben seit Version 75 eine eigene Seite (Angebot._intern.texteEinstellungen).
-  // Hier bleiben nur der Schlusssatz und der Text über der Unterschrift.
-  const PL_TEXTE = [['textSchluss', 'Schlusssatz vor dem Gruß'], ['textAuftrag', 'Text über der Unterschrift (Auftragserteilung)']];
-  const PL_FIRMA = [['firma', 'Firmenname'], ['strasse', 'Straße'], ['ort', 'PLZ und Ort'], ['telefon', 'Telefon'], ['email', 'E-Mail'], ['ansprechpartner', 'Ansprechpartner'], ['ustid', 'USt-IdNr.'], ['sitz', 'Sitz'], ['hrb', 'Handelsregister'], ['gf', 'Geschäftsführer'], ['bank', 'Bankverbindung (Text in der Fußzeile)'], ['iban', 'IBAN (für den QR-Code zum Bezahlen)'], ['bic', 'BIC (freiwillig)']];
+  // Seit Version 100 sind auch Schlusssatz (Gruß) und Auftragserteilung Textfelder dort (feste Bausteine am Schluss).
+  const PL_TEXTE = [];
+  const PL_FIRMA = [['firma', 'Firmenname'], ['strasse', 'Straße'], ['ort', 'PLZ und Ort'], ['telefon', 'Telefon'], ['email', 'E-Mail'], ['ustid', 'USt-IdNr.'], ['sitz', 'Sitz'], ['hrb', 'Handelsregister'], ['gf', 'Geschäftsführer'], ['bank', 'Bankverbindung (Text in der Fußzeile)'], ['iban', 'IBAN (für den QR-Code zum Bezahlen)'], ['bic', 'BIC (freiwillig)']];
   async function preisKarten(box) {
     const PL = await window.Angebot._intern.preisliste();
     const E = PL.einstellungen;
@@ -402,7 +404,6 @@ window.Vorgaben = (() => {
         <p class="hint" style="margin:6px 0 0">Gilt für alle neuen Berechnungen. Im einzelnen Angebot kannst du unter „Nachkalkulation“ abweichen.</p></div>
       <div class="sec-h"><h2>Texte im Angebot</h2></div>
       <div class="docs" style="margin-bottom:10px"><button class="doc" id="plTexte"><span class="d-ico navy">${icon('edit')}</span><span class="d-t"><b>Textfelder vor und nach den Positionen</b><span>${(window.Angebot._intern.bausteine() || []).length} Textfelder, z. B. ${esc((window.Angebot._intern.bausteine() || []).map((b) => b.titel).filter(Boolean).slice(0, 3).join(', '))}</span></span>${icon('chevron', 'pc-chev')}</button></div>
-      <div class="card kform vg">${PL_TEXTE.map(([k, l]) => `<label>${esc(l)}</label><textarea data-plt="${k}" rows="3" placeholder="${k === 'textSchluss' ? 'Wir freuen uns auf Ihren Auftrag.' : ''}">${esc(Array.isArray(E[k]) ? E[k].join('\n') : E[k] || '')}</textarea>`).join('')}</div>
       `;
     $('#plTexte', box).onclick = () => { const zur = { y: window.scrollY, h: $('#title').textContent }; window.Angebot._intern.texteEinstellungen(() => { einstellungSeite(window.__plSeite || 'kalkulation'); setTimeout(() => window.scrollTo(0, zur.y), 50); }); };
     $$('[data-ple]', box).forEach((el) => (el.onchange = async () => { const v = parseFloat(el.value.replace(',', '.')); if (!Number.isFinite(v)) return toast('Bitte eine Zahl eintragen.'); E[el.dataset.ple] = el.dataset.pr === '1' ? v / 100 : v; await sichern(); }));

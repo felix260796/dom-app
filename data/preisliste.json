@@ -6,7 +6,7 @@
   "ort": "12345 Musterstadt",
   "telefon": "0000 000000",
   "email": "info@dom-projektmanagement.de",
-  "ansprechpartner": "Deniel Kovacic · Felix Brenzinger",
+  "ansprechpartner": "Felix Brenzinger",
   "ustid": "DE000000000",
   "bank": "Musterbank · DE00 0000 0000 0000 0000 00",
   "aufLohn": 0.25,
@@ -27,7 +27,7 @@
   "textLeistung": "Nicht enthalten sind Sanitär-, Heizungs-, Elektro- und Dacharbeiten, soweit oben nicht aufgeführt. Diese Leistungen bietet Ihnen der jeweilige Fachbetrieb direkt an.",
   "textBauseits": "Bauseits zu stellen: Strom- und Wasseranschluss, freier Zugang während der Arbeitszeiten und geräumte Arbeitsbereiche.",
   "textZahlung": "Rechnungen sind innerhalb von 14 Tagen nach Zugang ohne Abzug zahlbar.",
-  "textGewaehr": "Es gelten die gesetzlichen Gewährleistungsrechte nach BGB; bei Arbeiten an einem Bauwerk beträgt die Frist 5 Jahre ab Abnahme.",
+  "textGewaehr": "Es gelten die gesetzlichen Gewährleistungsrechte nach BGB. Die Gewährleistungsfrist beträgt 2 Jahre ab Abnahme.",
   "textWiderruf": "Verbraucher haben bei Verträgen, die außerhalb unserer Geschäftsräume oder per E-Mail/Telefon geschlossen werden, ein gesetzliches Widerrufsrecht. Die Widerrufsbelehrung mit Muster-Widerrufsformular liegt bei.",
   "textAuftrag": "Hiermit erteile ich / erteilen wir den Auftrag zu den Bedingungen dieses Angebots."
  },

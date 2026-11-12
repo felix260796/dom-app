@@ -262,10 +262,13 @@ window.Projekt = (() => {
     if ($('#wBau')) window.Baustelle?.abschnitt($('#wBau'), w, list, $('#wAbn') ? 'bestellungen' : '');
     if ($('#wAbn')) window.Baustelle?.abschnitt($('#wAbn'), w, list, 'abnahme');
     if ($('#wTodo')) todoFuellen(w);
-    if ($('#dAb')) $('#dAb').onclick = async () => {
-      const ab = w.auftragsbestaetigung, d = (w.dokumente || []).find((x) => x.key === ab?.dokId || x.id === ab?.dokId) || (w.dokumente || []).find((x) => x.art === 'auftragsbestaetigung');
-      if (!d) return toast('Die Auftragsbestätigung ist auf diesem Gerät noch nicht da.', 4000);
-      dateiZeigen(await kvGet(d.key), { name: d.name, typ: 'application/pdf' });
+    if ($('#dAb')) $('#dAb').onclick = () => abMenue(w, list);
+    if ($('#wAnspr')) $('#wAnspr').onclick = async () => {
+      const A = window.Angebot._intern; await A.preisliste();
+      const v = await sheet('Ansprechpartner im Projekt', A.ansprechpartner().map((n) => ({ label: n, icon: icon('user'), value: n })));
+      if (!v) return;
+      w.ansprechpartner = v; if (!w.isNew) await save(w);
+      const y = window.scrollY; await view(); window.scrollTo(0, y);
     };
     if ($('#wFort')) window.Fortschritt?.abschnitt($('#wFort'), w, list, () => save(w));
     if (k && $('#wTermine')) window.Kalender?.abschnitt($('#wTermine'), { kundeId: k.id, objektId: w.objektId, projektId: w.id, zurueck: () => view() });
@@ -365,6 +368,8 @@ window.Projekt = (() => {
     bueroFelder(w, list);
     if ($('#wNeuAng')) $('#wNeuAng').onclick = () => angebotsRaum(w);
     if ($('#wRechAdr')) $('#wRechAdr').onclick = () => Kunden.oeffnen(k.id);
+    if ($('#wAlsVersendet')) $('#wAlsVersendet').onclick = async () => { const b = $('#wAlsVersendet'); b.disabled = true; try { await alsVersendet(w, list); } catch (e) { console.error(e); toast('PDF-Fehler: ' + e.message, 6000); } if (b.isConnected) b.disabled = false; };
+    if ($('#wNochmal')) $('#wNochmal').onclick = () => angebotNochmal(w);
     if ($('#wSenden')) $('#wSenden').onclick = async () => { const b = $('#wSenden'); b.disabled = true; try { await sendenMitMappe(w, list); } catch (e) { console.error(e); toast('PDF-Fehler: ' + e.message, 6000); } b.disabled = false; };
     if ($('#wSpeichern')) $('#wSpeichern').onclick = async () => { const b = $('#wSpeichern'); b.disabled = true; try { await angebotSpeichern(w, list); } catch (e) { console.error(e); toast('PDF-Fehler: ' + e.message, 6000); } if (b.isConnected) b.disabled = false; };
     if ($('#wAnpassen')) $('#wAnpassen').onclick = () => { if (gesperrt(w) || norm(w.status) === 'abgesagt') return angebotKopieren(w); reiterSetzen(w, 'buero'); view(); window.scrollTo(0, 0); };
@@ -376,9 +381,10 @@ window.Projekt = (() => {
     if ($('#dAngPdf')) $('#dAngPdf').onclick = async () => dateiZeigen(await kvGet('angpdf:' + w.id), w.angebotPdf);
     if ($('#wAngAnsehen')) $('#wAngAnsehen').onclick = async () => dateiZeigen(await kvGet('angpdf:' + w.id), w.angebotPdf);
     // Gespeicherte Dokumente: Tipp = ansehen, Pfeil = senden
-    $$('[data-dok]').forEach((b) => (b.onclick = async () => { const d = (w.dokumente || []).find((x) => x.key === b.dataset.dok); if (d) dateiZeigen(await kvGet(d.key), { name: d.name, typ: 'application/pdf' }); }));
+    $$('[data-dok]').forEach((b) => (b.onclick = async () => { const d = (w.dokumente || []).find((x) => x.key === b.dataset.dok); if (d) dateiZeigen(await kvGet(d.key), { name: d.name, typ: d.typ || 'application/pdf' }); }));
     $$('[data-doksend]').forEach((b) => (b.onclick = async () => {
-      const d = (w.dokumente || []).find((x) => x.key === b.dataset.doksend); const data = d && (await kvGet(d.key));
+      const d = (w.dokumente || []).find((x) => x.key === b.dataset.doksend); if (d?.art === 'auftragsbestaetigung') return abSenden(w);
+      const data = d && (await kvGet(d.key));
       if (!data) return toast('Die Datei ist auf diesem Gerät noch nicht da. Bitte kurz warten (Cloud-Abgleich).', 4000);
       const f = new File([await (await fetch(data)).blob()], d.name, { type: 'application/pdf' });
       try { await navigator.share({ files: [f], title: d.name, ohneDialog: true }); if (/^Angebot_/.test(d.name) && !(w.angebotArchiv || []).some((a) => a.nr && d.name.includes(a.nr))) { await angebotMerken(w.id, { output: () => data }, d.name); await angebotVersendet(w.id); } neuZeichnen(w); } catch (e) { if (e.name !== 'AbortError') toast('Senden nicht möglich: ' + e.message, 4000); }
@@ -470,7 +476,8 @@ window.Projekt = (() => {
     const tab = pjReiterVon(w), jd = jetztDran(w);
     const ab = w.auftragsbestaetigung;
     const vorOrt = window.Gespraech?.karte(w, list) || '';
-    const anspr = list.find((r) => r.angebot?.anspr)?.angebot.anspr || w.angebotKopf?.anspr || '';
+    // Ansprechpartner im Projekt (Version 100): eine Person, Standard aus Vorgabe ansprechProjekt, je Projekt wählbar (w.ansprechpartner)
+    const anspr = window.Angebot._intern.einePerson(w.ansprechpartner) || vorgabe('ansprechProjekt') || '';
     const kopf = `
       <div class="card kunde">
         ${k ? `<button class="kline" id="wKunde"><span class="av sm">${esc(Kunden.initialen(k))}</span><span class="kl-t"><b>${esc(Kunden.name(k) || 'Ohne Namen')}</b><small>${esc([k.telefon, k.email].filter(Boolean).join(' · ') || 'Kundenkarte öffnen')}</small></span>${icon('chevron', 'pc-chev')}</button>
@@ -479,7 +486,7 @@ window.Projekt = (() => {
           ${k.objekte.map((o) => `<option value="${o.id}" ${o.id === w.objektId ? 'selected' : ''}>${esc(Kunden.objektText(o) || 'Objekt ohne Anschrift')}</option>`).join('')}
           <option value="__neu">Anderes Objekt …</option></select></label>
         <label class="ic-field">${icon('edit')}<input type="text" id="wTitel" value="${esc(w.titel || '')}" placeholder="Projektname, z. B. Badumbau" autocomplete="off" aria-label="Projektname"></label>
-        ${anspr ? `<p class="pj-anspr">${icon('user')}<span>Ansprechpartner: <b>${esc(String(anspr).split(/\s*·\s*/)[0])}</b></span></p>` : ''}`
+        <button type="button" class="pj-anspr" id="wAnspr">${icon('user')}<span>Ansprechpartner: <b>${esc(anspr || 'wählen')}</b></span></button>`
         : `<button class="kline" id="wKundeWahl">${icon('user')}<span class="kl-t"><b>${esc(w.customer || 'Kunde zuordnen')}</b><small>Kunde auswählen oder neu anlegen</small></span>${icon('chevron', 'pc-chev')}</button>`}
       </div>
       <div class="card pj-jetzt">
@@ -507,7 +514,7 @@ window.Projekt = (() => {
         <button class="doc" id="dAngPdf" ${w.angebotPdf ? '' : 'disabled'}>
           <span class="d-ico navy">${icon('file')}</span>
           <span class="d-t"><b>Angebot, wie verschickt</b><span>${w.angebotPdf ? `PDF vom ${esc(new Date(w.angebotPdf.t).toLocaleDateString('de-DE'))}, nur zum Lesen` : 'Kein verschicktes Angebot gespeichert'}</span></span>${icon('chevron', 'pc-chev')}</button>
-        ${ab ? `<button class="doc" id="dAb"><span class="d-ico navy">${icon('check')}</span><span class="d-t"><b>Auftragsbestätigung</b><span>${ab.nr ? `Nr. ${esc(ab.nr)} · ` : ''}${ab.gesendetAm ? `gesendet am ${esc(datumText(ab.gesendetAm))}` : 'erstellt, noch nicht gesendet'}</span></span>${icon('chevron', 'pc-chev')}</button>` : ''}
+        <button class="doc" id="dAb"><span class="d-ico ${ab ? 'navy' : 'grey'}">${icon('check')}</span><span class="d-t"><b>Auftragsbestätigung</b><span>${ab ? `${ab.nr ? `Nr. ${esc(ab.nr)} · ` : ''}${ab.gesendetAm ? `gesendet am ${esc(datumText(ab.gesendetAm))}` : 'erstellt, noch nicht gesendet'}` : 'Noch nicht erstellt, tippen zum Erstellen'}</span></span>${icon('chevron', 'pc-chev')}</button>
         <button class="doc" id="wAuftrag"><span class="d-ico ${w.auftrag ? 'navy' : 'grey'}">${icon('check')}</span><span class="d-t"><b>Unterschriebenes Angebot</b><span>${w.auftrag ? `Abgelegt am ${esc(new Date(w.auftrag.t).toLocaleDateString('de-DE'))}` : 'Noch nicht abgelegt, tippen zum Ablegen'}</span></span>${icon('chevron', 'pc-chev')}</button>
         <button class="doc" id="dBau">
           <span class="d-ico brass">${icon('clipboard')}</span>
@@ -599,9 +606,8 @@ window.Projekt = (() => {
   /** Nummer des Angebots, an dem gerade gearbeitet wird (ein Raum: dessen Nummer, mehrere: die des Gesamtangebots). */
   const aktNr = (w, list) => { const m = mitPosVon(list); return (m.length > 1 ? w.gesamtAngebot?.nr : m[0]?.angebot?.nr) || ''; };
   /** Texte dieses Angebots: eigene Fassung oder der Standard aus den Einstellungen (als Kopie, wird erst beim Ändern gespeichert). */
-  const texteVon = (w) => (Array.isArray(w.angebotTexte) && w.angebotTexte.length ? w.angebotTexte : window.Angebot._intern.bausteine().map((b) => ({ ...b })));
-  /** Gruß mit Unterschrift und Auftragserteilung: je Angebot an oder aus, Standard aus den Einstellungen. */
-  const optVon = (w, k) => w.angebotOpt?.[k] ?? vorgabe(k === 'gruss' ? 'angebotGruss' : 'angebotAuftragsfeld') !== 'nein';
+  // Auftragserteilung und Gruß mit Unterschrift sind seit Version 100 Bausteine am Schluss (b.fest, angebot.js texteFuer).
+  const texteVon = (w) => window.Angebot._intern.texteFuer(w);
   /** Summe brutto über alle Räume (für die Anzeige). */
   function summeVon(list) {
     const A = window.Angebot._intern;
@@ -631,7 +637,7 @@ window.Projekt = (() => {
           ${w.objektId && Kunden.objekt(k, w.objektId) ? '' : `<option value="" selected>${esc(w.address || 'Objekt wählen …')}</option>`}
           ${k.objekte.map((o) => `<option value="${o.id}" ${o.id === w.objektId ? 'selected' : ''}>${esc(Kunden.objektText(o) || 'Objekt ohne Anschrift')}</option>`).join('')}
           <option value="__neu">Andere Anschrift …</option></select></label>
-        <label class="ic-field">${icon('edit')}<input type="text" id="wTitel" value="${esc(w.titel || '')}" placeholder="Projektname, z. B. Badumbau" autocomplete="off" aria-label="Projektname"></label>
+        <label class="ic-field">${icon('edit')}<input type="text" id="wTitel" value="${esc(w.titel || '')}" placeholder="Projektname (= Betreff im Angebot), z. B. Badumbau" autocomplete="off" aria-label="Projektname"></label>
         ${sq ? `<p class="ab-schnell">${icon('phone')}<span>Am Telefon genannt: <b>ca. ${eurRund(sq.von)} – ${eurRund(sq.bis)}</b> · ${esc(new Date(sq.t).toLocaleDateString('de-DE'))}${sq.text ? ` · ${esc(sq.text)}` : ''}</span></p>` : ''}`
         : `<button class="kline" id="wKundeWahl">${icon('user')}<span class="kl-t"><b>${esc(w.customer || 'Kunde zuordnen')}</b><small>Kunde auswählen oder neu anlegen</small></span>${icon('chevron', 'pc-chev')}</button>`}
       </div>`;
@@ -740,8 +746,8 @@ window.Projekt = (() => {
         <div class="sec-h"><h2>So steht es oben im Angebot</h2></div>
         <div class="card kform">
           <div class="row"><div><label style="margin-top:0">Angebotsnummer</label><input type="text" id="bNr" value="${esc(K.nr)}" placeholder="kommt beim Speichern" autocomplete="off"></div>
-            <div><label style="margin-top:0">Ansprechpartner</label><select id="bAnspr">${anspr.map((x) => `<option ${x === (K.anspr || anspr[0]) ? 'selected' : ''}>${esc(x)}</option>`).join('')}</select></div></div>
-          <label>Betreff</label><input type="text" id="bTitel" value="${esc(K.titel)}" placeholder="${esc(mehrere ? `Sanierung ${w.titel || mitPos.map(raumTitel).join(', ')}` : `Sanierung ${erst ? raumTitel(erst) : w.titel || ''}`.trim())}" autocomplete="off">
+            <div><label style="margin-top:0">Ansprechpartner</label><select id="bAnspr">${anspr.map((x) => `<option ${x === (A.einePerson(K.anspr) || anspr[0]) ? 'selected' : ''}>${esc(x)}</option>`).join('')}</select></div></div>
+          ${k ? '<p class="hint" style="margin:8px 0 0">Betreff ist der Projektname (oben beim Kunden).</p>' : `<label>Projektname (= Betreff)</label><input type="text" id="wTitel" value="${esc(w.titel || '')}" placeholder="z. B. Badumbau" autocomplete="off">`}
           <label>Anrede</label><input type="text" id="bAnrede" value="${esc(K.anrede)}" placeholder="${esc(erst ? A.anredeDefault(erst) : 'Sehr geehrte Damen und Herren,')}" autocomplete="off">
         </div>
         ${window.Bausteine.block({ wo: 'vor', titel: 'Anfangstexte', leer: 'Kein Text vor den Positionen', liste: texte })}`,
@@ -766,20 +772,19 @@ window.Projekt = (() => {
         </details>` : ''}` : `<div class="card"><p class="hint" style="margin-top:0">Noch nichts angelegt. In Schritt 2 trägst du ein, was angeboten wird.</p><button class="btn block" data-schritt="masse">Zu Schritt 2</button></div>`}`,
       danach: () => `
         <div class="sec-h"><h2>Was steht nach den Positionen?</h2></div>
-        ${window.Bausteine.block({ wo: 'nach', titel: 'Schlusstexte', leer: 'Kein Text nach den Positionen', liste: texte, offen: true, fest: [
-          { k: 'gruss', label: 'Gruß mit Unterschrift', sub: `Mit freundlichen Grüßen, ${String(K.anspr || anspr[0] || 'Name').split(/\s*·\s*/)[0]}, Unterschrift`, an: optVon(w, 'gruss') },
-          { k: 'auftrag', label: 'Auftragserteilung', sub: 'Feld, in dem der Kunde das Angebot unterschreibt', an: optVon(w, 'auftrag') },
-          ...(erst ? [{ k: 'bauzeit', label: 'Bauzeitenplan', sub: 'Eigene Seite am Ende', an: !!a.mitBauzeit }] : [])] })}`,
+        ${window.Bausteine.block({ wo: 'nach', titel: 'Schlusstexte', leer: 'Kein Text nach den Positionen', liste: texte, offen: true })}
+        <p class="hint">Am Schluss stehen immer die Auftragserteilung und ganz zuletzt „${esc(vorgabeText('textGruss'))}“ mit ${esc(A.einePerson(K.anspr) || anspr[0] || 'Name')}, Unterschrift und Stempel. Abwählen oder Text ändern geht hier.</p>`,
       ansicht: () => `
         <div class="sec-h"><h2>Alles beisammen?</h2></div>
         <div class="card bs-ueb">
           ${[['davor', 'Kunde', k ? Kunden.name(k) || w.customer : 'Noch kein Kunde zugeordnet', !!k],
             ['davor', 'Rechnungsanschrift', k?.privat.trim() ? Kunden.einzeilig(k.privat) : 'fehlt noch', !!k?.privat.trim()],
             ['davor', 'Objekt', w.address || 'fehlt noch', !!w.address],
-            ['davor', 'Betreff', K.titel || 'wird beim Speichern vorgeschlagen', true],
+            ['davor', 'Betreff (Projektname)', w.titel || 'fehlt noch, wird sonst vorgeschlagen', !!w.titel],
+            ['davor', 'Ansprechpartner', A.einePerson(K.anspr) || anspr[0] || '', true],
             ['masse', 'Angeboten wird', list.length ? list.map(raumTitel).join(', ') : 'noch nichts angelegt', list.length > 0],
             ['pos', 'Positionen', nPos ? `${nPos} ${nPos === 1 ? 'Position' : 'Positionen'} · ${eur2(summe)} brutto` : 'noch keine', nPos > 0],
-            ['danach', 'Schlusstexte', [...window.Bausteine.teil(texte, 'nach').filter((b) => !b.aus).map((b) => b.titel || 'Text'), optVon(w, 'gruss') ? 'Gruß' : '', optVon(w, 'auftrag') ? 'Auftragserteilung' : ''].filter(Boolean).join(', ') || 'keine', true],
+            ['danach', 'Schlusstexte', window.Bausteine.teil(texte, 'nach').filter((b) => !b.aus).map((b) => b.titel || 'Text').join(', ') || 'keine', true],
           ].map(([zu, l, v, gut]) => `<button type="button" class="bs-uz ${gut ? '' : 'fehlt'}" data-schritt="${zu}"><small>${l}</small><span>${esc(v)}</span>${icon('chevron', 'pc-chev')}</button>`).join('')}
         </div>
         ${offen.length ? `<div class="card wf-offen"><b>Noch offen (${offen.length})</b><ul class="wf-o">${offen.map((o) => `<li>${esc(o.text)}</li>`).join('')}</ul></div>` : ''}
@@ -808,14 +813,15 @@ window.Projekt = (() => {
         ${st === 'abgesagt' && w.absage?.grund ? `<p class="ang-grund">${icon('x')}<span>Grund: <b>${esc(w.absage.grund)}</b></span></p>` : ''}
         ${st === 'angebot' && tage >= nachfassen() ? `<p class="stk-tipp warn">${icon('phone')} Seit ${tage} Tagen beim Kunden. Zeit zum Nachfassen.</p>` : ''}
         ${st === 'angebot' || st === 'abgesagt' ? `
-          ${w.angebotPdf ? `<button class="btn secondary block" id="wAngAnsehen">${icon('eye')} Ansehen</button>` : ''}
+          ${w.angebotPdf ? `<div class="stk-2"><button class="btn secondary" id="wAngAnsehen">${icon('eye')} Ansehen</button><button class="btn secondary" id="wNochmal">${icon('mail')} Nochmal senden</button></div>` : ''}
           ${st === 'angebot' ? `<div class="stk-2" style="margin-top:10px"><button class="btn" data-st="geplant" style="--c:#2f8a57">${icon('check')} Zugesagt</button><button class="btn" data-st="abgesagt" style="--c:#c0392b">${icon('x')} Abgesagt</button></div>` : ''}
           <button class="btn secondary block" id="wAnpassen" style="margin-top:8px">${icon('edit')} Angebot ändern</button>
           <p class="hint center" style="margin-bottom:0">„Angebot ändern“ legt eine Kopie mit neuer Nummer und neuem Datum an. Dieses Angebot bleibt unverändert.</p>`
         : `
           <button class="btn secondary block" id="wSpeichern" ${mitPos.length ? '' : 'disabled'}>${icon('download')} Speichern und ansehen</button>
           <button class="btn big block" id="wSenden" style="margin-top:8px" ${mitPos.length ? '' : 'disabled'}>${icon('mail')} ${anyResult ? 'Senden mit Mappe' : 'Angebot senden'}</button>
-          <p class="hint center" style="margin-bottom:0">${mitPos.length ? 'Nach dem Senden ist das Angebot gesperrt. Ändern geht dann über eine Kopie mit neuer Nummer.' : 'Zuerst im Reiter „Büro“ ausarbeiten.'}</p>`}
+          <button class="btn secondary block" id="wAlsVersendet" style="margin-top:8px" ${mitPos.length ? '' : 'disabled'}>${icon('check')} Als versendet markieren</button>
+          <p class="hint center" style="margin-bottom:0">${mitPos.length ? '„Als versendet markieren“, wenn der Kunde das Angebot anders bekommen hat, z. B. ausgedruckt. Danach ist es gesperrt (Ändern über eine Kopie mit neuer Nummer), und das Nachfassen läuft.' : 'Zuerst im Reiter „Büro“ ausarbeiten.'}</p>`}
       </div>` : `<div class="card"><p class="hint" style="margin-top:0">Es gibt noch kein Angebot. Im Reiter „Büro“ arbeitest du es aus.</p>
         <button class="btn block" data-reiter="buero">Zum Büro</button></div>`}
       ${archiv.length ? `<div class="sec-h"><h2>Frühere Fassungen</h2><span class="count">${archiv.length}</span></div>
@@ -836,7 +842,6 @@ window.Projekt = (() => {
     $$('[data-schritt]').forEach((b) => (b.onclick = () => { schrittWahl.set(w.id, b.dataset.schritt); view(); window.scrollTo(0, 0); }));
     if ($('#bNr')) {
       $('#bNr').oninput = (e) => { const v = e.target.value.trim(); K.nr = v; if (mehrere) (w.gesamtAngebot ??= {}).nr = v; else if (erst) erst.angebot.nr = v; sichern(); };
-      $('#bTitel').oninput = (e) => { const v = e.target.value; K.titel = v; if (mehrere) (w.gesamtAngebot ??= {}).titel = v; else if (erst) erst.angebot.titel = v; sichern(); };
       $('#bAnrede').oninput = (e) => { K.anrede = e.target.value; for (const r of alle) r.angebot.anrede = e.target.value; sichern(); };
       $('#bAnspr').onchange = (e) => { K.anspr = e.target.value; for (const r of alle) r.angebot.anspr = e.target.value; sichern(); };
     }
@@ -860,11 +865,7 @@ window.Projekt = (() => {
     const texte = texteVon(w);
     window.Bausteine.bind(main(), { liste: texte,
       speichern: async () => { w.angebotTexte = texte; if (!w.isNew) await save(w); },
-      bearbeiten: () => A.texteAuftrag(w, () => { view(); window.scrollTo(0, 0); }),
-      fest: async (k, an) => {
-        if (k === 'bauzeit') { for (const r of alle) { r.angebot.mitBauzeit = an; await saveProject(r); } return; }
-        w.angebotOpt = { ...(w.angebotOpt || {}), [k]: an }; if (!w.isNew) await save(w);
-      } });
+      bearbeiten: () => A.texteAuftrag(w, () => { view(); window.scrollTo(0, 0); }) });
   }
   /** Raum ohne Fotos und Visualisierung anlegen (fürs Angebot). Öffnet nichts. */
   async function raumAnlegen(w, rt, extra = {}) {
@@ -985,7 +986,7 @@ window.Projekt = (() => {
     if (v === 'ab') { try { datei = await auftragsbestaetigung(w, list); } catch (e) { console.error(e); $('#toast').hidden = true; toast('Die Auftragsbestätigung ging nicht: ' + e.message, 6000); } }
     await pdfInDokumente(w);
     await setzen('geplant');
-    if (datei) { toast('Auftragsbestätigung liegt beim Kunden unter „Dokumente“. Senden über das Teilen-Symbol.', 5000); pdfAnsicht(datei, datei.name); }
+    if (datei) { toast('Auftragsbestätigung liegt im Projekt unter „Unterlagen“. Dort senden oder als versendet markieren.', 5000); pdfAnsicht(datei, datei.name); }
   }
   /** Auftragsbestätigung bauen und beim Auftrag ablegen: Eintrag in w.dokumente (art 'auftragsbestaetigung') und w.auftragsbestaetigung. */
   async function auftragsbestaetigung(w, list) {
@@ -1043,9 +1044,9 @@ window.Projekt = (() => {
     const l = (w.dokumente || []).slice().sort((a, b) => b.t - a.t);
     if (!l.length) return '';
     return `<div class="sec-h"><h2>Dokumente</h2><span class="count">${l.length}</span></div>
-      <div class="docs">${l.map((d) => `<div class="drow"><button type="button" class="drow-b" data-dok="${esc(d.key)}"><span class="d-ico navy">${icon('file')}</span>
-        <span class="d-t"><b>${esc(d.name.replace(/\.pdf$/i, '').replace(/_/g, ' '))}</b><span>${esc(new Date(d.t).toLocaleDateString('de-DE'))} · antippen zum Ansehen</span></span></button>
-        <button type="button" class="icon-btn" data-doksend="${esc(d.key)}" aria-label="Senden">${icon('mail')}</button>
+      <div class="docs">${l.map((d) => `<div class="drow"><button type="button" class="drow-b" data-dok="${esc(d.key)}"><span class="d-ico ${d.intern ? 'grey' : 'navy'}">${icon('file')}</span>
+        <span class="d-t"><b>${esc(d.name.replace(/\.(pdf|jpe?g|png)$/i, '').replace(/_/g, ' '))}</b><span>${esc([new Date(d.t).toLocaleDateString('de-DE'), d.intern ? 'nur intern, geht nicht an den Kunden' : '', d.art === 'auftragsbestaetigung' && d.key === w.auftragsbestaetigung?.dokId ? (w.auftragsbestaetigung.gesendetAm ? 'gesendet am ' + datumText(w.auftragsbestaetigung.gesendetAm) : 'noch nicht gesendet') : '', 'antippen zum Ansehen'].filter(Boolean).join(' · '))}</span></span></button>
+        ${d.intern ? '' : `<button type="button" class="icon-btn" data-doksend="${esc(d.key)}" aria-label="Senden">${icon('mail')}</button>`}
         <button type="button" class="icon-btn" data-dokdel="${esc(d.key)}" aria-label="Löschen">${icon('trash')}</button></div>`).join('')}</div>`;
   }
   /** Das verschickte Angebot als PDF im Projekt merken (Projektmappe zeigt es später nur zum Lesen). */
@@ -1095,17 +1096,99 @@ window.Projekt = (() => {
       ${knoepfe}</div>`;
   }
   /** Angebot wurde gesendet (B6): Status auf „versendet“, Datum fürs Nachfassen merken. */
-  async function angebotVersendet(wid) {
+  async function angebotVersendet(wid, datum) {
     const w = wid && (await kvGet(key(wid)));
     if (!w || !['besichtigung', 'entwurf', 'angebot'].includes(norm(w.status))) return;
     // Auch beim erneuten Senden (angepasstes Angebot) beginnt das Nachfassen von vorn
     if (norm(w.status) !== 'angebot') (w.verlauf ??= []).push({ st: 'angebot', t: Date.now() });
-    w.status = 'angebot'; w.versendetAm = heuteIso();
+    w.status = 'angebot'; w.versendetAm = datum || heuteIso();
     // Ab jetzt gesperrt (Wunsch Felix): Ändern geht nur noch über eine Kopie mit neuer Nummer
     w.angebotGesperrt = { t: Date.now(), nr: nrAusPdf(w) }; delete w.angebotFrei;
     await save(w);
     if (state.wohnung?.id === w.id) Object.assign(state.wohnung, { status: w.status, versendetAm: w.versendetAm, verlauf: w.verlauf, angebotGesperrt: w.angebotGesperrt, angebotFrei: undefined });
-    toast('Angebot versendet. Es ist jetzt gesperrt, Änderungen gehen über eine Kopie.', 4500);
+    toast(datum ? `Als versendet markiert (${datumText(w.versendetAm)}). Es ist jetzt gesperrt, das Nachfassen läuft.` : 'Angebot versendet. Es ist jetzt gesperrt, Änderungen gehen über eine Kopie.', 4500);
+  }
+  // ---------- Als versendet markieren und Nochmal senden (Wunsch Felix, Version 100) ----------
+  /** Datum abfragen (Standard heute). Gibt 'JJJJ-MM-TT' oder null zurück. */
+  function datumFrage(titel, text, knopf = 'Als versendet markieren') {
+    return new Promise((res) => {
+      const bg = document.createElement('div');
+      bg.className = 'sheet-bg';
+      bg.innerHTML = `<div class="sheet" role="dialog" aria-label="${esc(titel)}"><div class="sheet-h"><b>${esc(titel)}</b><button class="icon-btn" data-zu aria-label="Schließen">${icon('x')}</button></div>
+        <div class="kform" style="padding:0 16px 16px"><p class="hint" style="margin-top:0">${esc(text)}</p>
+          <label>Datum</label><input type="date" id="dfD" value="${heuteIso()}" max="${heuteIso()}">
+          <button class="btn block" id="dfOk" style="margin-top:14px">${icon('check')} ${esc(knopf)}</button></div></div>`;
+      document.body.appendChild(bg);
+      requestAnimationFrame(() => bg.classList.add('on'));
+      const zu = (v) => { bg.remove(); res(v); };
+      bg.onclick = (e) => { if (e.target === bg || e.target.closest('[data-zu]')) zu(null); };
+      $('#dfOk', bg).onclick = () => zu($('#dfD', bg).value || heuteIso());
+    });
+  }
+  /** Angebot ohne Teilen-Menü als verschickt festhalten (z. B. ausgedruckt): PDF ablegen, sperren, Nachfassen läuft ab dem Datum. */
+  async function alsVersendet(w, list) {
+    if (gesperrt(w)) return gesperrtFrage(w);
+    const datum = await datumFrage('Als versendet markieren', 'Wann hat der Kunde das Angebot bekommen, z. B. ausgedruckt oder persönlich übergeben? Danach ist es gesperrt, und das Nachfassen läuft ab diesem Tag.');
+    if (!datum) return;
+    if (w.isNew) { delete w.isNew; await save(w); }
+    const r = await angebotDateien(w, list);
+    if (!r) return;
+    state.wohnung = w;
+    await dokMerken([r.files[0]]);
+    await angebotMerken(w.id, r.ang.doc, r.ang.name);
+    await angebotVersendet(w.id, datum);
+    neuZeichnen(w);
+  }
+  /** Verschicktes Angebot nochmal senden: dasselbe PDF (gleiche Nummer, gleiches Datum). Ändert nichts am Stand. */
+  async function angebotNochmal(w) {
+    const data = await kvGet('angpdf:' + w.id);
+    if (!data) return toast('Das PDF ist auf diesem Gerät noch nicht da. Bitte kurz warten (Cloud-Abgleich).', 4000);
+    const name = w.angebotPdf?.name || 'Angebot.pdf';
+    const f = new File([await (await fetch(data)).blob()], name, { type: 'application/pdf' });
+    try { await navigator.share({ files: [f], title: name, ohneDialog: true }); toast('Gesendet. Nummer und Datum sind dieselben wie beim ersten Mal.'); }
+    catch (e) { if (e.name !== 'AbortError') toast('Senden nicht möglich: ' + e.message, 4000); }
+  }
+  /** Auftragsbestätigung: das abgelegte PDF (w.auftragsbestaetigung.dokId). */
+  const abDok = (w) => { const ab = w.auftragsbestaetigung; return (w.dokumente || []).find((x) => x.key === ab?.dokId || x.id === ab?.dokId) || (w.dokumente || []).find((x) => x.art === 'auftragsbestaetigung') || null; };
+  async function abSenden(w) {
+    const d = abDok(w), data = d && (await kvGet(d.key));
+    if (!data) return toast('Die Auftragsbestätigung ist auf diesem Gerät noch nicht da.', 4000);
+    const f = new File([await (await fetch(data)).blob()], d.name, { type: 'application/pdf' });
+    try {
+      await navigator.share({ files: [f], title: d.name, ohneDialog: true });
+      const ab = (w.auftragsbestaetigung ??= { t: d.t, nr: '', dokId: d.key, gesendetAm: '' });
+      if (!ab.gesendetAm) { ab.gesendetAm = heuteIso(); await save(w); }
+      toast('Auftragsbestätigung gesendet');
+      neuZeichnen(w);
+    } catch (e) { if (e.name !== 'AbortError') toast('Senden nicht möglich: ' + e.message, 4000); }
+  }
+  /** Auftragsbestätigung im Projekt: ansehen, (nochmal) senden, als versendet markieren. Gibt es noch keine, wird sie erstellt. */
+  async function abMenue(w, list) {
+    const d = abDok(w);
+    if (!d) {
+      if (!confirm('Auftragsbestätigung jetzt erstellen? Sie wird wie das Angebot gebaut und im Projekt abgelegt.')) return;
+      let datei = null;
+      try { datei = await auftragsbestaetigung(w, list); } catch (e) { console.error(e); $('#toast').hidden = true; return toast('Die Auftragsbestätigung ging nicht: ' + e.message, 6000); }
+      if (!datei) return toast('Es gibt kein Angebot mit Positionen.', 4000);
+      await neuZeichnen(w);
+      return pdfAnsicht(datei, datei.name);
+    }
+    const ab = w.auftragsbestaetigung || {};
+    const v = await sheet(`Auftragsbestätigung${ab.nr ? ' Nr. ' + ab.nr : ''}`, [
+      { label: 'Ansehen', sub: ab.gesendetAm ? `Gesendet am ${datumText(ab.gesendetAm)}` : 'Noch nicht gesendet', icon: icon('eye'), value: 'zeigen' },
+      { label: ab.gesendetAm ? 'Nochmal senden' : 'Senden', sub: 'Dasselbe PDF, gleiche Nummer, gleiches Datum', icon: icon('mail'), value: 'senden' },
+      ...(ab.gesendetAm ? [] : [{ label: 'Als versendet markieren', sub: 'z. B. ausgedruckt oder persönlich übergeben', icon: icon('check'), value: 'markieren' }]),
+    ]);
+    if (v === 'zeigen') return dateiZeigen(await kvGet(d.key), { name: d.name, typ: 'application/pdf' });
+    if (v === 'senden') return abSenden(w);
+    if (v === 'markieren') {
+      const datum = await datumFrage('Als versendet markieren', 'Wann hat der Kunde die Auftragsbestätigung bekommen?');
+      if (!datum) return;
+      w.auftragsbestaetigung = { ...(w.auftragsbestaetigung || { t: d.t, nr: '', dokId: d.key }), gesendetAm: datum };
+      await save(w);
+      toast(`Als versendet markiert (${datumText(datum)})`);
+      neuZeichnen(w);
+    }
   }
   // ---------- Verschickte Angebote sind gesperrt (Wunsch Felix) ----------
   // Ein gespeichertes und verschicktes Angebot bleibt unverändert. Zum Ändern wird es kopiert und bekommt eine neue Nummer.
