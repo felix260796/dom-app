@@ -246,3 +246,30 @@ details.bs .link-add { margin-top: 10px; }
 details.bs .tot span:last-child { color: var(--muted); }
 .rw-l { margin-bottom: 4px; }
 .bs-z input { flex: none; margin-top: 2px; }
+
+/* ---------- Büro: Angebot in fünf Schritten ---------- */
+.ab-schritte { display: flex; gap: 2px; margin: 0 0 14px; }
+.ab-schritte button { flex: 1; min-width: 0; border: 0; background: none; padding: 4px 0; font: inherit; color: var(--muted); display: flex; flex-direction: column; align-items: center; gap: 4px; position: relative; cursor: pointer; }
+.ab-schritte button i { font-style: normal; width: 28px; height: 28px; border-radius: 50%; background: #e6e2da; color: var(--text); font-weight: 700; font-size: 13.5px; display: flex; align-items: center; justify-content: center; position: relative; z-index: 1; }
+.ab-schritte button span { font-size: 11.5px; font-weight: 600; white-space: nowrap; }
+.ab-schritte button + button::before { content: ''; position: absolute; top: 18px; right: 50%; width: 100%; height: 2px; background: #e6e2da; }
+.ab-schritte button.ok i { background: #dbeee2; color: #2f8a57; }
+.ab-schritte button.on i { background: var(--navy); color: #fff; }
+.ab-schritte button.on { color: var(--navy); }
+.ab-nav { display: flex; justify-content: space-between; gap: 10px; margin-top: 20px; }
+.ab-nav .btn { flex: 1; }
+.ab-nav span { flex: 1; }
+.ab-ohne { margin: 10px 0 0; }
+.wl > .bm { flex: 1; min-width: 0; margin: 0; }
+.bm-k { display: flex; align-items: center; gap: 10px; }
+.bm-t { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.bm-t b { color: var(--navy); font-size: 15.5px; }
+.bm-t small { color: var(--muted); font-size: 12px; min-height: 0; }
+.bm-m { margin-top: 8px; }
+.bm-m label { margin-top: 0; }
+.bs-ueb { padding: 4px 14px; }
+.bs-uz { display: flex; align-items: center; gap: 10px; width: 100%; border: 0; border-bottom: 1px solid var(--line, #e6e2da); background: none; padding: 11px 0; font: inherit; color: inherit; text-align: left; cursor: pointer; }
+.bs-uz:last-child { border-bottom: 0; }
+.bs-uz small { flex: 0 0 112px; color: var(--muted); font-size: 12.5px; }
+.bs-uz span { flex: 1; min-width: 0; font-size: 14.5px; }
+.bs-uz.fehlt span { color: #c0392b; font-weight: 600; }
