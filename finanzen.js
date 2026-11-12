@@ -239,7 +239,7 @@ window.Finanzen = (() => {
         const l = (fAlle ? aus : ausOffen).map((r) => ausZeile(r).html).join('');
         return `${abrechnen.length ? `<div class="sec-h"><h2>Abzurechnen</h2><span class="count">${abrechnen.length}</span></div><div class="plist">${abrechnen.map(projZeile).join('')}</div>` : ''}
           ${aus.length ? filter : ''}
-          <div class="plist">${l || `<p class="hint">${aus.length ? 'Alles bezahlt.' : 'Noch keine Rechnungen an Kunden. „Rechnung schreiben“ tippen: Projekt suchen, Art wählen, Betrag steht schon da.'}</p>`}</div>`;
+          <div class="plist">${l || `<p class="hint">${aus.length ? 'Alles bezahlt.' : 'Noch keine Rechnungen an Kunden. „Neue Rechnung“ tippen: Projekt suchen, Art wählen, Betrag steht schon da.'}</p>`}</div>`;
       }
       if (fSeg === 'ein') {
         const l = (fAlle ? ein : einOffen).map((b) => belegZeile(b)).join('');
@@ -255,10 +255,8 @@ window.Finanzen = (() => {
     };
     main().innerHTML = `
       <label class="search big">${icon('search')}<input type="search" id="fq" value="${esc(fQ)}" placeholder="Kunde, Firma, Nummer oder Betrag" autocomplete="off"></label>
-      <div class="f-neu">
-        <button class="btn" id="fNeuR">${icon('file')} Rechnung schreiben</button>
-        <button class="btn secondary" id="fNeu">${icon('camera')} Eingang erfassen</button>
-      </div>
+      <button class="cta slim" id="fNeuR"><span class="cta-ico">${icon('plus')}</span><span class="cta-t"><b>Neue Rechnung</b></span>${icon('chevron', 'cta-chev')}</button>
+      <button class="notice plain" id="fNeu">${icon('camera')}<span><b>Eingang erfassen</b> · Rechnung von Partner oder Lieferant abfotografieren</span>${icon('chevron')}</button>
       <div class="phasen drei f-seg">
         <button data-fs="aus" class="fz ${fSeg === 'aus' ? 'on' : ''} ${ausUeber.length ? 'rot' : ''}"><b>${eur0(ausOffen.reduce((s, r) => s + Rechnung.zahlbetrag(r), 0))}</b><span>${ausUeber.length ? `An Kunden · ${ausUeber.length} überfällig` : `An Kunden${abrechnen.length ? ` · ${abrechnen.length} abzurechnen` : ''}`}</span></button>
         <button data-fs="ein" class="fz ${fSeg === 'ein' ? 'on' : ''} ${einUeber.length ? 'rot' : ''}"><b>${eur0(einOffen.reduce((s, b) => s + brutto(b), 0))}</b><span>${einUeber.length ? `Eingang · ${einUeber.length} überfällig` : 'Eingang, wir zahlen'}</span></button>
