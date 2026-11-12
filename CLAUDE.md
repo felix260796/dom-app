@@ -74,6 +74,12 @@ Musik nach Aufnahme: In der iPhone-App nimmt auch das Mikrofon oben (`sprache.js
 
 „Mittagessen“ heißt „Treffen vereinbaren“ (intern weiter Art `essen`; Namen über Vorgaben `pflegeNameAnruf`, `pflegeNameTreffen`, gehen über `prefs.pflege.namen` auch in die Mitteilung). „Kontakt halten“ in Kunde/Partner ist ein kleines `details.pf-box`, zu, solange nichts eingetragen ist (keine Frage-Karte mehr, `pflegeFragen` entfällt). Heute: weißes Feld über die ganze Breite mit kleinem rundem Telefon (`.pf-tel`), ruft direkt die erste Nummer an. Kalender: Arten `pflegeAnruf`, `pflegeTreffen` getrennt filterbar, Einträge mit kleinem Telefon (`data-ktel`, `Pflege.anrufenEintrag`); „Geburtstage Partner“.
 
+## Neuerungen aus Version 95 (Angebot anlegen in Schritten)
+
+Büro im Angebotsablauf legt das Angebot in fünf Schritten an (`SCHRITTE`, `schrittVon`, `schrittWahl` in `projekt.js`, Knöpfe `data-schritt`, Leiste `.ab-schritte`): 1 Davor (`kundeKarte`, Nummer, Ansprechpartner, Betreff, Anrede, Anfangstexte), 2 Maße („Was wird angeboten?“, Länge/Breite/Höhe gleich in der Zeile `data-bm`, dürfen leer bleiben, Kleinigkeit `ohneMasse`), 3 Positionen (Bereich antippen → `raumAngebot`; KI-Karte `VorOrt.bueroKarte`; Aufschläge), 4 Danach (Schlusstexte), 5 Ansicht (Übersicht, „Angebot ansehen“ = `angebotSpeichern`). Felix will genau diese Reihenfolge, nicht wieder alles auf eine Seite.
+Ein Angebot geht ohne Vor-Ort-Termin: Kein Schritt setzt Aufnahme, Plan oder Scan voraus. Link „Nicht vor Ort gewesen?“ im Reiter Vor Ort. Der Kopf (Nummer, Betreff, Anrede, Ansprechpartner) liegt in `w.angebotKopf`, solange es noch keinen Raum gibt, und wird über `kopfAnwenden` in die Räume übernommen.
+„Angebotsentwurf erstellen“ heißt jetzt „Positionen vorschlagen lassen“ (Felix verstand darunter „Angebot anlegen“). Darüber steht „Was soll gemacht werden?“ (`#voKurz`, gleiches Feld wie die Notiz vor Ort `w.vorOrt.notiz`), damit die KI auch aus der Erinnerung arbeiten kann. Nach „Neu“ bleibt man in Schritt 2 und springt nicht mehr in die Positionen.
+
 ## Neuerungen aus Version 96 (Visitenkarte)
 
 Visitenkarte (`kamera.js`): Das Foto wird immer abgelegt, beim Kunden über `Bilder.ablegen` im Ordner aus Vorgabe `ordnerVisitenkarte`, beim Partner als Dokument (`karteZuPartner`, `pdok:<id>`). `schonDa(v)` findet bestehende Partner und Kunden über Telefon/Mobil (ohne Vorwahl 0/+49), E-Mail (auch `weitere`, `hv`) oder genauen Namen ohne Rechtsform; das Auswahlfenster heißt dann „Schon angelegt: …“.
