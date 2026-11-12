@@ -74,6 +74,10 @@ Musik nach Aufnahme: In der iPhone-App nimmt auch das Mikrofon oben (`sprache.js
 
 „Mittagessen“ heißt „Treffen vereinbaren“ (intern weiter Art `essen`; Namen über Vorgaben `pflegeNameAnruf`, `pflegeNameTreffen`, gehen über `prefs.pflege.namen` auch in die Mitteilung). „Kontakt halten“ in Kunde/Partner ist ein kleines `details.pf-box`, zu, solange nichts eingetragen ist (keine Frage-Karte mehr, `pflegeFragen` entfällt). Heute: weißes Feld über die ganze Breite mit kleinem rundem Telefon (`.pf-tel`), ruft direkt die erste Nummer an. Kalender: Arten `pflegeAnruf`, `pflegeTreffen` getrennt filterbar, Einträge mit kleinem Telefon (`data-ktel`, `Pflege.anrufenEintrag`); „Geburtstage Partner“.
 
+## Neuerungen aus Version 96 (Visitenkarte)
+
+Visitenkarte (`kamera.js`): Das Foto wird immer abgelegt, beim Kunden über `Bilder.ablegen` im Ordner aus Vorgabe `ordnerVisitenkarte`, beim Partner als Dokument (`karteZuPartner`, `pdok:<id>`). `schonDa(v)` findet bestehende Partner und Kunden über Telefon/Mobil (ohne Vorwahl 0/+49), E-Mail (auch `weitere`, `hv`) oder genauen Namen ohne Rechtsform; das Auswahlfenster heißt dann „Schon angelegt: …“.
+
 ## Bereiche
 
 | Bereich | Dateien | Inhalt |
