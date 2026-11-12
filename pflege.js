@@ -7,13 +7,14 @@
  *   für „In 2 Stunden erinnern“, verschoben = Tag, an dem auf morgen verschoben wurde (zählt für diesen Tag mit),
  *   wer = Person (Team-Id), die erinnert wird ('' = alle). x.pflege fehlt = noch nicht gefragt (Karte fragt nach).
  * Pro Tag höchstens pflegeAnrufeMax Anrufe und pflegeEssenMax Mittagessen (die ältesten zuerst, der Rest rutscht weiter).
- * Erscheint auf „Heute“ (Anrufe heute, Mittagessen vereinbaren; Telefon rechts), im Kalender (Art 'pflege') und als
+ * Erscheint auf „Heute“ (Anrufen, Treffen vereinbaren; kleines Telefon rechts), im Kalender (Arten 'pflegeAnruf', 'pflegeTreffen') und als
  * Mitteilung ab pflegeAb, alle pflegeAlle Minuten bis pflegeBis, bis erledigt (supabase/functions/push, gleiche Auswahl).
- * Vorgaben: pflegeFragen, pflegeAnrufeMax, pflegeEssenMax, pflegeAb, pflegeBis, pflegeAlle, pflegeSpaeter, pflegeWochenende, pushPflege. */
+ * „Mittagessen“ heißt seit v94 „Treffen vereinbaren“ (intern weiter Art 'essen'). Namen: Vorgaben pflegeNameAnruf, pflegeNameTreffen.
+ * Vorgaben: pflegeAnrufeMax, pflegeEssenMax, pflegeAb, pflegeBis, pflegeAlle, pflegeSpaeter, pflegeWochenende, pushPflege. */
 window.Pflege = (() => {
   const ARTEN = {
-    anruf: { label: 'Regelmäßig anrufen', block: 'Anrufe heute', titel: 'Anrufen', naechst: 'Nächster Anruf', ic: 'phone', max: () => +vorgabe('pflegeAnrufeMax') },
-    essen: { label: 'Mittagessen vereinbaren', block: 'Mittagessen vereinbaren', titel: 'Mittagessen vereinbaren', naechst: 'Nächstes Mittagessen vereinbaren', ic: 'essen', max: () => +vorgabe('pflegeEssenMax') },
+    anruf: { get label() { return this.titel; }, get titel() { return String(vorgabe('pflegeNameAnruf') || 'Anrufen'); }, kal: 'pflegeAnruf', max: () => +vorgabe('pflegeAnrufeMax') },
+    essen: { get label() { return this.titel; }, get titel() { return String(vorgabe('pflegeNameTreffen') || 'Treffen vereinbaren'); }, kal: 'pflegeTreffen', max: () => +vorgabe('pflegeEssenMax') },
   };
   const RHYTHMEN = [['', 'Nie'], ['woche', 'Wöchentlich'], ['monat', 'Monatlich'], ['quartal', 'Vierteljährlich'], ['halbjahr', 'Halbjährlich'], ['jahr', 'Jährlich']];
   const MONATE = { monat: 1, quartal: 3, halbjahr: 6, jahr: 12 };
@@ -77,7 +78,7 @@ window.Pflege = (() => {
       const max = ARTEN[art].max();
       const sim = kontakte().map((c) => ({ ...c, o: norm(c.x).pflege?.[art] })).filter((c) => gilt(c.o, wer) && c.o.faellig).map((c) => ({ ...c, f: c.o.faellig }));
       if (!sim.length) continue;
-      const rein = (c, d) => { if (d >= von) out.push({ typ: 'pflege', art: 'pflege', pflegeArt: art, id: `pf-${art}-${c.x.id}-${d}`, datum: d, ganztag: true, [c.typ === 'kunde' ? 'kundeId' : 'partnerId']: c.x.id,
+      const rein = (c, d) => { if (d >= von) out.push({ typ: 'pflege', art: ARTEN[art].kal, pflegeArt: art, id: `pf-${art}-${c.x.id}-${d}`, datum: d, ganztag: true, [c.typ === 'kunde' ? 'kundeId' : 'partnerId']: c.x.id,
         titel: `${ARTEN[art].titel}: ${c.name}`, sub: [rName(c.o.r), c.o.zuletzt && `zuletzt ${Kontakt.de(c.o.zuletzt)}`].filter(Boolean).join(' · ') }); };
       // heute: genau wie auf „Heute“
       const heutige = heuteListe(art, wer);
@@ -127,13 +128,17 @@ window.Pflege = (() => {
 
   // Nach dem Anruf zurück in der App: gleich fragen, ob es geklappt hat
   let offenerAnruf = null;
-  async function anrufen(c, nachher) {
-    const l = nummern(c);
-    if (!l.length) { toast('Keine Telefonnummer eingetragen.'); return oeffnen(c); }
-    let n = l[0];
-    if (l.length > 1) { const v = await sheet('Welche Nummer?', l.map((y, i) => ({ label: y.wert, sub: y.label, icon: icon('phone'), value: String(i) }))); if (v === null) return; n = l[+v]; }
+  /** Ruft direkt die Hauptnummer an (Wunsch Felix: ein Tipp, gleich anrufen). Ohne Nummer öffnet sich der Kontakt. */
+  function anrufen(c, nachher) {
+    const n = nummern(c)[0];
+    if (!n) { toast('Keine Telefonnummer eingetragen.'); return oeffnen(c); }
     offenerAnruf = { c, t: Date.now(), nachher };
     location.href = telLink(n.wert);
+  }
+  /** Für den Kalender: Kontakt zu einem Eintrag ({ kundeId | partnerId, pflegeArt }) anrufen. */
+  function anrufenEintrag(e, nachher) {
+    const c = kontakte().find((y) => y.x.id === (e.kundeId || e.partnerId));
+    if (c) anrufen({ ...c, art: e.pflegeArt }, nachher);
   }
   document.addEventListener('visibilitychange', () => {
     if (document.hidden || !offenerAnruf) return;
@@ -145,7 +150,7 @@ window.Pflege = (() => {
   /** Auswahl zu einem Eintrag: erledigt, später, morgen, Kontakt öffnen. */
   async function nachfrage(c, nachher, frage) {
     const essen = c.art === 'essen';
-    const v = await sheet(frage || (essen ? `Mittagessen mit ${c.name} vereinbart?` : `Anruf bei ${c.name} erledigt?`), [
+    const v = await sheet(frage || (essen ? `Treffen mit ${c.name} vereinbart?` : `Anruf bei ${c.name} erledigt?`), [
       { label: essen ? 'Ja, vereinbart' : 'Ja, erledigt', sub: `Nächstes Mal ${rName(c.x.pflege[c.art].r).toLowerCase()}`, icon: icon('check'), value: 'ok' },
       ...(essen ? [{ label: 'Vereinbart, Termin eintragen', sub: 'Öffnet einen neuen Termin im Kalender', icon: icon('calendar'), value: 'termin' }] : []),
       { label: spaeterText(), sub: 'Kommt dann wieder als Mitteilung', icon: icon('refresh'), value: 'spaeter' },
@@ -155,14 +160,15 @@ window.Pflege = (() => {
     if (v === 'ok' || v === 'termin') await erledigt(c);
     if (v === 'spaeter') await spaeter(c);
     if (v === 'morgen') await morgen(c);
-    if (v === 'termin') return window.Kalender?.bearbeiten({ titel: `Mittagessen ${c.name}`, art: 'buero', von: '12:00', bis: '13:30', [c.typ === 'kunde' ? 'kundeId' : 'partnerId']: c.x.id }, () => switchTab('heute'));
+    if (v === 'termin') return window.Kalender?.bearbeiten({ titel: `Treffen ${c.name}`, art: 'buero', [c.typ === 'kunde' ? 'kundeId' : 'partnerId']: c.x.id }, () => switchTab('heute'));
     if (v === 'oeffnen') return oeffnen(c);
     if (v) nachher?.();
   }
   const oeffnen = (c) => (c.typ === 'kunde' ? Kunden.oeffnen(c.x.id) : Partner.oeffnen(c.x.id));
 
   // ---------- Startseite „Heute“ ----------
-  /** Blöcke „Anrufe heute“ und „Mittagessen vereinbaren“. Gibt { html, anzahl, binden(el, neu) } zurück. */
+  /** Blöcke „Anrufen“ und „Treffen vereinbaren“. Gibt { html, anzahl, binden(el, neu) } zurück.
+   * Zeile = weißes Feld über die ganze Breite mit kleinem runden Telefon rechts (ruft direkt an). */
   function heute_() {
     const bloecke = [], alle = [];
     for (const art of Object.keys(ARTEN)) {
@@ -171,10 +177,10 @@ window.Pflege = (() => {
       const zeilen = l.map((c) => {
         const i = alle.push(c) - 1, sp = c.o.spaeter > Date.now();
         const seit = c.o.faellig < heute() ? `fällig seit ${Kontakt.de(c.o.faellig)}` : rName(c.o.r);
-        return `<div class="pf-z"><button class="pcard hz" data-pfz="${i}"><span class="pc-ph">${icon(ARTEN[art].ic)}</span><span class="pc-t"><b>${esc(c.name)}</b><span class="muted">${esc(sp ? `Erinnert wieder um ${uhr(c.o.spaeter)} Uhr` : seit)}</span></span></button>
-          <button class="pf-tel" data-pftel="${i}" aria-label="${esc(c.name)} anrufen">${icon('phone')}</button></div>`;
+        return `<div class="pcard pf-z"><button type="button" class="pf-main" data-pfz="${i}"><span class="pc-t"><b>${esc(c.name)}</b><span class="muted">${esc(sp ? `Erinnert wieder um ${uhr(c.o.spaeter)} Uhr` : seit)}</span></span></button>
+          <button type="button" class="pf-tel" data-pftel="${i}" aria-label="${esc(c.name)} anrufen">${icon('phone')}</button></div>`;
       });
-      bloecke.push(`<div class="sec-h"><h2>${esc(ARTEN[art].block)}</h2><span class="count">${l.length}</span></div><div class="plist">${zeilen.join('')}</div>`);
+      bloecke.push(`<div class="sec-h"><h2>${esc(ARTEN[art].titel)}</h2><span class="count">${l.length}</span></div><div class="plist">${zeilen.join('')}</div>`);
     }
     return {
       html: bloecke.join(''), anzahl: alle.length,
@@ -189,23 +195,23 @@ window.Pflege = (() => {
   /** el: leeres Element · x: Kunde oder Partner · persist: speichern · neu: Kontakt eben erst angelegt (heute) */
   function abschnitt(el, x, persist) {
     if (!el) return;
-    const fragen = x.pflege === undefined;
-    if (fragen && vorgabe('pflegeFragen') === 'nein') { el.innerHTML = `<button type="button" class="link-add" data-pfan>${icon('phone')} Regelmäßig anrufen oder Mittagessen einstellen</button>`; $('[data-pfan]', el).onclick = () => { x.pflege = {}; norm(x); persist(); abschnitt(el, x, persist); }; return; }
     norm(x);
     const p = x.pflege || {};
     const team = window.Kalender?.team() || [];
     const wer = (o) => (o.wer && team.length > 1 ? team.find((t) => t.id === o.wer)?.name.split(' ')[0] : '');
-    el.innerHTML = `<div class="sec-h"><h2>Kontakt halten</h2></div>
-      <div class="card kform ${fragen ? 'pf-frage' : ''}">
-        ${fragen ? `<p class="pf-frage-t"><b>Wie oft willst du dich hier melden?</b> Dann erinnert dich DOM auf „Heute“, im Kalender und per Mitteilung, bis es erledigt ist.</p>` : ''}
+    // Klein und zugeklappt (Wunsch Felix); ist etwas eingetragen, bleibt es offen
+    const gesetzt = Object.keys(ARTEN).filter((a) => p[a]?.r);
+    const offen = gesetzt.length > 0 || el.dataset.offen === '1';
+    el.innerHTML = `<details class="pf-box" ${offen ? 'open' : ''}><summary>${icon('phone')}<span><b>Kontakt halten</b><span class="muted">${esc(gesetzt.length ? gesetzt.map((a) => `${ARTEN[a].titel} ${rName(p[a].r).toLowerCase()}`).join(' · ') : 'Regelmäßig anrufen oder treffen')}</span></span>${icon('down', 'pf-pfeil')}</summary>
+      <div class="kform pf-inhalt">
         ${Object.entries(ARTEN).map(([a, A]) => { const o = p[a] || { r: '' }; return `
           <label ${a === 'anruf' ? 'style="margin-top:0"' : ''}>${esc(A.label)}</label>
           <select data-pfr="${a}">${RHYTHMEN.map(([v, n]) => `<option value="${v}" ${v === o.r ? 'selected' : ''}>${esc(n)}</option>`).join('')}</select>
           <div class="pf-tag" ${o.r ? '' : 'hidden'}><span>Nächstes Mal am</span>${Kontakt.datumInput('pf-' + a, o.faellig)}</div>
           <p class="hint pf-info" ${o.r && (o.zuletzt || wer(o)) ? '' : 'hidden'}>${esc([o.zuletzt && `Zuletzt erledigt am ${Kontakt.de(o.zuletzt)}`, wer(o) && `Erinnert wird ${wer(o)}`].filter(Boolean).join(' · '))}</p>`; }).join('')}
-        ${fragen ? `<button type="button" class="link-add" data-pfnein style="margin-top:10px">Nein danke, nicht nötig</button>` : ''}
-      </div>`;
-    const bestaetigt = () => { if (x.pflege === undefined || fragen) { x.pflege ||= {}; norm(x); } };
+      </div></details>`;
+    $('details', el).ontoggle = (e) => { el.dataset.offen = e.target.open ? '1' : ''; };
+    const bestaetigt = () => { if (!x.pflege || typeof x.pflege !== 'object') x.pflege = {}; norm(x); };
     $$('[data-pfr]', el).forEach((s) => (s.onchange = () => {
       bestaetigt();
       const a = s.dataset.pfr, o = x.pflege[a], alt = o.r;
@@ -218,10 +224,10 @@ window.Pflege = (() => {
       }
       if (!o.r) { o.faellig = ''; o.spaeter = 0; }
       persist();
+      el.dataset.offen = '1';
       abschnitt(el, x, persist);
     }));
     for (const a of Object.keys(ARTEN)) { const inp = $('#pf-' + a, el); if (inp) Kontakt.datumFeld(inp, (v) => { bestaetigt(); if (v && v !== x.pflege[a].faellig) { x.pflege[a].faellig = v; x.pflege[a].verschoben = ''; persist(); } }); }
-    if ($('[data-pfnein]', el)) $('[data-pfnein]', el).onclick = () => { x.pflege = {}; norm(x); persist(); abschnitt(el, x, persist); };
   }
 
   /** Für die Mitteilungen (push.js): Einstellungen, die die Supabase-Funktion braucht. */
@@ -229,7 +235,8 @@ window.Pflege = (() => {
     an: vorgabe('pushPflege') !== 'nein', ab: String(vorgabe('pflegeAb') || '09:00'), bis: String(vorgabe('pflegeBis') || '18:00'),
     alle: Math.max(15, +vorgabe('pflegeAlle') || 60), anrufe: +vorgabe('pflegeAnrufeMax') || 0, essen: +vorgabe('pflegeEssenMax') || 0,
     wochenende: vorgabe('pflegeWochenende') !== 'nein',
+    namen: { anruf: ARTEN.anruf.titel, essen: ARTEN.essen.titel }, // Wörter in der Mitteilung
   });
 
-  return { ARTEN, RHYTHMEN, norm, heuteListe, eintraege, heute: heute_, abschnitt, nachfrage, anrufen, erledigt, spaeter, morgen, prefs, plusRhythmus, _intern: { werktag, frei, kontakte } };
+  return { ARTEN, RHYTHMEN, norm, heuteListe, eintraege, heute: heute_, abschnitt, nachfrage, anrufen, anrufenEintrag, erledigt, spaeter, morgen, prefs, plusRhythmus, _intern: { werktag, frei, kontakte } };
 })();

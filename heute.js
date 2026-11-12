@@ -1,6 +1,6 @@
 'use strict';
 /* DOM – Startseite „Heute“: alles, was heute dran ist, auf einen Blick.
- * Termine heute und morgen, Anrufe und Mittagessen (Kontakt halten, pflege.js), Angebote zum Nachfassen, überfällige Rechnungen (Kunden und Eingang), Abzurechnen,
+ * Termine heute und morgen, Anrufe und Treffen (Kontakt halten, pflege.js), Angebote zum Nachfassen, überfällige Rechnungen (Kunden und Eingang), Abzurechnen,
  * Lieferungen, Mängel mit Frist, bevorstehende Baustarts, laufende Baustellen.
  * Öffnet beim Start (einstellbar) und über das Menü (DOM-Logo). Eigener Zustand state.tab = 'heute' (kein Reiter unten).
  * Setzt die Zahl am App-Symbol (Push.badge). Vorlauf in Tagen und Start-Verhalten: Vorgaben 'heuteStart', 'heuteVorlauf' (vorgaben.js). */
@@ -29,7 +29,7 @@ window.Heute = (() => {
     const jetzt = new Date().toTimeString().slice(0, 5);
     const stopps = termine.filter((t) => t.typ === 'termin' && t.datum === h && String(t.ort || '').trim() && (t.ganztag || !t.von || (t.bis || t.von) >= jetzt));
     if (stopps.length) bloecke.push(`<button class="btn secondary block" id="hRoute" style="margin-top:8px">${icon('map')} Route für heute (${stopps.length} ${stopps.length === 1 ? 'Termin' : 'Termine'})</button>`);
-    // Kontakt halten: Anrufe heute und Mittagessen vereinbaren (pflege.js), Telefon rechts zum direkten Anrufen
+    // Kontakt halten: Anrufen und Treffen vereinbaren (pflege.js), kleines Telefon rechts ruft direkt an
     const pf = window.Pflege?.heute() || { html: '', anzahl: 0, binden() {} };
     if (pf.html) bloecke.push(pf.html);
     // Nachfassen

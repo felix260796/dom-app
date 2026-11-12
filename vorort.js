@@ -102,7 +102,7 @@ window.VorOrt = (() => {
             <label class="wf-k"><input type="checkbox" data-voc="${f.id}" ${f.erledigt ? 'checked' : ''}><span><b>${esc(f.frage)}</b><small>${esc([f.bereich, ART[f.art] || ''].filter(Boolean).join(' · '))}</small></span></label>
             <input type="text" data-voa="${f.id}" value="${esc(f.antwort || '')}" placeholder="${f.art === 'foto' ? 'Foto gemacht? Dann abhaken' : 'Antwort tippen oder diktieren'}" aria-label="Antwort"></div>`).join('')}</div>`
         : `<p class="hint" style="margin-top:0">Bevor du gehst: Die App schaut, was für das Angebot noch fehlt, und fragt nach. Zum Beispiel Maße, Deckenhöhe, Anzahl, Fabrikat oder ein Foto. Egal, um welche Arbeit es geht.</p>`}
-        <textarea id="voNotiz" data-frei placeholder="Eigene Notizen: was gemacht werden soll, Maße, Besonderheiten" style="min-height:64px;margin-top:8px">${esc(w.vorOrt?.notiz || '')}</textarea>
+        <textarea id="voNotiz" placeholder="Eigene Notizen: was gemacht werden soll, Maße, Besonderheiten" style="min-height:64px;margin-top:8px">${esc(w.vorOrt?.notiz || '')}</textarea>
         <button class="btn ${fr.length ? 'secondary' : ''} block" id="voPruefen" style="margin-top:8px" ${ki ? '' : 'disabled'}>${icon('sparkle')} ${fr.length ? 'Nochmal prüfen, was fehlt' : 'Prüfen, was noch fehlt'}</button>
         ${ki ? '' : '<p class="hint center">Dafür braucht die App den KI-Schlüssel (Einstellungen › KI).</p>'}
       </div>`;
@@ -263,7 +263,7 @@ window.VorOrt = (() => {
     const ki = !!state.settings.apiKey, offen = offenListe(w, list);
     return `<div class="card">
       <label style="margin-top:0">Was soll gemacht werden?</label>
-      <textarea id="voKurz" data-frei placeholder="Kurz beschreiben oder diktieren, z. B. Bad komplett neu, bodengleiche Dusche, 6 Türgriffe tauschen" style="min-height:64px">${esc(w.vorOrt?.notiz || '')}</textarea>
+      <textarea id="voKurz" placeholder="Kurz beschreiben oder diktieren, z. B. Bad komplett neu, bodengleiche Dusche, 6 Türgriffe tauschen" style="min-height:64px">${esc(w.vorOrt?.notiz || '')}</textarea>
       <button class="btn block" id="voEntwurf" style="margin-top:10px" ${ki ? '' : 'disabled'}>${icon('sparkle')} ${w.entwurf ? 'Weitere Positionen vorschlagen lassen' : 'Positionen vorschlagen lassen'}</button>
       <p class="hint center" style="margin-bottom:0">${ki ? `Die KI liest ${[w.gespraech?.transcript ? 'das Gespräch' : '', 'deine Beschreibung', 'Fotos und Maße'].filter(Boolean).join(', ')} und schlägt Positionen vor. Du prüfst, bevor etwas übernommen wird. Es geht auch ohne: Positionen oben selbst eintragen.` : 'Dafür braucht die App den KI-Schlüssel (Einstellungen › KI). Ohne KI trägst du die Positionen oben selbst ein.'}</p></div>
       ${offen.length ? `<div class="card wf-offen"><b>Noch offen (${offen.length})</b><ul class="wf-o">${offen.map((o) => `<li>${o.id ? `<label><input type="checkbox" data-voo="${o.id}"> ${esc(o.text)}</label>` : esc(o.text)}</li>`).join('')}</ul></div>` : ''}`;

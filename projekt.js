@@ -656,7 +656,7 @@ window.Projekt = (() => {
       <div id="wTermine"></div>`;
   }
 
-  /** Reiter 2: das Angebot anlegen, Schritt für Schritt in der Reihenfolge, in der es später auf dem Papier steht (Wunsch Felix, Version 93).
+  /** Reiter 2: das Angebot anlegen, Schritt für Schritt in der Reihenfolge, in der es später auf dem Papier steht (Wunsch Felix, Version 95).
    *  1 Davor (Anschriften, Nummer, Betreff, Anrede, Anfangstexte) · 2 Maße (was wird angeboten, wie groß) · 3 Positionen · 4 Danach (Schlusstexte) · 5 Ansicht.
    *  Geht auch ganz ohne Vor-Ort-Termin: Kein Schritt setzt Aufnahme, Plan oder Scan voraus. */
   const SCHRITTE = [['davor', 'Davor'], ['masse', 'Maße'], ['pos', 'Positionen'], ['danach', 'Danach'], ['ansicht', 'Ansicht']];

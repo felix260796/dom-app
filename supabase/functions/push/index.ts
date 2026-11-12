@@ -4,7 +4,7 @@
 // 2. Ein Zeitplan (Supabase Cron, alle 15 Minuten) ruft { aktion: "lauf" } auf. Dann gehen raus:
 //    - die Morgenübersicht zur eingestellten Uhrzeit (Termine heute, Nachfassen, überfällige Rechnungen, Lieferungen, Mängel)
 //    - eine Erinnerung kurz vor jedem Termin (eingestellte Minuten vorher)
-//    - Kontakt halten (seit 12.11.2026, App-Version 92): fällige Anrufe und Mittagessen bei Kunden und Partnern,
+//    - Kontakt halten (seit 12.11.2026, App-Version 92, Namen aus der App seit 94): fällige Anrufe und Treffen bei Kunden und Partnern,
 //      ab der eingestellten Uhrzeit, wiederholt im eingestellten Abstand, bis in der App „erledigt“ getippt ist
 //      („später erinnern“ pausiert einen Eintrag). Gleiche Auswahl wie in der App (pflege.js, heuteListe).
 //    Morgenübersicht und Terminerinnerung gehen nur einmal raus.
@@ -25,7 +25,7 @@ const TZ = "Europe/Berlin";
 const cors = { "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Headers": "authorization, apikey, content-type, x-cron-secret", "Access-Control-Allow-Methods": "POST, OPTIONS" };
 const antwort = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { ...cors, "Content-Type": "application/json" } });
 
-type PflegePrefs = { an?: boolean; ab?: string; bis?: string; alle?: number; anrufe?: number; essen?: number; wochenende?: boolean };
+type PflegePrefs = { an?: boolean; ab?: string; bis?: string; alle?: number; anrufe?: number; essen?: number; wochenende?: boolean; namen?: { anruf?: string; essen?: string } };
 type Prefs = { badge?: boolean; morgen?: string; termin?: number; nachfassen?: boolean; nachfassenTage?: number; geld?: boolean; baustelle?: boolean; vorlauf?: number; wer?: string; pflege?: PflegePrefs | null };
 type Sub = { endpoint?: string; keys?: { p256dh: string; auth: string }; apns?: string };
 type Geraet = { id: string; sub: Sub; prefs: Prefs; name?: string; created: number; updated: number };
@@ -233,7 +233,7 @@ async function lauf() {
       kl ??= await kontakte();
       const abstand = Math.max(15, Number(pf.alle) || 60) * 60e3 - 60e3; // eine Minute Luft, weil der Zeitplan nicht auf die Sekunde läuft
       const zeilenPf: string[] = [], aktiv: string[] = [];
-      for (const [art, max, wort] of [["anruf", pf.anrufe ?? 3, "Anrufen"], ["essen", pf.essen ?? 1, "Mittagessen vereinbaren"]] as const) {
+      for (const [art, max, wort] of [["anruf", pf.anrufe ?? 3, String(pf.namen?.anruf || "Anrufen").slice(0, 40)], ["essen", pf.essen ?? 1, String(pf.namen?.essen || "Treffen vereinbaren").slice(0, 40)]] as const) {
         const l = pflegeHeute(kl, art, Number(max) || 0, heute, p.wer).filter((x) => !(Number(x.o.spaeter) > jetzt.getTime()));
         if (!l.length) continue;
         zeilenPf.push(`${wort}: ${l.map((x) => x.k.name).join(", ")}`);
