@@ -14,9 +14,12 @@ window.Kalender = (() => {
     ['buero', 'Büro / Intern', '#5b7a99'],
     ['privat', 'Privat', '#237a4b'],
     ['gebK', 'Kundengeburtstage', '#c0567a'],
-    ['gebP', 'Geburtstage Subunternehmer', '#8a5cc2'],
-    ['pflege', 'Anrufen und Mittagessen', '#2f7d8c'],
+    ['gebP', 'Geburtstage Partner', '#8a5cc2'],
+    ['pflegeAnruf', 'Anrufen', '#2f7d8c'],
+    ['pflegeTreffen', 'Treffen vereinbaren', '#3f9d8a'],
   ];
+  // Namen von Anrufen und Treffen aus den Vorgaben (pflegeNameAnruf, pflegeNameTreffen)
+  const artName = (a) => (a[0] === 'pflegeAnruf' ? window.Pflege?.ARTEN.anruf.titel : a[0] === 'pflegeTreffen' ? window.Pflege?.ARTEN.essen.titel : '') || a[1];
   const art = (id) => ARTEN.find((a) => a[0] === id) || ARTEN[0];
   const WT = ['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So'];
   const iso = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
@@ -99,7 +102,7 @@ window.Kalender = (() => {
           titel: `Nachfassen: ${Kunden.name(Kunden.byId(x.kundeId)) || x.customer || 'Angebot'}`, sub: `Angebot ${x.nr || ''} seit ${tagKurz(x.versendetAm)} beim Kunden` });
       }
     }
-    // Kontakt halten: Anrufe und Mittagessen nach Rhythmus, mit Tagesgrenze vorausgerechnet (pflege.js)
+    // Kontakt halten: Anrufe und Treffen nach Rhythmus, mit Tagesgrenze vorausgerechnet (pflege.js)
     if (window.Pflege) out.push(...Pflege.eintraege(von, bis, w));
     const h = ausgeblendet();
     return out.filter((e) => !filter || !h.has(e.art)).sort((a, b) => a.datum.localeCompare(b.datum) || (a.ganztag ? -1 : b.ganztag ? 1 : (a.von || '').localeCompare(b.von || '')));
@@ -109,13 +112,14 @@ window.Kalender = (() => {
     return [k && Kunden.name(k), o && Kunden.objLabel(o)].filter(Boolean).join(' · ');
   };
   const zeile = (e) => `<button class="tz" data-e="${esc(e.id)}" style="--c:${art(e.art)[2]}">
-      <span class="tz-z">${e.ganztag ? (e.typ === 'geb' ? icon('cake') : e.typ === 'nachf' || e.typ === 'pflege' ? icon(e.pflegeArt === 'essen' ? 'essen' : 'phone') : 'ganztags') : `${esc(e.von || '')}${e.bis ? `<small>${esc(e.bis)}</small>` : ''}`}</span>
+      <span class="tz-z">${e.ganztag ? (e.typ === 'geb' ? icon('cake') : e.typ === 'nachf' ? icon('phone') : e.typ === 'pflege' ? icon(e.pflegeArt === 'essen' ? 'users' : 'phone') : 'ganztags') : `${esc(e.von || '')}${e.bis ? `<small>${esc(e.bis)}</small>` : ''}`}</span>
       <span class="tz-t"><b>${esc(e.titel || art(e.art)[1])}</b><span>${esc(e.typ === 'geb' || e.typ === 'nachf' || e.typ === 'pflege' ? e.sub || '' : [werText(e), zuKunde(e), e.ort].filter(Boolean).join(' · ') || art(e.art)[1])}</span></span>
-      ${icon('chevron', 'pc-chev')}</button>`;
+      ${e.typ === 'pflege' ? `<span class="tz-tel" data-ktel role="button" aria-label="Anrufen">${icon('phone')}</span>` : icon('chevron', 'pc-chev')}</button>`;
   /** Klick auf einen Eintrag: Termin bearbeiten bzw. Kunde/Subunternehmer öffnen. */
   function bindZeilen(el, list, zurueck) {
-    $$('[data-e]', el).forEach((b) => (b.onclick = () => {
+    $$('[data-e]', el).forEach((b) => (b.onclick = (ev) => {
       const e = list.find((x) => x.id === b.dataset.e); if (!e) return;
+      if (e.typ === 'pflege' && ev?.target?.closest?.('[data-ktel]')) return Pflege.anrufenEintrag(e, () => (zurueck ? zurueck() : view())); // kleines Telefon: direkt anrufen
       if (e.typ === 'termin') return bearbeiten(alle.get(e.id), zurueck);
       if (e.typ === 'nachf') { state.kalender = false; return kvGet('wohnung:' + e.projektId).then((w) => { if (w) { w.mappe ??= {}; switchTab('angebote', { wohnung: w }); } }); }
       if (e.typ === 'pflege' && e.datum === heute()) { const c = window.Pflege?.heuteListe(e.pflegeArt).find((y) => y.x.id === (e.kundeId || e.partnerId)); if (c) return Pflege.nachfrage(c, () => (zurueck ? zurueck() : view()), `${Pflege.ARTEN[c.art].titel}: ${c.name}`); }
@@ -186,7 +190,7 @@ window.Kalender = (() => {
           ${sichtbar.map((d, i) => { const s = iso(d), e = amTag(s); return `${mitKw && i % 7 === 0 ? `<span class="kal-kw">${kw(d)}</span>` : ''}<button class="kal-d ${d.getMonth() !== monat.getMonth() ? 'aus' : ''} ${s === h ? 'heute' : ''} ${s === tag ? 'sel' : ''}" data-d="${s}">
             <span>${d.getDate()}</span><i>${[...new Set(e.map((x) => x.art))].slice(0, 3).map((a) => `<em style="--c:${art(a)[2]}"></em>`).join('')}</i></button>`; }).join('')}
         </div>
-        <div class="kal-f">${ARTEN.map(([id, n, c]) => `<button class="${h2.has(id) ? '' : 'on'}" data-art="${id}" style="--c:${c}" aria-pressed="${!h2.has(id)}"><i></i>${esc(n)}</button>`).join('')}</div>
+        <div class="kal-f">${ARTEN.map((a) => { const [id, , c] = a; return `<button class="${h2.has(id) ? '' : 'on'}" data-art="${id}" style="--c:${c}" aria-pressed="${!h2.has(id)}"><i></i>${esc(artName(a))}</button>`; }).join('')}</div>
       </div>
       <div class="kal-tag-h"><h2>${esc(tag === h ? 'Heute' : tagLang(tag))}${mitKw ? ` <small class="muted">KW ${kw(ausIso(tag))}</small>` : ''}</h2><button class="kal-neu" id="kNeu">${icon('plus')} Termin</button></div>
       <div class="tlist" id="kTag">${eintraege(tag, tag).map(zeile).join('') || '<p class="hint" style="margin:0">Nichts eingetragen.</p>'}</div>
@@ -237,7 +241,7 @@ window.Kalender = (() => {
         <div class="card kform">
           <label style="margin-top:0">Was?</label><input type="text" id="tTitel" value="${esc(t.titel)}" autocomplete="off" placeholder="z. B. Aufmaß Bad, Besprechung Fliesen">
           ${isNeu ? `<div class="tvorl">${vorlagen().map((v, i) => `<button type="button" data-tvl="${i}">${esc(v.titel)}</button>`).join('')}</div>` : ''}
-          <div class="chips tart">${ARTEN.filter((a) => !a[0].startsWith('geb') && a[0] !== 'pflege').map(([id, n, c]) => `<button type="button" class="qchip ${t.art === id ? 'on' : ''}" data-ta="${id}" style="--c:${c}"><i></i>${esc(n.replace('termine', 'termin'))}</button>`).join('')}</div>
+          <div class="chips tart">${ARTEN.filter((a) => !a[0].startsWith('geb') && !a[0].startsWith('pflege')).map(([id, n, c]) => `<button type="button" class="qchip ${t.art === id ? 'on' : ''}" data-ta="${id}" style="--c:${c}"><i></i>${esc(n.replace('termine', 'termin'))}</button>`).join('')}</div>
           <label>Wer?</label><div class="chips twer">${team().map((p) => `<button type="button" class="qchip ${t.wer.includes(p.id) ? 'on' : ''}" data-tw="${p.id}">${icon('user')}${esc(p.name)}</button>`).join('')}</div>
           <div class="row"><div><label>Datum</label>${Kontakt.datumInput('tDatum', t.datum)}</div>
             <div class="tg"><label class="chk"><input type="checkbox" id="tGanz" ${t.ganztag ? 'checked' : ''}> ganztags</label></div></div>

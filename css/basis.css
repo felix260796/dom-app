@@ -174,19 +174,27 @@ details.sub > summary { font-size: 14px; font-weight: 600; color: var(--navy-2);
 
 /* ---------- Startseite Heute ---------- */
 .pcard.hz .pc-ph svg.i { width: 22px; height: 22px; }
-/* Kontakt halten: Zeile mit Telefon rechts (pflege.js) */
-.pf-z { display: flex; align-items: stretch; gap: 8px; }
-.pf-z .pcard { flex: 1; min-width: 0; }
-.pf-z .pc-ph { color: #2f7d8c; }
-.pf-tel { flex: none; width: 64px; border: 0; border-radius: 18px; background: #2f7d8c; color: #fff; display: grid; place-items: center; box-shadow: var(--shadow); }
-.pf-tel svg.i { width: 26px; height: 26px; }
-.pf-tel:active { transform: scale(.97); }
+/* Kontakt halten (pflege.js): weißes Feld über die ganze Breite, kleines rundes Telefon rechts */
+.pcard.pf-z { padding: 0 10px 0 0; gap: 8px; }
+.pf-main { flex: 1; min-width: 0; border: 0; background: none; text-align: left; padding: 13px 0 13px 16px; display: flex; color: inherit; font: inherit; }
+.pf-tel { flex: none; width: 40px; height: 40px; border: 0; border-radius: 50%; background: #2f7d8c; color: #fff; display: grid; place-items: center; padding: 0; }
+.pf-tel svg.i { width: 19px; height: 19px; }
+.pf-tel:active { transform: scale(.94); }
+.tz .tz-tel { flex: none; width: 34px; height: 34px; border-radius: 50%; background: #2f7d8c; color: #fff; display: grid; place-items: center; }
+.tz .tz-tel svg.i { width: 17px; height: 17px; }
+.pf-box { background: var(--card); border-radius: 18px; box-shadow: var(--shadow); margin-top: 12px; }
+.pf-box > summary { list-style: none; display: flex; align-items: center; gap: 12px; padding: 12px 14px; cursor: pointer; }
+.pf-box > summary::-webkit-details-marker { display: none; }
+.pf-box > summary > svg.i:first-child { width: 20px; height: 20px; color: #2f7d8c; flex: none; }
+.pf-box > summary > span { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.pf-box > summary .muted { font-size: 13px; }
+.pf-box .pf-pfeil { width: 18px; height: 18px; color: var(--muted); transition: transform .2s; }
+.pf-box[open] .pf-pfeil { transform: rotate(180deg); }
+.pf-inhalt { padding: 0 14px 14px; }
 .pf-tag { display: flex; align-items: center; gap: 10px; margin-top: 8px; }
 .pf-tag span { font-size: 14px; color: var(--muted, #6b7280); flex: none; }
 .pf-tag input { flex: 1; min-width: 0; max-width: 170px; }
 .pf-info { margin: 6px 0 0; }
-.pf-frage { border: 2px solid var(--brass); }
-.pf-frage-t { margin: 0 0 12px; line-height: 1.4; }
 
 /* ---------- Per Sprache anlegen ---------- */
 .sp-card { display: flex; flex-direction: column; align-items: center; text-align: center; gap: 10px; padding: 26px 18px; }
