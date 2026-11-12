@@ -6,7 +6,7 @@
  * Kern-Funktionen (Speicher, KI, Bilder) stehen in core.js. */
 
 // ---------- Symbole (einfache Linien-Icons) ----------
-const APP_VERSION = '97';
+const APP_VERSION = '99';
 const ICONS = {
   plus: '<path d="M12 5v14M5 12h14"/>',
   camera: '<path d="M3 8.5A2 2 0 0 1 5 6.5h2l1.6-2h6.8l1.6 2h2a2 2 0 0 1 2 2V18a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><circle cx="12" cy="13" r="3.6"/>',
@@ -75,7 +75,13 @@ const fmtDay = (t) => new Date(t).toLocaleDateString('de-DE', { day: '2-digit', 
 
 // ---------- Kopfzeile & Navigation ----------
 /** Titel, Untertitel und Zurück-Knopf oben setzen. back = { label, fn } oder null. */
+const MENUE_SEITEN = ['suche', 'karte', 'auswertung', 'unterlagen', 'hilfe'];
 function header(title, sub = '', back = null) {
+  // Jede Seite hat oben links „Zurück“ (Wunsch Felix): Menü-Seiten ohne eigenes Ziel führen zurück, woher man kam
+  if (!back && MENUE_SEITEN.includes(state.tab)) {
+    const v = window.__vorMenue?.tab && !MENUE_SEITEN.includes(window.__vorMenue.tab) ? window.__vorMenue : { tab: 'kunden', s: {} };
+    back = { label: 'Zurück', fn: () => { switchTab(v.tab, v.s); window.scrollTo(0, 0); } };
+  }
   $('#title').textContent = title;
   const s = $('#subtitle'); s.textContent = sub || ''; s.hidden = !sub;
   const tb = $('#topback');
@@ -110,6 +116,8 @@ function switchTab(tab, restore) {
   if (tab === 'einstellungen' && state.tab !== 'einstellungen') window.__vorEinst = { tab: state.tab, s: { project: state.project, wohnung: state.wohnung, kunde: state.kunde, objekt: state.objekt, partner: state.partner } };
   // „Heute“ lässt sich mit dem X schließen: merken, welcher Reiter davor offen war
   if (tab === 'heute' && state.tab !== 'heute') window.__vorHeute = ['kunden', 'partner', 'projekt', 'angebote', 'rechnungen'].includes(state.tab) ? state.tab : 'kunden';
+  // Seiten aus dem Menü (Suche, Karte, Auswertung, Unterlagen, Wie geht das?) bekommen oben links „Zurück“ dorthin, wo man vorher war
+  if (MENUE_SEITEN.includes(tab) && !MENUE_SEITEN.includes(state.tab)) window.__vorMenue = { tab: state.tab, s: { project: state.project, wohnung: state.wohnung, kunde: state.kunde, objekt: state.objekt, partner: state.partner } };
   if (state.tab !== tab || restore) {
     tabState[state.tab] = { project: state.project, wohnung: state.wohnung, kunde: state.kunde, objekt: state.objekt, partner: state.partner };
     const s = restore || tabState[tab] || {};

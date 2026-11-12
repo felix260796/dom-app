@@ -105,35 +105,66 @@ window.Kontakt = (() => {
     };
   }
 
-  // ---------- Weitere Nummern direkt am Feld (Wunsch Felix): kleines Plus neben „Telefon“ bzw. „E-Mail“ ----------
-  // Gleiche Liste wie oben (k.weitere). Bezeichnungen zur Wahl aus den Vorgaben 'telArten' / 'mailArten'.
-  /** Überschrift mit kleinem Plus rechts. art: 'tel' | 'mail' */
-  const mehrLabel = (text, art) => `<label class="lab-plus"><span>${esc(text)}</span><button type="button" class="plus-mini" data-mehr="${art}" aria-label="${art === 'tel' ? 'Weitere Telefonnummer' : 'Weitere E-Mail'}">+</button></label>`;
-  /** box: leeres Element unter dem Hauptfeld · plus: der Knopf aus mehrLabel · list wird direkt verändert. */
-  function mehrBinden(box, plus, list, art, persist) {
+  // ---------- Telefon und E-Mail mit Bezeichnung (Wunsch Felix, v97) ----------
+  // „Telefon (Handy)“: Tippen auf das Wort wählt die Bezeichnung. Das kleine Plus fügt eine weitere Nummer
+  // mit derselben Ländervorwahl an (bzw. eine weitere E-Mail), ebenfalls mit Bezeichnung. Gleich bei Kunde und Partner.
+  // Weitere Einträge in x.weitere [{ id, art: 'tel'|'mail', label, wert }], Bezeichnung des Hauptfelds in x.telArt / x.mailArt.
+  // Bezeichnungen zur Wahl: Vorgaben 'telArten' / 'mailArten'; eigene Bezeichnung möglich.
+  const WORT = { tel: 'Telefon', mail: 'E-Mail' };
+  const artText = (art, label) => `${WORT[art]}${label ? ` <span class="muted">(${esc(label)})</span>` : ''}`;
+  /** Überschrift „Telefon (Handy)“ zum Antippen, rechts das kleine Plus. art: 'tel' | 'mail'; label: Bezeichnung des Hauptfelds. */
+  const mehrLabel = (text, art, label = '') => `<div class="lab-plus"><button type="button" class="lab-art" data-hauptart="${art}" aria-label="Bezeichnung wählen">${artText(art, label)}${icon('down', 'lab-pf')}</button><button type="button" class="plus-mini" data-mehr="${art}" aria-label="${art === 'tel' ? 'Weitere Telefonnummer' : 'Weitere E-Mail'}">+</button></div>`;
+  /** Auswahl der Bezeichnung. Ergebnis: Text (leer = ohne Bezeichnung) oder null bei Abbruch. */
+  async function artWaehlen(art, jetzt = '') {
+    const arten = [...new Set([...(vorgabe(art === 'tel' ? 'telArten' : 'mailArten') || []), ...(jetzt ? [jetzt] : [])])];
+    const v = await sheet(art === 'tel' ? 'Welche Nummer ist das?' : 'Welche E-Mail ist das?', [
+      ...arten.map((a) => ({ label: a, icon: icon(a === jetzt ? 'check' : art === 'tel' ? 'phone' : 'mail'), value: 'a:' + a })),
+      { label: 'Ohne Bezeichnung', icon: icon(jetzt ? 'x' : 'check'), value: 'a:' },
+    ], { text: 'Eigene Bezeichnung, z. B. Büro', suche: '' });
+    if (v === null || v === undefined) return null;
+    if (typeof v === 'object') return String(v.text || '').trim() || null;
+    return String(v).slice(2);
+  }
+  /** box: leeres Element unter dem Hauptfeld · plus: der Knopf aus mehrLabel · list (x.weitere) wird direkt verändert.
+   * haupt: { get(), set(v) } für die Bezeichnung des Hauptfelds · hauptFeld: das Telefonfeld (für die Vorwahl). */
+  function mehrBinden(box, plus, list, art, persist, { haupt, hauptFeld } = {}) {
     if (!box) return;
-    const arten = () => vorgabe(art === 'tel' ? 'telArten' : 'mailArten') || [];
+    const kopf = plus?.closest('.lab-plus');
+    const hauptKnopf = kopf && $('[data-hauptart]', kopf);
+    if (hauptKnopf && haupt) hauptKnopf.onclick = async () => {
+      const v = await artWaehlen(art, haupt.get() || '');
+      if (v === null) return;
+      haupt.set(v); persist();
+      hauptKnopf.innerHTML = artText(art, v) + icon('down', 'lab-pf');
+    };
+    if (hauptKnopf && !haupt) { hauptKnopf.disabled = true; hauptKnopf.querySelector('.lab-pf')?.remove(); }
     const render = () => {
       const eigene = list.filter((x) => x.art === art);
       box.innerHTML = eigene.map((x) => `<div class="mehr-z" data-wid="${x.id}">
-        <select data-w="label" aria-label="Bezeichnung">${[...new Set([...arten(), ...(x.label ? [x.label] : [])])].map((a) => `<option ${a === x.label ? 'selected' : ''}>${esc(a)}</option>`).join('')}</select>
-        <input type="${art === 'mail' ? 'email' : 'tel'}" data-w="wert" value="${esc(x.wert)}" placeholder="${art === 'mail' ? 'name@beispiel.de' : '0171 1234567'}" autocomplete="off" ${art === 'mail' ? 'inputmode="email"' : ''}>
-        <button type="button" class="icon-btn" data-wdel aria-label="Entfernen">${icon('x')}</button></div>`).join('');
+        <div class="lab-plus"><button type="button" class="lab-art" data-w="label" aria-label="Bezeichnung wählen">${artText(art, x.label)}${icon('down', 'lab-pf')}</button>
+          <button type="button" class="icon-btn" data-wdel aria-label="Entfernen">${icon('x')}</button></div>
+        ${art === 'tel' ? telInput('w-' + x.id, x.wert || (x.vw ? x.vw + ' ' : '')) : `<input type="email" data-w="wert" value="${esc(x.wert)}" placeholder="name@beispiel.de" autocomplete="off" inputmode="email">`}</div>`).join('');
       $$('[data-wid]', box).forEach((row) => {
         const x = list.find((y) => y.id === row.dataset.wid);
-        $('[data-w="label"]', row).onchange = (e) => { x.label = e.target.value; persist(); };
-        $('[data-w="wert"]', row).oninput = (e) => { x.wert = e.target.value; persist(); };
-        $('[data-wdel]', row).onclick = () => { if (x.wert.trim() && !confirm(`„${x.label}: ${x.wert}“ entfernen?`)) return; list.splice(list.indexOf(x), 1); persist(); render(); };
+        $('[data-w="label"]', row).onclick = async () => { const v = await artWaehlen(art, x.label); if (v === null) return; x.label = v; persist(); render(); };
+        if (art === 'tel') telBinden($('#w-' + x.id), (v) => { x.wert = v; delete x.vw; persist(); });
+        else $('[data-w="wert"]', row).oninput = (e) => { x.wert = e.target.value; persist(); };
+        $('[data-wdel]', row).onclick = () => { if (x.wert.trim() && !confirm(`„${x.label ? x.label + ': ' : ''}${x.wert}“ entfernen?`)) return; list.splice(list.indexOf(x), 1); persist(); render(); };
       });
     };
     render();
     if (plus) plus.onclick = () => {
-      const benutzt = list.filter((x) => x.art === art).map((x) => x.label);
-      list.push({ id: uid(), art, label: arten().find((a) => !benutzt.includes(a)) || arten()[0] || '', wert: '' });
+      const arten = vorgabe(art === 'tel' ? 'telArten' : 'mailArten') || [];
+      const benutzt = [haupt?.get(), ...list.filter((x) => x.art === art).map((x) => x.label)];
+      const vw = art === 'tel' && hauptFeld ? $('[data-tv]', hauptFeld)?.value || '' : '';
+      list.push({ id: uid(), art, label: arten.find((a) => !benutzt.includes(a)) || '', wert: '', ...(vw ? { vw } : {}) });
       persist(); render();
-      $$('[data-w="wert"]', box).pop()?.focus();
+      const letzte = $$('.mehr-z', box).pop();
+      (letzte?.querySelector('[data-tn]') || letzte?.querySelector('[data-w="wert"]'))?.focus();
     };
   }
+  /** Für Schnellknöpfe: Hauptfeld + weitere als [{ label, wert }]. */
+  const nummernVon = (x, art) => [{ label: (art === 'tel' ? x.telArt : x.mailArt) || WORT[art], wert: (art === 'tel' ? x.telefon : x.email) || '' }, ...(x.weitere || []).filter((y) => y.art === art).map((y) => ({ label: y.label || WORT[art], wert: y.wert }))];
 
   // ---------- Schnellknöpfe ----------
   const mapLink = (a) => routeLink(a); // Route vom eigenen Standort, Karten-App aus der Vorgabe 'routeKarte'
@@ -159,5 +190,5 @@ window.Kontakt = (() => {
   /** Auswahl „Nur gratulieren“ / „Mit Geschenk“ für einen Geburtstag. Leer = Standard aus den Einstellungen. */
   const gebArt = (v) => v || vorgabe('gebArtStandard') || 'gratulieren';
   const gebArtSelect = (v, id = '') => `<select data-gebart ${id ? `id="${id}"` : ''}>${[['gratulieren', 'Nur gratulieren'], ['geschenk', 'Mit Geschenk (Erinnerung vorher)']].map(([x, n]) => `<option value="${x}" ${gebArt(v) === x ? 'selected' : ''}>${esc(n)}</option>`).join('')}</select>`;
-  return { mehrLabel, mehrBinden, telInput, telBinden, gebArt, gebArtSelect, de, lesen, datumFeld, datumInput, bisTag, alter, tageText, norm, weitereHtml, weitereBinden, aktionen, telLink, mapLink };
+  return { mehrLabel, mehrBinden, artWaehlen, nummernVon, telInput, telBinden, gebArt, gebArtSelect, de, lesen, datumFeld, datumInput, bisTag, alter, tageText, norm, weitereHtml, weitereBinden, aktionen, telLink, mapLink };
 })();

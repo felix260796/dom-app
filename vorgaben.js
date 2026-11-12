@@ -127,7 +127,7 @@ const VORGABEN = {
   kundenEinst: [
     ['Kunden', [
       { k: 'telVorwahl', l: 'Ländervorwahl beim Anrufen', t: 'zeile', d: '+49', h: 'Beim Tippen auf „Anrufen“ wird aus 0711 123456 automatisch +49 711 123456.' },
-      { k: 'telArten', l: 'Bezeichnungen für weitere Telefonnummern (eine Zeile je Bezeichnung)', t: 'liste', d: ['Handy', 'Zuhause', 'Geschäftlich'], h: 'Weitere Nummern legst du beim Kunden mit dem kleinen Plus neben „Telefon“ an.' },
+      { k: 'telArten', l: 'Bezeichnungen für weitere Telefonnummern (eine Zeile je Bezeichnung)', t: 'liste', d: ['Handy', 'Zuhause', 'Geschäftlich'], h: 'Bei Kunde und Partner auf „Telefon“ tippen, um die Bezeichnung zu wählen; das kleine Plus daneben fügt eine weitere Nummer an.' },
       { k: 'mailArten', l: 'Bezeichnungen für weitere E-Mail-Adressen (eine Zeile je Bezeichnung)', t: 'liste', d: ['Privat', 'Geschäftlich'] },
       { k: 'kundenQuellen', l: 'Wie kommen Kunden zu uns? (eine Zeile je Quelle)', t: 'liste', d: ['Empfehlung', 'Google / Internet', 'Bauschild', 'Hausverwaltung', 'Stammkunde', 'Flyer / Anzeige', 'Sonstiges'] },
     ]],
