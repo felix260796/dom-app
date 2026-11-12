@@ -31,7 +31,7 @@ concurrency:
 
 jobs:
   bauen:
-    runs-on: macos-latest
+    runs-on: macos-15
     timeout-minutes: 60
     env:
       APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
