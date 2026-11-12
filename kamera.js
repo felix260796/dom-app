@@ -69,17 +69,44 @@ window.Kamera = (() => {
     await Angebot._intern.subUebernehmen(r, () => { saveProject(r); Angebot.ansicht(r, false); }, { data, mime, partnerId: partnerZu(e.firma)?.id || '' });
   }
 
-  /** Visitenkarte → Partner oder Kunde anlegen und zum Prüfen öffnen. Gibt es ihn schon, wird er zuerst angeboten.
-   *  Beim Kunden liegt das Foto der Karte danach in „Bilder & Dokumentation“ (Ordner Dokumente). */
+  /** Gibt es den Kontakt von der Visitenkarte schon? Sicher erkannt über Telefon, Mobil oder E-Mail, sonst über den
+   *  Namen (Firma ohne Rechtsform bzw. Vor- und Nachname). Liefert { partner, kunde }. */
+  function schonDa(v) {
+    const nr = (x) => { const z = String(x || '').replace(/\D/g, '').replace(/^(00)?49/, '').replace(/^0+/, ''); return z.length >= 6 ? z : ''; };
+    const ml = (x) => String(x || '').trim().toLowerCase();
+    const nm = (x) => String(x || '').toLowerCase().replace(/\b(gmbh|ug|ag|kg|ohg|gbr|mbh|co|e\.?\s?k\.?|inh\.?|haftungsbeschränkt|herr|frau|familie|firma)\b/g, ' ').replace(/[^a-z0-9äöüß]+/g, ' ').trim();
+    const nrn = [nr(v.telefon), nr(v.mobil)].filter(Boolean), mail = ml(v.email);
+    const firma = nm(v.firma), person = nm(v.name);
+    const trifft = (tels, mails, namen) =>
+      tels.map(nr).some((x) => x && nrn.includes(x)) || (mail && mails.map(ml).includes(mail)) ||
+      namen.map(nm).some((x) => x && x.length > 3 && (x === firma || x === person));
+    const w = (x, art) => (x.weitere || []).filter((y) => y.art === art).map((y) => y.wert);
+    const partner = (window.Partner?.liste() || []).find((p) => trifft([p.telefon, ...w(p, 'tel')], [p.email, ...w(p, 'mail')], [p.firma, p.inhaber])) || null;
+    const kunde = Kunden.liste().find((k) => trifft([k.telefon, ...w(k, 'tel'), k.hv?.telefon], [k.email, ...w(k, 'mail'), k.hv?.email], [k.name, `${k.vorname || ""} ${k.name || ""}`])) || null;
+    return { partner, kunde };
+  }
+  /** Foto der Visitenkarte bei den Dokumenten des Partners ablegen. */
+  async function karteZuPartner(p, data) {
+    const id = uid();
+    await kvSet('pdok:' + id, data);
+    p.dokumente = [...(p.dokumente || []), { id, name: 'Visitenkarte', typ: 'image/jpeg', groesse: Math.round(data.length * 0.75), t: Date.now() }];
+    p.updated = Date.now();
+    await kvSet('partner:' + p.id, p);
+    await Partner.laden();
+  }
+
+  /** Visitenkarte → Partner oder Kunde anlegen und zum Prüfen öffnen. Gibt es ihn schon (schonDa), sagt die App das
+   *  zuerst und bietet den Eintrag an. Das Foto der Karte wird immer abgelegt: beim Kunden in „Bilder & Dokumentation“
+   *  (Ordner aus Vorgabe `ordnerVisitenkarte`), beim Partner unter „Dokumente“. */
   async function visitenkarte(v, data) {
     const t = (x) => String(x || '').trim();
     const firma = t(v.firma) || t(v.name);
-    const da = partnerZu(firma);
-    const kda = kundeZu(t(v.firma) ? `${v.firma}` : t(v.name));
-    const wahl = await sheet(`Visitenkarte: ${firma || 'ohne Namen'}`, [
-      ...(da ? [{ label: `${da.firma || da.inhaber} öffnen`, sub: 'Gibt es schon bei den Partnern', icon: icon('wrench'), value: 'da' }] : []),
+    const { partner: da, kunde: kda } = schonDa(v);
+    const schon = [da && `Partner ${da.firma || da.inhaber}`, kda && `Kunde ${Kunden.name(kda)}`].filter(Boolean).join(' und ');
+    const wahl = await sheet(schon ? `Schon angelegt: ${schon}` : `Visitenkarte: ${firma || 'ohne Namen'}`, [
+      ...(da ? [{ label: `${da.firma || da.inhaber} öffnen`, sub: 'Diese Karte gibt es schon bei den Partnern', icon: icon('wrench'), value: 'da' }] : []),
       { label: da ? 'Als neuen Partner anlegen' : 'Als Partner anlegen', sub: [t(v.gewerk), t(v.name), t(v.mobil) || t(v.telefon)].filter(Boolean).join(' · ') || 'Subunternehmer oder Lieferant', icon: icon('wrench'), value: 'neu' },
-      ...(kda ? [{ label: `${Kunden.name(kda)} öffnen`, sub: 'Gibt es schon bei den Kunden', icon: icon('user'), value: 'kda' }] : []),
+      ...(kda ? [{ label: `${Kunden.name(kda)} öffnen`, sub: 'Diese Karte gibt es schon bei den Kunden', icon: icon('user'), value: 'kda' }] : []),
       { label: kda ? 'Als neuen Kunden anlegen' : 'Als Kunde anlegen', sub: 'Auch Firmen können Kunden sein', icon: icon('user'), value: 'kunde' },
       { label: 'Nur als Foto ablegen', sub: 'Zu einem Kunden in „Bilder & Dokumentation“', icon: icon('camera'), value: 'foto' },
     ]);
@@ -91,7 +118,7 @@ window.Kamera = (() => {
       if (!k) return;
       const oid = await Kunden.objektWaehlen(k, 'Zu welchem Objekt?');
       if (oid === null) return;
-      const o = await Bilder.ablegen(k.id, oid, data, 'Dokumente');
+      const o = await Bilder.ablegen(k.id, oid, data, kartenOrdner());
       return toast(`In „${o.name}“ bei ${Kunden.name(k) || 'Kunde'} gespeichert`, 4000);
     }
     if (wahl !== 'neu') return;
@@ -100,12 +127,12 @@ window.Kamera = (() => {
       firma: t(v.firma), inhaber: t(v.name), gewerk: t(v.gewerk), telefon: tel, email: t(v.email), anschrift: t(v.anschrift), web: t(v.web),
       weitere: t(v.telefon) && t(v.mobil) ? [{ id: uid(), art: 'tel', label: 'Mobil', wert: t(v.mobil) }] : [] };
     if (!p.firma && !p.inhaber) return toast('Auf der Karte war kein Name zu lesen. Bitte nochmal fotografieren.', 5000);
-    await kvSet('partner:' + p.id, p);
-    await Partner.laden();
+    try { await karteZuPartner(p, data); } catch (e) { console.warn('Visitenkarte nicht abgelegt', e); await kvSet('partner:' + p.id, p); await Partner.laden(); }
     Partner.oeffnen(p.id);
-    toast('Partner angelegt. Bitte kurz prüfen.', 4000);
+    toast('Partner angelegt, die Karte liegt bei seinen Dokumenten. Bitte kurz prüfen.', 4500);
   }
 
+  const kartenOrdner = () => vorgabe('ordnerVisitenkarte') || 'Dokumente';
   async function alsKunde(v, data) {
     const t = (x) => String(x || '').trim();
     const teile = t(v.name).split(/\s+/).filter(Boolean);
@@ -116,9 +143,9 @@ window.Kamera = (() => {
       notiz: [t(v.firma) && t(v.name) ? `Ansprechpartner: ${t(v.name)}` : '', t(v.web)].filter(Boolean).join('\n') };
     if (!k.name && !k.vorname) return toast('Auf der Karte war kein Name zu lesen. Bitte nochmal fotografieren.', 5000);
     await Kunden.speichern(k);
-    try { await Bilder.ablegen(k.id, '', data, 'Dokumente'); } catch (e) { console.warn('Visitenkarte nicht abgelegt', e); }
+    try { await Bilder.ablegen(k.id, k.objekte?.[0]?.id || '', data, kartenOrdner()); } catch (e) { console.warn('Visitenkarte nicht abgelegt', e); }
     Kunden.oeffnen(k.id);
-    toast('Kunde angelegt, die Karte liegt in den Dokumenten. Bitte kurz prüfen.', 4500);
+    toast(`Kunde angelegt, die Karte liegt in „Bilder & Dokumentation“ (${kartenOrdner()}). Bitte kurz prüfen.`, 5000);
   }
 
   async function start() {
