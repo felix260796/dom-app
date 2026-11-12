@@ -356,12 +356,13 @@ window.Bilder = (() => {
         const zn = own.zeichnung;
         const grund = zn?.von ? await kvGet('bild:' + zn.von) : null;
         const weiter = !!zn && (!zn.von || !!grund);
-        const r = await Zeichnen.oeffnen(weiter ? grund : await voll(x), { titel: weiter ? 'Weiterzeichnen' : 'Zeichnen', striche: weiter ? zn.striche : [], onSave: async (striche, bild) => {
+        const masstab = (weiter ? zn.masstab : own.masstab) || 0;
+        const r = await Zeichnen.oeffnen(weiter ? grund : await voll(x), { titel: weiter ? 'Weiterzeichnen' : 'Zeichnen', striche: weiter ? zn.striche : [], masstab, onSave: async (striche, bild) => {
           if (weiter) {
             await kvSet('bild:' + own.id, bild);
             const thumb = await resize(bild, 320, 'image/jpeg', 0.7);
-            await upd(own.id, (b) => { b.zeichnung = { von: zn.von, striche }; b.thumb = thumb; });
-          } else await ablegen(ctx.kundeId, ctx.objektId, bild, '', own.projektId, { zeichnung: { von: own.id, striche }, ordnerId: own.ordner, text: own.text });
+            await upd(own.id, (b) => { b.zeichnung = { ...zn, striche }; b.thumb = thumb; });
+          } else await ablegen(ctx.kundeId, ctx.objektId, bild, '', own.projektId, { zeichnung: { von: own.id, striche, ...(masstab ? { masstab } : {}) }, ordnerId: own.ordner, text: own.text && !/\(bearbeitet\)$/.test(own.text) ? `${own.text} (bearbeitet)` : own.text });
         } });
         if (!r) return;
         changed = true;
@@ -408,13 +409,14 @@ window.Bilder = (() => {
   }
 
   /** Ein fertiges Bild in einen Ordner legen (Ordner wird angelegt, wenn es ihn noch nicht gibt). Für die Kamera oben. */
-  async function ablegen(kid, oid, data, ordnerName, projektId = '', { ordnerId = '', text = '', zeichnung } = {}) {
+  async function ablegen(kid, oid, data, ordnerName, projektId = '', { ordnerId = '', text = '', zeichnung, bildId = '', masstab = 0 } = {}) {
     const dd = await laden(kid, oid);
     let o = ordnerId ? dd.ordner.find((x) => x.id === ordnerId) : dd.ordner.find((x) => x.name === ordnerName && (x.projektId || '') === projektId);
     if (!o) { o = { id: uid(), name: ordnerName, projektId }; dd.ordner.push(o); }
-    const id = uid();
+    const id = bildId || uid();
     await kvSet('bild:' + id, data);
-    dd.bilder.push({ id, t: Date.now(), ordner: o.id, projektId, text, thumb: await resize(data, 320, 'image/jpeg', 0.7), ...(zeichnung ? { zeichnung } : {}) });
+    // masstab: Bildpunkte je Meter (Grundriss aus dem Raumscan), dann gibt es beim Zeichnen das Werkzeug „Maß“
+    dd.bilder.push({ id, t: Date.now(), ordner: o.id, projektId, text, thumb: await resize(data, 320, 'image/jpeg', 0.7), ...(zeichnung ? { zeichnung } : {}), ...(masstab ? { masstab } : {}) });
     await speichern(kid, oid, dd);
     return o;
   }

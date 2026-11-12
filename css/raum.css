@@ -209,13 +209,7 @@ body.recording main { padding-bottom: 150px; }
 .rs-c { display: block; touch-action: none; }
 .rs-3d { position: absolute; inset: 0; touch-action: none; }
 .rs-3d canvas { display: block; }
-.rs-werk { display: flex; align-items: center; gap: 6px; padding: 8px 12px 0; overflow-x: auto; }
-.rs-werk .qchip { flex: none; }
-.rs-farben { display: flex; gap: 6px; padding: 0 4px; flex: none; }
-.rs-f { width: 28px; height: 28px; border-radius: 50%; border: 3px solid #fff; background: var(--f); box-shadow: 0 0 0 1px #ccc; padding: 0; }
-.rs-f.on { box-shadow: 0 0 0 2px var(--navy, #1e3550); }
 .rs-fuss { padding: 8px 12px 10px; }
 .rs-fuss .hint { margin: 0 0 8px; font-size: 12.5px; }
 .rs-knoepfe { display: flex; gap: 8px; flex-wrap: wrap; }
 .rs-knoepfe .btn { flex: 1 1 140px; }
-.rs.zeichnet .rs-b { box-shadow: inset 0 0 0 2px var(--brass, #b08d57); }

@@ -1,10 +1,14 @@
 'use strict';
-/* DOM – Raumscan: Grundriss (2D), Modell (3D), Reinzeichnen, PDF.
- * Daten je Projekt in w.vorOrt.scans[]: { id, name, t, laenge, breite, hoehe, flaeche, tueren, fenster, raumId, geo, zeichnung }.
+/* DOM – Raumscan: Grundriss (2D), Modell (3D), Ablegen beim Objekt, Reinzeichnen.
+ * Ablauf: Scan → prüfen („Nochmal scannen“ oder „Ablegen“) → Ausgangsdateien beim Objekt (Grundriss und 3D, je mit und ohne
+ * Möbel, Bilder-Ordner „Pläne“; Grundriss-PDF in w.dokumente) → Reinzeichnen über zeichnen.js als neue Fassung daneben.
+ * Kein Senden im Raumscan: geteilt wird aus der abgelegten Datei.
+ * Daten je Projekt in w.vorOrt.scans[]: { id, name, t, laenge, breite, hoehe, flaeche, tueren, fenster, raumId, geo,
+ *   abgelegt: { t, ordner, grundMit, grundOhne, dreiMit, dreiOhne (Bild-IDs), masstab (Bildpunkte je m), pdf } }.
  * geo kommt aus DomGeraet.swift (RoomPlan): waende [{x1,z1,x2,z2,h}], oeffnungen [{art,x,z,a,b,h,u}], objekte [{k,x,z,a,b,h,t,u}], boden [[x,z]], boeden [[[x,z]]].
  * Ganze Wohnung: Scan mit ganz: true, geo aus StructureBuilder, dazu geo.namen [{ text, x, z, m2 }] für die Raumnamen im Plan.
  * Alles in Metern, von oben gesehen. Ältere Scans ohne geo werden als Rechteck aus Länge und Breite gezeichnet.
- * zeichnung: [{ art: 'stift'|'linie'|'mass'|'text', f: Farbe, p: [[x,z], …], text }] in Grundriss-Koordinaten (Metern). */
+ * zeichnung (nur ältere Scans aus v87): Striche in Metern, werden nur noch in der kleinen Vorschau gezeigt. */
 window.Raumscan = (() => {
   const MOEBEL = { storage: 'Schrank', refrigerator: 'Kühlschrank', stove: 'Herd', bed: 'Bett', sink: 'Waschbecken', washerDryer: 'Waschmaschine', toilet: 'WC', bathtub: 'Badewanne', oven: 'Backofen', dishwasher: 'Spülmaschine', table: 'Tisch', sofa: 'Sofa', chair: 'Stuhl', fireplace: 'Kamin', television: 'Fernseher', stairs: 'Treppe' };
   const FARBEN = [['#c0392b', 'Rot'], ['#1f6fb2', 'Blau'], ['#1e3550', 'Dunkel'], ['#2e8b57', 'Grün']];
@@ -242,149 +246,136 @@ window.Raumscan = (() => {
   }
 
   // ---------- Ansicht ----------
-  /** Vollbild: Grundriss oder 3D, Möbel ein/aus, Maße, Zeichnen, PDF. */
-  async function ansehen(w, scanId) {
-    const scan = (w.vorOrt?.scans || []).find((s) => s.id === scanId);
-    if (!scan) return;
+  /** Vollbild: Grundriss oder 3D, Möbel ein/aus, Maße. Verschieben und zoomen mit den Fingern.
+   * pruefen: direkt nach dem Scan, nur „Nochmal scannen“ oder „Ablegen“ (Ergebnis 'neu' | 'ablegen' | null).
+   * Sonst: „Reinzeichnen“ (neue Fassung neben dem abgelegten Original) und für ältere Scans „Ablegen“. Kein Senden hier:
+   * geteilt wird später aus der abgelegten Datei (Bilder-Ordner „Pläne“ oder Dokumente des Projekts). */
+  function ansicht(w, scan, { pruefen = false } = {}) {
     const P = plan(scan), kz = kennzahlen(scan, P);
-    const st = { modus: 'plan', moebel: true, masse: true, zeichnen: false, werkzeug: 'stift', farbe: FARBEN[0][0] };
-    let striche = JSON.parse(JSON.stringify(scan.zeichnung || []));
-    const verlauf = [];
-    const speichern = debounce(async () => { scan.zeichnung = striche; await window.Projekt.save(w); }, 600);
+    const st = { modus: 'plan', moebel: true, masse: true };
     const el = document.createElement('div');
     el.className = 'rs';
     const info = [`${zahl(scan.laenge)} × ${zahl(scan.breite)} m`, kz.boden > 0 && `Boden ${zahl(kz.boden)} m²`, P.hoehe > 0 && `${zahl(P.hoehe)} m hoch`, kz.wand > 0 && `Wände ${zahl(kz.wand)} m² ohne Türen und Fenster`, `Umfang ${zahl(kz.umfang)} m`].filter(Boolean).join(' · ');
     const mb = erkannt(scan);
+    const ab = scan.abgelegt;
+    const ordner = ordnerName();
+    const fuss = pruefen
+      ? `<p class="hint"><b>Passt der Scan?</b> Beim Ablegen kommen Grundriss und 3D-Modell${P.M.length ? ', je mit und ohne Möbel,' : ''} in den Ordner „${esc(ordner)}“ beim Objekt, dazu der Grundriss als PDF.</p>
+        <div class="rs-knoepfe"><button type="button" class="btn secondary" data-neu>Nochmal scannen</button><button type="button" class="btn" data-ablegen>Ablegen</button></div>`
+      : `<div class="rs-knoepfe"><button type="button" class="btn" data-zeichnen>${icon('edit')} Reinzeichnen</button>${ab ? '' : `<button type="button" class="btn secondary" data-ablegen>Ablegen</button>`}</div>
+        <p class="hint">${ab ? `Abgelegt am ${new Date(ab.t).toLocaleDateString('de-DE')} im Ordner „${esc(ab.ordner || ordner)}“ beim Objekt. Reinzeichnen legt eine neue Fassung daneben, das Original bleibt. Teilen geht aus dem Ordner.` : 'Noch nicht beim Objekt abgelegt.'}</p>`;
     el.innerHTML = `
-      <div class="rs-h"><b>${esc(scan.name)}</b><button type="button" class="icon-btn" data-x aria-label="Schließen">${icon('x')}</button></div>
+      <div class="rs-h"><b>${esc(pruefen ? `Scan prüfen: ${scan.name || 'Raum'}` : scan.name)}</b><button type="button" class="icon-btn" data-x aria-label="Schließen">${icon('x')}</button></div>
       <div class="rs-leiste">
         <div class="seg"><button type="button" data-modus="plan" class="on">Grundriss</button><button type="button" data-modus="3d">3D-Modell</button></div>
         <label class="chk" ${P.M.length ? '' : 'hidden'}><input type="checkbox" data-moebel checked> Möbel</label>
         <label class="chk" data-nurplan><input type="checkbox" data-masse checked> Maße</label>
       </div>
       <div class="rs-b"><canvas class="rs-c"></canvas><div class="rs-3d" hidden></div></div>
-      <div class="rs-werk" hidden>
-        ${[['stift', 'Stift'], ['linie', 'Linie'], ['mass', 'Maß'], ['text', 'Text'], ['radierer', 'Radierer']].map(([k, l]) => `<button type="button" class="qchip ${k === 'stift' ? 'on' : ''}" data-wz="${k}">${l}</button>`).join('')}
-        <span class="rs-farben">${FARBEN.map(([f, n], i) => `<button type="button" class="rs-f ${i ? '' : 'on'}" data-farbe="${f}" style="--f:${f}" aria-label="${n}"></button>`).join('')}</span>
-        <button type="button" class="qchip" data-zurueck>Rückgängig</button>
-      </div>
       <div class="rs-fuss">
         <p class="hint">${esc(info)}${mb ? `<br>Erkannt: ${esc(mb)}` : ''}${scan.geo ? '' : '<br>Älterer Scan: nur Länge und Breite, ohne Türen und Fenster.'}</p>
-        <div class="rs-knoepfe">
-          <button type="button" class="btn secondary small" data-zeichnen>Reinzeichnen</button>
-          <button type="button" class="btn secondary small" data-ablegen>${icon('download')} Beim Objekt ablegen</button>
-          <button type="button" class="btn secondary small" data-pdf>${icon('file')} Als PDF</button>
-        </div>
+        ${fuss}
       </div>`;
     document.body.appendChild(el);
     const cv = $('.rs-c', el), box = $('.rs-b', el);
     let v = null, cw = 0, ch = 0;
+    const male = () => {
+      const ctx = cv.getContext('2d'), r = devicePixelRatio || 1;
+      ctx.setTransform(r, 0, 0, r, 0, 0); ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, cw, ch);
+      zeichne(ctx, P, v, { moebel: st.moebel, masse: st.masse });
+    };
     const groesse = () => {
       const r = devicePixelRatio || 1; cw = box.clientWidth; ch = box.clientHeight;
+      if (!cw || !ch) return;
       cv.width = cw * r; cv.height = ch * r; cv.style.width = cw + 'px'; cv.style.height = ch + 'px';
       if (!v) v = passend(P, cw, ch);
       male();
     };
-    let aktiv = null;
-    const male = () => {
-      const ctx = cv.getContext('2d'), r = devicePixelRatio || 1;
-      ctx.setTransform(r, 0, 0, r, 0, 0); ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, cw, ch);
-      zeichne(ctx, P, v, { moebel: st.moebel, masse: st.masse, striche, aktiv });
-    };
     const ro = new ResizeObserver(() => groesse()); ro.observe(box);
     let drei = null;
-    const zu = () => { ro.disconnect(); drei?.weg(); el.remove(); };
-    $('[data-x]', el).onclick = zu;
 
-    // Grundriss: verschieben, zoomen, zeichnen
+    // Grundriss: mit einem Finger verschieben, mit zwei zoomen
     const pt = new Map();
-    let stiftGesehen = false, start = null;
-    const inPlan = (e) => { const b = cv.getBoundingClientRect(); return [(e.clientX - b.left - v.ox) / v.s, (e.clientY - b.top - v.oy) / v.s]; };
-    const naechster = (p) => {
-      let best = -1, bd = 14 / v.s;
-      striche.forEach((z, i) => { for (const q of z.p || []) { const d = Math.hypot(q[0] - p[0], q[1] - p[1]); if (d < bd) { bd = d; best = i; } } });
-      return best;
-    };
-    const merke = () => { verlauf.push(JSON.stringify(striche)); if (verlauf.length > 50) verlauf.shift(); };
-    const zeichnetMit = (e) => st.zeichnen && (e.pointerType === 'pen' || (!stiftGesehen && pt.size <= 1));
-    cv.onpointerdown = async (e) => {
-      cv.setPointerCapture(e.pointerId);
-      if (e.pointerType === 'pen') stiftGesehen = true;
-      pt.set(e.pointerId, { x: e.clientX, y: e.clientY, typ: e.pointerType });
-      if (pt.size >= 2 && aktiv && e.pointerType !== 'pen') { aktiv = null; male(); }
-      if (!zeichnetMit(e)) { start = null; return; }
-      const p = inPlan(e);
-      if (st.werkzeug === 'radierer') { const i = naechster(p); if (i >= 0) { merke(); striche.splice(i, 1); male(); speichern(); } aktiv = { art: 'radierer' }; return; }
-      if (st.werkzeug === 'text') {
-        pt.delete(e.pointerId);
-        const t = await sheet('Text im Plan', [], { text: 'z. B. neue Wand, Steckdose, Dusche hierhin' });
-        const s = typeof t === 'string' ? t : t?.text?.trim();
-        if (s) { merke(); striche.push({ art: 'text', f: st.farbe, p: [p], text: s }); male(); speichern(); }
-        return;
-      }
-      aktiv = { art: st.werkzeug, f: st.farbe, p: [p, p] };
-      if (st.werkzeug === 'stift') aktiv.p = [p];
-      male();
-    };
+    cv.onpointerdown = (e) => { cv.setPointerCapture(e.pointerId); pt.set(e.pointerId, { x: e.clientX, y: e.clientY }); };
     cv.onpointermove = (e) => {
       const alt = pt.get(e.pointerId); if (!alt) return;
-      if (aktiv && (e.pointerType === 'pen' || pt.size === 1)) {
-        const p = inPlan(e);
-        if (aktiv.art === 'radierer') { const i = naechster(p); if (i >= 0) { merke(); striche.splice(i, 1); male(); speichern(); } return; }
-        if (aktiv.art === 'stift') { const l = aktiv.p[aktiv.p.length - 1]; if (Math.hypot(p[0] - l[0], p[1] - l[1]) * v.s > 2) aktiv.p.push(p); }
-        else aktiv.p[1] = p;
-        male(); return;
-      }
-      const neu = { x: e.clientX, y: e.clientY, typ: alt.typ };
-      const andere = [...pt.entries()].filter(([id, q]) => id !== e.pointerId && q.typ !== 'pen');
-      if (andere.length && e.pointerType !== 'pen') {
+      const neu = { x: e.clientX, y: e.clientY };
+      const andere = [...pt.entries()].filter(([id]) => id !== e.pointerId);
+      if (andere.length) {
         const q = andere[0][1];
         const d0 = Math.hypot(alt.x - q.x, alt.y - q.y), d1 = Math.hypot(neu.x - q.x, neu.y - q.y);
         const b = cv.getBoundingClientRect(), mx = (neu.x + q.x) / 2 - b.left, my = (neu.y + q.y) / 2 - b.top;
         const f = d0 > 0 ? Math.min(2, Math.max(0.5, d1 / d0)) : 1;
         v.ox = mx - (mx - v.ox) * f - (alt.x - neu.x) / 2; v.oy = my - (my - v.oy) * f - (alt.y - neu.y) / 2; v.s *= f;
-      } else if (!st.zeichnen || (stiftGesehen && e.pointerType !== 'pen')) { v.ox += neu.x - alt.x; v.oy += neu.y - alt.y; }
+      } else { v.ox += neu.x - alt.x; v.oy += neu.y - alt.y; }
       pt.set(e.pointerId, neu); male();
     };
-    const hoch = (e) => {
-      pt.delete(e.pointerId);
-      if (aktiv && aktiv.art !== 'radierer') {
-        const p = aktiv.p, l = p.length > 1 ? Math.hypot(p[p.length - 1][0] - p[0][0], p[p.length - 1][1] - p[0][1]) : 0;
-        if (aktiv.art === 'stift' ? p.length > 1 : l * v.s > 6) { merke(); striche.push({ ...aktiv, p: p.map(([x, z]) => [Math.round(x * 1000) / 1000, Math.round(z * 1000) / 1000]) }); speichern(); }
-      }
-      aktiv = null; male();
-    };
-    cv.onpointerup = cv.onpointercancel = hoch;
+    cv.onpointerup = cv.onpointercancel = (e) => pt.delete(e.pointerId);
     cv.onwheel = (e) => { e.preventDefault(); const b = cv.getBoundingClientRect(), mx = e.clientX - b.left, my = e.clientY - b.top, f = e.deltaY < 0 ? 1.12 : 1 / 1.12; v.ox = mx - (mx - v.ox) * f; v.oy = my - (my - v.oy) * f; v.s *= f; male(); };
     cv.ondblclick = () => { v = passend(P, cw, ch); male(); };
 
-    // Knöpfe
     $$('[data-modus]', el).forEach((b) => (b.onclick = async () => {
       st.modus = b.dataset.modus;
       $$('[data-modus]', el).forEach((x) => x.classList.toggle('on', x === b));
       const d3 = st.modus === '3d';
-      cv.hidden = d3; $('.rs-3d', el).hidden = !d3; $('[data-nurplan]', el).hidden = d3; $('[data-zeichnen]', el).hidden = d3;
-      if (d3 && st.zeichnen) $('[data-zeichnen]', el).click();
+      cv.hidden = d3; $('.rs-3d', el).hidden = !d3; $('[data-nurplan]', el).hidden = d3;
       if (d3 && !drei) { try { drei = await modell($('.rs-3d', el), P, scan); drei.moebel(st.moebel); } catch (e) { toast('Das 3D-Modell ging nicht: ' + (e.message || e), 6000); } }
       if (!d3) groesse();
     }));
     $('[data-moebel]', el).onchange = (e) => { st.moebel = e.target.checked; male(); drei?.moebel(st.moebel); };
     $('[data-masse]', el).onchange = (e) => { st.masse = e.target.checked; male(); };
-    $('[data-zeichnen]', el).onclick = (e) => {
-      st.zeichnen = !st.zeichnen;
-      e.currentTarget.textContent = st.zeichnen ? 'Fertig gezeichnet' : 'Reinzeichnen';
-      e.currentTarget.classList.toggle('secondary', !st.zeichnen);
-      $('.rs-werk', el).hidden = !st.zeichnen; el.classList.toggle('zeichnet', st.zeichnen);
-      if (st.zeichnen) toast('Mit Finger oder Stift zeichnen. Mit zwei Fingern verschieben und zoomen.');
-      requestAnimationFrame(groesse);
-    };
-    $$('[data-wz]', el).forEach((b) => (b.onclick = () => { st.werkzeug = b.dataset.wz; $$('[data-wz]', el).forEach((x) => x.classList.toggle('on', x === b)); }));
-    $$('[data-farbe]', el).forEach((b) => (b.onclick = () => { st.farbe = b.dataset.farbe; $$('[data-farbe]', el).forEach((x) => x.classList.toggle('on', x === b)); }));
-    $('[data-zurueck]', el).onclick = () => { if (!verlauf.length) return toast('Nichts mehr rückgängig zu machen.'); striche = JSON.parse(verlauf.pop()); male(); speichern(); };
-    $('[data-pdf]', el).onclick = () => pdf(w, scan, { moebel: st.moebel, masse: st.masse, striche });
-    $('[data-ablegen]', el).onclick = () => ablegen(w, scan, { moebel: st.moebel, masse: st.masse, striche });
     groesse();
+
+    return new Promise((fertig) => {
+      const zu = (r) => { ro.disconnect(); drei?.weg(); el.remove(); fertig(r); };
+      $('[data-x]', el).onclick = () => { if (pruefen && !confirm('Scan verwerfen? Er wird nicht gespeichert.')) return; zu(null); };
+      if (pruefen) {
+        $('[data-neu]', el).onclick = () => zu('neu');
+        $('[data-ablegen]', el).onclick = () => zu('ablegen');
+        return;
+      }
+      const ablegenKnopf = $('[data-ablegen]', el);
+      if (ablegenKnopf) ablegenKnopf.onclick = async () => {
+        ablegenKnopf.disabled = true;
+        try { if (await ausgangAblegen(w, scan)) { zu(null); ansicht(w, scan); } } catch (e) { console.error(e); toast('Ablegen ging nicht: ' + (e.message || e), 6000); }
+        if (ablegenKnopf.isConnected) ablegenKnopf.disabled = false;
+      };
+      $('[data-zeichnen]', el).onclick = async () => {
+        const b = $('[data-zeichnen]', el); b.disabled = true;
+        el.style.display = 'none'; // das Zeichenwerkzeug liegt darunter
+        try { await reinzeichnen(w, scan, { drei: st.modus === '3d', moebel: st.moebel || !P.M.length }); } catch (e) { console.error(e); toast('Zeichnen ging nicht: ' + (e.message || e), 6000); }
+        el.style.display = ''; b.disabled = false;
+      };
+    });
   }
+  /** Gespeicherten Scan ansehen. */
+  async function ansehen(w, scanId) {
+    const scan = (w.vorOrt?.scans || []).find((s) => s.id === scanId);
+    if (scan) await ansicht(w, scan);
+  }
+  /** Direkt nach dem Scan: 'ablegen', 'neu' (nochmal scannen) oder null (verworfen). */
+  const pruefen = (w, scan) => ansicht(w, scan, { pruefen: true });
+
+  /** Reinzeichnen über das gemeinsame Zeichenwerkzeug (zeichnen.js) auf dem abgelegten Original.
+   * Das Original bleibt; die Zeichnung kommt als neues Bild „… (bearbeitet)“ in denselben Ordner und kann in den
+   * Bildern weitergezeichnet werden (b.zeichnung = { von, striche }). */
+  async function reinzeichnen(w, scan, { drei = false, moebel = true } = {}) {
+    if (!window.Zeichnen) return toast('Das Zeichenwerkzeug fehlt.');
+    if (!scan.abgelegt && !(await ausgangAblegen(w, scan))) return;
+    const ab = scan.abgelegt;
+    const id = drei ? (moebel ? ab.dreiMit : ab.dreiOhne) || ab.dreiMit || ab.dreiOhne : (moebel ? ab.grundMit : ab.grundOhne) || ab.grundMit || ab.grundOhne;
+    let grund = id && (await kvGet('bild:' + id));
+    if (!grund) { // Original wurde in den Bildern gelöscht: neu erzeugen, aber nicht ablegen
+      grund = drei ? await dreiBild(scan, moebel) : grundrissBild(scan, moebel).data;
+    }
+    const titel = `${drei ? '3D-Modell' : 'Grundriss'} ${scan.name}${P_hatMoebel(scan) ? (moebel ? ' mit Möbeln' : ' ohne Möbel') : ''}`;
+    const k = window.Kunden?.byId(w.kundeId);
+    const r = await Zeichnen.oeffnen(grund, { titel: `${titel}: reinzeichnen`, striche: [], masstab: drei ? 0 : ab.masstab || 0, onSave: async (striche, bild) => {
+      await Bilder.ablegen(k.id, w.objektId, bild, ab.ordner || ordnerName(), w.id, { text: `${titel} (bearbeitet)`, zeichnung: { von: id, striche, ...(drei ? {} : { masstab: ab.masstab || 0 }) } });
+    } });
+    if (r) toast(`Neue Fassung „${titel} (bearbeitet)“ abgelegt, das Original bleibt`, 4000);
+  }
+  const P_hatMoebel = (scan) => (scan.geo?.objekte || []).length > 0;
 
   // ---------- 3D-Modell (three.js, wird erst bei Bedarf geladen) ----------
   const laden = (src) => new Promise((ok, f) => { const s = document.createElement('script'); s.src = src; s.onload = ok; s.onerror = () => f(new Error('Datei fehlt: ' + src)); document.head.appendChild(s); });
@@ -392,14 +383,14 @@ window.Raumscan = (() => {
     if (!window.THREE) await laden('vendor/three/three.min.js');
     if (!THREE.OrbitControls) await laden('vendor/three/OrbitControls.js');
   }
-  async function modell(box, P, scan) {
+  async function modell(box, P, scan, opt = {}) {
     await dreiLaden();
     const T = THREE;
     const szene = new T.Scene(); szene.background = new T.Color('#f6f4ef');
     const w = box.clientWidth || 300, h = box.clientHeight || 300;
     const kamera = new T.PerspectiveCamera(50, w / h, 0.05, 200);
-    const r = new T.WebGLRenderer({ antialias: true });
-    r.setPixelRatio(Math.min(2, devicePixelRatio || 1)); r.setSize(w, h);
+    const r = new T.WebGLRenderer({ antialias: true, preserveDrawingBuffer: !!opt.bild });
+    r.setPixelRatio(opt.bild ? 1 : Math.min(2, devicePixelRatio || 1)); r.setSize(w, h);
     box.appendChild(r.domElement);
     szene.add(new T.AmbientLight(0xffffff, 0.75));
     const licht = new T.DirectionalLight(0xffffff, 0.55); licht.position.set(3, 8, 5); szene.add(licht);
@@ -447,7 +438,8 @@ window.Raumscan = (() => {
     for (const o of P.M) kasten(o.b, o.h, o.t, ['toilet', 'sink', 'bathtub', 'refrigerator', 'washerDryer', 'dishwasher', 'oven', 'stove'].includes(o.k) ? matWeiss : matM, o.x, (o.u || 0) + o.h / 2, o.z, o.a, true, moebel);
     // Kamera schräg von oben auf die Raummitte
     const [mx, mz] = P.mitte, gr = Math.max(P.breite, P.tiefe, 2);
-    kamera.position.set(mx + gr * 0.55, H + gr * 1.7, mz + gr * 0.95);
+    const nah = opt.bild ? 0.85 : 1; // im abgelegten Bild füllt der Raum das Bild besser
+    kamera.position.set(mx + gr * 0.55 * nah, H * 0.35 + (H * 0.65 + gr * 1.7) * nah, mz + gr * 0.95 * nah);
     const ctl = new T.OrbitControls(kamera, r.domElement);
     ctl.target.set(mx, H * 0.35, mz); ctl.maxPolarAngle = Math.PI * 0.49; ctl.minDistance = 0.5; ctl.maxDistance = 40; ctl.enableDamping = false;
     const male = () => r.render(szene, kamera);
@@ -456,31 +448,79 @@ window.Raumscan = (() => {
     ro.observe(box);
     return {
       moebel(an) { moebel.visible = an; male(); },
+      bild() { male(); return r.domElement.toDataURL('image/jpeg', 0.9); },
       weg() { ro.disconnect(); ctl.dispose(); r.dispose(); r.forceContextLoss?.(); },
     };
   }
 
   // ---------- Beim Objekt ablegen ----------
-  /** Grundriss als Bild in den Bilder-Ordner „Pläne“ des Objekts (Vorgabe ordnerPlaene). */
-  async function ablegen(w, scan, opt = {}, still = false) {
-    const k = window.Kunden?.byId(w.kundeId);
-    if (!k) { if (!still) toast('Bitte zuerst einen Kunden zuordnen.'); return false; }
+  const ordnerName = () => String(vorgabe('ordnerPlaene') || 'Pläne').trim() || 'Pläne';
+  const dateiName = (s) => String(s).replace(/[^\wäöüÄÖÜß-]+/g, '_');
+  /** Grundriss als JPEG mit Überschrift. masstab = Bildpunkte je Meter (für das Werkzeug „Maß“ beim Reinzeichnen). */
+  function grundrissBild(scan, moebel, titel) {
     const P = plan(scan);
     const s = Math.min(2400 / Math.max(P.breite, 0.5), 1700 / Math.max(P.tiefe, 0.5)), r = 90;
     const cv = document.createElement('canvas'); cv.width = Math.round(P.breite * s + 2 * r); cv.height = Math.round(P.tiefe * s + 2 * r + 60);
     const ctx = cv.getContext('2d'); ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, cv.width, cv.height);
     ctx.fillStyle = NAVY; ctx.font = '700 34px -apple-system, Helvetica, Arial, sans-serif'; ctx.textAlign = 'left'; ctx.textBaseline = 'top';
-    ctx.fillText(`Grundriss ${scan.name}`, 24, 20);
-    zeichne(ctx, P, { s, ox: r, oy: r + 60 }, { moebel: opt.moebel !== false, masse: opt.masse !== false, striche: opt.striche || scan.zeichnung, k: 2 });
-    const ordner = String(vorgabe('ordnerPlaene') || 'Pläne').trim() || 'Pläne';
-    await Bilder.ablegen(k.id, w.objektId, cv.toDataURL('image/jpeg', 0.9), ordner, w.id);
-    if (!still) toast(`Grundriss im Ordner „${ordner}“ beim Objekt abgelegt`);
+    ctx.fillText(titel || `Grundriss ${scan.name}`, 24, 20);
+    zeichne(ctx, P, { s, ox: r, oy: r + 60 }, { moebel, masse: true, k: 2 });
+    return { data: cv.toDataURL('image/jpeg', 0.9), masstab: s };
+  }
+  /** 3D-Modell als Bild, schräg von oben (gleiche Ansicht wie beim Öffnen). */
+  async function dreiBild(scan, moebel) {
+    const box = document.createElement('div');
+    box.style.cssText = 'position:fixed;left:-5000px;top:0;width:1600px;height:1200px';
+    document.body.appendChild(box);
+    try {
+      const m = await modell(box, plan(scan), scan, { bild: true });
+      m.moebel(moebel);
+      const data = m.bild();
+      m.weg();
+      return data;
+    } finally { box.remove(); }
+  }
+  /** Die Ausgangsdateien beim Objekt ablegen: Grundriss und 3D-Modell, je mit und ohne Möbel (ohne Möbel im Raum nur je eins),
+   * im Bilder-Ordner „Pläne“ (Vorgabe ordnerPlaene), dazu der Grundriss als PDF in den Dokumenten des Projekts.
+   * Die Originale werden nie verändert; Reinzeichnen legt eine neue Fassung daneben. Merkt sich die Bild-IDs in scan.abgelegt. */
+  async function ausgangAblegen(w, scan, still = false) {
+    const k = window.Kunden?.byId(w.kundeId);
+    if (!k) { if (!still) toast('Bitte zuerst einen Kunden zuordnen.'); return false; }
+    const P = plan(scan), mitM = P.M.length > 0, ordner = ordnerName();
+    const ab = { t: Date.now(), ordner };
+    const dazu = async (feld, titel, data) => {
+      const bildId = uid();
+      await Bilder.ablegen(k.id, w.objektId, data, ordner, w.id, { text: titel, bildId, masstab: feld.startsWith('grund') ? ab.masstab : 0 });
+      ab[feld] = bildId;
+    };
+    const varianten = mitM ? [[true, ' mit Möbeln', 'Mit'], [false, ' ohne Möbel', 'Ohne']] : [[false, '', 'Ohne']];
+    for (const [m, zusatz, f] of varianten) {
+      const titel = `Grundriss ${scan.name}${zusatz}`, g = grundrissBild(scan, m, titel);
+      ab.masstab = g.masstab;
+      await dazu('grund' + f, titel, g.data);
+    }
+    let drei = true;
+    for (const [m, zusatz, f] of varianten) {
+      try { await dazu('drei' + f, `3D-Modell ${scan.name}${zusatz}`, await dreiBild(scan, m)); } catch (e) { console.warn('3D-Bild', e); drei = false; }
+    }
+    if (!mitM) { ab.grundMit = ab.grundOhne; ab.dreiMit = ab.dreiOhne; }
+    // Grundriss als PDF (eine Seite je Variante) in die Dokumente des Projekts
+    try {
+      const doc = await pdfDoc(w, scan, varianten.map(([m]) => m));
+      const name = `Grundriss_${dateiName(scan.name)}.pdf`, key = 'wdok:' + w.id + ':' + name;
+      await kvSet(key, doc.output('datauristring'));
+      w.dokumente = [...(w.dokumente || []).filter((d) => d.key !== key), { key, name, t: Date.now(), art: 'grundriss' }];
+      ab.pdf = key;
+    } catch (e) { console.warn('Grundriss-PDF', e); }
+    scan.abgelegt = ab;
+    await window.Projekt.save(w);
+    if (!still) toast(`${scan.name}: ${varianten.length * (drei ? 2 : 1)} Bilder im Ordner „${ordner}“ beim Objekt${ab.pdf ? ', PDF bei den Dokumenten' : ''}`, 4500);
     return true;
   }
 
   // ---------- PDF ----------
-  /** Grundriss als PDF (A4 quer) in einem üblichen Maßstab, mit Kopf, Infozeile und Hinweis. */
-  async function pdf(w, scan, opt) {
+  /** Grundriss als PDF (A4 quer) in einem üblichen Maßstab, mit Kopf, Infozeile und Hinweis; eine Seite je Möbel-Variante. */
+  async function pdfDoc(w, scan, varianten = [true]) {
     const { jsPDF } = window.jspdf;
     const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
     const P = plan(scan), kz = kennzahlen(scan, P);
@@ -491,26 +531,29 @@ window.Raumscan = (() => {
     const massstab = [20, 25, 50, 75, 100, 150, 200, 250, 500].find((n) => n >= raum * 1.15) || Math.ceil(raum * 1.15);
     const mmJeM = 1000 / massstab;
     const aufl = 8; // Pixel je mm
-    const cv = document.createElement('canvas'); cv.width = fw * aufl; cv.height = fh * aufl;
-    const ctx = cv.getContext('2d'); ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, cv.width, cv.height);
-    const s = mmJeM * aufl;
-    zeichne(ctx, P, { s, ox: (cv.width - P.breite * s) / 2, oy: (cv.height - P.tiefe * s) / 2 }, { moebel: opt.moebel, masse: opt.masse, striche: opt.striche, k: aufl * 0.3 });
     const S = state.settings || {};
-    if (S.logo) { try { await addFit(doc, S.logo, W - M - 40, 8, 40, 14, /^data:image\/png/.test(S.logo) ? 'PNG' : 'JPEG'); } catch {} }
-    doc.setTextColor(30, 53, 80); doc.setFont('helvetica', 'bold'); doc.setFontSize(16);
-    doc.text(`Grundriss ${scan.name}`, M, 15);
-    doc.setFont('helvetica', 'normal'); doc.setFontSize(9.5); doc.setTextColor(90);
-    doc.text([w.customer, w.address].filter(Boolean).join(' · ') || '', M, 21);
-    doc.addImage(cv.toDataURL('image/png'), 'PNG', M, kopf, fw, fh, undefined, 'FAST');
-    // Maßstabsleiste 1 m
-    const y = H - fuss + 2;
-    doc.setDrawColor(30, 53, 80); doc.setLineWidth(0.5); doc.line(M, y, M + mmJeM, y); doc.line(M, y - 1.5, M, y + 1.5); doc.line(M + mmJeM, y - 1.5, M + mmJeM, y + 1.5);
-    doc.setFontSize(8.5); doc.setTextColor(30, 53, 80); doc.text(`1 m · Maßstab 1:${massstab} (A4)`, M + mmJeM + 3, y + 1);
-    doc.setTextColor(90);
-    doc.text([`${zahl(scan.laenge)} × ${zahl(scan.breite)} m`, kz.boden > 0 && `Boden ${zahl(kz.boden)} m²`, P.hoehe > 0 && `Höhe ${zahl(P.hoehe)} m`, kz.wand > 0 && `Wände ${zahl(kz.wand)} m² ohne Türen und Fenster`].filter(Boolean).join('   ·   '), M, y + 7);
-    doc.setFontSize(8); doc.text(`${vorgabe('grundrissHinweis')}  Stand ${new Date(scan.t || Date.now()).toLocaleDateString('de-DE')}`, M, y + 12);
-    await shareDoc(doc, `Grundriss_${String(scan.name).replace(/[^\wäöüÄÖÜß-]+/g, '_')}.pdf`);
+    for (const [i, moebel] of varianten.entries()) {
+      if (i) doc.addPage();
+      const cv = document.createElement('canvas'); cv.width = fw * aufl; cv.height = fh * aufl;
+      const ctx = cv.getContext('2d'); ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, cv.width, cv.height);
+      const s = mmJeM * aufl;
+      zeichne(ctx, P, { s, ox: (cv.width - P.breite * s) / 2, oy: (cv.height - P.tiefe * s) / 2 }, { moebel, masse: true, k: aufl * 0.3 });
+      if (S.logo) { try { await addFit(doc, S.logo, W - M - 40, 8, 40, 14, /^data:image\/png/.test(S.logo) ? 'PNG' : 'JPEG'); } catch {} }
+      doc.setTextColor(30, 53, 80); doc.setFont('helvetica', 'bold'); doc.setFontSize(16);
+      doc.text(`Grundriss ${scan.name}${P.M.length ? (moebel ? ' mit Möbeln' : ' ohne Möbel') : ''}`, M, 15);
+      doc.setFont('helvetica', 'normal'); doc.setFontSize(9.5); doc.setTextColor(90);
+      doc.text([w.customer, w.address].filter(Boolean).join(' · ') || '', M, 21);
+      doc.addImage(cv.toDataURL('image/png'), 'PNG', M, kopf, fw, fh, undefined, 'FAST');
+      // Maßstabsleiste 1 m
+      const y = H - fuss + 2;
+      doc.setDrawColor(30, 53, 80); doc.setLineWidth(0.5); doc.line(M, y, M + mmJeM, y); doc.line(M, y - 1.5, M, y + 1.5); doc.line(M + mmJeM, y - 1.5, M + mmJeM, y + 1.5);
+      doc.setFontSize(8.5); doc.setTextColor(30, 53, 80); doc.text(`1 m · Maßstab 1:${massstab} (A4)`, M + mmJeM + 3, y + 1);
+      doc.setTextColor(90);
+      doc.text([`${zahl(scan.laenge)} × ${zahl(scan.breite)} m`, kz.boden > 0 && `Boden ${zahl(kz.boden)} m²`, P.hoehe > 0 && `Höhe ${zahl(P.hoehe)} m`, kz.wand > 0 && `Wände ${zahl(kz.wand)} m² ohne Türen und Fenster`].filter(Boolean).join('   ·   '), M, y + 7);
+      doc.setFontSize(8); doc.text(`${vorgabe('grundrissHinweis')}  Stand ${new Date(scan.t || Date.now()).toLocaleDateString('de-DE')}`, M, y + 12);
+    }
+    return doc;
   }
 
-  return { ansehen, vorschau, plan, typFuer, erkannt, raumFuer, offene, sheetEintraege, scanVon, masseIn, pdf, ablegen, wohnungAus, MOEBEL };
+  return { ansehen, pruefen, vorschau, plan, typFuer, erkannt, raumFuer, offene, sheetEintraege, scanVon, masseIn, ausgangAblegen, wohnungAus, MOEBEL };
 })();

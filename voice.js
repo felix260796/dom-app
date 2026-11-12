@@ -554,8 +554,9 @@ async function planAufnehmen(w) {
   toast(`Plan im Ordner „${ordner}“ gespeichert`);
   voiceRefresh(w.id);
 }
-/** LiDAR-Raumscan vor Ort: ein Raum oder die ganze Wohnung (Raum für Raum). Merkt den ganzen Raum beim Projekt
- * (Grundriss, 3D), legt fehlende Räume im Projekt an, schreibt die Maße ins Aufmaß und legt den Grundriss beim Objekt ab. */
+/** LiDAR-Raumscan vor Ort: ein Raum oder die ganze Wohnung (Raum für Raum). Nach dem Scan erst prüfen: „Nochmal scannen“
+ * oder „Ablegen“. Ablegen merkt den Scan beim Projekt (Grundriss, 3D), fragt die Raumnamen, legt fehlende Räume im Projekt an,
+ * schreibt die Maße ins Aufmaß und legt die Ausgangsdateien beim Objekt ab (Raumscan.ausgangAblegen). */
 async function raumScan(w, list) {
   let art = 'raum';
   if (Geraet.wohnungMoeglich?.()) {
@@ -564,26 +565,32 @@ async function raumScan(w, list) {
       { label: 'Ganze Wohnung', sub: 'Raum für Raum, am Ende ein gemeinsamer Grundriss', icon: icon('home'), value: 'wohnung' }]);
     if (!art) return;
   }
-  let m;
-  try { m = await Geraet.raumScannen({ wohnung: art === 'wohnung' }); } catch (e) { return toast('' + (e.message || e), 6000); }
-  if (!m) return;
-  const ergebnisse = m.wohnung ? m.raeume || [] : [m];
-  if (!ergebnisse.length) return;
+  const neuerScan = (x) => ({ id: uid(), name: '', t: Date.now(), laenge: x.laenge, breite: x.breite, hoehe: x.hoehe, flaeche: x.flaeche, tueren: x.tueren || [], fenster: x.fenster || [], geo: x.geo || null, art: x.art || '' });
+  let m, scans, ganz;
+  for (;;) {
+    try { m = await Geraet.raumScannen({ wohnung: art === 'wohnung' }); } catch (e) { return toast('' + (e.message || e), 6000); }
+    if (!m) return;
+    const ergebnisse = m.wohnung ? m.raeume || [] : [m];
+    if (!ergebnisse.length) return;
+    scans = ergebnisse.map(neuerScan);
+    scans.forEach((s, i) => (s.name = scans.length > 1 ? `Raum ${i + 1}` : roomType(Raumscan.typFuer(s)).name || 'Raum'));
+    ganz = scans.length > 1 ? Raumscan.wohnungAus(scans, m.gesamt, 'Ganze Wohnung') : null;
+    const wahl = await Raumscan.pruefen(w, ganz || scans[0]);
+    if (wahl === 'ablegen') break;
+    if (wahl !== 'neu') return;
+  }
   // Namen je Raum: Vorschlag aus Raumart und erkannten Möbeln, dazu die Räume des Projekts
-  const scans = [];
-  for (const [i, x] of ergebnisse.entries()) {
-    const scan = { id: uid(), name: '', t: Date.now(), laenge: x.laenge, breite: x.breite, hoehe: x.hoehe, flaeche: x.flaeche, tueren: x.tueren || [], fenster: x.fenster || [], geo: x.geo || null, art: x.art || '' };
-    const typ = Raumscan.typFuer(scan), vorschlag = roomType(typ).name, erk = Raumscan.erkannt(scan);
-    const vergeben = scans.map((y) => y.name.toLowerCase());
+  for (const [i, scan] of scans.entries()) {
+    const typ = Raumscan.typFuer({ ...scan, name: '' }), vorschlag = roomType(typ).name, erk = Raumscan.erkannt(scan);
+    const vergeben = scans.slice(0, i).map((y) => y.name.toLowerCase());
     const namen = [...new Set(list.map((r) => r.room || roomType(r.roomType).name))].filter((n) => !vergeben.includes(n.toLowerCase()));
     const items = namen.map((n) => ({ label: n, sub: 'Raum im Projekt', value: n }));
     if (typ !== 'sonstiges' && !namen.some((n) => n.toLowerCase() === vorschlag.toLowerCase())) items.unshift({ label: vorschlag, sub: erk ? `Erkannt: ${erk}` : 'Vorschlag', value: vorschlag });
-    const groesse = `${(+x.laenge || 0).toLocaleString('de-DE', { maximumFractionDigits: 2 })} × ${(+x.breite || 0).toLocaleString('de-DE', { maximumFractionDigits: 2 })} m`;
-    const v = await sheet(ergebnisse.length > 1 ? `Raum ${i + 1} von ${ergebnisse.length} (${groesse}): welcher Raum?` : 'Welcher Raum war das?', items, { text: 'Name, z. B. Bad, Büro, Flur' });
-    scan.name = (typeof v === 'string' ? v : v?.text?.trim()) || `Raum ${(w.vorOrt?.scans?.length || 0) + scans.length + 1}`;
-    scans.push(scan);
+    const groesse = `${(+scan.laenge || 0).toLocaleString('de-DE', { maximumFractionDigits: 2 })} × ${(+scan.breite || 0).toLocaleString('de-DE', { maximumFractionDigits: 2 })} m`;
+    const v = await sheet(scans.length > 1 ? `Raum ${i + 1} von ${scans.length} (${groesse}): welcher Raum?` : 'Welcher Raum war das?', items, { text: 'Name, z. B. Bad, Büro, Flur' });
+    scan.name = (typeof v === 'string' ? v : v?.text?.trim()) || `Raum ${(w.vorOrt?.scans?.length || 0) + i + 1}`;
   }
-  const ganz = scans.length > 1 ? Raumscan.wohnungAus(scans, m.gesamt, 'Ganze Wohnung') : null;
+  if (ganz) ganz = Raumscan.wohnungAus(scans, m.gesamt, 'Ganze Wohnung');
   w.vorOrt = { ...(w.vorOrt || {}), scans: [...(w.vorOrt?.scans || []), ...scans, ...(ganz ? [ganz] : [])] };
   if (w.isNew) delete w.isNew;
   // Zu den Räumen im Projekt: vorhandene nehmen (Maße nur, wenn das Aufmaß noch leer ist), fehlende nach einer Frage anlegen
@@ -600,11 +607,12 @@ async function raumScan(w, list) {
   if (fehlen.length && vorgabe('raumscanRaumAnlegen') !== 'nein' && confirm(`${fehlen.length === 1 ? `Raum ${liste}` : `Die Räume ${liste}`} im Projekt anlegen? Die Maße stehen dann gleich im Aufmaß.`)) {
     for (const scan of fehlen) await window.Projekt._intern.raumAusScan(w, scan);
   }
-  // Grundriss beim Objekt ablegen (Bilder-Ordner „Pläne“)
-  try { for (const x of ganz ? [ganz] : scans) await Raumscan.ablegen(w, x, {}, true); } catch (e) { console.warn('Grundriss ablegen', e); }
-  toast(ganz ? `${scans.length} Räume gescannt, Grundriss beim Objekt abgelegt` : `Raumscan „${scans[0].name}“ gespeichert`);
+  // Ausgangsdateien beim Objekt ablegen (Grundriss und 3D, je mit und ohne Möbel, dazu PDF)
+  toast('Wird abgelegt …', 2500);
+  let ok = false;
+  try { ok = await Raumscan.ausgangAblegen(w, ganz || scans[0]); } catch (e) { console.warn('Raumscan ablegen', e); toast('Ablegen ging nicht: ' + (e.message || e), 6000); }
+  if (!ok) toast(ganz ? `${scans.length} Räume gescannt und gespeichert` : `Raumscan „${scans[0].name}“ gespeichert`);
   if (state.wohnung?.id === w.id && !state.project) await window.Projekt.view(); else voiceRefresh(w.id);
-  Raumscan.ansehen(w, (ganz || scans[0]).id);
 }
 
 /** Karte in der Projektübersicht: Sammelstelle vor Ort (Gespräch, Fotos, Pläne, Raumscan), Ergebnis, Zusammenfassung. */
@@ -628,7 +636,7 @@ window.Gespraech = {
           <button type="button" class="vo-b" id="vPlan">${icon('file')}<b>Pläne</b><span>${w.vorOrt?.plaene ? `${w.vorOrt.plaene} gescannt` : 'scannen'}</span></button>
           ${window.Geraet?.kann('lidar') ? `<button type="button" class="vo-b" id="vScan">${icon('ruler')}<b>Raumscan</b><span>${scans.length ? `${scans.length} ${scans.length === 1 ? 'Raum' : 'Räume'}` : 'LiDAR'}</span></button>` : ''}
         </div>
-        ${scans.length ? `<div class="vo-scans">${scans.map((x) => `<div class="vo-scan"><button type="button" class="vo-scan-o" data-scanauf="${x.id}"><canvas class="vo-scan-c" data-scanbild="${x.id}"></canvas><span><b>${esc(x.name)}</b> ${zahl(x.laenge)} × ${zahl(x.breite)} m${x.hoehe > 0 ? `, ${zahl(x.hoehe)} m hoch` : ''}${x.flaeche > 0 ? ` · ${zahl(x.flaeche)} m²` : ''}<small>${x.ganz ? `Ganze Wohnung, ${(x.raeume || []).length} Räume · ` : ''}Grundriss, 3D-Modell, reinzeichnen</small></span></button><button type="button" class="icon-btn" data-scandel="${x.id}" aria-label="Scan löschen">${icon('x')}</button></div>`).join('')}</div>` : ''}
+        ${scans.length ? `<div class="vo-scans">${scans.map((x) => `<div class="vo-scan"><button type="button" class="vo-scan-o" data-scanauf="${x.id}"><canvas class="vo-scan-c" data-scanbild="${x.id}"></canvas><span><b>${esc(x.name)}</b> ${zahl(x.laenge)} × ${zahl(x.breite)} m${x.hoehe > 0 ? `, ${zahl(x.hoehe)} m hoch` : ''}${x.flaeche > 0 ? ` · ${zahl(x.flaeche)} m²` : ''}<small>${x.ganz ? `Ganze Wohnung, ${(x.raeume || []).length} Räume · ` : ''}${x.abgelegt ? 'Grundriss und 3D beim Objekt abgelegt' : 'Grundriss, 3D-Modell'}</small></span></button><button type="button" class="icon-btn" data-scandel="${x.id}" aria-label="Scan löschen">${icon('x')}</button></div>`).join('')}</div>` : ''}
 
         <h3 class="vo-h">${icon('mic')} Gespräch</h3>`}
         <label style="margin-top:0">Was für ein Gespräch?</label>
