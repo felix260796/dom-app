@@ -153,6 +153,7 @@ const VORGABEN = {
       { k: 'gespraechZusammenfassung', l: 'Zusammenfassung und Aufgaben nach jeder Aufnahme automatisch erstellen', t: 'janein', d: 'ja', h: 'Steht danach als Text im Projekt unter „Gespräch vor Ort“, zum Ausklappen.' },
       { k: 'ordnerFotos', l: 'Bilder-Ordner für „Fotos machen“', t: 'zeile', d: 'Fotos ({datum})', h: 'In diesen Ordner kommen die Fotos, wenn du unter „Bilder & Dokumentation“ auf „Fotos machen“ tippst. {datum} = heutiges Datum, so entsteht je Tag ein Ordner.' },
       { k: 'bilderPdfJeSeite', l: 'PDF aus Bildern: wie viele Bilder je Seite (1, 2, 4 oder 6)', t: 'zahl', d: 2 },
+      { k: 'ordnerVisitenkarte', l: 'Bilder-Ordner für fotografierte Visitenkarten', t: 'zeile', d: 'Dokumente', h: 'Die Kamera oben erkennt Visitenkarten und legt Kunde oder Partner an. Beim Kunden kommt das Foto der Karte in diesen Ordner unter „Bilder & Dokumentation“, beim Partner zu seinen Dokumenten.' },
       { k: 'ordnerSkizzen', l: 'Bilder-Ordner für freie Skizzen', t: 'zeile', d: 'Skizzen', h: 'Hier landet, was du unter „Bilder & Dokumentation“ mit „Skizze zeichnen“ zeichnest.' },
       { k: 'zeichnenFarben', l: 'Zeichnen: Farben (eine Zeile je Farbe)', t: 'liste', d: ['Rot', 'Gelb', 'Blau', 'Schwarz', 'Weiß'], h: 'Möglich: Rot, Orange, Gelb, Grün, Blau, Schwarz, Weiß. Die erste Farbe ist am Anfang gewählt.' },
       { k: 'zeichnenStaerke', l: 'Zeichnen: Strichstärke (1 dünn bis 10 dick)', t: 'zahl', d: 4 },

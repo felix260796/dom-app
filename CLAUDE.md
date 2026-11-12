@@ -80,6 +80,10 @@ Büro im Angebotsablauf legt das Angebot in fünf Schritten an (`SCHRITTE`, `sch
 Ein Angebot geht ohne Vor-Ort-Termin: Kein Schritt setzt Aufnahme, Plan oder Scan voraus. Link „Nicht vor Ort gewesen?“ im Reiter Vor Ort. Der Kopf (Nummer, Betreff, Anrede, Ansprechpartner) liegt in `w.angebotKopf`, solange es noch keinen Raum gibt, und wird über `kopfAnwenden` in die Räume übernommen.
 „Angebotsentwurf erstellen“ heißt jetzt „Positionen vorschlagen lassen“ (Felix verstand darunter „Angebot anlegen“). Darüber steht „Was soll gemacht werden?“ (`#voKurz`, gleiches Feld wie die Notiz vor Ort `w.vorOrt.notiz`), damit die KI auch aus der Erinnerung arbeiten kann. Nach „Neu“ bleibt man in Schritt 2 und springt nicht mehr in die Positionen.
 
+## Neuerungen aus Version 96 (Visitenkarte)
+
+Visitenkarte (`kamera.js`): Das Foto wird immer abgelegt, beim Kunden über `Bilder.ablegen` im Ordner aus Vorgabe `ordnerVisitenkarte`, beim Partner als Dokument (`karteZuPartner`, `pdok:<id>`). `schonDa(v)` findet bestehende Partner und Kunden über Telefon/Mobil (ohne Vorwahl 0/+49), E-Mail (auch `weitere`, `hv`) oder genauen Namen ohne Rechtsform; das Auswahlfenster heißt dann „Schon angelegt: …“.
+
 ## Bereiche
 
 | Bereich | Dateien | Inhalt |
