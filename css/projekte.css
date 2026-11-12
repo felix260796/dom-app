@@ -273,3 +273,14 @@ details.bs .tot span:last-child { color: var(--muted); }
 .bs-uz small { flex: 0 0 112px; color: var(--muted); font-size: 12.5px; }
 .bs-uz span { flex: 1; min-width: 0; font-size: 14.5px; }
 .bs-uz.fehlt span { color: #c0392b; font-weight: 600; }
+
+/* ---------- Projekt nach Zusage: Jetzt dran, Ansprechpartner, Leistungen je Raum ---------- */
+.pj-jetzt { border-left: 4px solid var(--brass); display: flex; flex-direction: column; gap: 2px; }
+.pj-jetzt small { color: var(--muted); font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: .03em; }
+.pj-jetzt b { font-size: 17px; }
+.pj-jetzt span { color: var(--muted); font-size: 14px; }
+.pj-jetzt .btn { margin-top: 10px; }
+.pj-anspr { display: flex; align-items: center; gap: 8px; margin: 8px 0 0; color: var(--muted); font-size: 14px; }
+.pj-anspr svg.i { width: 18px; height: 18px; }
+.bf-raum { font-weight: 700; font-size: 14px; color: var(--navy); margin: 12px 0 4px; padding-bottom: 4px; border-bottom: 1px solid var(--line, #e3e6ea); }
+.bf-raum:first-child { margin-top: 0; }

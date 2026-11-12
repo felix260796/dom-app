@@ -177,29 +177,17 @@ window.Finanzen = (() => {
       ${ab ? `<div class="card aw"><b class="aw-h">Abgesagte Angebote</b>${gruende.length ? balken(gruende, ab) : ''}<div class="aw-abl">${abListe}</div></div>` : ''}`;
   }
 
-  // ---------- Eigene Seite (Menü › Auswertung) ----------
-  async function auswertungView() {
-    const heuer = String(new Date().getFullYear());
-    awJahr ||= heuer;
-    header('Auswertung', awJahr === 'alle' ? 'Gesamter Zeitraum' : awJahr);
-    const idx = await projectIndex();
-    await Promise.all([laden(), Rechnung.laden()]);
-    const daten = (await Promise.all(idx.map(async (x) => { const w = await kvGet('wohnung:' + x.id); return w ? { x, w, k: await kalkulation(w) } : null; }))).filter(Boolean);
-    if (state.tab !== 'auswertung') return;
-    // Jahre, in denen es etwas gibt (Projekte oder Rechnungen), dazu „Alles“
-    const jahre = [...new Set([heuer, ...daten.map((e) => String(new Date(e.w.created || Date.now()).getFullYear())), ...Rechnung.liste().map((r) => (r.datum || '').slice(0, 4)).filter(Boolean)])].sort().reverse().slice(0, 4);
-    main().innerHTML = `<div class="seg2 full aw-jahr" style="grid-template-columns:repeat(${jahre.length + 1},1fr)">${[...jahre.map((j) => [j, j]), ['alle', 'Alles']].map(([id, n]) => `<button data-awj="${id}" class="${awJahr === id ? 'on' : ''}">${n}</button>`).join('')}</div>`
-      + auswertung(daten, Rechnung.liste(), awJahr === 'alle' ? '' : awJahr)
-      + `<p class="hint">Angebote zählen nach dem Jahr, in dem sie angelegt wurden, Umsatz nach Rechnungsdatum, Zahlungseingang nach Zahltag. Die Werte der Angebote sind die Netto-Summen der Positionen. Die Marge kommt aus der Kalkulation je Projekt (Angebot gegen Eingangsrechnungen).</p>`;
-    $$('[data-awj]').forEach((b) => (b.onclick = () => { awJahr = b.dataset.awj; auswertungView(); }));
-    $$('[data-awab]').forEach((b) => (b.onclick = () => window.Projekt.oeffnen(b.dataset.awab)));
+  // ---------- Menü › Auswertung: führt in den Reiter Rechnungen, Bereich Auswertung (eine Seite, nicht doppelt) ----------
+  function auswertungView() {
+    fSeg = 'kalk'; fQ = '';
+    switchTab('rechnungen');
   }
 
   // ---------- Übersicht ----------
   async function view() {
     state.beleg = null;
     const hier = () => state.tab === 'rechnungen' && !state.kalender;
-    header('Rechnungen', 'An Kunden, Eingang, Kalkulation');
+    header('Rechnungen', 'An Kunden, Eingang, Auswertung');
     const idx = await projectIndex(); window.__fIdx = idx;
     await Promise.all([laden(), Rechnung.laden()]);
     if (!hier()) return;
@@ -219,9 +207,12 @@ window.Finanzen = (() => {
         <span class="pc-t"><b>${esc(kName(x) || 'Ohne Namen')}</b><span class="muted">${esc([x.titel || x.room, x.nr && 'Nr. ' + x.nr].filter(Boolean).join(' · '))}</span>
           <span class="ang-sum">Fertig, Schlussrechnung schreiben</span></span>
         ${icon('chevron', 'pc-chev')}</button>`;
-    // Kalkulation: Projekte im Auftrag oder danach, mit Angebot oder Kosten
-    const kalk = fSeg === 'kalk' ? await Promise.all(idx.filter((x) => Projekt.zugesagt(x.status)).map(async (x) => { const w = await kvGet('wohnung:' + x.id); return w ? { x, k: await kalkulation(w) } : null; })) : [];
-    const kalkShown = kalk.filter((e) => e && (e.k.soll.netto || e.k.ist.netto));
+    // Auswertung: oben Zahlen fürs Jahr, darunter Kalkulation je Projekt (zugesagte Projekte mit Angebot oder Kosten)
+    const heuer = String(new Date().getFullYear());
+    awJahr ||= heuer;
+    const daten = fSeg === 'kalk' ? (await Promise.all(idx.map(async (x) => { const w = await kvGet('wohnung:' + x.id); return w ? { x, w, k: await kalkulation(w) } : null; }))).filter(Boolean) : [];
+    const kalkShown = daten.filter((e) => Projekt.zugesagt(e.x.status) && (e.k.soll.netto || e.k.ist.netto));
+    const jahre = [...new Set([heuer, ...daten.map((e) => String(new Date(e.w.created || Date.now()).getFullYear())), ...aus.map((r) => (r.datum || '').slice(0, 4)).filter(Boolean)])].sort().reverse().slice(0, 4);
     if (!hier()) return;
 
     const liste_ = (q) => {
@@ -245,13 +236,17 @@ window.Finanzen = (() => {
         const l = (fAlle ? ein : einOffen).map((b) => belegZeile(b)).join('');
         return `${ein.length ? filter : ''}<div class="plist">${l || `<p class="hint">${ein.length ? 'Alles bezahlt.' : 'Rechnungen von Subunternehmern und Lieferanten. Foto genügt, die KI liest Betrag, Datum und Absender aus.'}</p>`}</div>`;
       }
-      return kalkShown.length ? `<div class="plist" style="margin-top:10px">${kalkShown.map(({ x, k }) => `<button class="pcard" data-fp="${x.id}">
+      const jahrWahl = `<div class="seg2 full aw-jahr" style="margin-top:12px;grid-template-columns:repeat(${jahre.length + 1},1fr)">${[...jahre.map((j) => [j, j]), ['alle', 'Alles']].map(([id, n]) => `<button data-awj="${id}" class="${awJahr === id ? 'on' : ''}">${n}</button>`).join('')}</div>`;
+      return jahrWahl + auswertung(daten, aus, awJahr === 'alle' ? '' : awJahr)
+        + `<div class="sec-h"><h2>Kalkulation je Projekt</h2>${kalkShown.length ? `<span class="count">${kalkShown.length}</span>` : ''}</div>`
+        + (kalkShown.length ? `<div class="plist">${kalkShown.map(({ x, k }) => `<button class="pcard" data-fp="${x.id}">
           <span class="pc-ph" style="color:${k.ampel[1]}">${icon('euro')}</span>
           <span class="pc-t"><b>${esc(kName(x) || 'Projekt')}</b><span class="muted">${esc(x.titel || x.room || '')}</span>
             <span class="ang-sum" style="color:${k.ampel[1]}">Marge ${eur0(k.marge)}${k.soll.netto ? ` · ${k.proz.toLocaleString('de-DE', { maximumFractionDigits: 0 })} %` : ''}</span>
             <span class="muted">Angebot ${eur0(k.soll.netto)} · Kosten ${eur0(k.ist.netto)}</span></span>
           ${icon('chevron', 'pc-chev')}</button>`).join('')}</div>`
-        : '<p class="hint">Sobald ein zugesagtes Projekt ein Angebot und Eingangsrechnungen hat, steht hier die Marge.</p>';
+        : '<p class="hint">Sobald ein zugesagtes Projekt ein Angebot und Eingangsrechnungen hat, steht hier die Marge.</p>')
+        + '<p class="hint">Angebote zählen nach dem Jahr, in dem sie angelegt wurden, Umsatz nach Rechnungsdatum, Zahlungseingang nach Zahltag. Die Marge kommt aus der Kalkulation je Projekt (Angebot gegen Eingangsrechnungen).</p>';
     };
     main().innerHTML = `
       <label class="search big">${icon('search')}<input type="search" id="fq" value="${esc(fQ)}" placeholder="Kunde, Firma, Nummer oder Betrag" autocomplete="off"></label>
@@ -260,25 +255,22 @@ window.Finanzen = (() => {
       <div class="phasen drei f-seg">
         <button data-fs="aus" class="fz ${fSeg === 'aus' ? 'on' : ''} ${ausUeber.length ? 'rot' : ''}"><b>${eur0(ausOffen.reduce((s, r) => s + Rechnung.zahlbetrag(r), 0))}</b><span>${ausUeber.length ? `An Kunden · ${ausUeber.length} überfällig` : `An Kunden${abrechnen.length ? ` · ${abrechnen.length} abzurechnen` : ''}`}</span></button>
         <button data-fs="ein" class="fz ${fSeg === 'ein' ? 'on' : ''} ${einUeber.length ? 'rot' : ''}"><b>${eur0(einOffen.reduce((s, b) => s + brutto(b), 0))}</b><span>${einUeber.length ? `Eingang · ${einUeber.length} überfällig` : 'Eingang, wir zahlen'}</span></button>
-        <button data-fs="kalk" class="fz ${fSeg === 'kalk' ? 'on' : ''}"><b>${icon('chart')}</b><span>Kalkulation je Projekt</span></button>
+        <button data-fs="kalk" class="fz ${fSeg === 'kalk' ? 'on' : ''}"><b>${icon('chart')}</b><span>Auswertung</span></button>
       </div>
-      <div id="fListe">${liste_(fQ)}</div>
-
-      <button class="notice plain" id="fAusw" style="margin-top:18px">${icon('chart')}<span><b>Auswertung</b> · Umsatz, Zusagen, Marge, Kundenquellen</span>${icon('chevron')}</button>
-      <button class="notice plain" id="fEinst">${icon('sliders')}<span><b>Einstellungen für Rechnungen</b> · Zahlungsziel, Abschläge, Texte</span>${icon('chevron')}</button>`;
+      <div id="fListe">${liste_(fQ)}</div>`;
     const binden = () => {
       $$('#fListe [data-rech]').forEach((b) => (b.onclick = () => Rechnung.detail(Rechnung.liste().find((r) => r.id === b.dataset.rech), () => view())));
       $$('#fListe [data-fa]').forEach((b) => (b.onclick = () => { fAlle = b.dataset.fa === '1'; view(); }));
       $$('#fListe [data-fr]').forEach((b) => (b.onclick = async () => { const w = await kvGet('wohnung:' + b.dataset.fr); if (w) Rechnung.neu(w, () => view()); }));
       $$('#fListe [data-beleg]').forEach((b) => (b.onclick = () => erfassen(belege.get(b.dataset.beleg), () => view())));
       $$('#fListe [data-fp]').forEach((b) => (b.onclick = () => { switchTab('projekt', { wohnung: null }); Projekt.oeffnen(b.dataset.fp); }));
+      $$('#fListe [data-awj]').forEach((b) => (b.onclick = () => { awJahr = b.dataset.awj; view(); }));
+      $$('#fListe [data-awab]').forEach((b) => (b.onclick = () => window.Projekt.oeffnen(b.dataset.awab)));
     };
     binden();
     // Suche: zeichnet nur die Liste neu (Tastatur bleibt offen) und sucht in allen Rechnungen, auch bezahlten
     $('#fq').oninput = (e) => { fQ = e.target.value; $('#fListe').innerHTML = liste_(fQ); binden(); };
     $$('[data-fs]').forEach((b) => (b.onclick = () => { fSeg = b.dataset.fs; fQ = ''; view(); }));
-    $('#fAusw').onclick = () => switchTab('auswertung');
-    $('#fEinst').onclick = () => { switchTab('einstellungen'); einstellungSeite('rechnungen'); window.scrollTo(0, 0); };
     $('#fNeu').onclick = () => erfassen(neu(), () => { fSeg = 'ein'; view(); });
     // Rechnung an Kunden: Projekt suchen, Art wählen, Betrag steht schon da. Man bleibt im Reiter Rechnungen.
     $('#fNeuR').onclick = () => Rechnung.neu(null, () => { fSeg = 'aus'; view(); });

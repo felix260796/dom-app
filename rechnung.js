@@ -90,13 +90,14 @@ window.Rechnung = (() => {
   }
 
   // ---------- Abschnitt im Projekt ----------
-  async function projektAbschnitt(el, w) {
+  /** teil: 'rechnungen' (Reiter Geld), 'nachtraege' (Reiter Baustelle) oder leer = beides. */
+  async function projektAbschnitt(el, w, teil = '') {
     if (!el) return;
     await laden();
     const a = await auftrag(w);
     if (!el.isConnected) return;
     const re = fuerProjekt(w.id), st = stand(w, a, re);
-    el.innerHTML = `<div class="sec-h"><h2>Rechnungen</h2>${re.length ? `<span class="count">${re.length}</span>` : ''}</div>
+    const rechHtml = `<div class="sec-h"><h2>Rechnungen</h2>${re.length ? `<span class="count">${re.length}</span>` : ''}</div>
       <div class="card">
         <div class="kalk-z"><span>Auftragssumme netto${a.nachtraege.length ? ` (mit ${a.nachtraege.length} ${a.nachtraege.length === 1 ? 'Nachtrag' : 'Nachträgen'})` : ''}</span><b>${eur(a.netto)}</b></div>
         <div class="kalk-z"><span>Schon berechnet netto</span><b>${eur(st.berechnet)}${a.netto ? ` · ${proz((st.berechnet / a.netto) * 100)}` : ''}</b></div>
@@ -104,11 +105,13 @@ window.Rechnung = (() => {
       </div>
       <div class="plist">${re.map(zeile).join('')}</div>
       ${st.schluss ? '' : `<button class="btn block" id="rNeuP" style="margin-top:8px">${icon('plus')} Rechnung schreiben</button>
-        <p class="hint center">${esc(st.vorschlag)}</p>`}
-      <div class="sec-h" style="margin-top:18px"><h2>Nachträge</h2>${w.nachtraege?.length ? `<span class="count">${w.nachtraege.length}</span>` : ''}</div>
+        <p class="hint center">${esc(st.vorschlag)}</p>`}`;
+    const ntHtml = `<div class="sec-h" style="margin-top:18px"><h2>Nachträge</h2>${w.nachtraege?.length ? `<span class="count">${w.nachtraege.length}</span>` : ''}</div>
       <div class="plist">${(w.nachtraege || []).map((n) => `<button class="pcard" data-nt="${n.id}"><span class="pc-ph">${icon('plus')}</span>
         <span class="pc-t"><b>${esc(n.text || 'Nachtrag')}</b><span class="muted">${esc(String(n.menge).replace('.', ','))} ${esc(n.einheit)} × ${eur(n.ep)}${n.datum ? ' · ' + tag(n.datum) : ''}</span><span class="ang-sum">${eur(r2(n.menge * n.ep))} netto</span></span>${icon('chevron', 'pc-chev')}</button>`).join('')}</div>
-      ${st.schluss ? '' : `<button class="add-room" id="rNt" style="width:100%;margin-top:8px">${icon('plus')} Nachtrag (Zusatzleistung)</button>`}`;
+      ${st.schluss ? '<p class="hint">Die Schlussrechnung ist geschrieben. Weitere Nachträge gehen über eine neue Rechnung.</p>' : `<button class="add-room" id="rNt" style="width:100%;margin-top:8px">${icon('plus')} Nachtrag (Zusatzleistung)</button>
+        <p class="hint center">Nachträge kommen von selbst in die Schlussrechnung.</p>`}`;
+    el.innerHTML = teil === 'rechnungen' ? rechHtml : teil === 'nachtraege' ? ntHtml : rechHtml + ntHtml;
     const zurueck = () => Projekt.view();
     if ($('#rNeuP', el)) $('#rNeuP', el).onclick = () => neu(w, zurueck);
     if ($('#rNt', el)) $('#rNt', el).onclick = () => nachtrag(w, null, zurueck);
@@ -395,8 +398,8 @@ window.Rechnung = (() => {
             <div><label>Zahlbar bis</label><input type="date" id="rFaellig" value="${r.faellig}"></div></div>
         </div>
         ${texteHtml(r, k)}
-        <button class="btn big block" id="rSave">${icon('check')} Rechnung erstellen</button>
-        <p class="hint center">Die Rechnung bekommt danach eine feste Nummer und lässt sich als PDF senden.</p>`;
+        <button class="btn big block" id="rSave">${icon('download')} Speichern und ansehen</button>
+        <p class="hint center">Die Rechnung bekommt eine feste Nummer und liegt als PDF beim Projekt unter „Dokumente“. Verschickt wird erst mit „Senden“.</p>`;
       const merken = () => { r.titel = $('#rTitel').value.trim() || r.titel; r.zeitraum = $('#rZeit').value.trim(); r.datum = $('#rDatum').value || heute(); r.faellig = $('#rFaellig').value; };
       if ($('#rAdr')) $('#rAdr').onclick = async () => {
         merken();
@@ -429,8 +432,10 @@ window.Rechnung = (() => {
         r.nr = await naechsteNummer();
         await speichern(r);
         if (art === 'schluss' && ['', 'geplant', 'fertig'].includes(Projekt.norm(w.status))) { w.status = 'rechnung'; (w.verlauf ??= []).push({ st: 'rechnung', t: Date.now() }); await Projekt.save(w); }
-        toast(`Rechnung ${r.nr} erstellt`);
-        detail(r, fertig);
+        // Wie beim Angebot: PDF ablegen und gleich zeigen, gesendet wird erst auf der nächsten Seite
+        const f = await ablegen(r, w);
+        await detail(r, fertig);
+        if (f) pdfAnsicht(f, f.name);
       };
     };
     render(); window.scrollTo(0, 0);
@@ -456,7 +461,9 @@ window.Rechnung = (() => {
         <p class="kalk-amp" style="--c:${farbe}"><i></i>${esc(st)}</p>
       </div>
       <div class="docs">
-        <button class="doc" id="rPdf"><span class="d-ico navy">${icon('file')}</span><span class="d-t"><b>${storno ? 'Stornorechnung' : 'Rechnung'} als PDF senden</b><span>${r.gesendet ? `Zuletzt gesendet am ${tag(r.gesendet)}` : 'Per Mail, WhatsApp oder speichern'}</span></span>${icon('chevron', 'pc-chev')}</button>
+        <button class="doc" id="rAns"><span class="d-ico navy">${icon('file')}</span><span class="d-t"><b>${storno ? 'Stornorechnung' : 'Rechnung'} ansehen</b><span>${r.gesendet ? `Gesendet am ${tag(r.gesendet)}` : 'Noch nicht gesendet'}</span></span>${icon('chevron', 'pc-chev')}</button>
+        <button class="doc" id="rPdf"><span class="d-ico brass">${icon('share')}</span><span class="d-t"><b>${r.gesendet ? 'Nochmal senden' : 'Senden'}</b><span>${r.gesendet ? 'Gleiche Rechnung, gleiche Nummer und gleiches Datum' : 'Per Mail, WhatsApp oder speichern'}</span></span>${icon('chevron', 'pc-chev')}</button>
+        ${r.gesendet ? '' : `<button class="doc" id="rMark"><span class="d-ico">${icon('check')}</span><span class="d-t"><b>Als versendet markieren</b><span>Schon anders verschickt, z. B. per Post</span></span>${icon('chevron', 'pc-chev')}</button>`}
         ${!erledigt && !r.bezahlt && ueberfaellig(r) && naechsteMahn < MAHN.length ? `<button class="doc" id="rMahn"><span class="d-ico brass">${icon('mail')}</span><span class="d-t"><b>${MAHN[naechsteMahn]} senden</b><span>${naechsteMahn ? `Zuletzt: ${esc(MAHN[naechsteMahn - 1])} am ${tag(r.mahnungen[naechsteMahn - 1].datum)}` : `Freundlich, mit neuer Frist von ${+vorgabe('mahnFrist') || 7} Tagen`}</span></span>${icon('chevron', 'pc-chev')}</button>` : ''}
       </div>
       ${erledigt || r.gesendet || r.bezahlt ? '' : texteHtml(r, k)}
@@ -481,7 +488,22 @@ window.Rechnung = (() => {
     if ($('#rBez')) $('#rBez').onchange = async (e) => { r.bezahlt = e.target.value; await speichernUndStatus(); detail(r, fertig); };
     if ($('#rJetzt')) $('#rJetzt').onclick = async () => { r.bezahlt = heute(); await speichernUndStatus(); detail(r, fertig); };
     if ($('#rNotiz')) $('#rNotiz').oninput = debounce(async (e) => { r.notiz = e.target.value.trim(); await speichern(r); }, 500);
-    $('#rPdf').onclick = async () => { if (await senden(r, w, null)) { r.gesendet = heute(); await speichern(r); detail(r, fertig); } };
+    $('#rAns').onclick = async () => { const f = await datei(r, w); if (f) pdfAnsicht(f, f.name); };
+    $('#rPdf').onclick = async () => { if (await senden(r, w, null)) { if (!r.gesendet) { r.gesendet = heute(); await speichern(r); } detail(r, fertig); } };
+    if ($('#rMark')) $('#rMark').onclick = async () => {
+      const gestern = plusTage(heute(), -1);
+      const v = await sheet('Wann wurde die Rechnung verschickt?', [
+        { label: 'Heute', sub: tag(heute()), icon: icon('check'), value: heute() },
+        { label: 'Gestern', sub: tag(gestern), icon: icon('calendar'), value: gestern }], { suche: '', text: 'Anderes Datum, z. B. 10.11.2026' });
+      if (!v) return;
+      let d = typeof v === 'string' ? v : '';
+      if (v?.text) { const m = v.text.trim().match(/^(\d{1,2})\.(\d{1,2})\.(\d{2,4})$/); if (!m) return toast('Bitte als TT.MM.JJJJ eingeben.'); d = `${m[3].length === 2 ? '20' + m[3] : m[3]}-${m[2].padStart(2, '0')}-${m[1].padStart(2, '0')}`; }
+      if (!d) return;
+      await datei(r, w); // die versendete Fassung liegt fest in den Dokumenten
+      r.gesendet = d; await speichern(r);
+      toast(`Als versendet markiert (${tag(d)})`);
+      detail(r, fertig);
+    };
     if ($('#rMahn')) $('#rMahn').onclick = async () => {
       const stufe = naechsteMahn;
       const ok = await senden(r, w, stufe);
@@ -507,14 +529,47 @@ window.Rechnung = (() => {
     window.scrollTo(0, 0);
   }
 
-  async function senden(r, w, mahnStufe) {
+  function dateiName(r, w, mahnStufe) {
+    const k = w ? Kunden.byId(w.kundeId) : null;
+    return `${mahnStufe == null ? (r.art === 'storno' ? 'Stornorechnung' : 'Rechnung') : MAHN[mahnStufe].replace(/\.\s*/g, '_').replace(/\s+/g, '_')}_${r.nr}_${(Kunden.name(k) || w?.customer || 'Kunde').replace(/[^\wäöüÄÖÜß-]+/g, '_')}.pdf`;
+  }
+  /** PDF bauen und beim Projekt unter „Dokumente“ ablegen (gleicher Name = neue Fassung ersetzt die alte). Gibt die Datei zurück. */
+  async function ablegen(r, w) {
     toast('PDF wird erstellt …', 8000);
     let doc;
-    try { doc = await pdf(r, w, mahnStufe); } catch (e) { toast('PDF ging nicht: ' + e.message, 5000); return false; }
+    try { doc = await pdf(r, w, null); } catch (e) { toast('PDF ging nicht: ' + e.message, 5000); return null; }
+    $('#toast').hidden = true;
+    const name = dateiName(r, w, null);
+    if (w) {
+      const key = 'wdok:' + w.id + ':' + name.replace(/[^\wäöüÄÖÜß.-]+/g, '_');
+      await kvSet(key, doc.output('datauristring'));
+      w.dokumente = [...(w.dokumente || []).filter((x) => x.key !== key), { key, name, t: Date.now(), art: 'rechnung', rechnungId: r.id }];
+      await Projekt.save(w);
+      if (state.wohnung?.id === w.id) state.wohnung.dokumente = w.dokumente;
+      r.dokKey = key; await speichern(r);
+    }
+    return new File([doc.output('blob')], name, { type: 'application/pdf' });
+  }
+  /** Die Rechnung als Datei: nach dem Versenden immer die abgelegte Fassung, vorher frisch gebaut (Texte können sich noch ändern). */
+  async function datei(r, w) {
+    if (r.gesendet && r.dokKey) {
+      const d = await kvGet(r.dokKey);
+      if (d) { const b = await (await fetch(d)).blob(); return new File([b], dateiName(r, w, null), { type: 'application/pdf' }); }
+    }
+    return ablegen(r, w);
+  }
+
+  async function senden(r, w, mahnStufe) {
+    let file;
+    if (mahnStufe == null) { file = await datei(r, w); if (!file) return false; }
+    else {
+      toast('PDF wird erstellt …', 8000);
+      let doc;
+      try { doc = await pdf(r, w, mahnStufe); } catch (e) { toast('PDF ging nicht: ' + e.message, 5000); return false; }
+      file = new File([doc.output('blob')], dateiName(r, w, mahnStufe), { type: 'application/pdf' });
+    }
     const k = w ? Kunden.byId(w.kundeId) : null;
-    const name = `${mahnStufe == null ? (r.art === 'storno' ? 'Stornorechnung' : 'Rechnung') : MAHN[mahnStufe].replace(/\.\s*/g, '_').replace(/\s+/g, '_')}_${r.nr}_${(Kunden.name(k) || w?.customer || 'Kunde').replace(/[^\wäöüÄÖÜß-]+/g, '_')}.pdf`;
-    const blob = doc.output('blob');
-    const file = new File([blob], name, { type: 'application/pdf' });
+    const name = file.name, blob = file;
     const anrede = k ? Kunden.briefAnrede(k) : 'Sehr geehrte Damen und Herren,';
     const vars = { anrede, art: artName(r), nr: r.nr, betrag: eur(zahlbetrag(r)), faellig: tag(r.faellig), datum: tag(r.datum), stufe: mahnStufe == null ? '' : MAHN[mahnStufe], firma: state.settings.company || '' };
     const text = vorgabeText(mahnStufe == null ? 'mailRechnung' : 'mailMahnung', vars);

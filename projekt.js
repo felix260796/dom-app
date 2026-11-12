@@ -254,15 +254,14 @@ window.Projekt = (() => {
     if (phase(w) === 'angebot') { try { await window.Angebot._intern.preisliste(); await kopfAnwenden(w, list); summe = summeVon(list); } catch (e) { console.warn(e); } if (state.wohnung !== w || state.project) return; }
     main().innerHTML = phase(w) === 'angebot' ? angebotSeite({ w, list, k, nFotos, anyResult, withPhotos, nBilder, stand, summe }) : auftragSeite({ w, list, k, nFotos, stand });
     if ($('#wKosten')) window.Finanzen?.projektAbschnitt($('#wKosten'), w);
-    if ($('#wRech')) window.Rechnung?.projektAbschnitt($('#wRech'), w);
+    if ($('#wRech')) window.Rechnung?.projektAbschnitt($('#wRech'), w, $('#wNt') || phase(w) !== 'angebot' ? 'rechnungen' : '');
+    if ($('#wNt')) window.Rechnung?.projektAbschnitt($('#wNt'), w, 'nachtraege');
+    if ($('#wHinweis')) $('#wHinweis').oninput = debounce(async (e) => { w.hinweise = e.target.value.trim(); await save(w); }, 500);
+    // „Jetzt dran“: führt zum richtigen Reiter und zur richtigen Stelle
+    $$('[data-jetzt]').forEach((b) => (b.onclick = () => jetztGehen(w, b.dataset.jetzt)));
     if ($('#wBau')) window.Baustelle?.abschnitt($('#wBau'), w, list, $('#wAbn') ? 'bestellungen' : '');
     if ($('#wAbn')) window.Baustelle?.abschnitt($('#wAbn'), w, list, 'abnahme');
     if ($('#wTodo')) todoFuellen(w);
-    // Kacheln im zugesagten Projekt
-    if ($('#kRech')) $('#kRech').onclick = () => window.Rechnung?.neu(w, () => { view(); window.scrollTo(0, 0); });
-    if ($('#kNt')) $('#kNt').onclick = () => window.Rechnung?.nachtrag(w, null, () => { view(); window.scrollTo(0, 0); });
-    if ($('#kBest')) $('#kBest').onclick = () => $('#bstNeu')?.click();
-    if ($('#kTermin')) $('#kTermin').onclick = () => $('#wTermine [data-tneu]')?.click() ?? toast('Einen Moment, die Termine laden noch.');
     if ($('#dAb')) $('#dAb').onclick = async () => {
       const ab = w.auftragsbestaetigung, d = (w.dokumente || []).find((x) => x.key === ab?.dokId || x.id === ab?.dokId) || (w.dokumente || []).find((x) => x.art === 'auftragsbestaetigung');
       if (!d) return toast('Die Auftragsbestätigung ist auf diesem Gerät noch nicht da.', 4000);
@@ -436,41 +435,73 @@ window.Projekt = (() => {
   }
   // ---------- Zugesagtes Projekt: Projektdetails → Projektfortschritt → Abnahme → Abrechnen (Wunsch Felix) ----------
   // Gleicher Aufbau wie der Angebotsablauf: Schritte oben, Kacheln für das Häufigste, darunter je Schritt ein Abschnitt, dann die Unterlagen.
-  const BAU_SCHRITTE = [['Details'], ['Fortschritt'], ['Abnahme'], ['Abrechnen']];
+  // ---------- Projekt nach der Zusage (Wunsch Felix, 12.11.): oben immer Kunde, Objekt, Projekt, Ansprechpartner und „Jetzt dran“,
+  // darunter drei Reiter Übersicht · Baustelle · Geld. Keine Kacheln mehr. Geöffnet wird der Reiter, in dem gerade etwas zu tun ist.
+  const PJ_REITER = [['uebersicht', 'Übersicht'], ['baustelle', 'Baustelle'], ['geld', 'Geld']];
   function bauSchritt(w) {
     const st = norm(w.status);
     return st === 'geplant' ? 0 : st === '' ? 1 : st === 'fertig' ? (w.abnahme?.unterschriftKunde ? 3 : 2) : st === 'rechnung' ? 3 : 4;
   }
-  function auftragSeite({ w, list, k, nFotos, stand }) {
+  function pjReiterVon(w) {
+    const g = reiterWahl.get(w.id);
+    if (g && g.st === norm(w.status) && PJ_REITER.some(([id]) => id === g.tab)) return g.tab;
     const s = bauSchritt(w);
-    const cls = (i) => (i < s ? 'ok' : i === s ? 'jetzt' : '');
-    const kopf = (n, t, sub = '') => `<div class="ab-h" id="ab-${n}"><span class="ab-n">${n}</span><span><b>${t}</b>${sub ? `<small>${sub}</small>` : ''}</span></div>`;
+    return s === 0 ? 'uebersicht' : s <= 2 ? 'baustelle' : 'geld';
+  }
+  /** Was ist als Nächstes dran? { text, sub, knopf, ziel } – ziel wird in view() ausgeführt. */
+  function jetztDran(w) {
+    const st = norm(w.status), f = window.Fortschritt?.kurz(w);
+    if (st === 'geplant' && !w.baustart) return { text: 'Baustart festlegen', sub: 'Dann steht er im Kalender und das Projekt ist eingeplant.', knopf: 'Baustart eintragen', ziel: 'baustart' };
+    if (st === 'geplant') {
+      if (w.auftragsbestaetigung && !w.auftragsbestaetigung.gesendetAm) return { text: 'Auftragsbestätigung an den Kunden', sub: `Baustart am ${datumText(w.baustart)}`, knopf: 'Ansehen und senden', ziel: 'ab' };
+      if (!w.schritte?.length) return { text: 'Leistungen für die Baustelle festlegen', sub: `Baustart am ${datumText(w.baustart)}`, knopf: 'Zur Baustelle', ziel: 'fortschritt' };
+      if (!w.bestellungen?.length) return { text: 'Material bestellen', sub: `Baustart am ${datumText(w.baustart)}`, knopf: 'Bestellung eintragen', ziel: 'bestellung' };
+      return { text: `Baustart am ${datumText(w.baustart)}`, sub: 'Alles vorbereitet.', knopf: 'Zur Baustelle', ziel: 'fortschritt' };
+    }
+    if (st === '') return f && f.fertig === f.n
+      ? { text: 'Alles abgehakt: Abnahme mit dem Kunden', sub: 'Danach die Schlussrechnung.', knopf: 'Zur Abnahme', ziel: 'abnahme' }
+      : { text: f?.naechster ? `Als Nächstes: ${f.naechster}` : 'Baustelle läuft', sub: f ? `${f.fertig} von ${f.n} Leistungen erledigt` : 'Leistungen abhaken, Fotos machen', knopf: 'Zur Baustelle', ziel: 'fortschritt' };
+    if (st === 'fertig' && !w.abnahme?.unterschriftKunde) return { text: 'Abnahme mit dem Kunden', sub: 'Durchgehen, Mängel notieren, unterschreiben lassen.', knopf: 'Zur Abnahme', ziel: 'abnahme' };
+    if (st === 'fertig') return { text: 'Schlussrechnung schreiben', sub: 'Die Nachträge sind schon drin.', knopf: 'Schlussrechnung', ziel: 'schluss' };
+    if (st === 'rechnung') return { text: 'Zahlung abwarten', sub: 'Die Schlussrechnung ist geschrieben.', knopf: 'Rechnungen ansehen', ziel: 'geld' };
+    return { text: 'Alles erledigt', sub: 'Das Projekt ist bezahlt.', knopf: '', ziel: '' };
+  }
+  function auftragSeite({ w, list, k, nFotos, stand }) {
+    const tab = pjReiterVon(w), jd = jetztDran(w);
     const ab = w.auftragsbestaetigung;
     const vorOrt = window.Gespraech?.karte(w, list) || '';
-    return `
-      <div class="ab-schritte">${BAU_SCHRITTE.map(([n], i) => `<button type="button" data-sprung="${i + 1}" class="${cls(i)}"><i>${i < s ? icon('check') : i + 1}</i>${n}</button>`).join('')}</div>
+    const anspr = list.find((r) => r.angebot?.anspr)?.angebot.anspr || w.angebotKopf?.anspr || '';
+    const kopf = `
       <div class="card kunde">
         ${k ? `<button class="kline" id="wKunde"><span class="av sm">${esc(Kunden.initialen(k))}</span><span class="kl-t"><b>${esc(Kunden.name(k) || 'Ohne Namen')}</b><small>${esc([k.telefon, k.email].filter(Boolean).join(' · ') || 'Kundenkarte öffnen')}</small></span>${icon('chevron', 'pc-chev')}</button>
         <label class="ic-field">${icon('map')}<select id="wObjekt" aria-label="Objekt">
           ${w.objektId && Kunden.objekt(k, w.objektId) ? '' : `<option value="" selected>${esc(w.address || 'Objekt wählen …')}</option>`}
           ${k.objekte.map((o) => `<option value="${o.id}" ${o.id === w.objektId ? 'selected' : ''}>${esc(Kunden.objektText(o) || 'Objekt ohne Anschrift')}</option>`).join('')}
           <option value="__neu">Anderes Objekt …</option></select></label>
-        <label class="ic-field">${icon('edit')}<input type="text" id="wTitel" value="${esc(w.titel || '')}" placeholder="Projektname, z. B. Badumbau" autocomplete="off" aria-label="Projektname"></label>`
+        <label class="ic-field">${icon('edit')}<input type="text" id="wTitel" value="${esc(w.titel || '')}" placeholder="Projektname, z. B. Badumbau" autocomplete="off" aria-label="Projektname"></label>
+        ${anspr ? `<p class="pj-anspr">${icon('user')}<span>Ansprechpartner: <b>${esc(String(anspr).split(/\s*·\s*/)[0])}</b></span></p>` : ''}`
         : `<button class="kline" id="wKundeWahl">${icon('user')}<span class="kl-t"><b>${esc(w.customer || 'Kunde zuordnen')}</b><small>Kunde auswählen oder neu anlegen</small></span>${icon('chevron', 'pc-chev')}</button>`}
       </div>
-      ${statusKarte(w)}
-      <div class="vo-sammel pj-kacheln">
-        <button type="button" class="vo-b" id="kRech">${icon('euro')}<b>Rechnung</b><span>schreiben</span></button>
-        ${k ? `<button type="button" class="vo-b" data-bilder>${icon('camera')}<b>Fotos</b><span>${nFotos ? `${nFotos} ${nFotos === 1 ? 'Bild' : 'Bilder'}` : 'Baustelle'}</span></button>` : ''}
-        <button type="button" class="vo-b" id="kBest">${icon('clipboard')}<b>Bestellung</b><span>${(w.bestellungen || []).filter((b) => b.status !== 'geliefert').length || 'eintragen'}${(w.bestellungen || []).some((b) => b.status !== 'geliefert') ? ' offen' : ''}</span></button>
-        <button type="button" class="vo-b" id="kNt">${icon('plus')}<b>Nachtrag</b><span>${w.nachtraege?.length ? `${w.nachtraege.length} bisher` : 'Zusatzleistung'}</span></button>
-        ${k ? `<button type="button" class="vo-b" id="kTermin">${icon('calendar')}<b>Termin</b><span>anlegen</span></button>` : ''}
+      <div class="card pj-jetzt">
+        <small>Jetzt dran</small><b>${esc(jd.text)}</b>${jd.sub ? `<span>${esc(jd.sub)}</span>` : ''}
+        ${jd.knopf ? `<button class="btn block" data-jetzt="${jd.ziel}">${esc(jd.knopf)}</button>` : ''}
       </div>
-      ${k ? `<button id="wBilder" hidden></button>` : ''}
-
-      ${kopf(1, 'Projektdetails', 'Baustart, Termine, Unterlagen')}
-      <div class="card pj-todo" id="wTodo"></div>
+      <div class="seg ab-reiter">${PJ_REITER.map(([id, n]) => `<button type="button" data-reiter="${id}" class="${tab === id ? 'on' : ''}">${n}</button>`).join('')}</div>`;
+    const raeumeHtml = `<div class="rlist">${list.map((r) => `
+        <div class="rcard" data-room="${r.id}" role="button" tabindex="0">
+          ${r.thumb ? `<img src="${r.thumb}" alt="">` : `<span class="rc-ph">${roomIcon(r.roomType)}</span>`}
+          <span class="rc-t"><b>${esc(r.room || roomType(r.roomType).name)}</b><span class="rc-s">${stand(r)}</span></span>
+          ${list.length > 1 ? griffHtml() : ''}
+          ${icon('chevron', 'pc-chev')}
+        </div>`).join('')}
+        <button class="add-room" id="wAdd">${icon('plus')} Raum hinzufügen</button>
+      </div>`;
+    const uebersicht = `
+      ${statusKarte(w)}
+      ${norm(w.status) === 'geplant' ? '<div class="card pj-todo" id="wTodo"></div>' : ''}
       <div id="wTermine"></div>
+      <div class="sec-h"><h2>Hinweise zur Baustelle</h2></div>
+      <div class="card kform"><textarea id="wHinweis" rows="3" placeholder="z. B. Schlüssel beim Nachbarn, Parken im Hof, Hund im Haus">${esc(w.hinweise || '')}</textarea></div>
       <div class="sec-h"><h2>Unterlagen</h2></div>
       <div class="docs">
         <button class="doc" id="dAngPdf" ${w.angebotPdf ? '' : 'disabled'}>
@@ -486,28 +517,34 @@ window.Projekt = (() => {
       </div>
       ${dokListe(w)}
       ${vorOrt ? `<details class="more card" style="margin-top:12px"><summary>${icon('mic')}<span>Vor Ort<small>${[w.gespraech ? 'Gespräch' : '', 'Fotos', 'Pläne', w.vorOrt?.scans?.length ? `${w.vorOrt.scans.length} Raumscans` : ''].filter(Boolean).join(', ')}</small></span>${icon('chevron', 'more-chev')}</summary>${vorOrt}</details>` : ''}
-
-      ${kopf(2, 'Projektfortschritt', 'Arbeitsschritte abhaken, Bestellungen')}
+      <details class="more card" style="margin-top:12px"><summary>${icon('home')}<span>Weiteres<small>Räume, Projekt löschen</small></span>${icon('chevron', 'more-chev')}</summary>
+      ${raeumeHtml}
+      <button class="link-danger" id="wDel">${icon('trash')} Projekt löschen</button></details>`;
+    const baustelle = `
       <div id="wFort"></div>
       <div id="wBau"></div>
-
-      ${kopf(3, 'Abnahme', 'Mit dem Kunden durchgehen und unterschreiben lassen')}
-      <div id="wAbn"></div>
-
-      ${kopf(4, 'Abrechnen', 'Abschläge, Schlussrechnung, Nachträge, Kosten und Marge')}
-      <div id="wRech"></div><div id="wKosten"></div>
-
-      <details class="more card" style="margin-top:12px"><summary>${icon('home')}<span>Weiteres<small>Räume, Projekt löschen</small></span>${icon('chevron', 'more-chev')}</summary>
-      <div class="rlist">${list.map((r, i) => `
-        <div class="rcard" data-room="${r.id}" role="button" tabindex="0">
-          ${r.thumb ? `<img src="${r.thumb}" alt="">` : `<span class="rc-ph">${roomIcon(r.roomType)}</span>`}
-          <span class="rc-t"><b>${esc(r.room || roomType(r.roomType).name)}</b><span class="rc-s">${stand(r)}</span></span>
-          ${list.length > 1 ? griffHtml() : ''}
-          ${icon('chevron', 'pc-chev')}
-        </div>`).join('')}
-        <button class="add-room" id="wAdd">${icon('plus')} Raum hinzufügen</button>
-      </div>
-      <button class="link-danger" id="wDel">${icon('trash')} Projekt löschen</button></details>`;
+      ${k ? `<div class="sec-h"><h2>Fotos</h2>${nFotos ? `<span class="count">${nFotos}</span>` : ''}</div>
+        <button class="notice plain" data-bilder>${icon('camera')}<span><b>Fotos und Dokumente</b> · ${nFotos ? `${nFotos} ${nFotos === 1 ? 'Bild' : 'Bilder'}` : 'Baustelle fotografieren'}, gleicher Ordner wie beim Kunden</span>${icon('chevron')}</button>` : ''}
+      <div id="wNt"></div>
+      <div class="sec-h" style="margin-top:18px"><h2>Abnahme</h2></div>
+      <div id="wAbn"></div>`;
+    const geld = `<div id="wRech"></div><div id="wKosten"></div>`;
+    return `${kopf}
+      ${tab === 'uebersicht' ? uebersicht : tab === 'baustelle' ? baustelle : geld}
+      ${k ? `<button id="wBilder" hidden></button>` : ''}
+      ${tab === 'uebersicht' ? '' : '<button id="dMappe" hidden></button><button id="dBau" hidden></button><button id="dAngebot" hidden></button><button id="wDel" hidden></button>'}`;
+  }
+  /** Zu einer Stelle im Projekt springen, auch in einen anderen Reiter. */
+  async function jetztGehen(w, ziel) {
+    const reiter = { baustart: 'uebersicht', ab: 'uebersicht', fortschritt: 'baustelle', bestellung: 'baustelle', abnahme: 'baustelle', geld: 'geld' }[ziel];
+    if (ziel === 'schluss') return window.Rechnung?.neu(w, () => { view(); window.scrollTo(0, 0); });
+    if (reiter && pjReiterVon(w) !== reiter) { reiterSetzen(w, reiter); await view(); window.scrollTo(0, 0); }
+    const springe = (sel) => { const z = $(sel); if (z) window.scrollTo({ top: z.getBoundingClientRect().top + window.scrollY - 110, behavior: 'smooth' }); };
+    if (ziel === 'baustart') { const f = $('#wBaustart'); springe('.stk'); if (f) setTimeout(() => { try { f.showPicker(); } catch { f.focus(); } }, 350); }
+    else if (ziel === 'ab') $('#dAb')?.click();
+    else if (ziel === 'fortschritt') springe('#wFort');
+    else if (ziel === 'bestellung') setTimeout(() => springe('#wBau'), 150);
+    else if (ziel === 'abnahme') setTimeout(() => springe('#wAbn'), 300);
   }
   /** „Was ist zu tun“ im Schritt Einplanen: abhaken ergibt sich aus den Daten, Tippen führt zur Stelle. */
   async function todoFuellen(w) {
@@ -518,17 +555,13 @@ window.Projekt = (() => {
       ...(w.auftragsbestaetigung ? [['ab', !!w.auftragsbestaetigung.gesendetAm, 'Auftragsbestätigung an den Kunden']] : []),
       ['auftrag', !!w.auftrag, 'Unterschriebenes Angebot ablegen'],
       ['bestellung', !!w.bestellungen?.length, w.bestellungen?.length ? `${w.bestellungen.length} ${w.bestellungen.length === 1 ? 'Bestellung' : 'Bestellungen'} eingetragen` : 'Material bestellen'],
-      ['fortschritt', !!w.schritte?.length, w.schritte?.length ? 'Arbeitsschritte stehen' : 'Arbeitsschritte festlegen (Baufortschritt)'],
+      ['fortschritt', !!w.schritte?.length, w.schritte?.length ? 'Leistungen stehen' : 'Leistungen für die Baustelle festlegen'],
     ];
     el.innerHTML = `<b class="pj-todo-h">Vorbereiten</b>${punkte.map(([id, ok, t]) => `<button type="button" class="pj-tp ${ok ? 'ok' : ''}" data-todo="${id}"><i>${ok ? icon('check') : ''}</i><span>${esc(t)}</span>${icon('chevron', 'pc-chev')}</button>`).join('')}`;
-    const springe = (sel) => { const z = $(sel); if (z) window.scrollTo({ top: z.getBoundingClientRect().top + window.scrollY - 110, behavior: 'smooth' }); };
     $$('[data-todo]', el).forEach((b) => (b.onclick = () => {
       const id = b.dataset.todo;
-      if (id === 'baustart') { const f = $('#wBaustart'); if (f) { springe('.stk'); setTimeout(() => { try { f.showPicker(); } catch { f.focus(); } }, 350); } else springe('.stk'); }
-      else if (id === 'ab') $('#dAb')?.click();
-      else if (id === 'auftrag') $('#wAuftrag')?.click();
-      else if (id === 'bestellung') springe('#wBau');
-      else if (id === 'fortschritt') springe('#wFort');
+      if (id === 'auftrag') $('#wAuftrag')?.click();
+      else jetztGehen(w, id);
     }));
   }
   /** Löschen: Ein Angebot (noch nicht zugesagt) nach einer Nachfrage. Ein Projekt (zugesagt) nach zwei Nachfragen,
