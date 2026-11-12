@@ -6,7 +6,7 @@
  * Kern-Funktionen (Speicher, KI, Bilder) stehen in core.js. */
 
 // ---------- Symbole (einfache Linien-Icons) ----------
-const APP_VERSION = '98';
+const APP_VERSION = '99';
 const ICONS = {
   plus: '<path d="M12 5v14M5 12h14"/>',
   camera: '<path d="M3 8.5A2 2 0 0 1 5 6.5h2l1.6-2h6.8l1.6 2h2a2 2 0 0 1 2 2V18a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><circle cx="12" cy="13" r="3.6"/>',
@@ -229,7 +229,7 @@ const MENUE = [
   ['heute', 'Heute', 'sun', () => 'Was heute dran ist', () => switchTab('heute')],
   ['kalender', 'Kalender', 'calendar', () => { const n = window.Kalender?.eintraege(Kalender._heute(), Kalender._heute()).length || 0; return n ? `Heute ${n} ${n === 1 ? 'Eintrag' : 'Einträge'}` : 'Termine, Geburtstage'; }, () => { state.finanzen = false; Kalender.view(); window.scrollTo(0, 0); }],
   ['karte', 'Karte', 'map', () => 'Alle Baustellen auf der Karte', () => switchTab('karte')],
-  ['auswertung', 'Auswertung', 'chart', () => 'Umsatz, Zusagen, Marge, Kundenquellen', () => switchTab('auswertung')],
+  ['auswertung', 'Auswertung', 'chart', () => 'Umsatz, Zusagen, Marge, Kalkulation je Projekt', () => Finanzen.auswertungView()],
   ['preisliste', 'Preisliste', 'euro', () => 'Positionen, Lohn, Material, Aufschläge', () => { switchTab('einstellungen'); einstellungSeite('preisliste'); }],
   ['ppreise', 'Preislisten der Partner', 'wrench', () => 'Nach Gewerk: wer macht was zu welchem Preis', () => { switchTab('partner'); setTimeout(() => Partner.preislistenView(), 150); window.scrollTo(0, 0); }],
   ['unterlagen', 'Unterlagen', 'file', () => 'Firmenordner und Vorlagen', () => switchTab('unterlagen')],
