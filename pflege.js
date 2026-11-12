@@ -193,7 +193,8 @@ window.Pflege = (() => {
 
   // ---------- Abschnitt in der Kundenkarte bzw. beim Partner ----------
   /** el: leeres Element · x: Kunde oder Partner · persist: speichern · neu: Kontakt eben erst angelegt (heute) */
-  function abschnitt(el, x, persist) {
+  /** opt.klein (Kunde): ohne Eintrag nur eine kleine graue Zeile „+ Kontakt halten“ statt der Box (Wunsch Felix, v97). */
+  function abschnitt(el, x, persist, opt = {}) {
     if (!el) return;
     norm(x);
     const p = x.pflege || {};
@@ -202,6 +203,11 @@ window.Pflege = (() => {
     // Klein und zugeklappt (Wunsch Felix); ist etwas eingetragen, bleibt es offen
     const gesetzt = Object.keys(ARTEN).filter((a) => p[a]?.r);
     const offen = gesetzt.length > 0 || el.dataset.offen === '1';
+    if (opt.klein && !offen) {
+      el.innerHTML = `<button type="button" class="pf-klein" data-pfauf>${icon('plus')} Kontakt halten</button>`;
+      $('[data-pfauf]', el).onclick = () => { el.dataset.offen = '1'; abschnitt(el, x, persist, opt); };
+      return;
+    }
     el.innerHTML = `<details class="pf-box" ${offen ? 'open' : ''}><summary>${icon('phone')}<span><b>Kontakt halten</b><span class="muted">${esc(gesetzt.length ? gesetzt.map((a) => `${ARTEN[a].titel} ${rName(p[a].r).toLowerCase()}`).join(' · ') : 'Regelmäßig anrufen oder treffen')}</span></span>${icon('down', 'pf-pfeil')}</summary>
       <div class="kform pf-inhalt">
         ${Object.entries(ARTEN).map(([a, A]) => { const o = p[a] || { r: '' }; return `
@@ -225,7 +231,7 @@ window.Pflege = (() => {
       if (!o.r) { o.faellig = ''; o.spaeter = 0; }
       persist();
       el.dataset.offen = '1';
-      abschnitt(el, x, persist);
+      abschnitt(el, x, persist, opt);
     }));
     for (const a of Object.keys(ARTEN)) { const inp = $('#pf-' + a, el); if (inp) Kontakt.datumFeld(inp, (v) => { bestaetigt(); if (v && v !== x.pflege[a].faellig) { x.pflege[a].faellig = v; x.pflege[a].verschoben = ''; persist(); } }); }
   }

@@ -84,6 +84,12 @@ Ein Angebot geht ohne Vor-Ort-Termin: Kein Schritt setzt Aufnahme, Plan oder Sca
 
 Visitenkarte (`kamera.js`): Das Foto wird immer abgelegt, beim Kunden über `Bilder.ablegen` im Ordner aus Vorgabe `ordnerVisitenkarte`, beim Partner als Dokument (`karteZuPartner`, `pdok:<id>`). `schonDa(v)` findet bestehende Partner und Kunden über Telefon/Mobil (ohne Vorwahl 0/+49), E-Mail (auch `weitere`, `hv`) oder genauen Namen ohne Rechtsform; das Auswahlfenster heißt dann „Schon angelegt: …“.
 
+## Neuerungen aus Version 97 (Kontakte, Zurück)
+
+Telefon und E-Mail bei Kunde und Partner gleich (`Kontakt.mehrLabel(text, art, label)` / `mehrBinden(box, plus, list, art, persist, { haupt, hauptFeld })`): Tippen auf „Telefon“ wählt die Bezeichnung (`Kontakt.artWaehlen`, Vorgaben `telArten`/`mailArten`, eigene möglich), Hauptfeld in `x.telArt`/`x.mailArt`, weitere in `x.weitere` mit eigener Bezeichnung; weitere Nummern mit Ländervorwahl (Vorwahl vom Hauptfeld). Schnellknöpfe über `Kontakt.nummernVon(x, art)`. Der alte gemischte Block „Weitere Nummer oder E-Mail“ beim Partner ist weg.
+Geburtstage beim Partner kompakt (`details.geb-z`: „Geburtstag Name“ + Datum, aufklappen für Name, Position, Datum, gratulieren/Geschenk). „Kontakt halten“ beim Kunden ohne Eintrag nur als graue Zeile (`Pflege.abschnitt(el, x, persist, { klein: true })`), beim Partner als Box.
+Zurück: Menü-Seiten (`MENUE_SEITEN` in `app.js`) bekommen in `header()` von selbst „Zurück“ zum vorigen Reiter. Wischen vom linken Rand nach rechts klickt `#topback` (core.js), nicht in Auswahlfenstern und Vollbild-Ansichten. Neue Unterseiten brauchen nur `header(titel, sub, { label, fn })`.
+
 ## Bereiche
 
 | Bereich | Dateien | Inhalt |
