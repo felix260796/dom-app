@@ -36,7 +36,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        mac: [macos-15, macos-26, macos-14, macos-15-intel]
+        mac: [macos-15-intel, macos-15, macos-26]
     runs-on: ${{ matrix.mac }}
     timeout-minutes: 60
     env:
