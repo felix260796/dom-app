@@ -14,7 +14,7 @@ window.Partner = (() => {
   const MAX_MB = 15;
 
   const norm = (p) => {
-    for (const f of ['firma', 'gewerk', 'inhaber', 'telefon', 'email', 'anschrift', 'web', 'konditionen', 'notiz', 'stufe', 'kdnr']) p[f] = String(p[f] ?? '');
+    for (const f of ['firma', 'gewerk', 'inhaber', 'telefon', 'telArt', 'email', 'mailArt', 'anschrift', 'web', 'konditionen', 'notiz', 'stufe', 'kdnr']) p[f] = String(p[f] ?? '');
     p.art = ARTEN.some((a) => a[0] === p.art) ? p.art : 'sub';
     p.weitere = Kontakt.norm(p.weitere);
     p.geburtstage = (Array.isArray(p.geburtstage) ? p.geburtstage : []).filter(Boolean).map((g) => ({ id: g.id || uid(), name: String(g.name ?? ''), bez: String(g.bez ?? ''), datum: String(g.datum ?? ''), art: String(g.art ?? '') }));
@@ -100,9 +100,10 @@ window.Partner = (() => {
         <label>Firma</label><input type="text" id="pFirma" value="${esc(p.firma)}" autocomplete="off" placeholder="z. B. Fliesen Kaya GmbH">
         <label>Gewerk bzw. Sortiment</label><input type="text" id="pGewerk" value="${esc(p.gewerk)}" autocomplete="off" placeholder="z. B. Fliesen, Sanitär, Elektro">
         <label>Inhaber bzw. Ansprechpartner</label><input type="text" id="pInhaber" value="${esc(p.inhaber)}" autocomplete="off" placeholder="z. B. Mehmet Kaya">
-        <label>Telefon</label>${Kontakt.telInput('pTel', p.telefon)}
-        <label>E-Mail</label><input type="email" id="pMail" value="${esc(p.email)}" autocomplete="off" inputmode="email" placeholder="info@…">
-        <div id="pWeitere">${Kontakt.weitereHtml()}</div>
+        ${Kontakt.mehrLabel('Telefon', 'tel', p.telArt)}${Kontakt.telInput('pTel', p.telefon)}
+        <div id="pTelMehr"></div>
+        ${Kontakt.mehrLabel('E-Mail', 'mail', p.mailArt)}<input type="email" id="pMail" value="${esc(p.email)}" autocomplete="off" inputmode="email" placeholder="info@…">
+        <div id="pMailMehr"></div>
         <label>Anschrift</label><div class="adr"><input type="text" id="pAdr" value="${esc(p.anschrift)}" autocomplete="off" placeholder="Straße Nr., der Ort wird ergänzt"></div>
         <label>Webseite</label><input type="url" id="pWeb" value="${esc(p.web)}" autocomplete="off" inputmode="url" placeholder="www.…">
         <div id="pLiefBox" ${p.art === 'lief' ? '' : 'hidden'}><label>Unsere Kundennummer bei dieser Firma</label><input type="text" id="pKdnr" value="${esc(p.kdnr)}" autocomplete="off" placeholder="z. B. 204711"></div>
@@ -129,7 +130,7 @@ window.Partner = (() => {
 
     const persist = debounce(() => speichern(p), 400);
     const actions = () => {
-      const A = Kontakt.aktionen({ tels: [{ label: 'Telefon', wert: p.telefon }, ...p.weitere.filter((x) => x.art === 'tel')], mails: [{ label: 'E-Mail', wert: p.email }, ...p.weitere.filter((x) => x.art === 'mail')], adresse: p.anschrift });
+      const A = Kontakt.aktionen({ tels: Kontakt.nummernVon(p, 'tel'), mails: Kontakt.nummernVon(p, 'mail'), adresse: p.anschrift });
       $('#pAct').innerHTML = A.html; A.binden($('#pAct'));
     };
     actions();
@@ -143,32 +144,41 @@ window.Partner = (() => {
     $$('#pStufe [data-stufe]').forEach((b) => (b.onclick = () => { const n = b.dataset.stufe; p.stufen = p.stufen.includes(n) ? p.stufen.filter((x) => x !== n) : [...p.stufen, n]; persist(); b.classList.toggle('on', p.stufen.includes(n)); }));
     Kontakt.telBinden($('#pTel'), (v) => { p.telefon = v; persist(); actions(); });
     if ($('#pRech')) $('#pRech').onclick = () => { const z = $('#pBelege'); if (z) window.scrollTo({ top: z.getBoundingClientRect().top + window.scrollY - 110, behavior: 'smooth' }); };
-    Kontakt.weitereBinden($('#pWeitere'), p.weitere, () => { persist(); actions(); });
+    Kontakt.mehrBinden($('#pTelMehr'), $('[data-mehr="tel"]'), p.weitere, 'tel', () => { persist(); actions(); }, { haupt: { get: () => p.telArt, set: (v) => (p.telArt = v) }, hauptFeld: $('#pTel') });
+    Kontakt.mehrBinden($('#pMailMehr'), $('[data-mehr="mail"]'), p.weitere, 'mail', () => { persist(); actions(); }, { haupt: { get: () => p.mailArt, set: (v) => (p.mailArt = v) } });
     Kunden.adressVorschlaege($('#pAdr'));
     window.Pflege?.abschnitt($('#pPflege'), p, persist); // Kontakt halten: regelmäßig anrufen, treffen
     if (p.isNew) setTimeout(() => $('#pFirma')?.focus(), 50);
     if ($('#pBelege')) window.Finanzen?.partnerAbschnitt($('#pBelege'), p);
 
     // Geburtstage
+    // Kompakt (Wunsch Felix): je Person eine Zeile „Geburtstag Marco Schreiber“ mit Datum, aufklappen zum Bearbeiten
+    const gebOffen = new Set();
+    const gebKurz = (g) => { const m = /^(\d{4})-(\d\d)-(\d\d)$/.exec(g.datum || ''); return m ? new Date(2000, +m[2] - 1, +m[3]).toLocaleDateString('de-DE', { day: 'numeric', month: 'long' }) : 'Datum fehlt'; };
+    const gebKopf = (g) => `<span class="geb-t"><b>Geburtstag ${esc(g.name || 'ohne Namen')}</b>${g.bez ? `<span class="muted">${esc(g.bez)}</span>` : ''}</span><span class="geb-d">${esc(gebKurz(g))}</span>${icon('down', 'pf-pfeil')}`;
     const gebRender = () => {
-      $('#pGeb').innerHTML = p.geburtstage.map((g) => `<div class="grow" data-g="${g.id}">
-        <input type="text" data-gf="name" value="${esc(g.name)}" placeholder="Name, z. B. Mehmet" autocomplete="off">
-        <input type="text" data-gf="bez" value="${esc(g.bez)}" placeholder="z. B. Inhaber, Sohn" autocomplete="off">
-        ${Kontakt.datumInput('g-' + g.id, g.datum)}
-        <button type="button" class="icon-btn" data-gdel aria-label="Entfernen">${icon('x')}</button>
-        ${Kontakt.gebArtSelect(g.art)}</div>`).join('');
+      $('#pGeb').innerHTML = p.geburtstage.map((g) => `<details class="geb-z" data-g="${g.id}" ${gebOffen.has(g.id) ? 'open' : ''}><summary>${gebKopf(g)}</summary>
+        <div class="geb-in">
+        <label>Name</label><input type="text" data-gf="name" value="${esc(g.name)}" placeholder="z. B. Marco Schreiber" autocomplete="off">
+        <label>Position</label><input type="text" data-gf="bez" value="${esc(g.bez)}" placeholder="z. B. Inhaber, Bauleiter, Sohn" autocomplete="off">
+        <label>Geburtstag</label>${Kontakt.datumInput('g-' + g.id, g.datum)}
+        <label>Am Geburtstag</label>${Kontakt.gebArtSelect(g.art)}
+        <button type="button" class="link-danger" data-gdel>${icon('trash')} Entfernen</button></div></details>`).join('');
       $$('[data-g]').forEach((row) => {
         const g = p.geburtstage.find((x) => x.id === row.dataset.g);
-        $$('[data-gf]', row).forEach((inp) => (inp.oninput = () => { g[inp.dataset.gf] = inp.value; persist(); }));
-        Kontakt.datumFeld($('#g-' + g.id), (v) => { g.datum = v; persist(); });
+        row.ontoggle = () => { if (row.open) gebOffen.add(g.id); else gebOffen.delete(g.id); };
+        const kopf = () => { $('summary', row).innerHTML = gebKopf(g); };
+        $$('[data-gf]', row).forEach((inp) => (inp.oninput = () => { g[inp.dataset.gf] = inp.value; persist(); kopf(); }));
+        Kontakt.datumFeld($('#g-' + g.id), (v) => { g.datum = v; persist(); kopf(); });
         $('[data-gebart]', row).onchange = (e) => { g.art = e.target.value; persist(); };
-        $('[data-gdel]', row).onclick = () => { p.geburtstage = p.geburtstage.filter((x) => x !== g); persist(); gebRender(); };
+        $('[data-gdel]', row).onclick = () => { if ((g.name || g.datum) && !confirm(`Geburtstag ${g.name || ''} entfernen?`)) return; p.geburtstage = p.geburtstage.filter((x) => x !== g); persist(); gebRender(); };
       });
     };
     gebRender();
     $('#pGebAdd').onclick = () => {
-      p.geburtstage.push({ id: uid(), name: p.geburtstage.length ? '' : p.inhaber, bez: p.geburtstage.length ? '' : 'Inhaber', datum: '' });
-      persist(); gebRender(); $$('#pGeb .grow').pop()?.querySelector('input[inputmode]')?.focus();
+      const g = { id: uid(), name: p.geburtstage.length ? '' : p.inhaber, bez: p.geburtstage.length ? '' : 'Inhaber', datum: '' };
+      p.geburtstage.push(g); gebOffen.add(g.id); // neue Person gleich offen
+      persist(); gebRender(); $$('#pGeb .geb-z').pop()?.querySelector(g.name ? 'input[inputmode]' : 'input')?.focus();
     };
 
     // Dokumente

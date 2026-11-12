@@ -18,7 +18,7 @@ window.Kunden = (() => {
 
   // ---------- Daten ----------
   const norm = (k) => {
-    for (const f of ['anrede', 'vorname', 'name', 'telefon', 'email', 'geburtstag', 'gebArt', 'privat', 'notiz', 'nr', 'quelle']) k[f] = String(k[f] ?? '');
+    for (const f of ['anrede', 'vorname', 'name', 'telefon', 'telArt', 'email', 'mailArt', 'geburtstag', 'gebArt', 'privat', 'notiz', 'nr', 'quelle']) k[f] = String(k[f] ?? '');
     k.weitere = Kontakt.norm(k.weitere);
     k.hv = k.hv && typeof k.hv === 'object' ? k.hv : {};
     for (const f of ['firma', 'ansprech', 'telefon', 'email', 'anschrift']) k.hv[f] = String(k.hv[f] ?? '');
@@ -458,11 +458,11 @@ window.Kunden = (() => {
             <div><label>E-Mail</label><input type="email" data-hv="email" value="${esc(k.hv.email)}" autocomplete="off" inputmode="email" placeholder="info@…"></div></div>
           <label>Anschrift der Hausverwaltung</label><div class="adr"><input type="text" data-hv="anschrift" value="${esc(k.hv.anschrift)}" autocomplete="off" placeholder="Straße Nr., der Ort wird ergänzt"></div>
         </div>
-        ${Kontakt.mehrLabel('Telefon', 'tel')}${Kontakt.telInput('kTel', k.telefon)}
+        ${Kontakt.mehrLabel('Telefon', 'tel', k.telArt)}${Kontakt.telInput('kTel', k.telefon)}
         <div id="kTelMehr"></div>
         <label>Geburtstag${a !== null ? ` <span class="muted" id="kAlter">(${a} Jahre)</span>` : ` <span class="muted" id="kAlter"></span>`}</label>${Kontakt.datumInput('kGeb', k.geburtstag)}
         <div id="kGebArtBox" ${k.geburtstag ? '' : 'hidden'}><label>Am Geburtstag</label>${Kontakt.gebArtSelect(k.gebArt, 'kGebArt')}</div>
-        ${Kontakt.mehrLabel('E-Mail', 'mail')}<input type="email" id="kMail" value="${esc(k.email)}" autocomplete="off" inputmode="email" placeholder="name@beispiel.de">
+        ${Kontakt.mehrLabel('E-Mail', 'mail', k.mailArt)}<input type="email" id="kMail" value="${esc(k.email)}" autocomplete="off" inputmode="email" placeholder="name@beispiel.de">
         <div id="kMailMehr"></div>
         <label id="kPrivatL">${privatLabel(k)}</label><div class="adr"><input type="text" id="kPrivat" value="${esc(k.privat)}" autocomplete="off" placeholder="Straße Nr., der Ort wird ergänzt"></div>
         <label>Wie ist der Kunde auf uns gekommen?</label><select id="kQuelle"><option value="">Bitte wählen</option>${[...new Set([...vorgabe('kundenQuellen'), ...(k.quelle ? [k.quelle] : [])])].map((q) => `<option ${q === k.quelle ? 'selected' : ''}>${esc(q)}</option>`).join('')}</select>
@@ -502,8 +502,8 @@ window.Kunden = (() => {
       const g = bisGeburtstag(k);
       const hv = istHv(k);
       const A = Kontakt.aktionen({
-        tels: [{ label: 'Telefon', wert: k.telefon }, ...k.weitere.filter((x) => x.art === 'tel'), ...(hv ? [{ label: 'Hausverwaltung', wert: k.hv.telefon }] : [])],
-        mails: [{ label: 'E-Mail', wert: k.email }, ...k.weitere.filter((x) => x.art === 'mail'), ...(hv ? [{ label: 'Hausverwaltung', wert: k.hv.email }] : [])],
+        tels: [...Kontakt.nummernVon(k, 'tel'), ...(hv ? [{ label: 'Hausverwaltung', wert: k.hv.telefon }] : [])],
+        mails: [...Kontakt.nummernVon(k, 'mail'), ...(hv ? [{ label: 'Hausverwaltung', wert: k.hv.email }] : [])],
         adresse: hv ? k.hv.anschrift || k.privat : k.privat,
       });
       el.innerHTML = (g !== null && g <= 14 ? `<div class="notice" style="margin:0 0 10px">${icon('cake')}<span><b>${gebText(g)}</b>${alter(k) !== null ? ` · wird ${alter(k) + (g === 0 ? 0 : 1)}` : ''}</span></div>` : '') + A.html;
@@ -535,10 +535,10 @@ window.Kunden = (() => {
       $('#kAlter').textContent = alter(k) !== null ? `(${alter(k)} Jahre)` : '';
     });
     $$('[data-hv]').forEach((inp) => (inp.oninput = () => { k.hv[inp.dataset.hv] = inp.value; persist(); actions(); }));
-    Kontakt.mehrBinden($('#kTelMehr'), $('[data-mehr="tel"]'), k.weitere, 'tel', () => { persist(); actions(); });
-    Kontakt.mehrBinden($('#kMailMehr'), $('[data-mehr="mail"]'), k.weitere, 'mail', () => { persist(); actions(); });
+    Kontakt.mehrBinden($('#kTelMehr'), $('[data-mehr="tel"]'), k.weitere, 'tel', () => { persist(); actions(); }, { haupt: { get: () => k.telArt, set: (v) => (k.telArt = v) }, hauptFeld: $('#kTel') });
+    Kontakt.mehrBinden($('#kMailMehr'), $('[data-mehr="mail"]'), k.weitere, 'mail', () => { persist(); actions(); }, { haupt: { get: () => k.mailArt, set: (v) => (k.mailArt = v) } });
     historie(k, idx);
-    window.Pflege?.abschnitt($('#kPflege'), k, persist); // Kontakt halten: regelmäßig anrufen, treffen
+    window.Pflege?.abschnitt($('#kPflege'), k, persist, { klein: true }); // Kontakt halten: regelmäßig anrufen, treffen
     if (k.isNew) setTimeout(() => $('#kName')?.focus(), 50);
     $$('.adr input').forEach(adressVorschlaege);
     $$('[data-obj]').forEach((b) => (b.onclick = () => { objektView(k, objekt(k, b.dataset.obj)); window.scrollTo(0, 0); }));
