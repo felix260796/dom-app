@@ -145,7 +145,7 @@ window.Partner = (() => {
     if ($('#pRech')) $('#pRech').onclick = () => { const z = $('#pBelege'); if (z) window.scrollTo({ top: z.getBoundingClientRect().top + window.scrollY - 110, behavior: 'smooth' }); };
     Kontakt.weitereBinden($('#pWeitere'), p.weitere, () => { persist(); actions(); });
     Kunden.adressVorschlaege($('#pAdr'));
-    window.Pflege?.abschnitt($('#pPflege'), p, persist); // Kontakt halten: regelmäßig anrufen, Mittagessen
+    window.Pflege?.abschnitt($('#pPflege'), p, persist); // Kontakt halten: regelmäßig anrufen, treffen
     if (p.isNew) setTimeout(() => $('#pFirma')?.focus(), 50);
     if ($('#pBelege')) window.Finanzen?.partnerAbschnitt($('#pBelege'), p);
 

@@ -70,6 +70,10 @@ Zeichnen mit Stift oder Finger: `zeichnen.js`, ein Werkzeug für alles: `Zeichne
 Kontakt halten: `pflege.js` (`Pflege`). Bei Kunden und Partnern Abschnitt „Kontakt halten“ (`Pflege.abschnitt`): regelmäßig anrufen und Mittagessen vereinbaren mit Rhythmus (wöchentlich bis jährlich) und Tag fürs nächste Mal, Daten in `x.pflege = { anruf, essen }` (`r`, `faellig`, `zuletzt`, `spaeter`, `verschoben`, `wer`). Fehlt `x.pflege`, fragt die Karte nach (Vorgabe `pflegeFragen`). Auswahl je Tag `Pflege.heuteListe` (höchstens `pflegeAnrufeMax`/`pflegeEssenMax`, älteste zuerst, heute Erledigtes und Verschobenes zählt mit), auf „Heute“ mit Telefon rechts (`Pflege.heute()`), danach Nachfrage erledigt / später (`pflegeSpaeter`) / morgen. Kalender: Art `pflege`, vorausgerechnet (`Pflege.eintraege`). Mitteilung: `supabase/functions/push` (`pflegeHeute`, gleiche Auswahl) ab `pflegeAb` bis `pflegeBis`, alle `pflegeAlle` Minuten, bis erledigt; Schalter `pushPflege`, Wochenende `pflegeWochenende`. Prefs gehen über `Push.prefs().pflege` an die Funktion.
 Musik nach Aufnahme: In der iPhone-App nimmt auch das Mikrofon oben (`sprache.js`) nativ auf (`Geraet.aufnahme`), danach gibt `DomAufnahme.freigeben()` die Audio-Sitzung mit `notifyOthersOnDeactivation` ab, damit vorher laufende Musik weiterspielt (`Geraet.audioFreigeben`, `aufnahmeAbbrechen`).
 
+## Neuerungen aus Version 94 (Kontakt halten nachgebessert)
+
+„Mittagessen“ heißt „Treffen vereinbaren“ (intern weiter Art `essen`; Namen über Vorgaben `pflegeNameAnruf`, `pflegeNameTreffen`, gehen über `prefs.pflege.namen` auch in die Mitteilung). „Kontakt halten“ in Kunde/Partner ist ein kleines `details.pf-box`, zu, solange nichts eingetragen ist (keine Frage-Karte mehr, `pflegeFragen` entfällt). Heute: weißes Feld über die ganze Breite mit kleinem rundem Telefon (`.pf-tel`), ruft direkt die erste Nummer an. Kalender: Arten `pflegeAnruf`, `pflegeTreffen` getrennt filterbar, Einträge mit kleinem Telefon (`data-ktel`, `Pflege.anrufenEintrag`); „Geburtstage Partner“.
+
 ## Bereiche
 
 | Bereich | Dateien | Inhalt |

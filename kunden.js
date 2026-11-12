@@ -535,7 +535,7 @@ window.Kunden = (() => {
     Kontakt.mehrBinden($('#kTelMehr'), $('[data-mehr="tel"]'), k.weitere, 'tel', () => { persist(); actions(); });
     Kontakt.mehrBinden($('#kMailMehr'), $('[data-mehr="mail"]'), k.weitere, 'mail', () => { persist(); actions(); });
     historie(k, idx);
-    window.Pflege?.abschnitt($('#kPflege'), k, persist); // Kontakt halten: regelmäßig anrufen, Mittagessen
+    window.Pflege?.abschnitt($('#kPflege'), k, persist); // Kontakt halten: regelmäßig anrufen, treffen
     if (k.isNew) setTimeout(() => $('#kName')?.focus(), 50);
     $$('.adr input').forEach(adressVorschlaege);
     $$('[data-obj]').forEach((b) => (b.onclick = () => { objektView(k, objekt(k, b.dataset.obj)); window.scrollTo(0, 0); }));
