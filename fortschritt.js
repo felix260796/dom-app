@@ -35,21 +35,34 @@ window.Fortschritt = (() => {
       const f = kurz(w);
       const arten = [...new Set((raeume || []).map((r) => artVon(r.roomType)))];
       if (!arten.length) arten.push('allgemein');
-      el.innerHTML = `<div class="sec-h"><h2>Baufortschritt</h2>${f ? `<span class="count">${f.fertig}/${f.n}</span>` : ''}</div>
+      // Nach Räumen aufgeteilt wie im Angebot: Überschrift, sobald es mehr als einen Raum gibt
+      const mehrRaeume = new Set(s.map((x) => x.raum || '')).size > 1;
+      const raumKopf = (x, i) => (mehrRaeume && (i === 0 || (s[i - 1].raum || '') !== (x.raum || '')) ? `<div class="bf-raum">${esc(x.raum || 'Allgemein')}</div>` : '');
+      el.innerHTML = `<div class="sec-h"><h2>Leistungen und Baufortschritt</h2>${f ? `<span class="count">${f.fertig}/${f.n}</span>` : ''}</div>
         ${f ? `<div class="bf-kopf">${balken(f)}</div>` : ''}
         <div class="card bf">
-          ${s.length ? s.map((x, i) => `<div class="bf-z ${x.fertig ? 'ok' : ''}" data-i="${i}">
+          ${s.length ? s.map((x, i) => `${raumKopf(x, i)}<div class="bf-z ${x.fertig ? 'ok' : ''}" data-i="${i}">
               <button class="bf-ck" data-ck aria-label="${x.fertig ? 'Nicht erledigt' : 'Erledigt'}">${x.fertig ? icon('check') : ''}</button>
               <button class="bf-t" data-ed><b><span class="bf-nr">${esc(x.nr || String(i + 1))}${/[.)]$/.test(x.nr || '') ? '' : '.'}</span> ${esc(x.name)}</b>${x.fertig || x.notiz ? `<small>${[x.fertig && `erledigt ${tag(x.fertig)}${x.wer ? ' · ' + esc(x.wer) : ''}`, x.notiz && esc(x.notiz)].filter(Boolean).join(' · ')}</small>` : ''}</button>
               ${s.length > 1 ? `<span class="bf-grip" data-grip aria-label="Zum Verschieben ziehen">${icon('list')}</span>` : ''}
             </div>`).join('')
-            : `<p class="hint" style="margin:0 0 10px">Lege die Arbeitsschritte an und hake sie ab, sobald sie erledigt sind. Zum Start eine Vorlage übernehmen:</p>
+            : `<p class="hint" style="margin:0 0 10px">Hake jede Leistung ab, sobald sie erledigt ist. Am einfachsten übernimmst du die Leistungen aus dem Angebot (ohne Preise, nach Räumen), oder eine Vorlage:</p>
+              ${window.Rechnung ? `<button class="btn block" data-vl="angebot" style="margin-bottom:8px">${icon('clipboard')} Leistungen aus dem Angebot übernehmen</button>` : ''}
               <div class="chips">${arten.map((a) => `<button class="qchip" data-vl="${a}">${icon('plus')} Vorlage ${esc(NAMEN[a].replace(' (alle anderen Räume)', ''))}</button>`).join('')}</div>`}
           <div class="bf-neu"><input type="text" id="bfNeu" placeholder="Neuer Schritt, z. B. Elektro-Abnahme" autocomplete="off"><button class="btn small" id="bfAdd" aria-label="Schritt hinzufügen">${icon('plus')}</button></div>
         </div>`;
       const sichern = async () => { await speichern(); render(); };
-      $$('[data-vl]', el).forEach((b) => (b.onclick = async () => { w.schritte = vorlage(b.dataset.vl).map((name) => ({ id: uid(), name, fertig: 0, wer: '', notiz: '' })); await sichern(); }));
-      const add = async () => { const v = $('#bfNeu', el).value.trim(); if (!v) return; (w.schritte ||= []).push({ id: uid(), name: v, fertig: 0, wer: '', notiz: '' }); await sichern(); $('#bfNeu', el)?.focus(); };
+      $$('[data-vl]', el).forEach((b) => (b.onclick = async () => {
+        if (b.dataset.vl === 'angebot') {
+          const a = await window.Rechnung.auftrag(w);
+          const l = [...a.zeilen.map((z) => ({ name: z.text, raum: z.raum || '', menge: z.menge, einheit: z.einheit })), ...a.nachtraege.map((n) => ({ name: n.text || 'Nachtrag', raum: 'Nachträge', menge: n.menge, einheit: n.einheit }))];
+          if (!l.length) return toast('Im Angebot stehen noch keine Positionen.');
+          const mengeText = (x) => (x.menge && !(x.menge === 1 && /pausch/i.test(x.einheit || '')) ? `${String(x.menge).replace('.', ',')} ${x.einheit || ''}`.trim() : '');
+          w.schritte = l.map((x) => ({ id: uid(), name: x.name, raum: x.raum, fertig: 0, wer: '', notiz: mengeText(x) }));
+        } else w.schritte = vorlage(b.dataset.vl).map((name) => ({ id: uid(), name, fertig: 0, wer: '', notiz: '' }));
+        await sichern();
+      }));
+      const add = async () => { const v = $('#bfNeu', el).value.trim(); if (!v) return; (w.schritte ||= []).push({ id: uid(), name: v, raum: w.schritte.at(-1)?.raum || '', fertig: 0, wer: '', notiz: '' }); await sichern(); $('#bfNeu', el)?.focus(); };
       $('#bfAdd', el).onclick = add;
       // Ziehen am Griff rechts: Schritt verschieben. Danach werden die Nummern der Reihe nach neu gezählt.
       $$('[data-grip]', el).forEach((g) => (g.onpointerdown = (e) => {

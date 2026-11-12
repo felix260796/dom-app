@@ -229,7 +229,7 @@ const MENUE = [
   ['heute', 'Heute', 'sun', () => 'Was heute dran ist', () => switchTab('heute')],
   ['kalender', 'Kalender', 'calendar', () => { const n = window.Kalender?.eintraege(Kalender._heute(), Kalender._heute()).length || 0; return n ? `Heute ${n} ${n === 1 ? 'Eintrag' : 'Einträge'}` : 'Termine, Geburtstage'; }, () => { state.finanzen = false; Kalender.view(); window.scrollTo(0, 0); }],
   ['karte', 'Karte', 'map', () => 'Alle Baustellen auf der Karte', () => switchTab('karte')],
-  ['auswertung', 'Auswertung', 'chart', () => 'Umsatz, Zusagen, Marge, Kundenquellen', () => switchTab('auswertung')],
+  ['auswertung', 'Auswertung', 'chart', () => 'Umsatz, Zusagen, Marge, Kalkulation je Projekt', () => Finanzen.auswertungView()],
   ['preisliste', 'Preisliste', 'euro', () => 'Positionen, Lohn, Material, Aufschläge', () => { switchTab('einstellungen'); einstellungSeite('preisliste'); }],
   ['ppreise', 'Preislisten der Partner', 'wrench', () => 'Nach Gewerk: wer macht was zu welchem Preis', () => { switchTab('partner'); setTimeout(() => Partner.preislistenView(), 150); window.scrollTo(0, 0); }],
   ['unterlagen', 'Unterlagen', 'file', () => 'Firmenordner und Vorlagen', () => switchTab('unterlagen')],
