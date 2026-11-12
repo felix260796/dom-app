@@ -26,12 +26,18 @@ permissions:
   actions: write
 
 concurrency:
-  group: ios-testflight
+  group: ios-testflight-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
+  # GitHub hat manchmal stundenlang keinen Mac frei. Darum wird bei mehreren Mac-Arten
+  # gleichzeitig angefragt; der erste freie Rechner baut, die anderen hören sofort auf.
   bauen:
-    runs-on: macos-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        mac: [macos-15, macos-26, macos-14, macos-15-intel]
+    runs-on: ${{ matrix.mac }}
     timeout-minutes: 60
     env:
       APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
@@ -51,9 +57,45 @@ jobs:
               "https://api.github.com/repos/${{ github.repository }}/actions/workflows/$w/enable" && echo "$w aktiv" || echo "::warning::$w konnte nicht aktiv gehalten werden"
           done
 
+      - name: Baut schon ein anderer Rechner?
+        id: erster
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          JOBS="https://api.github.com/repos/${{ github.repository }}/actions/runs/${{ github.run_id }}/attempts/${{ github.run_attempt }}/jobs?per_page=50"
+          holen() { curl -fsS -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github+json" "$JOBS"; }
+          # Andere Rechner, die schon „Platz belegt“ haben?
+          ANDERE=$(holen | jq --arg r "$RUNNER_NAME" '[.jobs[] | select(.runner_name != $r) | select(any(.steps[]?; .name == "Platz belegt" and .conclusion == "success"))] | length')
+          if [ "$ANDERE" != "0" ]; then echo "Ein anderer Rechner baut schon."; echo "los=nein" >> "$GITHUB_OUTPUT"; exit 0; fi
+          echo "los=ja" >> "$GITHUB_OUTPUT"
+
+      - name: Platz belegt
+        if: steps.erster.outputs.los == 'ja'
+        run: echo "Dieser Rechner ($RUNNER_NAME) baut."
+
+      - name: Nur einer baut
+        id: einer
+        if: steps.erster.outputs.los == 'ja'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # Kamen zwei Rechner fast gleichzeitig, baut der mit der kleineren Nummer.
+          sleep 25
+          JOBS="https://api.github.com/repos/${{ github.repository }}/actions/runs/${{ github.run_id }}/attempts/${{ github.run_attempt }}/jobs?per_page=50"
+          D=$(curl -fsS -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github+json" "$JOBS")
+          ICH=$(echo "$D" | jq --arg r "$RUNNER_NAME" '[.jobs[] | select(.runner_name == $r) | .id] | first')
+          ERSTER=$(echo "$D" | jq '[.jobs[] | select(any(.steps[]?; .name == "Platz belegt" and .conclusion == "success")) | .id] | min')
+          echo "ich $ICH, erster $ERSTER"
+          if [ "$ERSTER" = "null" ] || [ "$ICH" = "$ERSTER" ]; then echo "los=ja" >> "$GITHUB_OUTPUT"; else echo "los=nein" >> "$GITHUB_OUTPUT"; fi
+
       - name: Geheimnisse da?
         id: pruefen
         run: |
+          if [ "${{ steps.einer.outputs.los }}" != "ja" ]; then
+            echo "Ein anderer Rechner baut, hier nichts zu tun."
+            echo "los=nein" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
           if [ -z "$APPLE_TEAM_ID" ] || [ -z "$ASC_KEY_ID" ] || [ -z "$ASC_ISSUER_ID" ] || [ -z "$ASC_KEY_P8" ]; then
             echo "Apple-Schlüssel fehlen noch, Bau übersprungen."
             echo "los=nein" >> "$GITHUB_OUTPUT"
