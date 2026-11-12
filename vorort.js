@@ -1,8 +1,8 @@
 'use strict';
-/* DOM – Mitdenken vor Ort und Angebotsentwurf im Büro.
+/* DOM – Mitdenken vor Ort und „Positionen vorschlagen lassen“ im Büro.
  * Vor Ort:  „Was fehlt noch?“ Die KI liest, was schon da ist (Gespräch, Fotos, Maße, Scans), und stellt die Fragen,
  *           die fürs Angebot noch offen sind, solange man beim Kunden ist. Gespeichert in w.vorOrt.fragen.
- * Im Büro:  „Angebotsentwurf erstellen“. Die KI schlägt je Bereich Positionen vor (aus der Preisliste, sonst frei),
+ * Im Büro:  „Positionen vorschlagen lassen“ (hieß bis Version 92 „Angebotsentwurf erstellen“). Die KI schlägt je Bereich Positionen vor (aus der Preisliste, sonst frei),
  *           die Mengen kommen aus dem Aufmaß, wo es eines gibt. Prüfen, dann in die Angebote der Räume übernehmen.
  *           Was noch fehlt, steht in w.entwurf.offen.
  * Nicht auf Bäder beschränkt: jede Arbeit (Rollläden, Steckdosen, Türgriffe …) ist möglich.
@@ -177,7 +177,7 @@ window.VorOrt = (() => {
   /** Seite zum Prüfen des Entwurfs. Erst „Übernehmen“ schreibt etwas in die Angebote. */
   function entwurfView(w, list, E) {
     const zurueck = () => Projekt.view();
-    header('Angebotsentwurf', w.customer || '', { label: 'Zurück', fn: zurueck });
+    header('Vorschlag der KI', w.customer || '', { label: 'Zurück', fn: zurueck });
     const n = E.bereiche.reduce((s, b) => s + b.zeilen.length, 0);
     main().innerHTML = `
       <p class="hint" style="margin-top:0">Vorschlag der KI aus Gespräch, Fotos und Maßen. Hake ab, was nicht hinein soll, und prüfe die Mengen. <span class="wf-b mittel">geschätzt</span> bitte prüfen, <span class="wf-b schlecht">Menge fehlt</span> bitte eintragen. Preise aus deiner Preisliste rechnet die App wie immer.</p>
@@ -258,22 +258,28 @@ window.VorOrt = (() => {
     }
     return out;
   }
+  /** Büro, Schritt 3: Die KI schlägt Positionen vor. Ohne Aufnahme reicht eine kurze Beschreibung (aus der Erinnerung). */
   function bueroKarte(w, list) {
     const ki = !!state.settings.apiKey, offen = offenListe(w, list);
-    return `<button class="btn block" id="voEntwurf" ${ki ? '' : 'disabled'}>${icon('sparkle')} ${w.entwurf ? 'Entwurf ergänzen lassen' : 'Angebotsentwurf erstellen'}</button>
-      <p class="hint center">${ki ? 'Die KI schlägt aus Gespräch, Fotos und Maßen die Positionen vor. Du prüfst, bevor etwas übernommen wird.' : 'Dafür braucht die App den KI-Schlüssel (Einstellungen › KI).'}</p>
+    return `<div class="card">
+      <label style="margin-top:0">Was soll gemacht werden?</label>
+      <textarea id="voKurz" data-frei placeholder="Kurz beschreiben oder diktieren, z. B. Bad komplett neu, bodengleiche Dusche, 6 Türgriffe tauschen" style="min-height:64px">${esc(w.vorOrt?.notiz || '')}</textarea>
+      <button class="btn block" id="voEntwurf" style="margin-top:10px" ${ki ? '' : 'disabled'}>${icon('sparkle')} ${w.entwurf ? 'Weitere Positionen vorschlagen lassen' : 'Positionen vorschlagen lassen'}</button>
+      <p class="hint center" style="margin-bottom:0">${ki ? `Die KI liest ${[w.gespraech?.transcript ? 'das Gespräch' : '', 'deine Beschreibung', 'Fotos und Maße'].filter(Boolean).join(', ')} und schlägt Positionen vor. Du prüfst, bevor etwas übernommen wird. Es geht auch ohne: Positionen oben selbst eintragen.` : 'Dafür braucht die App den KI-Schlüssel (Einstellungen › KI). Ohne KI trägst du die Positionen oben selbst ein.'}</p></div>
       ${offen.length ? `<div class="card wf-offen"><b>Noch offen (${offen.length})</b><ul class="wf-o">${offen.map((o) => `<li>${o.id ? `<label><input type="checkbox" data-voo="${o.id}"> ${esc(o.text)}</label>` : esc(o.text)}</li>`).join('')}</ul></div>` : ''}`;
   }
   function bueroBind(w, list) {
     const b = $('#voEntwurf');
+    if ($('#voKurz')) $('#voKurz').oninput = debounce(async (e) => { (w.vorOrt ??= {}).notiz = e.target.value; delete w.isNew; await Projekt.save(w); }, 500);
     if (b) b.onclick = async () => {
-      if (!hatStoff(w, list)) return toast('Noch nichts da für einen Entwurf. Erst Gespräch, Fotos oder Notizen vor Ort aufnehmen.', 5000);
-      b.disabled = true; b.innerHTML = '<span class="spinner sm"></span> Entwurf wird erstellt (bis zu 1 Minute) …';
+      if ($('#voKurz')) (w.vorOrt ??= {}).notiz = $('#voKurz').value;
+      if (!hatStoff(w, list)) { toast('Bitte kurz beschreiben, was gemacht werden soll.', 4500); return $('#voKurz')?.focus(); }
+      b.disabled = true; b.innerHTML = '<span class="spinner sm"></span> Vorschlag wird erstellt (bis zu 1 Minute) …';
       try {
         const E = await entwurfHolen(w, list);
         if (!E.bereiche.length) { toast('Die KI hat keine Positionen gefunden.', 5000); return Projekt.view(); }
         entwurfView(w, list, E);
-      } catch (e) { console.error(e); toast('Entwurf ging nicht: ' + e.message, 6000); Projekt.view(); }
+      } catch (e) { console.error(e); toast('Vorschlag ging nicht: ' + e.message, 6000); Projekt.view(); }
     };
     $$('[data-voo]').forEach((c) => (c.onchange = async () => { const o = (w.entwurf?.offen || []).find((x) => x.id === c.dataset.voo); if (o) { o.erledigt = c.checked; await Projekt.save(w); c.closest('li').classList.toggle('ok', c.checked); } }));
   }

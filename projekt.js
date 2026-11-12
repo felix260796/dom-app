@@ -176,6 +176,7 @@ window.Projekt = (() => {
     }
   }
   async function oeffnen(id) {
+    schrittWahl.delete(id);
     const w = await kvGet(key(id));
     if (!w) { toast('Projekt nicht gefunden.'); return; }
     w.mappe ??= {};
@@ -250,7 +251,7 @@ window.Projekt = (() => {
       return `<span class="dots">${fertig.map((id) => `<i style="--c:${pkgOf(r, id)?.color || PKG_META[id][1]}" title="${esc(pkgOf(r, id)?.name || '')}"></i>`).join('')}</span><span class="st">${fertig.map((id) => esc(pkgOf(r, id)?.name || PKG_META[id][0])).join(', ')}</span>`;
     };
     let summe = 0;
-    if (phase(w) === 'angebot') { try { await window.Angebot._intern.preisliste(); summe = summeVon(list); } catch (e) { console.warn(e); } if (state.wohnung !== w || state.project) return; }
+    if (phase(w) === 'angebot') { try { await window.Angebot._intern.preisliste(); await kopfAnwenden(w, list); summe = summeVon(list); } catch (e) { console.warn(e); } if (state.wohnung !== w || state.project) return; }
     main().innerHTML = phase(w) === 'angebot' ? angebotSeite({ w, list, k, nFotos, anyResult, withPhotos, nBilder, stand, summe }) : auftragSeite({ w, list, k, nFotos, stand });
     if ($('#wKosten')) window.Finanzen?.projektAbschnitt($('#wKosten'), w);
     if ($('#wRech')) window.Rechnung?.projektAbschnitt($('#wRech'), w);
@@ -586,10 +587,9 @@ window.Projekt = (() => {
   }
   const punkt = (attr, ico, farbe, titel, sub) => `<button type="button" class="doc" ${attr}><span class="d-ico ${farbe}">${icon(ico)}</span><span class="d-t"><b>${titel}</b><span>${sub}</span></span>${icon('chevron', 'pc-chev')}</button>`;
 
-  /** Reiter 1: alles, was beim Kunden aufgenommen wird. Jeder Punkt für sich. */
-  function vorOrtTab({ w, list, k, nFotos, anyResult, withPhotos, nBilder, stand }) {
-    const sq = schnellVon(k), scans = w.vorOrt?.scans || [], lidar = !!window.Geraet?.kann('lidar');
-    const zahl = (x) => (+x || 0).toLocaleString('de-DE', { maximumFractionDigits: 2 });
+  /** Kunde, Rechnungsanschrift, Objekt und Projektname. Steht oben in „Vor Ort“ und im Büro in Schritt 1. */
+  function kundeKarte(w, k) {
+    const sq = schnellVon(k);
     return `
       <div class="card kunde">
         ${k ? `<button class="kline" id="wKunde"><span class="av sm">${esc(Kunden.initialen(k))}</span><span class="kl-t"><b>${esc(Kunden.name(k) || 'Ohne Namen')}</b><small>${esc([k.telefon, k.email].filter(Boolean).join(' · ') || 'Kundenkarte öffnen')}</small></span>${icon('chevron', 'pc-chev')}</button>
@@ -601,7 +601,16 @@ window.Projekt = (() => {
         <label class="ic-field">${icon('edit')}<input type="text" id="wTitel" value="${esc(w.titel || '')}" placeholder="Projektname, z. B. Badumbau" autocomplete="off" aria-label="Projektname"></label>
         ${sq ? `<p class="ab-schnell">${icon('phone')}<span>Am Telefon genannt: <b>ca. ${eurRund(sq.von)} – ${eurRund(sq.bis)}</b> · ${esc(new Date(sq.t).toLocaleDateString('de-DE'))}${sq.text ? ` · ${esc(sq.text)}` : ''}</span></p>` : ''}`
         : `<button class="kline" id="wKundeWahl">${icon('user')}<span class="kl-t"><b>${esc(w.customer || 'Kunde zuordnen')}</b><small>Kunde auswählen oder neu anlegen</small></span>${icon('chevron', 'pc-chev')}</button>`}
-      </div>
+      </div>`;
+  }
+
+  /** Reiter 1: alles, was beim Kunden aufgenommen wird. Jeder Punkt für sich. */
+  function vorOrtTab({ w, list, k, nFotos, anyResult, withPhotos, nBilder, stand }) {
+    const scans = w.vorOrt?.scans || [], lidar = !!window.Geraet?.kann('lidar');
+    const zahl = (x) => (+x || 0).toLocaleString('de-DE', { maximumFractionDigits: 2 });
+    return `
+      ${kundeKarte(w, k)}
+      ${norm(w.status) === 'besichtigung' ? `<button type="button" class="link-add ab-ohne" data-reiter="buero">${icon('edit')} Nicht vor Ort gewesen? Angebot gleich im Büro anlegen</button>` : ''}
 
       <div class="sec-h"><h2>Gespräch aufnehmen</h2></div>
       ${window.Gespraech?.karte(w, list, { einzeln: true }) || ''}
@@ -647,49 +656,109 @@ window.Projekt = (() => {
       <div id="wTermine"></div>`;
   }
 
-  /** Reiter 2: das Angebot ausarbeiten, in der Reihenfolge, in der es später auf dem Papier steht. */
+  /** Reiter 2: das Angebot anlegen, Schritt für Schritt in der Reihenfolge, in der es später auf dem Papier steht (Wunsch Felix, Version 93).
+   *  1 Davor (Anschriften, Nummer, Betreff, Anrede, Anfangstexte) · 2 Maße (was wird angeboten, wie groß) · 3 Positionen · 4 Danach (Schlusstexte) · 5 Ansicht.
+   *  Geht auch ganz ohne Vor-Ort-Termin: Kein Schritt setzt Aufnahme, Plan oder Scan voraus. */
+  const SCHRITTE = [['davor', 'Davor'], ['masse', 'Maße'], ['pos', 'Positionen'], ['danach', 'Danach'], ['ansicht', 'Ansicht']];
+  const schrittWahl = new Map(); // je Projekt, solange die App offen ist
+  const schrittVon = (w) => schrittWahl.get(w.id) || 'davor';
+  /** Kopf des Angebots (Nummer, Ansprechpartner, Betreff, Anrede). Liegt in den Räumen; solange es noch keinen Raum gibt, in w.angebotKopf. */
+  function kopfVon(w, list) {
+    const mitPos = mitPosVon(list), erst = mitPos[0] || list.find((r) => r.angebot), a = erst?.angebot || {}, K = w.angebotKopf || {};
+    return { nr: aktNr(w, list) || K.nr || '', anspr: a.anspr || K.anspr || '', titel: (mitPos.length > 1 ? w.gesamtAngebot?.titel : a.titel) || K.titel || '', anrede: a.anrede || K.anrede || '', erst, a };
+  }
+  /** Was in Schritt 1 eingetragen wurde, bevor es Räume gab, in die Räume übernehmen. */
+  async function kopfAnwenden(w, list) {
+    const K = w.angebotKopf; if (!K) return;
+    const alle = list.filter((r) => r.angebot), mehrere = mitPosVon(list).length > 1;
+    for (const r of alle) {
+      const a = r.angebot; let neu = false;
+      if (K.anrede && !a.anrede) { a.anrede = K.anrede; neu = true; }
+      if (K.anspr && !a.anspr) { a.anspr = K.anspr; neu = true; }
+      if (!mehrere && K.nr && !a.nr) { a.nr = K.nr; neu = true; }
+      if (!mehrere && K.titel && !a.titel) { a.titel = K.titel; neu = true; }
+      if (neu) await saveProject(r);
+    }
+    if (mehrere && ((K.nr && !w.gesamtAngebot?.nr) || (K.titel && !w.gesamtAngebot?.titel))) {
+      w.gesamtAngebot = { ...(w.gesamtAngebot || {}), nr: w.gesamtAngebot?.nr || K.nr || '', titel: w.gesamtAngebot?.titel || K.titel || '' };
+      if (!w.isNew) await save(w);
+    }
+  }
+  /** Maße eines Raums für die Anzeige. */
+  const massVon = (r) => { const q = r.aufmass?.raeume?.[0]; return { l: q?.teile?.[0]?.l || '', b: q?.teile?.[0]?.b || '', h: q?.h || '' }; };
+  const ohneMasse = (r) => !!r.nurAngebot && r.roomType === 'sonstiges'; // Kleinigkeit: einzelne Arbeiten ohne Raum
+  const flaecheText = (r) => { const m = massVon(r), n = (x) => parseFloat(String(x).replace(',', '.')) || 0; return n(m.l) && n(m.b) ? `${(n(m.l) * n(m.b)).toLocaleString('de-DE', { maximumFractionDigits: 2 })} m² Boden` : ''; };
+
   function bueroTab({ w, list, k, summe }) {
     if (gesperrt(w)) return `<div class="card ab-sperre"><p>${icon('check')}<span><b>Angebot${sperrInfo(w).nr ? ` Nr. ${esc(sperrInfo(w).nr)}` : ''} ist verschickt</b> und bleibt so, wie es der Kunde bekommen hat.</span></p>
         <button class="btn block" id="wKopie">${icon('edit')} Angebot ändern (Kopie mit neuer Nummer)</button>
         <button class="btn secondary block" data-reiter="angebote" style="margin-top:8px">Zu den Angeboten</button></div>`;
-    const A = window.Angebot._intern, mitPos = mitPosVon(list), erst = mitPos[0] || list.find((r) => r.angebot);
-    const a = erst?.angebot, mehrere = mitPos.length > 1, texte = texteVon(w), anspr = A.ansprechpartner();
-    const E = A.einstellungen();
+    const A = window.Angebot._intern, mitPos = mitPosVon(list), texte = texteVon(w), anspr = A.ansprechpartner(), E = A.einstellungen();
+    const K = kopfVon(w, list), erst = K.erst, a = K.a, mehrere = mitPos.length > 1;
+    const s = schrittVon(w), i = SCHRITTE.findIndex((x) => x[0] === s);
+    const ok = { davor: !!(k && k.privat.trim()), masse: list.length > 0, pos: mitPos.length > 0, danach: mitPos.length > 0, ansicht: !!w.angebotPdf };
     const proz = (x) => String(Math.round((+x || 0) * 1000) / 10).replace('.', ',');
+    const nPos = mitPos.reduce((n, r) => n + r.angebot.positionen.length, 0);
+    const offen = window.VorOrt?.offenListe(w, list) || [];
+    const seite = {
+      davor: () => `
+        <div class="sec-h"><h2>Für wen und wo?</h2></div>
+        ${kundeKarte(w, k)}
+        <div class="sec-h"><h2>So steht es oben im Angebot</h2></div>
+        <div class="card kform">
+          <div class="row"><div><label style="margin-top:0">Angebotsnummer</label><input type="text" id="bNr" value="${esc(K.nr)}" placeholder="kommt beim Speichern" autocomplete="off"></div>
+            <div><label style="margin-top:0">Ansprechpartner</label><select id="bAnspr">${anspr.map((x) => `<option ${x === (K.anspr || anspr[0]) ? 'selected' : ''}>${esc(x)}</option>`).join('')}</select></div></div>
+          <label>Betreff</label><input type="text" id="bTitel" value="${esc(K.titel)}" placeholder="${esc(mehrere ? `Sanierung ${w.titel || mitPos.map(raumTitel).join(', ')}` : `Sanierung ${erst ? raumTitel(erst) : w.titel || ''}`.trim())}" autocomplete="off">
+          <label>Anrede</label><input type="text" id="bAnrede" value="${esc(K.anrede)}" placeholder="${esc(erst ? A.anredeDefault(erst) : 'Sehr geehrte Damen und Herren,')}" autocomplete="off">
+        </div>
+        ${window.Bausteine.block({ wo: 'vor', titel: 'Anfangstexte', leer: 'Kein Text vor den Positionen', liste: texte })}`,
+      masse: () => `
+        <div class="sec-h"><h2>Was wird angeboten?</h2>${list.length ? `<span class="count">${list.length}</span>` : ''}</div>
+        <div class="docs" id="wWas">${list.map((r) => { const m = massVon(r); return `<div class="wl" data-wl="${r.id}"><div class="card bm">
+            <div class="bm-k"><span class="d-ico ${r.angebot?.positionen?.length ? 'navy' : 'grey'}">${roomIcon(r.roomType)}</span><span class="bm-t"><b>${esc(raumTitel(r))}</b><small data-bminfo="${r.id}">${esc(ohneMasse(r) ? 'Ohne Maße' : [r.scanId ? 'Maße aus dem Raumscan' : '', flaecheText(r)].filter(Boolean).join(' · '))}</small></span></div>
+            ${ohneMasse(r) ? '' : `<div class="row bm-m">${[['l', 'Länge m', 'z. B. 3'], ['b', 'Breite m', 'z. B. 2'], ['h', 'Höhe m', '2,50']].map(([f, l, ph]) => `<div><label>${l}</label><input type="text" inputmode="decimal" data-bm="${f}" data-bmr="${r.id}" value="${esc(m[f])}" placeholder="${ph}" autocomplete="off"></div>`).join('')}</div>`}
+          </div><button type="button" class="wl-del" data-wldel="${r.id}">${icon('trash')}<span>Löschen</span></button></div>`; }).join('')}
+          <button type="button" class="doc" id="wNeuAng"><span class="d-ico grey">${icon('plus')}</span><span class="d-t"><b>Neu</b><span>Kleinigkeit, einzelner Raum, ganze Wohnung oder ganzes Haus</span></span>${icon('chevron', 'pc-chev')}</button>
+        </div>
+        <p class="hint">${list.length ? 'Keine Maße zur Hand? Felder leer lassen und weiter, die Mengen kannst du bei den Positionen auch direkt eintragen. Falsch angelegt? Zeile nach links wischen, dann „Löschen“.' : 'Lege an, worum es geht. Maße aus einem Raumscan werden übernommen, sonst trägst du sie hier ein oder lässt sie weg.'}</p>`,
+      pos: () => `
+        ${list.length ? `<div class="sec-h"><h2>Positionen je Bereich</h2></div>
+        <div class="docs">${list.map((r) => `<button type="button" class="doc" data-angraum="${r.id}"><span class="d-ico ${r.angebot?.positionen?.length ? 'navy' : 'grey'}">${roomIcon(r.roomType)}</span>
+          <span class="d-t"><b>${esc(raumTitel(r))}</b><span>${r.angebot?.positionen?.length ? `${r.angebot.positionen.length} ${r.angebot.positionen.length === 1 ? 'Position' : 'Positionen'}` : 'Noch keine Positionen, tippen zum Eintragen'}</span></span>${icon('chevron', 'pc-chev')}</button>`).join('')}</div>
+        ${mitPos.length ? `<div class="card" style="margin-top:12px">${mitPos.map((r) => `<div class="tot"><span>${esc(raumTitel(r))}</span><span>${r.angebot.positionen.length} Pos.</span></div>`).join('')}<div class="tot big"><span>Gesamt brutto</span><b>${eur2(summe)}</b></div></div>` : ''}
+        <div class="sec-h"><h2>Vorschlag der KI</h2></div>
+        ${window.VorOrt?.bueroKarte(w, list) || ''}
+        ${erst ? `<details class="more card bs"><summary>${icon('sliders')}<span>Aufschläge<small>Nur für dieses Angebot, leer = Standard</small></span>${icon('chevron', 'more-chev')}</summary>
+          <div class="row">${[['aufLohn', 'Lohn %'], ['aufMat', 'Material %'], ['wagnis', 'Wagnis %']].map(([n, l]) => `<div><label>${l}</label><input type="text" inputmode="decimal" data-bnk="${n}" value="${a.kalk?.[n] !== undefined && a.kalk?.[n] !== null && a.kalk?.[n] !== '' ? proz(a.kalk[n]) : ''}" placeholder="${proz(E[n])}"></div>`).join('')}</div>
+        </details>` : ''}` : `<div class="card"><p class="hint" style="margin-top:0">Noch nichts angelegt. In Schritt 2 trägst du ein, was angeboten wird.</p><button class="btn block" data-schritt="masse">Zu Schritt 2</button></div>`}`,
+      danach: () => `
+        <div class="sec-h"><h2>Was steht nach den Positionen?</h2></div>
+        ${window.Bausteine.block({ wo: 'nach', titel: 'Schlusstexte', leer: 'Kein Text nach den Positionen', liste: texte, offen: true, fest: [
+          { k: 'gruss', label: 'Gruß mit Unterschrift', sub: `Mit freundlichen Grüßen, ${String(K.anspr || anspr[0] || 'Name').split(/\s*·\s*/)[0]}, Unterschrift`, an: optVon(w, 'gruss') },
+          { k: 'auftrag', label: 'Auftragserteilung', sub: 'Feld, in dem der Kunde das Angebot unterschreibt', an: optVon(w, 'auftrag') },
+          ...(erst ? [{ k: 'bauzeit', label: 'Bauzeitenplan', sub: 'Eigene Seite am Ende', an: !!a.mitBauzeit }] : [])] })}`,
+      ansicht: () => `
+        <div class="sec-h"><h2>Alles beisammen?</h2></div>
+        <div class="card bs-ueb">
+          ${[['davor', 'Kunde', k ? Kunden.name(k) || w.customer : 'Noch kein Kunde zugeordnet', !!k],
+            ['davor', 'Rechnungsanschrift', k?.privat.trim() ? Kunden.einzeilig(k.privat) : 'fehlt noch', !!k?.privat.trim()],
+            ['davor', 'Objekt', w.address || 'fehlt noch', !!w.address],
+            ['davor', 'Betreff', K.titel || 'wird beim Speichern vorgeschlagen', true],
+            ['masse', 'Angeboten wird', list.length ? list.map(raumTitel).join(', ') : 'noch nichts angelegt', list.length > 0],
+            ['pos', 'Positionen', nPos ? `${nPos} ${nPos === 1 ? 'Position' : 'Positionen'} · ${eur2(summe)} brutto` : 'noch keine', nPos > 0],
+            ['danach', 'Schlusstexte', [...window.Bausteine.teil(texte, 'nach').filter((b) => !b.aus).map((b) => b.titel || 'Text'), optVon(w, 'gruss') ? 'Gruß' : '', optVon(w, 'auftrag') ? 'Auftragserteilung' : ''].filter(Boolean).join(', ') || 'keine', true],
+          ].map(([zu, l, v, gut]) => `<button type="button" class="bs-uz ${gut ? '' : 'fehlt'}" data-schritt="${zu}"><small>${l}</small><span>${esc(v)}</span>${icon('chevron', 'pc-chev')}</button>`).join('')}
+        </div>
+        ${offen.length ? `<div class="card wf-offen"><b>Noch offen (${offen.length})</b><ul class="wf-o">${offen.map((o) => `<li>${esc(o.text)}</li>`).join('')}</ul></div>` : ''}
+        <button class="btn big block" id="wSpeichern" style="margin-top:16px" ${mitPos.length ? '' : 'disabled'}>${icon('eye')} Angebot ansehen</button>
+        <p class="hint center">${mitPos.length ? 'Das Angebot wird als PDF gespeichert und liegt danach im Reiter „Angebote“. Dort wird es verschickt.' : 'Zuerst in Schritt 3 die Positionen eintragen.'}</p>
+        ${w.angebotKopieVon ? `<p class="hint center">Kopie von Angebot Nr. ${esc(w.angebotKopieVon)}</p>` : ''}`,
+    };
     return `
-      ${k && !k.privat.trim() ? `<button class="notice ab-warn" id="wRechAdr">${icon('file')}<span><b>Rechnungsanschrift fehlt noch.</b> Tippen zum Eintragen.</span></button>` : ''}
-      ${window.VorOrt?.bueroKarte(w, list) || ''}
-
-      <div class="sec-h"><h2>Was wird angeboten?</h2>${list.length ? `<span class="count">${list.length}</span>` : ''}</div>
-      <div class="docs" id="wWas">${list.map((r) => `<div class="wl" data-wl="${r.id}"><button type="button" class="doc" data-angraum="${r.id}"><span class="d-ico ${r.angebot?.positionen?.length ? 'navy' : 'grey'}">${roomIcon(r.roomType)}</span>
-          <span class="d-t"><b>${esc(raumTitel(r))}</b><span>${r.angebot?.positionen?.length ? `${r.angebot.positionen.length} ${r.angebot.positionen.length === 1 ? 'Position' : 'Positionen'}` : 'Noch keine Positionen, tippen zum Eintragen'}</span></span>${icon('chevron', 'pc-chev')}</button>
-          <button type="button" class="wl-del" data-wldel="${r.id}">${icon('trash')}<span>Löschen</span></button></div>`).join('')}
-        <button type="button" class="doc" id="wNeuAng"><span class="d-ico grey">${icon('plus')}</span><span class="d-t"><b>Neu</b><span>Kleinigkeit, einzelner Raum, ganze Wohnung oder ganzes Haus</span></span>${icon('chevron', 'pc-chev')}</button>
-      </div>
-      ${list.length ? '<p class="hint">Falsch angelegt? Die Zeile nach links wischen, dann „Löschen“.</p>' : ''}
-
-      ${erst ? `<div class="sec-h"><h2>So steht es im Angebot</h2></div>
-      <div class="card kform">
-        <div class="row"><div><label style="margin-top:0">Angebotsnummer</label><input type="text" id="bNr" value="${esc(aktNr(w, list))}" placeholder="kommt beim Speichern" autocomplete="off"></div>
-          <div><label style="margin-top:0">Ansprechpartner</label><select id="bAnspr">${anspr.map((x) => `<option ${x === (a.anspr || anspr[0]) ? 'selected' : ''}>${esc(x)}</option>`).join('')}</select></div></div>
-        <label>Betreff</label><input type="text" id="bTitel" value="${esc((mehrere ? w.gesamtAngebot?.titel : a.titel) || '')}" placeholder="${esc(mehrere ? `Sanierung ${w.titel || mitPos.map(raumTitel).join(', ')}` : `Sanierung ${raumTitel(erst)}`)}" autocomplete="off">
-        <label>Anrede</label><input type="text" id="bAnrede" value="${esc(a.anrede || '')}" placeholder="${esc(A.anredeDefault(erst))}" autocomplete="off">
-      </div>
-      ${window.Bausteine.block({ wo: 'vor', titel: 'Anfangstexte', leer: 'Kein Text vor den Positionen', liste: texte })}
-      <details class="more card bs"><summary>${icon('list')}<span>Positionen und Preise<small>${mitPos.length ? `${mitPos.reduce((n, r) => n + r.angebot.positionen.length, 0)} Positionen · ${eur2(summe)} brutto` : 'Noch keine Positionen'}</small></span>${icon('chevron', 'more-chev')}</summary>
-        ${mitPos.map((r) => `<div class="tot"><span>${esc(raumTitel(r))}</span><span>${r.angebot.positionen.length} Pos.</span></div>`).join('')}
-        ${mitPos.length ? `<div class="tot big"><span>Gesamt brutto</span><b>${eur2(summe)}</b></div>` : '<p class="hint">Oben unter „Was wird angeboten?“ einen Eintrag antippen und die Positionen eintragen.</p>'}
-        <label>Aufschläge nur für dieses Angebot (leer = Standard)</label>
-        <div class="row">${[['aufLohn', 'Lohn %'], ['aufMat', 'Material %'], ['wagnis', 'Wagnis %']].map(([n, l]) => `<div><label>${l}</label><input type="text" inputmode="decimal" data-bnk="${n}" value="${a.kalk?.[n] !== undefined && a.kalk?.[n] !== null && a.kalk?.[n] !== '' ? proz(a.kalk[n]) : ''}" placeholder="${proz(E[n])}"></div>`).join('')}</div>
-      </details>
-      ${window.Bausteine.block({ wo: 'nach', titel: 'Schlusstexte', leer: 'Kein Text nach den Positionen', liste: texte, fest: [
-        { k: 'gruss', label: 'Gruß mit Unterschrift', sub: `Mit freundlichen Grüßen, ${String(a.anspr || anspr[0] || 'Name').split(/\s*·\s*/)[0]}, Unterschrift`, an: optVon(w, 'gruss') },
-        { k: 'auftrag', label: 'Auftragserteilung', sub: 'Feld, in dem der Kunde das Angebot unterschreibt', an: optVon(w, 'auftrag') },
-        { k: 'bauzeit', label: 'Bauzeitenplan', sub: 'Eigene Seite am Ende', an: !!a.mitBauzeit }] })}
-
-      <button class="btn big block" id="wSpeichern" style="margin-top:16px" ${mitPos.length ? '' : 'disabled'}>${icon('download')} Angebot speichern und ansehen</button>
-      <p class="hint center">${mitPos.length ? 'Das Angebot liegt danach im Reiter „Angebote“. Dort wird es verschickt.' : 'Zuerst oben eintragen, was angeboten wird.'}</p>
-      ${w.angebotKopieVon ? `<p class="hint center">Kopie von Angebot Nr. ${esc(w.angebotKopieVon)}</p>` : ''}` : ''}`;
+      <div class="ab-schritte">${SCHRITTE.map(([id, n], j) => `<button type="button" data-schritt="${id}" class="${id === s ? 'on' : ''} ${ok[id] ? 'ok' : ''}"><i>${j + 1}</i><span>${n}</span></button>`).join('')}</div>
+      ${seite[s]()}
+      <div class="ab-nav">${i > 0 ? `<button type="button" class="btn secondary" data-schritt="${SCHRITTE[i - 1][0]}">Zurück</button>` : '<span></span>'}
+        ${i < SCHRITTE.length - 1 ? `<button type="button" class="btn" data-schritt="${SCHRITTE[i + 1][0]}">Weiter: ${SCHRITTE[i + 1][1]}</button>` : ''}</div>`;
   }
 
   /** Reiter 3: alle Fassungen des Angebots mit Stand, Senden, Nachfassen und die Rückmeldung des Kunden. */
@@ -726,14 +795,28 @@ window.Projekt = (() => {
 
   /** Büro: Nummer, Betreff, Anrede, Ansprechpartner, Aufschläge und Texte gelten für das ganze Angebot (alle Räume). */
   function bueroFelder(w, list) {
-    if (!$('#bNr')) return;
+    if (!$('.ab-schritte')) return;
     const A = window.Angebot._intern, mitPos = mitPosVon(list), mehrere = mitPos.length > 1;
     const alle = list.filter((r) => r.angebot), erst = mitPos[0] || alle[0];
-    const sichern = debounce(async () => { for (const r of alle) await saveProject(r); if (!w.isNew) await save(w); }, 500);
-    $('#bNr').oninput = (e) => { const v = e.target.value.trim(); if (mehrere) (w.gesamtAngebot ??= {}).nr = v; else erst.angebot.nr = v; sichern(); };
-    $('#bTitel').oninput = (e) => { const v = e.target.value; if (mehrere) (w.gesamtAngebot ??= {}).titel = v; else erst.angebot.titel = v; sichern(); };
-    $('#bAnrede').oninput = (e) => { for (const r of alle) r.angebot.anrede = e.target.value; sichern(); };
-    $('#bAnspr').onchange = (e) => { for (const r of alle) r.angebot.anspr = e.target.value; sichern(); };
+    const sichern = debounce(async () => { for (const r of alle) await saveProject(r); delete w.isNew; await save(w); }, 500);
+    const K = (w.angebotKopf ??= {});
+    $$('[data-schritt]').forEach((b) => (b.onclick = () => { schrittWahl.set(w.id, b.dataset.schritt); view(); window.scrollTo(0, 0); }));
+    if ($('#bNr')) {
+      $('#bNr').oninput = (e) => { const v = e.target.value.trim(); K.nr = v; if (mehrere) (w.gesamtAngebot ??= {}).nr = v; else if (erst) erst.angebot.nr = v; sichern(); };
+      $('#bTitel').oninput = (e) => { const v = e.target.value; K.titel = v; if (mehrere) (w.gesamtAngebot ??= {}).titel = v; else if (erst) erst.angebot.titel = v; sichern(); };
+      $('#bAnrede').oninput = (e) => { K.anrede = e.target.value; for (const r of alle) r.angebot.anrede = e.target.value; sichern(); };
+      $('#bAnspr').onchange = (e) => { K.anspr = e.target.value; for (const r of alle) r.angebot.anspr = e.target.value; sichern(); };
+    }
+    // Schritt 2: Maße gleich in der Zeile. Leer lassen ist erlaubt.
+    $$('[data-bm]').forEach((inp) => (inp.onchange = async () => {
+      const r = rooms.get(inp.dataset.bmr); if (!r) return;
+      A.init(r);
+      const q = r.aufmass.raeume[0]; q.teile ??= [{ l: '', b: '' }]; q.teile[0] ??= { l: '', b: '' };
+      if (inp.dataset.bm === 'h') q.h = inp.value.trim(); else q.teile[0][inp.dataset.bm] = inp.value.trim();
+      r.masse = { l: q.teile[0].l, b: q.teile[0].b, h: q.h };
+      await saveProject(r);
+      const info = $(`[data-bminfo="${r.id}"]`); if (info) info.textContent = [r.scanId ? 'Maße aus dem Raumscan' : '', flaecheText(r)].filter(Boolean).join(' · ');
+    }));
     $$('[data-bnk]').forEach((el) => (el.onchange = async () => {
       const v = el.value.trim(), n = parseFloat(v.replace(',', '.'));
       if (v !== '' && !Number.isFinite(n)) return toast('Bitte eine Zahl eintragen.');
@@ -798,17 +881,19 @@ window.Projekt = (() => {
     ], { suche: '' });
     if (!v) return;
     if (norm(w.status) === 'besichtigung') { w.status = 'entwurf'; (w.verlauf ??= []).push({ st: 'entwurf', t: Date.now() }); }
+    const fertig = async () => { reiterSetzen(w, 'buero'); schrittWahl.set(w.id, 'masse'); const y = window.scrollY; await view(); window.scrollTo(0, y); };
     if (v.startsWith('scan:')) {
       const s = scans.find((x) => 'scan:' + x.id === v);
       const r = await raumAusScan(w, s); // Name, Raumtyp und Maße kommen vom Scan (raumscan.js)
-      r.scanId = s.id; await kvSet('project:' + r.id, r);
-      return raumAngebot(r, w);
+      r.scanId = s.id; window.Angebot._intern.init(r); await kvSet('project:' + r.id, r);
+      toast('Angelegt, die Maße kommen aus dem Raumscan.', 3500);
+      return fertig();
     }
-    if (v === 'klein') return raumAngebot(await raumAnlegen(w, 'sonstiges', { room: titelFrei(list, String(vorgabe('kleinName') || 'Leistungen')), nurAngebot: true }), w);
+    if (v === 'klein') { await raumAnlegen(w, 'sonstiges', { room: titelFrei(list, String(vorgabe('kleinName') || 'Leistungen')), nurAngebot: true }); return fertig(); }
     if (v === 'raum') {
       const rt = await sheet('Welcher Raum?', ROOM_TYPES.map((r) => ({ label: r.name, icon: roomIcon(r.id), value: r.id })), { suche: '' });
       if (!rt) return;
-      return raumAngebot(await raumAnlegen(w, rt), w);
+      await raumAnlegen(w, rt); return fertig();
     }
     const namen = await raeumeWaehlen(v === 'haus' ? 'Ganzes Haus' : 'Ganze Wohnung', vorgabe(v === 'haus' ? 'raeumeHaus' : 'raeumeWohnung'));
     if (!namen?.length) return;
@@ -817,8 +902,8 @@ window.Projekt = (() => {
       const rt = ROOM_TYPES.find((r) => r.name.toLowerCase() === n.toLowerCase())?.id || roomTypeIdFromName(n);
       await raumAnlegen(w, rt, { room: titelFrei(da, n) });
     }
-    toast(`${namen.length} ${namen.length === 1 ? 'Raum' : 'Räume'} angelegt. Jetzt je Raum die Positionen eintragen.`, 4500);
-    reiterSetzen(w, 'buero'); view();
+    toast(`${namen.length} ${namen.length === 1 ? 'Raum' : 'Räume'} angelegt.`, 3000);
+    return fertig();
   }
   /** Freier Raumname, bei Dopplung durchnummeriert. */
   function titelFrei(list, base) {
@@ -1016,7 +1101,7 @@ window.Projekt = (() => {
     w.gesamtAngebot = { ...(w.gesamtAngebot || {}), nr: mitPos.length > 1 ? nr : '', versionen: [] };
     delete w.angebotGesperrt; w.angebotFrei = true; w.angebotKopieVon = alt.nr;
     if (['angebot', 'abgesagt'].includes(norm(w.status))) { w.status = 'entwurf'; (w.verlauf ??= []).push({ st: 'entwurf', t: Date.now() }); }
-    reiterWahl.delete(w.id);
+    reiterWahl.delete(w.id); schrittWahl.delete(w.id);
     await save(w);
     toast(`Neues Angebot Nr. ${nr} angelegt. Jetzt ändern, speichern und senden.`, 5000);
     if (state.wohnung?.id === w.id) { state.wohnung = w; state.project = null; view(); window.scrollTo(0, 0); }
