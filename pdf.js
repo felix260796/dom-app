@@ -38,7 +38,7 @@ window.Mappe = (() => {
     let E = {};
     try { E = (await window.Angebot?._intern.preisliste())?.einstellungen || {}; } catch {}
     const real = (v) => (v && !/muster|0000|00000|DE000/i.test(String(v)) ? String(v) : '');
-    return { name: state.settings.company || E.firma || '', kontakt: state.settings.contact || '', strasse: real(E.strasse), ort: real(E.ort), tel: real(E.telefon), mail: real(E.email), ansprech: real(E.ansprechpartner) };
+    return { name: state.settings.company || E.firma || '', kontakt: state.settings.contact || '', strasse: real(E.strasse), ort: real(E.ort), tel: real(E.telefon), mail: real(E.email), ansprech: vorgabe('ansprechAngebot') || real(E.ansprechpartner) };
   }
 
   // ---------- Grundgerüst ----------
@@ -249,7 +249,7 @@ window.Mappe = (() => {
     const F = c.F;
     let y = 142;
     await c.logo(M, y - 4, 52, 20);
-    const lines = [F.name, [F.strasse, F.ort].filter(Boolean).join(', '), F.tel ? 'Telefon ' + F.tel : '', F.mail, F.ansprech ? 'Ihre Ansprechpartner: ' + F.ansprech : '', !F.tel && !F.mail ? F.kontakt : ''].filter(Boolean);
+    const lines = [F.name, [F.strasse, F.ort].filter(Boolean).join(', '), F.tel ? 'Telefon ' + F.tel : '', F.mail, F.ansprech ? 'Ihr Ansprechpartner: ' + F.ansprech : '', !F.tel && !F.mail ? F.kontakt : ''].filter(Boolean);
     c.font(9.5, 'normal', INK); c.text(lines, M + 64, y + 2, { lineHeightFactor: 1.45 });
     if (note) { c.font(7.5, 'normal', GREY); c.text(c.lines(note, W - 2 * M), M, H - 20); }
   }
@@ -300,7 +300,7 @@ window.Mappe = (() => {
     await schluss(c, {
       steps: [
         ['Auswahl treffen', 'Sagen Sie uns, welche Ausstattung Ihnen gefällt. Gerne auch gemischt, zum Beispiel das Bad in Premium und die Küche in Standard.'],
-        ['Festpreis-Angebot', 'Nach einem genauen Aufmaß erhalten Sie ein verbindliches Angebot mit allen Positionen und einem Bauzeitenplan.'],
+        ['Festpreis-Angebot', 'Nach einem genauen Aufmaß erhalten Sie ein verbindliches Angebot mit allen Positionen.'],
         ['Umsetzung aus einer Hand', 'Wir koordinieren alle Gewerke, vom Rückbau bis zur Endreinigung, und sind Ihr fester Ansprechpartner.'],
       ],
       note: 'Die Bilder sind KI-Visualisierungen auf Basis Ihrer Fotos. Sie zeigen die Wirkung der Ausstattung und sind keine verbindliche Planung. Farben, Formate und Produkte werden im Angebot festgelegt.',
@@ -397,7 +397,7 @@ window.Mappe = (() => {
     await schluss(c, {
       steps: [
         ['Auswahl treffen', 'Sagen Sie uns, was Ihnen gefällt und was Sie anders möchten. Wir passen Ausstattung und Produkte gerne für Sie an.'],
-        ['Festpreis-Angebot', 'Nach einem genauen Aufmaß erhalten Sie ein verbindliches Angebot mit allen Positionen und einem Bauzeitenplan.'],
+        ['Festpreis-Angebot', 'Nach einem genauen Aufmaß erhalten Sie ein verbindliches Angebot mit allen Positionen.'],
         ['Umsetzung aus einer Hand', 'Wir koordinieren alle Gewerke, vom Rückbau bis zur Endreinigung, und sind Ihr fester Ansprechpartner.'],
       ],
       note: 'Die Bilder sind KI-Visualisierungen. Sie zeigen die Wirkung der Ausstattung und sind keine verbindliche Planung. Farben, Formate und Produkte werden im Angebot festgelegt.',

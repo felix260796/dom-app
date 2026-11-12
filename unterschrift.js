@@ -4,6 +4,7 @@
  * Wer unterschreibt: die Person, der das Gerät gehört (Menü unten: Felix, Deniel oder beide), bei „beide“ die erste im Team.
  * Firmenstempel (einmal als Bild hinterlegt): state.settings.stempel, steht rechts neben der Unterschrift.
  * Unterschrift.pdf(doc, x, y) setzt Grußformel, Unterschrift, Stempel und Namen ins PDF und gibt die neue y-Position zurück.
+ * Mit { name } (Angebot: der Ansprechpartner) unterschreibt diese Person, sonst die Person des Geräts.
  * Einstellungen: Firmendaten (vorgaben.js firmaKarte ruft Unterschrift.karte auf). */
 window.Unterschrift = (() => {
   const team = () => window.Kalender?.team() || [];
@@ -15,15 +16,16 @@ window.Unterschrift = (() => {
   const bild = (p = person()) => (p && state.settings.unterschriften?.[p.id]) || '';
 
   /** Grußformel, Unterschrift und Name ins PDF. Gibt die y-Position unter dem Namen zurück. */
-  async function pdf(doc, x, y, { gruss = vorgabeText('textGruss'), firma = '' } = {}) {
-    const p = person(), b = bild(p);
+  async function pdf(doc, x, y, { gruss = vorgabeText('textGruss'), firma = '', name = '' } = {}) {
+    const genau = name ? team().find((t) => String(t.name || '').trim().toLowerCase() === String(name).trim().toLowerCase()) : null;
+    const p = name ? genau : person(), b = bild(p);
     doc.setFont('helvetica', 'normal'); doc.setFontSize(10); doc.setTextColor(30);
     doc.text(gruss, x, y); y += 3;
     const st = state.settings.stempel || '';
     if (st) { try { await addFit(doc, st, x + 56, y - 2, 38, 24, mimeOf(st) === 'image/png' ? 'PNG' : 'JPEG'); } catch (e) { console.warn('Stempel nicht gedruckt', e); } }
     if (b) { try { await addFit(doc, b, x, y, 50, 16, 'PNG'); } catch (e) { console.warn('Unterschrift nicht gedruckt', e); } }
     y += b || st ? 19 : 4;
-    if (p?.name) { doc.text(p.name, x, y); y += 4.6; }
+    if (name || p?.name) { doc.text(name || p.name, x, y); y += 4.6; }
     if (firma) { doc.setFontSize(9); doc.setTextColor(110); doc.text(firma, x, y); doc.setTextColor(30); doc.setFontSize(10); y += 4.6; }
     return y;
   }

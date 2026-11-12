@@ -84,6 +84,15 @@ Ein Angebot geht ohne Vor-Ort-Termin: Kein Schritt setzt Aufnahme, Plan oder Sca
 
 Visitenkarte (`kamera.js`): Das Foto wird immer abgelegt, beim Kunden über `Bilder.ablegen` im Ordner aus Vorgabe `ordnerVisitenkarte`, beim Partner als Dokument (`karteZuPartner`, `pdok:<id>`). `schonDa(v)` findet bestehende Partner und Kunden über Telefon/Mobil (ohne Vorwahl 0/+49), E-Mail (auch `weitere`, `hv`) oder genauen Namen ohne Rechtsform; das Auswahlfenster heißt dann „Schon angelegt: …“.
 
+## Neuerungen aus Version 100 (Angebot nachgebessert)
+
+Ansprechpartner immer genau eine Person: `ansprechpartner()` (Liste), `ansprVon(A)`, `einePerson` in `angebot.js`, Vorgaben `ansprechAngebot` (Felix), `ansprechProjekt` (Deniel, für die Projektseite). Werte mit zwei Namen gelten als nicht gewählt. Diese Person unterschreibt im PDF (`Unterschrift.pdf(doc, x, y, { name })`).
+Betreff = Projektname (`w.titel`): kein eigenes Betreff-Feld mehr im Büro, im PDF `WA.titel` vor `A.titel` (`betreffWert/betreffBinden`).
+Auftragserteilung und Gruß sind Bausteine mit `b.fest = 'auftrag' | 'gruss'` (`mitFest`, `texteFuer(w)` in `angebot.js`, alte `w.angebotOpt` wird übernommen). Stehen immer am Schluss: Schlusstexte, Auftragserteilung (nicht in der Auftragsbestätigung), ganz zuletzt Gruß mit Name, Unterschrift und Stempel. Im Text-Editor ohne Griff und ohne Löschen. Bauzeitenplan ist ganz raus (`bauzeit()` rechnet nur noch `{zeitraum}`).
+Gewährleistung Standard 2 Jahre ab Abnahme (`GEW_ALT/GEW_NEU`, alter unveränderter Text wird beim Laden ersetzt).
+Partnerangebot: `subUebernehmen` mit „Dokument scannen“ (`Geraet.scannen`), Foto, Screenshot/PDF; Original über `partnerOriginal` in `w.dokumente` mit `intern: true, art: 'partnerangebot'` (kein Senden-Knopf, nie an den Kunden).
+Versand: „Als versendet markieren“ (`alsVersendet`, `datumFrage`, `angebotVersendet(wid, datum)`), „Nochmal senden“ (`angebotNochmal`, dasselbe PDF). Auftragsbestätigung im Projekt (`#dAb` → `abMenue`: ansehen, senden/nochmal senden `abSenden`, als versendet markieren; fehlt sie, wird sie erstellt), Stand in der Kundenhistorie (`abText/abPdf` in `kunden.js`).
+
 ## Bereiche
 
 | Bereich | Dateien | Inhalt |

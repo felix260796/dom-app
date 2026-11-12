@@ -208,6 +208,9 @@ window.Kunden = (() => {
     const wo = (x) => (einObjekt(k) ? '' : objLabel(objekt(k, x.objektId)));
     // Angebot: PDF = das verschickte (angpdf), sonst das zuletzt gespeicherte Angebots-PDF unter „Dokumente“
     const pdfVon = (w) => (w.angebotPdf ? { key: 'angpdf:' + w.id, name: w.angebotPdf.name || 'Angebot.pdf' } : [...(w.dokumente || [])].reverse().find((d) => /^Angebot/i.test(d.name)) || null);
+    // Auftragsbestätigung (Version 100): Stand und PDF in der Projekthistorie
+    const abPdf = (w) => { const ab = w.auftragsbestaetigung; const d = ab && ((w.dokumente || []).find((x) => x.key === ab.dokId) || (w.dokumente || []).find((x) => x.art === 'auftragsbestaetigung')); return d ? { key: d.key, name: d.name } : null; };
+    const abText = (w) => (w.auftragsbestaetigung ? `Auftragsbestätigung ${w.auftragsbestaetigung.gesendetAm ? 'gesendet am ' + tagK(w.auftragsbestaetigung.gesendetAm) : 'erstellt, noch nicht gesendet'}` : '');
     const ang = daten.filter((e) => !e.w.ohneAngebot).sort((a, b) => (b.w.created || 0) - (a.w.created || 0));
     const prj = daten.filter((e) => P.zugesagt(e.x.status)).sort((a, b) => (wann(b.w, ZU) || b.w.created || 0) - (wann(a.w, ZU) || a.w.created || 0));
     const ids = new Set(daten.map((e) => e.x.id));
@@ -223,12 +226,12 @@ window.Kunden = (() => {
     const zeile = (art, id, titel, unter, farbe, betrag, pdf) => `<div class="hi-z">
         <button type="button" class="hi-t" data-hi="${art}:${esc(id)}"><b>${esc(titel)}</b><span style="--c:${farbe}"><i></i>${esc(unter)}</span></button>
         ${betrag ? `<span class="hi-b">${esc(betrag)}</span>` : ''}
-        ${pdf ? `<button type="button" class="icon-btn hi-pdf" data-hipdf="${esc(pdf.key)}" data-hiname="${esc(pdf.name)}" aria-label="Angebot als PDF ansehen">${icon('file')}</button>` : ''}</div>`;
+        ${pdf ? `<button type="button" class="icon-btn hi-pdf" data-hipdf="${esc(pdf.key)}" data-hiname="${esc(pdf.name)}" aria-label="PDF ansehen">${icon('file')}</button>` : ''}</div>`;
     const teil = (titel, n, inhalt, leer, offen) => `<details class="more card hi" ${offen && n ? 'open' : ''}><summary>${icon('list')}<span>${titel}<small>${n ? `${n} ${n === 1 ? 'Eintrag' : 'Einträge'}` : leer}</small></span>${icon('chevron', 'more-chev')}</summary>${inhalt}</details>`;
     const phasen = Object.fromEntries(P.PHASEN.map(([id, n]) => [id, n.replace(/­/g, '')]));
     box.innerHTML = `<div class="sec-h"><h2>Schnellübersicht</h2></div>`
       + teil('Angebotshistorie', ang.length, ang.map((e) => { const [t, f] = standAng(e); return zeile('a', e.x.id, e.x.titel || e.x.room || 'Angebot', [tagK(e.w.created), wo(e.x), t].filter(Boolean).join(' · '), f, e.netto ? eur(e.netto) + ' netto' : '', pdfVon(e.w)); }).join(''), 'Noch kein Angebot', true)
-      + teil('Projekthistorie', prj.length, prj.map((e) => zeile('p', e.x.id, e.x.titel || e.x.room || 'Projekt', [e.x.nr, wo(e.x), phasen[P.phase(e.x)] || P.statusName(e.x.status), e.w.baustart ? 'Baustart ' + tagK(e.w.baustart) : ''].filter(Boolean).join(' · '), P.farbe(e.x.status), e.netto ? eur(e.netto) + ' netto' : '', null)).join(''), 'Noch kein Projekt', false)
+      + teil('Projekthistorie', prj.length, prj.map((e) => zeile('p', e.x.id, e.x.titel || e.x.room || 'Projekt', [e.x.nr, wo(e.x), phasen[P.phase(e.x)] || P.statusName(e.x.status), e.w.baustart ? 'Baustart ' + tagK(e.w.baustart) : '', abText(e.w)].filter(Boolean).join(' · '), P.farbe(e.x.status), e.netto ? eur(e.netto) + ' netto' : '', abPdf(e.w))).join(''), 'Noch kein Projekt', false)
       + teil('Rechnungshistorie', rech.length, rech.map((r) => zeile('r', r.id, [r.nr || 'Rechnung', r.art === 'schluss' ? 'Schlussrechnung' : r.art === 'storno' ? 'Storno' : `${r.stufe || ''}. Abschlag`].join(' · '), [tagK(r.datum), rStand(r)[0]].filter(Boolean).join(' · '), rStand(r)[1], eur(Rechnung.zahlbetrag(r)), null)).join(''), 'Noch keine Rechnung', false);
     const hier = () => { window.openTab('kunden', { kunde: k }); };
     $$('[data-hi]', box).forEach((b) => (b.onclick = async () => {
