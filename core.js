@@ -357,6 +357,40 @@ async function dokMerken(files) {
 document.addEventListener('gesturestart', (e) => e.preventDefault(), { passive: false });
 document.addEventListener('touchmove', (e) => { if (e.touches && e.touches.length > 1) e.preventDefault(); }, { passive: false });
 
+// ---------- Wischen zum Zurückgehen (Wunsch Felix, v97) ----------
+// Vom linken Rand nach rechts wischen wirkt wie der Zurück-Knopf oben links (#topback), so wie man es vom iPhone kennt.
+// Nur auf normalen Seiten: nicht in Auswahlfenstern, Vollbild-Ansichten (Zeichnen, Raumscan, PDF) oder wenn kein Zurück da ist.
+(() => {
+  const RAND = 28, WEG = 70;
+  let s = null;
+  const zurueckKnopf = () => { const tb = document.getElementById('topback'); return tb && !tb.hidden ? tb : null; };
+  const overlay = () => document.querySelector('.sheet-bg, .rs, .zv, .pdfz, .gview, [data-vollbild]');
+  addEventListener('touchstart', (e) => {
+    s = null;
+    if (e.touches.length !== 1) return;
+    const t = e.touches[0];
+    if (t.clientX > RAND || !zurueckKnopf() || overlay()) return;
+    if (!e.target.closest?.('#main, .topbar, header')) return;
+    s = { x: t.clientX, y: t.clientY, t: Date.now() };
+  }, { passive: true });
+  addEventListener('touchmove', (e) => {
+    if (!s) return;
+    const t = e.touches[0], dx = t.clientX - s.x, dy = Math.abs(t.clientY - s.y);
+    if (dy > 40 && dy > dx) { s = null; const m = document.getElementById('main'); if (m) m.style.transform = ''; return; }
+    const m = document.getElementById('main');
+    if (m && dx > 0) { m.style.transition = 'none'; m.style.transform = `translateX(${Math.min(dx, 120) * 0.6}px)`; }
+  }, { passive: true });
+  addEventListener('touchend', (e) => {
+    const m = document.getElementById('main');
+    if (m && m.style.transform) { m.style.transition = 'transform .15s'; m.style.transform = ''; }
+    if (!s) return;
+    const t = e.changedTouches[0], dx = t.clientX - s.x, dy = Math.abs(t.clientY - s.y);
+    const a = s; s = null;
+    if (dx > WEG && dy < dx * 0.6 && Date.now() - a.t < 900) zurueckKnopf()?.click();
+  }, { passive: true });
+  addEventListener('touchcancel', () => { s = null; const m = document.getElementById('main'); if (m) m.style.transform = ''; }, { passive: true });
+})();
+
 // ---------- Zurück an dieselbe Stelle (Wunsch Felix) ----------
 // Bei jedem Tipp merkt sich die App, wie weit die aktuelle Seite gescrollt ist (Seite = Reiter + Titel + Untertitel).
 // Nach „Zurück“ (Knopf oben links) springt sie auf der Seite davor wieder genau dorthin statt nach ganz oben.

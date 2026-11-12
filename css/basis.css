@@ -292,8 +292,14 @@ textarea.sz-zu, .sz-zu input[readonly], .sz-zu textarea[readonly] { background: 
 textarea.sz-auf, .sz-auf input:not([readonly]), .sz-auf textarea { border-color: var(--brass); }
 .lab-plus { display: flex; align-items: center; justify-content: space-between; }
 .plus-mini { border: 1.5px solid var(--line); background: #fff; color: var(--navy); width: 30px; height: 30px; border-radius: 50%; font-size: 20px; line-height: 1; font-weight: 600; display: grid; place-items: center; padding: 0; }
-.mehr-z { display: grid; grid-template-columns: minmax(96px, 34%) 1fr 38px; gap: 6px; align-items: center; margin-top: 6px; }
-.mehr-z .icon-btn { color: var(--muted); }
+/* Telefon/E-Mail mit Bezeichnung: „Telefon (Handy)“ zum Antippen (kontakt.js mehrLabel/mehrBinden) */
+.lab-plus { margin: 12px 0 5px; }
+.lab-art { border: 0; background: none; padding: 4px 0; font: inherit; font-size: 13px; font-weight: 600; color: var(--muted); display: inline-flex; align-items: center; gap: 4px; text-align: left; }
+.lab-art .muted { font-weight: 600; color: var(--navy); }
+.lab-art .lab-pf { width: 14px; height: 14px; color: var(--muted); }
+.lab-art:disabled { color: inherit; }
+.mehr-z .lab-plus { margin: 10px 0 5px; }
+.mehr-z .icon-btn { color: var(--muted); width: 30px; height: 30px; }
 .lf-neu { display: flex; gap: 6px; margin-top: 2px; }
 .lf-neu input { flex: 1; min-width: 0; border-style: dashed; }
 .lf-neu .btn { white-space: nowrap; }
@@ -316,3 +322,18 @@ textarea.sz-auf, .sz-auf input:not([readonly]), .sz-auf textarea { border-color:
 .adr-route { position: absolute; right: 5px; top: 5px; width: 38px; height: 38px; display: flex; align-items: center; justify-content: center; border-radius: 10px; background: var(--soft); color: var(--navy); }
 .adr-route[hidden] { display: none; }
 .adr-route svg { width: 20px; height: 20px; }
+
+/* ---------- Geburtstage beim Partner kompakt (partner.js) ---------- */
+.geb-z { border-bottom: 1px solid var(--line); }
+.geb-z > summary { list-style: none; display: flex; align-items: center; gap: 10px; padding: 11px 0; cursor: pointer; }
+.geb-z > summary::-webkit-details-marker { display: none; }
+.geb-z .geb-t { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.geb-z .geb-t .muted { font-size: 13px; }
+.geb-z .geb-d { font-size: 14px; color: var(--muted); flex: none; }
+.geb-z .pf-pfeil { width: 18px; height: 18px; color: var(--muted); transition: transform .2s; flex: none; }
+.geb-z[open] .pf-pfeil { transform: rotate(180deg); }
+.geb-z .geb-in { padding: 0 0 12px; }
+.geb-z .geb-in label:first-child { margin-top: 0; }
+/* Kontakt halten beim Kunden ohne Eintrag: nur eine kleine graue Zeile (pflege.js, opt.klein) */
+.pf-klein { border: 0; background: none; color: var(--muted); font: inherit; font-size: 14px; display: inline-flex; align-items: center; gap: 6px; padding: 10px 4px; margin-top: 4px; }
+.pf-klein svg.i { width: 16px; height: 16px; }
