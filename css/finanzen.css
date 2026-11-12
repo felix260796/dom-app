@@ -59,8 +59,6 @@
 .aw-satz b { color: var(--navy); }
 
 /* ---------- Reiter Rechnungen: zwei Knöpfe, Bereiche zum Antippen ---------- */
-.f-neu { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 10px 0 12px; }
-.f-neu .btn { padding-left: 8px; padding-right: 8px; font-size: 15px; }
 .f-seg .fz { font: inherit; cursor: pointer; text-align: center; }
 .f-seg .fz b { font-size: 18px; }
 .f-seg .fz b svg.i { width: 22px; height: 22px; }
