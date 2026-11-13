@@ -1,0 +1,50 @@
+name: TestFlight-Stand abfragen
+# Nur zur Fehlersuche: zeigt die letzten Bauten bei Apple (Version, Build, Verarbeitung, TestFlight-Status). Abfrage 13
+on:
+  push:
+    branches: [claude/project-thread-ir7l5s]
+    paths: [.github/workflows/testflight-status.yml]
+jobs:
+  stand:
+    runs-on: ubuntu-latest
+    env:
+      ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+      ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+      ASC_KEY_P8: ${{ secrets.ASC_KEY_P8 }}
+    steps:
+      - run: pip install -q pyjwt cryptography
+      - shell: python
+        run: |
+          import os, time, json, urllib.request, jwt
+          import re, textwrap
+          b64 = re.sub(r'-----[A-Z ]*-----', '', os.environ['ASC_KEY_P8'].replace('\r', ''))
+          b64 = re.sub(r'\s', '', b64)
+          key = '-----BEGIN PRIVATE KEY-----\n' + '\n'.join(textwrap.wrap(b64, 64)) + '\n-----END PRIVATE KEY-----\n'
+          tok = jwt.encode({'iss': os.environ['ASC_ISSUER_ID'], 'iat': int(time.time()), 'exp': int(time.time()) + 900, 'aud': 'appstoreconnect-v1'}, key, algorithm='ES256', headers={'kid': os.environ['ASC_KEY_ID'], 'typ': 'JWT'})
+          def get(p):
+              r = urllib.request.Request('https://api.appstoreconnect.apple.com/v1' + p, headers={'Authorization': 'Bearer ' + tok})
+              return json.loads(urllib.request.urlopen(r).read())
+          app = get('/apps?filter[bundleId]=de.domprojektmanagement.app')['data'][0]['id']
+          b = get(f'/builds?filter[app]={app}&sort=-uploadedDate&limit=10&include=preReleaseVersion,buildBetaDetail')
+          inc = {(x['type'], x['id']): x['attributes'] for x in b.get('included', [])}
+          for x in b['data']:
+              a = x['attributes']; rel = x['relationships']
+              pv = inc.get(('preReleaseVersions', (rel['preReleaseVersion'].get('data') or {}).get('id')), {}).get('version')
+              bd = inc.get(('buildBetaDetails', (rel['buildBetaDetail'].get('data') or {}).get('id')), {})
+              print(f"Version {pv} Build {a.get('version')} hochgeladen {a.get('uploadedDate')} Verarbeitung {a.get('processingState')} abgelaufen {a.get('expired')} Verschlüsselung {a.get('usesNonExemptEncryption')} intern {bd.get('internalBuildState')} extern {bd.get('externalBuildState')}")
+          for pfad in [f'/apps/{app}/buildUploads?limit=6', f'/apps/{app}/buildUploads?limit=6&sort=-uploadedDate']:
+              try:
+                  u = get(pfad)
+                  for x in u['data']:
+                      a = x['attributes']
+                      print('Upload', a.get('cfBundleShortVersionString'), a.get('cfBundleVersion'), a.get('uploadedDate') or a.get('createdDate'), json.dumps(a.get('state')), json.dumps(a.get('errors') or a.get('stateDetails') or '')[:600])
+                  break
+              except Exception as e:
+                  print('buildUploads', pfad, e)
+          c = get('/certificates?limit=200&fields[certificates]=name,certificateType,displayName,expirationDate')
+          for x in c['data']:
+              a = x['attributes']
+              print('Zertifikat', x['id'], a.get('certificateType'), a.get('displayName') or a.get('name'), 'läuft ab', a.get('expirationDate'))
+          p = get('/profiles?limit=200&fields[profiles]=name,profileState,expirationDate')
+          for x in p['data']:
+              print('Profil', x['attributes'].get('name'), x['attributes'].get('profileState'))
