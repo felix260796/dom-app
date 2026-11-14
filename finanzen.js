@@ -188,7 +188,7 @@ window.Finanzen = (() => {
     state.beleg = null;
     const hier = () => state.tab === 'rechnungen' && !state.kalender;
     // Eingang und Auswertung wirken wie Unterseiten: Zurück führt zu An Kunden (auch Wischen vom linken Rand)
-    header('Rechnungen', fSeg === 'ein' ? 'Eingang' : fSeg === 'kalk' ? 'Auswertung' : 'An Kunden, Eingang, Auswertung', fSeg === 'aus' ? undefined : { label: 'Rechnungen', fn: () => { fSeg = 'aus'; fQ = ''; view(); } });
+    header(fSeg === 'kalk' ? 'Auswertung' : 'Rechnungen', fSeg === 'ein' ? 'Eingang' : fSeg === 'kalk' ? 'Umsatz, Zusagen, Kalkulation je Projekt' : 'An Kunden, Eingang, Auswertung', fSeg === 'aus' ? undefined : { label: 'Rechnungen', fn: () => { fSeg = 'aus'; fQ = ''; view(); } });
     const idx = await projectIndex(); window.__fIdx = idx;
     await Promise.all([laden(), Rechnung.laden()]);
     if (!hier()) return;

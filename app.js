@@ -6,7 +6,7 @@
  * Kern-Funktionen (Speicher, KI, Bilder) stehen in core.js. */
 
 // ---------- Symbole (einfache Linien-Icons) ----------
-const APP_VERSION = '102';
+const APP_VERSION = '103';
 const ICONS = {
   plus: '<path d="M12 5v14M5 12h14"/>',
   camera: '<path d="M3 8.5A2 2 0 0 1 5 6.5h2l1.6-2h6.8l1.6 2h2a2 2 0 0 1 2 2V18a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><circle cx="12" cy="13" r="3.6"/>',
@@ -290,11 +290,17 @@ $('#brandBtn').onclick = menue;
     const b = document.createElement('button');
     b.className = 'nur-breit klein';
     if (TABS.includes(id)) b.dataset.tab = id;
+    b.dataset.seite = id;
     b.innerHTML = `${icon(m[2])}<span>${esc(m[1])}</span>`;
-    b.onclick = () => m[4]();
+    // Markiert wird, was man angetippt hat (Auswertung liegt intern im Reiter Rechnungen, Preisliste in den Einstellungen, Kalender in keinem Reiter)
+    b.onclick = () => { m[4](); seiteMarkieren(id); };
     nav.append(b);
   });
 })();
+/** Seitenleiste: genau diesen Eintrag als aktiv zeigen. */
+function seiteMarkieren(id) {
+  requestAnimationFrame(() => $$('.tabbar button').forEach((b) => b.classList.toggle('active', (b.dataset.seite || b.dataset.tab) === id)));
+}
 // Am Computer (Programm aus desktop/): Escape schließt Fenster oder geht zurück
 if (window.DomDesktop) document.documentElement.classList.add('desktop');
 document.addEventListener('keydown', (e) => {
@@ -306,7 +312,7 @@ document.addEventListener('keydown', (e) => {
   const tb = $('#topback'); if (tb && !tb.hidden) tb.click();
 });
 // Kalender oben neben dem Mikrofon
-$('#calBtn').onclick = () => { if (state.kalender) return; state.finanzen = false; Kalender.view(); window.scrollTo(0, 0); };
+$('#calBtn').onclick = () => { if (state.kalender) return; state.finanzen = false; Kalender.view(); seiteMarkieren('kalender'); window.scrollTo(0, 0); };
 // Mikrofon oben: Kunde, Projekt und Termin per Sprache anlegen (sprache.js)
 $('#camBtn').onclick = () => Kamera.start().catch((e) => toast('Kamera: ' + e.message, 5000));
 $('#micBtn').onclick = () => { const t = state.tab; Sprache.view(() => switchTab(t)); };

@@ -349,7 +349,7 @@ textarea.sz-auf, .sz-auf input:not([readonly]), .sz-auf textarea { border-color:
     flex-direction: column; justify-content: flex-start; align-items: stretch; gap: 2px; overflow-y: auto;
     background: linear-gradient(180deg, var(--navy-ink) 0%, var(--navy) 100%); box-shadow: 2px 0 12px rgba(20, 38, 59, .18); }
   .tabbar .nur-breit { display: flex; }
-  .tabbar button { flex: none; max-width: none; height: 44px; flex-direction: row; align-items: center; justify-content: flex-start; gap: 12px;
+  .tabbar button { flex: none; max-width: none; height: 46px; touch-action: manipulation; flex-direction: row; align-items: center; justify-content: flex-start; gap: 12px;
     padding: 0 12px; border-radius: 11px; font-size: 15px; color: rgba(255,255,255,.7); }
   .tabbar button span { height: auto; font-size: 15px; line-height: 1.2; text-align: left; padding: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .tabbar button svg.i { width: 21px; height: 21px; }
@@ -360,7 +360,7 @@ textarea.sz-auf, .sz-auf input:not([readonly]), .sz-auf textarea { border-color:
   .seite-logo img { height: 26px; width: auto; }
   .seite-logo small { font-size: 7.5px; font-weight: 600; letter-spacing: .02em; color: rgba(255,255,255,.82); }
   .tabbar .seite-trenn { height: 1px; flex: none; background: rgba(255,255,255,.14); margin: 10px 8px; }
-  .tabbar button.klein { height: 38px; font-size: 14px; }
+  .tabbar button.klein { height: 42px; font-size: 14px; }
   .tabbar button.klein span { font-size: 14px; }
   .topbar { padding-left: 28px; padding-right: 28px; }
   .brand { display: none; }

@@ -124,6 +124,7 @@ public class DomGeraetPlugin: CAPPlugin, CAPBridgedPlugin, VNDocumentCameraViewC
             self.scanCall = call
             let vc = VNDocumentCameraViewController()
             vc.delegate = self
+            vc.modalPresentationStyle = .fullScreen // iPad: sonst nur ein kleines Fenster in der Mitte
             self.zeigen(vc)
         }
     }
