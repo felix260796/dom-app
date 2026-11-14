@@ -1,7 +1,7 @@
 # DOM als Programm für Windows (Electron, Ordner desktop/).
 # Bei jedem Merge auf main: bauen und als „Release“ auf GitHub ablegen. Das installierte Programm holt sich
 # neue Fassungen von dort selbst (electron-updater) und spielt sie beim nächsten Schließen ein.
-# Per „Run workflow“ auf einem Zweig: nur bauen, das Setup liegt dann unten im Lauf unter „Artifacts“ (kein Release).
+# Per „Run workflow“ auf einem Zweig oder bei einem PR, der desktop/ ändert: nur bauen, das Setup liegt dann unten im Lauf unter „Artifacts“ (kein Release).
 name: Windows-Programm
 
 on:
@@ -11,6 +11,11 @@ on:
       - '**.md'
       - 'supabase/**'
       - 'ios-resources/**'
+  # Testbau, wenn ein PR am Programm selbst etwas ändert (nur bauen, kein Release)
+  pull_request:
+    paths:
+      - 'desktop/**'
+      - '.github/workflows/windows-programm.yml'
   workflow_dispatch:
 
 permissions:
