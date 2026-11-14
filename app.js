@@ -6,7 +6,7 @@
  * Kern-Funktionen (Speicher, KI, Bilder) stehen in core.js. */
 
 // ---------- Symbole (einfache Linien-Icons) ----------
-const APP_VERSION = '100';
+const APP_VERSION = '101';
 const ICONS = {
   plus: '<path d="M12 5v14M5 12h14"/>',
   camera: '<path d="M3 8.5A2 2 0 0 1 5 6.5h2l1.6-2h6.8l1.6 2h2a2 2 0 0 1 2 2V18a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><circle cx="12" cy="13" r="3.6"/>',
@@ -272,6 +272,39 @@ function menue() {
   requestAnimationFrame(() => el.classList.add('on'));
 }
 $('#brandBtn').onclick = menue;
+
+// ---------- Großer Bildschirm (iPad quer, Computer) ----------
+// Die Leiste unten wird dort per CSS (basis.css) zur Seitenleiste links. Hier kommen Logo und die Menüpunkte dazu,
+// die nur dort sichtbar sind (.nur-breit). Am iPhone ändert sich nichts.
+(function seitenleiste() {
+  const nav = $('.tabbar');
+  const logo = document.createElement('button');
+  logo.className = 'seite-logo nur-breit'; logo.setAttribute('aria-label', 'Menü öffnen');
+  logo.innerHTML = '<img src="assets/dom_logo_weiss.png" alt="DOM"><small>Projektmanagement GmbH</small>';
+  logo.onclick = menue;
+  nav.prepend(logo);
+  const trenn = document.createElement('i'); trenn.className = 'seite-trenn nur-breit'; nav.append(trenn);
+  const TABS = ['heute', 'suche', 'karte', 'unterlagen', 'hilfe', 'einstellungen'];
+  ['heute', 'suche', 'kalender', 'karte', 'auswertung', 'preisliste', 'unterlagen', 'hilfe', 'einstellungen'].forEach((id) => {
+    const m = MENUE.find((x) => x[0] === id); if (!m) return;
+    const b = document.createElement('button');
+    b.className = 'nur-breit klein';
+    if (TABS.includes(id)) b.dataset.tab = id;
+    b.innerHTML = `${icon(m[2])}<span>${esc(m[1])}</span>`;
+    b.onclick = () => m[4]();
+    nav.append(b);
+  });
+})();
+// Am Computer (Programm aus desktop/): Escape schließt Fenster oder geht zurück
+if (window.DomDesktop) document.documentElement.classList.add('desktop');
+document.addEventListener('keydown', (e) => {
+  if (e.key !== 'Escape' || e.defaultPrevented) return;
+  const fenster = $$('.sheet-bg, .menu-bg').pop();
+  if (fenster) { $('[data-x]', fenster)?.click(); return; }
+  if (e.target.matches?.('input, textarea, select')) { e.target.blur(); return; }
+  if ($('.gview, .pdfz, .zv, .rs, .kserie')) return; // Vollbild-Ansichten haben eigene Knöpfe
+  const tb = $('#topback'); if (tb && !tb.hidden) tb.click();
+});
 // Kalender oben neben dem Mikrofon
 $('#calBtn').onclick = () => { if (state.kalender) return; state.finanzen = false; Kalender.view(); window.scrollTo(0, 0); };
 // Mikrofon oben: Kunde, Projekt und Termin per Sprache anlegen (sprache.js)

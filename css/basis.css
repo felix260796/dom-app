@@ -337,3 +337,46 @@ textarea.sz-auf, .sz-auf input:not([readonly]), .sz-auf textarea { border-color:
 /* Kontakt halten beim Kunden ohne Eintrag: nur eine kleine graue Zeile (pflege.js, opt.klein) */
 .pf-klein { border: 0; background: none; color: var(--muted); font: inherit; font-size: 14px; display: inline-flex; align-items: center; gap: 6px; padding: 10px 4px; margin-top: 4px; }
 .pf-klein svg.i { width: 16px; height: 16px; }
+
+/* ---------- Großer Bildschirm (iPad quer, großes iPad, Computer) ---------- */
+/* Ab 900 px Breite wird die Leiste unten zur Seitenleiste links, darunter die Punkte aus dem Menü (app.js, seitenleiste).
+   Darunter (iPhone, kleines iPad hochkant) bleibt alles wie gehabt: fünf Reiter unten. */
+.tabbar .nur-breit { display: none; }
+@media (min-width: 900px) {
+  :root { --seite: 236px; }
+  body { padding-left: var(--seite); min-height: 100vh; }
+  .tabbar { top: 0; right: auto; width: var(--seite); height: auto; padding: calc(env(safe-area-inset-top) + 12px) 12px calc(env(safe-area-inset-bottom) + 16px);
+    flex-direction: column; justify-content: flex-start; align-items: stretch; gap: 2px; overflow-y: auto;
+    background: linear-gradient(180deg, var(--navy-ink) 0%, var(--navy) 100%); box-shadow: 2px 0 12px rgba(20, 38, 59, .18); }
+  .tabbar .nur-breit { display: flex; }
+  .tabbar button { flex: none; max-width: none; height: 44px; flex-direction: row; align-items: center; justify-content: flex-start; gap: 12px;
+    padding: 0 12px; border-radius: 11px; font-size: 15px; color: rgba(255,255,255,.7); }
+  .tabbar button span { height: auto; font-size: 15px; line-height: 1.2; text-align: left; padding: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .tabbar button svg.i { width: 21px; height: 21px; }
+  .tabbar button.active { background: rgba(255,255,255,.13); color: #fff; }
+  .tabbar button.active::after { top: 10px; left: 0; width: 3px; height: 24px; border-radius: 0 3px 3px 0; }
+  .tabbar button.seite-logo { height: auto; flex-direction: column; align-items: flex-start; gap: 4px; padding: 8px 12px 18px; background: none; }
+  .tabbar button.seite-logo::after { display: none; }
+  .seite-logo img { height: 26px; width: auto; }
+  .seite-logo small { font-size: 7.5px; font-weight: 600; letter-spacing: .02em; color: rgba(255,255,255,.82); }
+  .tabbar .seite-trenn { height: 1px; flex: none; background: rgba(255,255,255,.14); margin: 10px 8px; }
+  .tabbar button.klein { height: 38px; font-size: 14px; }
+  .tabbar button.klein span { font-size: 14px; }
+  .topbar { padding-left: 28px; padding-right: 28px; }
+  .brand { display: none; }
+  .brand-row:has(> #topback[hidden]) { display: none; }
+  main { padding: 22px max(28px, calc((100% - 980px) / 2)) 48px; }
+  .toast { left: calc(var(--seite) + 16px); bottom: calc(24px + env(safe-area-inset-bottom)); }
+  .recbar { left: calc(var(--seite) + 16px); right: 16px; bottom: calc(env(safe-area-inset-bottom) + 20px); max-width: 720px; margin: 0 auto; }
+  /* Auswahlfenster in der Mitte statt von unten */
+  .sheet-bg { align-items: center; }
+  .sheet { border-radius: 22px; padding-bottom: 16px; max-height: 78vh; }
+}
+/* Maus: Rückmeldung beim Darüberfahren (nur Geräte mit Maus, nicht iPad-Finger) */
+@media (hover: hover) and (pointer: fine) {
+  .tabbar button:hover { color: #fff; }
+  @media (min-width: 900px) { .tabbar button:not(.active):not(.seite-logo):hover { background: rgba(255,255,255,.07); } }
+  .btn:hover { filter: brightness(1.08); }
+  .btn.secondary:hover { filter: brightness(.97); }
+  .sheet-item:hover, .menu-i:hover { background: var(--soft); }
+}

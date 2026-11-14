@@ -105,6 +105,14 @@ Gewährleistung Standard 2 Jahre ab Abnahme (`GEW_ALT/GEW_NEU`, alter unverände
 Partnerangebot: `subUebernehmen` mit „Dokument scannen“ (`Geraet.scannen`), Foto, Screenshot/PDF; Original über `partnerOriginal` in `w.dokumente` mit `intern: true, art: 'partnerangebot'` (kein Senden-Knopf, nie an den Kunden).
 Versand: „Als versendet markieren“ (`alsVersendet`, `datumFrage`, `angebotVersendet(wid, datum)`), „Nochmal senden“ (`angebotNochmal`, dasselbe PDF). Auftragsbestätigung im Projekt (`#dAb` → `abMenue`: ansehen, senden/nochmal senden `abSenden`, als versendet markieren; fehlt sie, wird sie erstellt), Stand in der Kundenhistorie (`abText/abPdf` in `kunden.js`).
 
+## Neuerungen aus Version 101 (iPad und Computer)
+
+Felix arbeitet draußen mit dem iPad Pro (Stift, LiDAR), im Büro am Windows-PC, das iPhone nur unterwegs. Alle drei laufen mit denselben App-Dateien, Daten über den Cloud-Abgleich.
+iPad: Die TestFlight-App ist jetzt für iPhone und iPad (`TARGETED_DEVICE_FAMILY="1,2"` im iOS-Workflow). `zeigen` in `DomGeraet.swift` setzt für Sprechblasen-Fenster einen Ankerpunkt (sonst Absturz am iPad).
+Großer Bildschirm: Ab 900 px Breite (iPad quer, großes iPad, Computer) wird die Leiste unten per CSS zur Seitenleiste links (`@media (min-width: 900px)` am Ende von `basis.css`), darunter die Menüpunkte (`seitenleiste` in `app.js`, Knöpfe `.nur-breit`, nur dort sichtbar). Am iPhone bleibt alles wie gehabt, die fünf Reiter unten nicht anfassen. Auswahlfenster stehen dort in der Mitte.
+Stift: Unterschriftenfelder (`unterschrift.js`, Abnahme in `baustelle.js`) laufen über `stiftLinien(canvas, ctx, beimStart)` in `core.js`: Druck macht die Linie dicker, nach dem ersten Stiftstrich zählt die aufgelegte Hand nicht mehr. Zeichnen sonst nur über `zeichnen.js`.
+Computer: Ordner `desktop/` (Electron). `main.js` lädt die App über `app://dom/` (fester Ort für den Speicher), Links nach draußen im Standardprogramm, Kamera/Mikrofon erlaubt, keine Mitteilungen (`push.js` prüft `window.DomDesktop`). `preload.js` setzt `window.DomDesktop`, `app.js` die Klasse `desktop` und Escape (Fenster zu bzw. Zurück). Bau: `.github/workflows/windows-programm.yml` auf windows-latest, kopiert die Dateien mit `desktop/app-bauen.js` (neue Ordner, die nicht ins Programm gehören, dort in `WEG` eintragen), bei Merge auf `main` als GitHub-Release `v<APP_VERSION>.0.<Lauf>` mit `DOM-Setup-….exe`. Das installierte Programm holt neue Fassungen selbst (electron-updater) und spielt sie beim Schließen ein. Nicht signiert: Windows warnt beim ersten Installieren („Weitere Informationen“ › „Trotzdem ausführen“).
+
 ## Bereiche
 
 | Bereich | Dateien | Inhalt |

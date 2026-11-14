@@ -1,0 +1,58 @@
+# DOM als Programm für Windows (Electron, Ordner desktop/).
+# Bei jedem Merge auf main: bauen und als „Release“ auf GitHub ablegen. Das installierte Programm holt sich
+# neue Fassungen von dort selbst (electron-updater) und spielt sie beim nächsten Schließen ein.
+# Per „Run workflow“ auf einem Zweig: nur bauen, das Setup liegt dann unten im Lauf unter „Artifacts“ (kein Release).
+name: Windows-Programm
+
+on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - '**.md'
+      - 'supabase/**'
+      - 'ios-resources/**'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: windows-programm-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  bauen:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+
+      - name: App-Dateien übernehmen
+        run: node desktop/app-bauen.js
+
+      - name: Programm bauen
+        working-directory: desktop
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          VER=$(sed -n "s/.*APP_VERSION *= *'\\([0-9]*\\)'.*/\\1/p" ../app.js | head -1)
+          V="$VER.0.${{ github.run_number }}"
+          echo "Programm-Fassung $V"
+          npm install --no-audit --no-fund
+          if [ "${{ github.ref }}" = "refs/heads/main" ]; then PUB=always; else PUB=never; fi
+          npx electron-builder --win --x64 --publish $PUB -c.extraMetadata.version="$V"
+          ls -la dist
+
+      - name: Setup zum Herunterladen ablegen
+        uses: actions/upload-artifact@v4
+        with:
+          name: DOM-Setup
+          path: desktop/dist/*.exe
+          retention-days: 14

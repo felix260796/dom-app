@@ -35,12 +35,9 @@ window.Unterschrift = (() => {
     const ctx = canvas.getContext('2d');
     const r = canvas.getBoundingClientRect(); canvas.width = r.width * 2; canvas.height = r.height * 2; ctx.scale(2, 2);
     Object.assign(ctx, { lineWidth: 2.2, lineCap: 'round', lineJoin: 'round', strokeStyle: '#1b2533' });
-    let leer = !start, zieht = false;
+    let leer = !start;
     if (start) { const img = new Image(); img.onload = () => ctx.drawImage(img, 0, 0, r.width, r.height); img.src = start; }
-    const pt = (e) => { const q = canvas.getBoundingClientRect(); return [e.clientX - q.left, e.clientY - q.top]; };
-    canvas.onpointerdown = (e) => { zieht = true; leer = false; canvas.setPointerCapture(e.pointerId); const [a, b] = pt(e); ctx.beginPath(); ctx.moveTo(a, b); ctx.lineTo(a + 0.1, b + 0.1); ctx.stroke(); e.preventDefault(); };
-    canvas.onpointermove = (e) => { if (!zieht) return; const [a, b] = pt(e); ctx.lineTo(a, b); ctx.stroke(); e.preventDefault(); };
-    canvas.onpointerup = canvas.onpointercancel = () => { zieht = false; };
+    stiftLinien(canvas, ctx, () => { leer = false; });
     return { leeren: () => { ctx.clearRect(0, 0, canvas.width, canvas.height); leer = true; }, bild: () => (leer ? '' : canvas.toDataURL('image/png')) };
   }
 

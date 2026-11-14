@@ -81,6 +81,12 @@ public class DomGeraetPlugin: CAPPlugin, CAPBridgedPlugin, VNDocumentCameraViewC
         guard let oben = bridge?.viewController else { return }
         var top: UIViewController = oben
         while let p = top.presentedViewController { top = p }
+        // iPad: Fenster, die als Sprechblase aufgehen, brauchen einen Ankerpunkt, sonst stürzt die App ab
+        if let pop = vc.popoverPresentationController, pop.sourceView == nil, pop.barButtonItem == nil {
+            pop.sourceView = top.view
+            pop.sourceRect = CGRect(x: top.view.bounds.midX, y: top.view.bounds.midY, width: 1, height: 1)
+            pop.permittedArrowDirections = []
+        }
         top.present(vc, animated: true)
     }
 

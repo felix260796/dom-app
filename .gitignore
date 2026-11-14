@@ -3,3 +3,5 @@ node_modules/
 www/
 ios/
 __pycache__/
+desktop/app/
+desktop/dist/

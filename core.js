@@ -175,6 +175,33 @@ async function pdfAnsicht(quelle, name = 'Dokument') {
     }
   }
 }
+/** Unterschriftenfeld: Linien mit Finger, Maus oder Apple Pencil. Mit dem Stift wird die Linie je nach Druck dicker,
+ * und sobald der Stift einmal benutzt wurde, zählt die aufgelegte Hand nicht mehr (unterschrift.js, baustelle.js).
+ * Für alles Weitere (Fotos markieren, Skizzen, Pläne) gibt es zeichnen.js. beimStart() wird beim ersten Strich gerufen. */
+function stiftLinien(canvas, ctx, beimStart) {
+  let id = null, stift = false, letzt = null;
+  const pt = (e) => { const q = canvas.getBoundingClientRect(); return [e.clientX - q.left, e.clientY - q.top]; };
+  const breite = (e) => (e.pointerType === 'pen' && e.pressure > 0 ? 1.1 + e.pressure * 2.4 : 2.2);
+  const strich = (e) => {
+    const p = pt(e);
+    ctx.beginPath(); ctx.lineWidth = breite(e); ctx.moveTo(letzt[0], letzt[1]); ctx.lineTo(p[0], p[1]); ctx.stroke();
+    letzt = p;
+  };
+  canvas.onpointerdown = (e) => {
+    if (e.pointerType === 'pen') stift = true;
+    else if (stift && e.pointerType === 'touch') return; // Hand liegt auf
+    if (id !== null) return;
+    id = e.pointerId; beimStart?.();
+    try { canvas.setPointerCapture(e.pointerId); } catch { /* egal */ }
+    letzt = pt(e); letzt = [letzt[0] - 0.1, letzt[1] - 0.1]; strich(e); e.preventDefault();
+  };
+  canvas.onpointermove = (e) => {
+    if (e.pointerId !== id) return;
+    for (const c of e.getCoalescedEvents?.() || [e]) strich(c);
+    e.preventDefault();
+  };
+  canvas.onpointerup = canvas.onpointercancel = (e) => { if (e.pointerId === id) id = null; };
+}
 /** Telefon-Link zum Anrufen: immer mit Ländervorwahl (Vorgabe „telVorwahl“, Standard +49). Aus 0711 123 wird +49711123. */
 function telLink(t) {
   let n = String(t || '').replace(/[^\d+]/g, '');
