@@ -6,7 +6,7 @@
  * Kern-Funktionen (Speicher, KI, Bilder) stehen in core.js. */
 
 // ---------- Symbole (einfache Linien-Icons) ----------
-const APP_VERSION = '105';
+const APP_VERSION = '106';
 const ICONS = {
   plus: '<path d="M12 5v14M5 12h14"/>',
   camera: '<path d="M3 8.5A2 2 0 0 1 5 6.5h2l1.6-2h6.8l1.6 2h2a2 2 0 0 1 2 2V18a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><circle cx="12" cy="13" r="3.6"/>',
@@ -348,6 +348,8 @@ function desktopBefehl(b) {
     drucken: () => pdf ? klick('.pdfz [data-doe]') : toast('Zuerst ein Dokument öffnen, dann Strg+P.', 4000),
     einstellungen: () => seite('einstellungen'),
     suche: () => { seite('suche'); setTimeout(() => $('#suQ')?.focus(), 80); },
+    karte: () => seite('karte'), ppreise: () => seite('ppreise'), unterlagen: () => seite('unterlagen'),
+    sicherung: () => window.Backup?.excel(),
     heute: () => seite('heute'), kalender: () => seite('kalender'), auswertung: () => seite('auswertung'), preisliste: () => seite('preisliste'), hilfe: () => seite('hilfe'),
     kunden: () => reiter('kunden'), partner: () => reiter('partner'), angebote: () => reiter('angebote'), projekt: () => reiter('projekt'), rechnungen: () => reiter('rechnungen'),
     zurueck: () => { const tb = $('#topback'); if (tb && !tb.hidden) tb.click(); },

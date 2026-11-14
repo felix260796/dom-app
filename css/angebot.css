@@ -232,3 +232,62 @@ main:has(.xt-box) { max-width: none; padding-left: 28px; padding-right: 28px; }
 .ltab .nachfassen { color: #b5651d; font-weight: 600; }
 
 .ltab .rot { color: #c0392b; font-weight: 650; }
+
+/* ---------- Angebot am PC auf einer Seite (projekt.js angebotPc) ---------- */
+/* Reihenfolge wie im fertigen Angebot: Kopf, Anfangstext, Positionen mit Titeln, Schlusstext; rechts Aktionen und Hilfen. */
+main:has(.ape), main:has(.ape-vo) { max-width: none; padding-left: 28px; padding-right: 28px; }
+.ape-top { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; margin: 0 0 14px; }
+.ape-tt { display: flex; align-items: baseline; gap: 10px; font-size: 18px; min-width: 0; }
+.ape-tt .ang-st { align-self: center; }
+.ape-tt .ang-st.entw { background: var(--brass-soft); color: #8a6420; }
+.ape-tt .ang-st.raus { background: var(--navy); color: #fff; }
+.ape-tt .ang-st.ab { background: #f8e1de; color: #c0392b; }
+.ape-tt .muted { font-size: 15px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ape-seg { display: inline-flex; background: #e9ecf1; border-radius: 9px; padding: 3px; gap: 2px; }
+.ape-seg button { white-space: nowrap; border: 0; background: none; padding: 6px 14px; border-radius: 7px; font-size: 13.5px; font-weight: 600; color: var(--muted); }
+.ape-seg button.on { background: #fff; color: var(--navy); box-shadow: 0 1px 2px rgba(20, 38, 59, .12); }
+.ape { display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: 20px; align-items: start; }
+.ape.ape-zu { grid-template-columns: minmax(0, 1fr); max-width: 980px; }
+.ape-main { min-width: 0; }
+.ape-seite { position: sticky; top: 16px; display: flex; flex-direction: column; gap: 12px; }
+.ape-seite > .card, .ape-seite > details.card { margin: 0; }
+.ape-akt { display: flex; flex-direction: column; gap: 8px; }
+.ape-akt .btn { margin: 0; }
+.ape-akt .hint { margin: 2px 0 0; font-size: 12.5px; }
+.ape-kopf { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px 14px; padding: 14px 16px; }
+.ape-f { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.ape-f label { font-size: 12px; font-weight: 600; color: var(--muted); margin: 0; }
+.ape-f input, .ape-f select { margin: 0; height: 36px; padding: 6px 10px; font-size: 14px; border-radius: 8px; }
+.ape-kunde { grid-row: span 2; }
+.ape-betr { grid-column: span 2; }
+.ape-voll { grid-column: 1 / -1; margin: 0; }
+.ape-k { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; text-align: left; border: 1px solid var(--line); background: var(--soft); border-radius: 8px; padding: 8px 10px; min-height: 80px; }
+.ape-k b { font-size: 15px; color: var(--navy); }
+.ape-k span { font-size: 13px; color: var(--muted); line-height: 1.35; }
+.ape-k.leer { border-style: dashed; background: #fff; }
+.ape-h { display: flex; align-items: baseline; gap: 12px; margin: 18px 0 8px; flex-wrap: wrap; }
+.ape-h h2 { margin: 0; font-size: 17px; }
+.ape-h .muted { font-size: 13px; }
+.ape-links { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; padding: 0 4px; }
+.ape-links button { font-size: 13.5px; }
+.ape-links .link-danger { align-self: flex-start; padding-left: 0; margin: 6px 0 0; }
+.ape-seite .wf-o { font-size: 13.5px; }
+.ape-vo { max-width: 980px; }
+/* Titelzeilen im Editor: Name, Maße, Löschen direkt in der Zeile */
+.xtab tr.xt-titel.ed td { background: #eef2f7; }
+.xtab tr.xt-titel.ed input { font-weight: 650; color: var(--navy); }
+.xtab tr.xt-titel.ed input.xt-mass { font-weight: 500; color: var(--text); font-size: 13px; }
+.xtab tr.xt-titel.ed input.xt-mass::placeholder { color: #9aa3ae; font-weight: 400; }
+.xt-tn { display: flex; align-items: center; gap: 6px; }
+.xt-masse { flex: none; display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted); font-weight: 600; padding-right: 4px; }
+.xt-masse label { display: flex; align-items: center; gap: 3px; margin: 0; font-size: 12px; font-weight: 600; color: var(--muted); }
+.xtab .xt-masse input.xt-mass { width: 58px; height: 24px; padding: 0 6px; background: #fff; border: 1px solid #d6dce4; border-radius: 5px; }
+.xt-tn input { flex: 1; min-width: 0; }
+.xt-tdel { flex: none; border: 0; background: none; color: var(--muted); padding: 0 8px; height: 32px; opacity: 0; }
+.xt-tdel svg.i { width: 15px; height: 15px; }
+tr.xt-titel.ed:hover .xt-tdel, .xt-tdel:focus { opacity: 1; }
+.xt-tdel:hover { color: var(--danger); }
+.xtab tr.xt-titelneu td { background: #fff; border-bottom: 0; }
+.xtab tr.xt-titelneu input { color: var(--navy); font-weight: 600; }
+.xtab tr.xt-titelneu svg.i { width: 14px; height: 14px; color: var(--brass); }
+@media (max-width: 1250px) { .ape { grid-template-columns: minmax(0, 1fr) 260px; } .ape-kopf { grid-template-columns: repeat(2, minmax(0, 1fr)); } .ape-betr { grid-column: auto; } }

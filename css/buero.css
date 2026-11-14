@@ -1,0 +1,151 @@
+/* DOM – Büro-Optik am Computer. Gilt nur mit html.buero (tabelle.js: Windows-Programm oder breiter Bildschirm mit Maus).
+   iPhone und iPad bekommen diese Datei zwar geladen, aber keine Regel greift dort. Als letzte CSS-Datei laden.
+
+   Die Idee (roter Faden): ein Arbeitsplatz wie in Büro-Programmen (Outlook, Lexware, Handwerker-Software).
+   Jede Seite hat dieselben vier Zonen:
+   1. Navigation links (Seitenleiste, basis.css)
+   2. Titelleiste oben: wo bin ich (Zurück, Titel, Untertitel in einer Zeile) und Werkzeuge rechts
+   3. Arbeitsfläche: Liste = Tabelle mit Werkzeugzeile darüber (Suche, Neu, weitere Knöpfe in EINER Zeile);
+      Akte (Kunde, Partner) = Stammdaten links, Zusammenhang rechts (Kontakt halten, Objekte, Verlauf);
+      Dokument (Angebot) = Dokument in der Mitte, Aktionen rechts (angebot.css, .ape)
+   4. Menüleiste des Programms (Datei, Bearbeiten, Ansicht, Extras, Hilfe) mit Tastenkürzeln (desktop/main.js)
+   Dazu dichter und ruhiger: 14 px Schrift, flache Rahmen statt Schatten, kleine Ecken, Knöpfe in normaler Größe. */
+
+/* ---------- Grundlagen ---------- */
+html.buero { --radius: 8px; --r-sm: 6px; --shadow: none; }
+html.buero body { font-size: 14px; }
+html.buero main { padding-top: 18px; padding-bottom: 40px; }
+html.buero .card { border: 1px solid var(--line); padding: 14px 16px; margin-bottom: 12px; }
+html.buero .card h2 { font-size: 15px; }
+html.buero label { font-size: 12px; margin: 10px 0 4px; }
+html.buero input[type=text], html.buero input[type=url], html.buero input[type=password], html.buero input[type=tel], html.buero input[type=date],
+html.buero input[type=search], html.buero input[type=email], html.buero input[type=number], html.buero select, html.buero textarea { font-size: 14px; padding: 7px 10px; }
+html.buero input, html.buero select, html.buero textarea { font-size: 14px; }
+html.buero select { padding-right: 32px; background-position: right 8px center; }
+html.buero .btn { border-radius: 7px; padding: 8px 14px; font-size: 14px; font-weight: 600; gap: 7px; }
+html.buero .btn svg.i { width: 17px; height: 17px; }
+html.buero .btn.big { padding: 10px 16px; font-size: 14.5px; border-radius: 8px; box-shadow: none; }
+html.buero .btn.small { padding: 6px 10px; font-size: 13px; border-radius: 6px; }
+html.buero .btn:active, html.buero .cta:active, html.buero .kd-a:active { transform: none; }
+html.buero .hint { font-size: 12.5px; }
+html.buero .sec-h { margin: 18px 2px 8px; }
+html.buero .sec-h h2 { font-size: 15px; }
+html.buero .sec-h .count { font-size: 12px; }
+html.buero details.more { border-radius: 8px; }
+html.buero details.more > summary { padding: 10px 0; font-size: 14px; }
+html.buero details.more > summary small { font-size: 12px; }
+html.buero details.more.card { border: 1px solid var(--line); }
+html.buero .doc { padding: 9px 12px; border-radius: 8px; }
+html.buero .docs { gap: 6px; }
+html.buero .link-add { font-size: 13.5px; }
+html.buero .empty-state { padding: 28px 20px; }
+html.buero .empty-state b { font-size: 15px; }
+html.buero .seg { border-radius: 8px; }
+html.buero .seg button { border-radius: 6px; padding: 7px 4px; }
+html.buero .qchip { font-size: 13px; padding: 4px 11px; }
+html.buero .toast { font-size: 14px; }
+
+/* ---------- Titelleiste: eine Zeile ---------- */
+html.buero .topbar { display: flex; align-items: center; gap: 14px; padding: 10px 24px; min-height: 58px; background: var(--navy-ink); box-shadow: 0 1px 0 rgba(0,0,0,.25); }
+html.buero .brand-row { min-height: 0; flex: none; }
+html.buero .topback { font-size: 13.5px; padding: 5px 11px 5px 5px; background: rgba(255,255,255,.1); }
+html.buero .topback:hover { background: rgba(255,255,255,.18); }
+html.buero .titles { flex: 1; min-width: 0; margin: 0; display: flex; align-items: baseline; gap: 12px; padding-right: 140px; }
+html.buero .topbar h1 { font-size: 19px; flex: none; max-width: 60%; }
+html.buero .topbar #subtitle { margin: 0; font-size: 13.5px; min-width: 0; }
+html.buero .calbtn { width: 36px; height: 36px; border-radius: 8px; background: rgba(255,255,255,.08); }
+html.buero .calbtn:hover { background: rgba(255,255,255,.16); }
+html.buero .calbtn svg.i { width: 19px; height: 19px; }
+html.buero #calBtn { right: 88px; }
+html.buero #camBtn { right: 44px; }
+
+/* ---------- Listen: Suche, Neu und weitere Knöpfe in einer Werkzeugzeile ---------- */
+html.buero main:has(> .search.big + .cta.slim) { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; column-gap: 8px; align-content: start; }
+html.buero main:has(> .search.big + .cta.slim) > * { grid-column: 1 / -1; }
+html.buero main:has(> .search.big + .cta.slim) > .search.big { grid-column: 1; }
+html.buero main:has(> .search.big + .cta.slim) > .cta.slim { grid-column: 2; }
+html.buero main:has(> .search.big + .cta.slim) > .cta.slim + .notice.plain { grid-column: 3; }
+html.buero main:has(> .search.big + .cta.slim) > .cta.slim:not(:has(+ .notice.plain)) { grid-column: 2 / -1; }
+html.buero .search { border-radius: 7px; padding: 0 10px; margin-bottom: 12px; }
+html.buero .search.big { box-shadow: none; border-radius: 7px; padding: 0 10px; height: 38px; }
+html.buero .search.big input, html.buero .search input { font-size: 14px; padding: 8px 0; }
+html.buero .search svg.i { width: 17px; }
+html.buero .cta { border-radius: 7px; padding: 0 14px; gap: 8px; min-height: 38px; }
+html.buero .cta.slim { width: auto; height: 38px; padding: 0 16px 0 10px; border-radius: 7px; margin: 0 0 12px; white-space: nowrap; }
+html.buero .cta .cta-ico, html.buero .cta.slim .cta-ico { width: 22px; height: 22px; border-radius: 5px; }
+html.buero .cta .cta-ico svg.i, html.buero .cta.slim .cta-ico svg.i { width: 15px; height: 15px; }
+html.buero .cta .cta-t b, html.buero .cta.slim .cta-t b { font-size: 14px; font-weight: 600; }
+html.buero .cta .cta-t span { font-size: 12px; }
+html.buero .cta.slim > svg.i:last-child { display: none; }
+html.buero .notice { border-radius: 7px; padding: 8px 12px; font-size: 13.5px; margin-top: 0; margin-bottom: 12px; gap: 9px; }
+html.buero .notice svg.i { width: 17px; height: 17px; }
+html.buero main > .cta.slim + .notice.plain { height: 38px; width: auto; white-space: nowrap; }
+html.buero main > .cta.slim + .notice.plain > svg.i:last-child { display: none; }
+/* Filter über Listen (Projekte, Angebote, Rechnungen): Reiter wie in Büro-Programmen statt großer Kacheln */
+html.buero .phasen { display: flex; gap: 0; margin: 4px 0 12px; border-bottom: 1px solid var(--line); }
+html.buero .phasen button, html.buero .phasen .fz { flex: none; flex-direction: row; gap: 7px; align-items: baseline; border: 0; border-bottom: 2px solid transparent; border-radius: 0; background: none; padding: 8px 14px 7px; color: var(--muted); }
+html.buero .phasen button b, html.buero .phasen .fz b { font-size: 13px; order: 2; color: var(--muted); background: #e9ecf1; border-radius: 999px; padding: 0 7px; line-height: 1.5; }
+html.buero .phasen button span, html.buero .phasen .fz span { font-size: 14px; font-weight: 600; }
+html.buero .phasen button.on, html.buero .phasen .fz.on { background: none; border-bottom-color: var(--navy); color: var(--navy); }
+html.buero .phasen button.on b, html.buero .phasen .fz.on b { color: #fff; background: var(--navy); }
+html.buero .phasen button:hover { color: var(--navy); }
+
+/* ---------- Akte (Kunde, Partner): Werkzeugzeile, Stammdaten links, Zusammenhang rechts ---------- */
+html.buero .kd-actions { margin-bottom: 14px; }
+html.buero .kd-row { gap: 6px; margin: 0; justify-content: flex-start; flex-wrap: wrap; }
+html.buero .kd-a { flex: none; flex-direction: row; gap: 7px; padding: 7px 14px; border-radius: 7px; border: 1px solid var(--line); box-shadow: none; font-size: 13.5px; font-weight: 600; }
+html.buero .kd-a svg.i { width: 17px; height: 17px; }
+html.buero .kd-a:hover { background: var(--soft); }
+@media (min-width: 1200px) {
+  html.buero main:has(> .kd-actions + .kform) { display: flow-root; }
+  html.buero main:has(> .kd-actions + .kform) > .kd-actions + .kform { float: left; width: calc(100% - 420px); margin-bottom: 0; }
+  html.buero main:has(> .kd-actions + .kform) > :not(.kd-actions):not(.kd-actions + .kform):not(.sheet-bg) { margin-left: calc(100% - 400px); }
+  html.buero main:has(> .kd-actions + .kform) > button.link-add, html.buero main:has(> .kd-actions + .kform) > button.link-danger { display: flex; }
+}
+/* Formulare: Felder einer Zeile nebeneinander bleiben, sonst ruhiger Abstand */
+html.buero .kform .row { gap: 12px; }
+
+/* ---------- Projekt: Kopf in zwei Spalten ---------- */
+@media (min-width: 1200px) {
+  html.buero main:has(> .card.kunde + .pj-jetzt) { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); column-gap: 12px; align-content: start; }
+  html.buero main:has(> .card.kunde + .pj-jetzt) > * { grid-column: 1 / -1; }
+  html.buero main:has(> .card.kunde + .pj-jetzt) > .card.kunde { grid-column: 1; }
+  html.buero main:has(> .card.kunde + .pj-jetzt) > .pj-jetzt { grid-column: 2; }
+}
+html.buero .ab-reiter { display: flex; gap: 0; background: none; border-radius: 0; padding: 0; margin: 4px 0 14px; border-bottom: 1px solid var(--line); }
+html.buero .ab-reiter button { flex: none; border-radius: 0; padding: 8px 18px 7px; font-size: 14px; color: var(--muted); border-bottom: 2px solid transparent; box-shadow: none; }
+html.buero .ab-reiter button.on { background: none; box-shadow: none; color: var(--navy); border-bottom-color: var(--navy); }
+html.buero .pj-jetzt b { font-size: 15px; }
+html.buero .stk-t b { font-size: 15px; }
+html.buero .ic-field input { font-size: 14px; padding: 8px 0; }
+html.buero .ic-field + .ic-field input { font-size: 14px; }
+html.buero .ic-field select { font-size: 14px; padding: 8px 0; }
+
+/* ---------- Auswahlfenster als Dialog ---------- */
+html.buero .sheet { max-width: 480px; border-radius: 10px; padding: 6px 12px 12px; box-shadow: 0 18px 50px rgba(15, 25, 40, .35); }
+html.buero .sheet-h { font-size: 15px; padding: 8px 2px; }
+html.buero .sheet-item { padding: 8px 8px; border-radius: 6px; font-size: 14px; }
+html.buero .sheet-text input { font-size: 14px; }
+
+/* ---------- Einstellungen und weitere Seiten etwas breiter ---------- */
+html.buero main:has(> .einst-such) { padding-left: max(28px, calc((100% - 1040px) / 2)); padding-right: max(28px, calc((100% - 1040px) / 2)); }
+html.buero .f-seg .fz b svg.i { width: 14px; height: 14px; vertical-align: -2px; }
+html.buero .f-seg .fz.on.rot b { color: #fff; background: var(--danger); }
+
+/* ---------- Listen aus Karten (Heute, Dokumente, Verlauf): Zeilen wie im Posteingang ---------- */
+html.buero .plist, html.buero .rlist { gap: 0; background: var(--card); border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+html.buero .plist:not(:has(> .pcard, > .rcard)) { background: none; border: 0; }
+html.buero .plist > .pcard, html.buero .rlist > .rcard { border-radius: 0; box-shadow: none; padding: 7px 12px 7px 10px; gap: 11px; }
+html.buero .plist > .pcard + .pcard, html.buero .rlist > .rcard + .rcard { border-top: 1px solid #edf0f3; }
+html.buero .plist > .pcard:hover, html.buero .rlist > .rcard:hover, html.buero .doc:hover { background: #f8fafc; }
+html.buero .pcard, html.buero .rcard { border-radius: 8px; box-shadow: none; }
+html.buero .pcard img, html.buero .rcard img, html.buero .pc-ph, html.buero .rc-ph { width: 36px; height: 36px; border-radius: 7px; }
+html.buero .pc-ph svg.i, html.buero .rc-ph svg.i, html.buero .pcard.hz .pc-ph svg.i { width: 18px; height: 18px; }
+html.buero .pc-t b, html.buero .rc-t b, html.buero .d-t b { font-size: 14px; }
+html.buero .pc-t .muted, html.buero .d-t span { font-size: 12.5px; }
+html.buero .pcard:active, html.buero .rcard:active, html.buero .doc:active { transform: none; }
+html.buero .heute-zu { display: none; }
+html.buero main .seg2.full { display: inline-flex; flex-wrap: nowrap; gap: 0; border: 1px solid var(--line); border-radius: 7px; overflow: hidden; background: #fff; }
+html.buero main .seg2.full button { flex: none; border: 0; border-radius: 0; padding: 6px 16px; font-size: 13px; }
+html.buero main .seg2.full button + button { border-left: 1px solid var(--line); }
+html.buero .topback { max-width: 280px; }
