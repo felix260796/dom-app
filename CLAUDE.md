@@ -129,6 +129,10 @@ Listen am Computer als Tabelle mit sortierbaren Spalten (`Tabelle.liste(box, { i
 Kalender am Computer: Monatsansicht mit den Einträgen in den Tagen (`.kal-g.pc`, wie Outlook), Doppelklick auf einen Tag legt dort einen Termin an.
 Link im Browser für fremde Rechner: `zugang.js` (erstes Skript). Gilt nur auf `*.github.io` (nicht Windows-Programm, nicht TestFlight-App): ohne Anmeldung nichts sichtbar (`Zugang.anmelden` vor dem Laden in `app.js`), Anmeldung nur im sessionStorage (`LSX` in `sync.js`), jede neue Browser-Sitzung beginnt leer, „Abmelden“ im Menü und unten in der Seitenleiste lädt Offenes hoch und löscht alles im Browser, automatisch nach Vorgabe `browserAbmeldenMin`. Kürzel im Browser mit Alt (`KUERZEL_BROWSER`). Der Link ist kein Testweg (getestet wird über TestFlight und das Programm).
 
+## Neuerungen aus Version 105 (Update im Windows-Programm)
+
+Bis v104 spielte das Programm neue Fassungen beim Schließen still ein (`autoInstallOnAppQuit`). Felix öffnete DOM gleich wieder, das Setup warf ihn dreimal hinaus und die Verknüpfung meldete „DOM.exe wurde verändert oder verschoben“ (14.11.). Jetzt: `autoInstallOnAppQuit = false`, nach dem Laden fragt DOM „Jetzt neu starten“ (Meldung mit Knopf und Zeile unten in der Seitenleiste, `DomDesktop.updateBereit/jetztUpdaten`, `quitAndInstall(true, true)` startet danach von selbst). Fehlerprotokoll `%APPDATA%/DOM/fehler.log` (`protokoll` in `desktop/main.js`, Seitenfehler über `DomDesktop.fehler`), Absturz der Seite lädt sie neu (`render-process-gone`).
+
 ## Bereiche
 
 | Bereich | Dateien | Inhalt |
