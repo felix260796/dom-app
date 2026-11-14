@@ -67,12 +67,9 @@ window.Baustelle = (() => {
     const ctx = canvas.getContext('2d');
     const fit = () => { const r = canvas.getBoundingClientRect(); canvas.width = r.width * 2; canvas.height = r.height * 2; ctx.scale(2, 2); ctx.lineWidth = 2.2; ctx.lineCap = 'round'; ctx.lineJoin = 'round'; ctx.strokeStyle = '#1b2533'; };
     fit();
-    let leer = true, zeichnet = false;
+    let leer = true;
     if (start) { const img = new Image(); img.onload = () => ctx.drawImage(img, 0, 0, canvas.width / 2, canvas.height / 2); img.src = start; leer = false; }
-    const pt = (e) => { const r = canvas.getBoundingClientRect(); return [e.clientX - r.left, e.clientY - r.top]; };
-    canvas.onpointerdown = (e) => { zeichnet = true; leer = false; canvas.setPointerCapture(e.pointerId); const [x, y] = pt(e); ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x + 0.1, y + 0.1); ctx.stroke(); e.preventDefault(); };
-    canvas.onpointermove = (e) => { if (!zeichnet) return; const [x, y] = pt(e); ctx.lineTo(x, y); ctx.stroke(); e.preventDefault(); };
-    canvas.onpointerup = canvas.onpointercancel = () => { zeichnet = false; };
+    stiftLinien(canvas, ctx, () => { leer = false; });
     return { leeren: () => { ctx.clearRect(0, 0, canvas.width, canvas.height); leer = true; }, bild: () => (leer ? '' : canvas.toDataURL('image/png')) };
   }
 

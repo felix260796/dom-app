@@ -1,0 +1,40 @@
+{
+  "name": "dom-desktop",
+  "productName": "DOM",
+  "version": "0.0.0",
+  "private": true,
+  "description": "DOM als Programm für Windows. Hülle um dieselben App-Dateien wie auf dem iPhone, gebaut über GitHub (.github/workflows/windows-programm.yml).",
+  "author": "Dom Projektmanagement GmbH",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron ."
+  },
+  "dependencies": {
+    "electron-updater": "^6.8.11"
+  },
+  "devDependencies": {
+    "electron": "^45.3.2",
+    "electron-builder": "^26.0.0"
+  },
+  "build": {
+    "appId": "de.domprojektmanagement.desktop",
+    "productName": "DOM",
+    "copyright": "Dom Projektmanagement GmbH",
+    "directories": { "output": "dist" },
+    "files": ["main.js", "preload.js", "app/**/*", "package.json"],
+    "win": {
+      "target": [{ "target": "nsis", "arch": ["x64"] }],
+      "icon": "app/icons/icon-512.png",
+      "artifactName": "DOM-Setup-${version}.${ext}"
+    },
+    "nsis": {
+      "oneClick": true,
+      "perMachine": false,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "DOM",
+      "deleteAppDataOnUninstall": false
+    },
+    "publish": [{ "provider": "github", "owner": "felix260796", "repo": "dom-app", "releaseType": "release" }]
+  }
+}

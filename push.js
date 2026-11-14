@@ -26,7 +26,7 @@ window.Push = (() => {
       PN().register().catch((e) => ende(fehler, e));
     });
   }
-  const unterstuetzt = () => 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window;
+  const unterstuetzt = () => !window.DomDesktop && 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window; // am Computer (desktop/) keine Mitteilungen
   const homescreen = () => matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
   const prefs = () => ({
     morgen: String(vorgabe('pushMorgen') || '').trim(), termin: +vorgabe('pushTermin') || 0,
