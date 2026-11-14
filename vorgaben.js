@@ -109,6 +109,9 @@ const VORGABEN = {
         'Begehung | baustelle | Baufortschritt prüfen, Fotos machen, offene Punkte mit Subunternehmer klären',
       ], h: 'Art: kunde, baustelle, buero oder privat. Die Vorlagen stehen beim neuen Termin klein unter dem Titel.' },
     ]],
+    ['Zugang im Browser (Link für fremde Rechner)', [
+      { k: 'browserAbmeldenMin', l: 'Im Browser automatisch abmelden nach so vielen Minuten ohne Bedienung (0 = nie)', t: 'zahl', d: 30, h: 'Gilt nur für den Link im Browser, nicht für das Windows-Programm und die App. Beim Abmelden werden alle Daten im Browser gelöscht.' },
+    ]],
     ['Datensicherung', [
       { k: 'excelSicherungTage', l: 'An die Excel-Sicherung erinnern nach so vielen Tagen (0 = nie)', t: 'zahl', d: 7, h: 'Die Erinnerung steht auf „Heute“. Die Sicherung selbst: Einstellungen › Datensicherung.' },
     ]],

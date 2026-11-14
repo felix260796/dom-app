@@ -44,7 +44,7 @@ window.Angebote = (() => {
       <button class="cta slim" id="aNeu"><span class="cta-ico">${icon('plus')}</span><span class="cta-t"><b>Neues Angebot</b></span>${icon('chevron', 'cta-chev')}</button>
       <button class="notice plain" id="aSchnell">${icon('euro')}<span><b>Schnellangebot</b> · grober Preis ohne Kunde, z. B. am Telefon</span>${icon('chevron')}</button>
       ${alle.length ? `<div class="phasen">${GRUPPEN.map(([id, n]) => `<button data-ag="${id}" class="${gruppe === id ? 'on' : ''}"><b>${alle.filter((x) => gruppeVon(x.status) === id).length}</b><span>${n}</span></button>`).join('')}</div>` : ''}
-      ${liste.length ? `<div class="plist">${liste.map((x, i) => `
+      ${liste.length && window.Tabelle?.istBuero() ? '<div id="aTab"></div>' : liste.length ? `<div class="plist">${liste.map((x, i) => `
         <button class="pcard" data-ang="${x.id}">
           ${x.thumb ? `<img src="${x.thumb}" alt="">` : `<span class="pc-ph">${icon('euro')}</span>`}
           <span class="pc-t"><b>${esc(x.titel || x.room || 'Projekt')}</b>${Projekt.pill(x.status)}
@@ -60,6 +60,17 @@ window.Angebote = (() => {
     $('#aSchnell').onclick = () => { Schnell.view(); window.scrollTo(0, 0); };
     $('#aNeu').onclick = () => neu(alle);
     $$('[data-ang]').forEach((b) => (b.onclick = () => oeffnen(b.dataset.ang)));
+    // Am Computer: Liste als Tabelle mit Spalten zum Sortieren (wie in ERP-Programmen)
+    if ($('#aTab')) window.Tabelle.liste($('#aTab'), { id: 'angebote', oeffnen,
+      spalten: [{ k: 'nr', t: 'Projekt-Nr.', b: 110 }, { k: 'kunde', t: 'Kunde' }, { k: 'betreff', t: 'Betreff' }, { k: 'objekt', t: 'Objekt' }, { k: 'stand', t: 'Stand', b: 150 }, { k: 'summe', t: 'Brutto', r: 1, b: 120 }, { k: 'datum', t: 'Geändert', r: 1, b: 100 }],
+      zeilen: liste.map((x, i) => {
+        const tage = Projekt.norm(x.status) === 'angebot' ? Projekt.seitTagen(x.versendetAm) : 0;
+        return { id: x.id, werte: {
+          nr: x.nr || '', kunde: Kunden.name(Kunden.byId(x.kundeId)) || x.customer || '', betreff: x.titel || x.room || '', objekt: x.address || '',
+          stand: { text: Projekt.norm(x.status), html: Projekt.pill(x.status) + (tage >= Projekt.nachfassen() ? `<br><span class="nachfassen">${tage} Tage, nachfassen</span>` : x.absage ? `<br><span class="muted">${esc(x.absage)}</span>` : '') },
+          summe: { text: summen[i] ? eur(summen[i]) : '', sort: summen[i] || 0 },
+          datum: { text: x.updated ? new Date(x.updated).toLocaleDateString('de-DE') : '', sort: x.updated || 0 } } };
+      }) });
   }
 
   /** Neues Angebot: für ein Projekt in der Angebotsphase oder ein neues Projekt. */

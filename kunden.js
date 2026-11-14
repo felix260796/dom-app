@@ -353,6 +353,13 @@ window.Kunden = (() => {
       const q = filter.trim().toLowerCase();
       const shown = all.filter((k) => treffer(k, idx, q));
       $('#kCount').textContent = q ? `${shown.length} von ${all.length}` : all.length;
+      if (window.Tabelle?.istBuero()) { // Am Computer: Tabelle mit Spalten
+        return window.Tabelle.liste(el, { id: 'kunden', leer: 'Kein Kunde gefunden.', oeffnen: (id) => { filter = ''; detail(byId(id)); window.scrollTo(0, 0); },
+          spalten: [{ k: 'nr', t: 'Nr.', b: 80 }, { k: 'name', t: 'Name' }, { k: 'ort', t: 'Ort' }, { k: 'tel', t: 'Telefon', b: 170 }, { k: 'mail', t: 'E-Mail' }, { k: 'pf', t: 'Nächster Kontakt', b: 190 }, { k: 'proj', t: 'Projekte', b: 230 }],
+          zeilen: shown.map((k) => { const pk = idx.filter((x) => x.kundeId === k.id), g = bisGeburtstag(k); return { id: k.id, werte: {
+            nr: { text: k.nr || '', sort: +k.nr || 0 }, name: { text: name(k) || 'Ohne Namen', html: `<b>${esc(name(k) || 'Ohne Namen')}</b>${g !== null && g <= 14 ? ` <span class="geb">${gebText(g)}</span>` : ''}` },
+            ort: ort(k) || '', tel: k.telefon || '', mail: k.email || '', pf: window.Pflege ? Pflege.zelle(k) : '', proj: { text: String(pk.length), sort: pk.length, html: pk.length ? pills(pk) : '<span class="muted">noch keins</span>' } } }; }) });
+      }
       el.innerHTML = shown.map((k) => {
         const pk = idx.filter((x) => x.kundeId === k.id), n = pk.length, g = bisGeburtstag(k);
         // Suche nach Straße: passende Objekte mit ihren Projekten zeigen („da war ich schon mal“)

@@ -179,6 +179,8 @@ window.Kalender = (() => {
     const h2 = ausgeblendet();
     const tw = team(), w = wer();
     const mitKw = vorgabe('kalKW') !== 'nein';
+    const pc = !!window.Tabelle?.istBuero();
+    const zelle = (e) => pc ? `<i class="kal-pc">${e.slice(0, 4).map((x) => `<em style="--c:${art(x.art)[2]}">${esc(`${x.von && !x.ganztag ? x.von + ' ' : ''}${x.titel || artName(art(x.art))}`)}</em>`).join('')}${e.length > 4 ? `<small>+${e.length - 4} weitere</small>` : ''}</i>` : `<i>${[...new Set(e.map((x) => x.art))].slice(0, 3).map((a) => `<em style="--c:${art(a)[2]}"></em>`).join('')}</i>`;
     main().innerHTML = `
       <div class="seg2 full kal-wer">${[{ id: '', name: tw.length === 2 ? 'Beide' : 'Alle' }, ...tw].map((p) => `<button data-wer="${p.id}" class="${w === p.id ? 'on' : ''}">${esc(p.id ? p.name : p.name)}</button>`).join('')}</div>
       <div class="card kal">
@@ -186,9 +188,9 @@ window.Kalender = (() => {
           <b>${esc(monat.toLocaleDateString('de-DE', { month: 'long', year: 'numeric' }))}</b>
           <button class="btn secondary small" id="kHeute">Heute</button>
           <button class="icon-btn" id="kNext" aria-label="Nächster Monat">${icon('chevron')}</button></div>
-        <div class="kal-g ${mitKw ? 'kw' : ''}">${mitKw ? '<span class="kal-wt kal-kw">KW</span>' : ''}${WT.map((w) => `<span class="kal-wt">${w}</span>`).join('')}
+        <div class="kal-g ${mitKw ? 'kw' : ''} ${pc ? 'pc' : ''}">${mitKw ? '<span class="kal-wt kal-kw">KW</span>' : ''}${WT.map((w) => `<span class="kal-wt">${w}</span>`).join('')}
           ${sichtbar.map((d, i) => { const s = iso(d), e = amTag(s); return `${mitKw && i % 7 === 0 ? `<span class="kal-kw">${kw(d)}</span>` : ''}<button class="kal-d ${d.getMonth() !== monat.getMonth() ? 'aus' : ''} ${s === h ? 'heute' : ''} ${s === tag ? 'sel' : ''}" data-d="${s}">
-            <span>${d.getDate()}</span><i>${[...new Set(e.map((x) => x.art))].slice(0, 3).map((a) => `<em style="--c:${art(a)[2]}"></em>`).join('')}</i></button>`; }).join('')}
+            <span>${d.getDate()}</span>${zelle(e)}</button>`; }).join('')}
         </div>
         <div class="kal-f">${ARTEN.map((a) => { const [id, , c] = a; return `<button class="${h2.has(id) ? '' : 'on'}" data-art="${id}" style="--c:${c}" aria-pressed="${!h2.has(id)}"><i></i>${esc(artName(a))}</button>`; }).join('')}</div>
       </div>
@@ -201,11 +203,18 @@ window.Kalender = (() => {
     $('#kPrev').onclick = () => { monat = new Date(monat.getFullYear(), monat.getMonth() - 1, 1); view(); };
     $('#kNext').onclick = () => { monat = new Date(monat.getFullYear(), monat.getMonth() + 1, 1); view(); };
     $('#kHeute').onclick = () => { monat = null; tag = null; view(); };
-    $$('[data-d]').forEach((b) => (b.onclick = () => { tag = b.dataset.d; const d = ausIso(tag); if (d.getMonth() !== monat.getMonth()) monat = new Date(d.getFullYear(), d.getMonth(), 1); view(); }));
+    // Am Computer: Doppelklick auf einen Tag legt dort einen Termin an (der erste Klick zeichnet neu, darum über e.detail)
+    let klickWarte = 0;
+    const tagWaehlen = (s) => { tag = s; const d = ausIso(tag); if (d.getMonth() !== monat.getMonth()) monat = new Date(d.getFullYear(), d.getMonth(), 1); view(); };
+    $$('[data-d]').forEach((b) => (b.onclick = (e) => {
+      if (!pc) return tagWaehlen(b.dataset.d);
+      clearTimeout(klickWarte);
+      if (e.detail >= 2) return bearbeiten({ art: 'kunde', datum: b.dataset.d }, neu);
+      klickWarte = setTimeout(() => tagWaehlen(b.dataset.d), 230);
+    }));
     $$('[data-wer]').forEach((b) => (b.onclick = () => { werSetzen(b.dataset.wer); view(); }));
     $$('[data-art]').forEach((b) => (b.onclick = () => { const s = ausgeblendet(); s.has(b.dataset.art) ? s.delete(b.dataset.art) : s.add(b.dataset.art); merken(); view(); }));
-    $('#kNeu').onclick = () => bearbeiten({ art: 'kunde', datum: tag }, neu);
-    // Wischen: Monat vor/zurück
+    $('#kNeu').onclick = () => bearbeiten({ art: 'kunde', datum: tag }, neu);    // Wischen: Monat vor/zurück
     let x0 = null; const g = $('.kal-g');
     g.addEventListener('touchstart', (e) => { x0 = e.touches[0].clientX; }, { passive: true });
     g.addEventListener('touchend', (e) => { if (x0 === null) return; const dx = e.changedTouches[0].clientX - x0; x0 = null; if (Math.abs(dx) > 60) (dx < 0 ? $('#kNext') : $('#kPrev')).click(); });

@@ -72,6 +72,13 @@ window.Partner = (() => {
       const q = filter.trim().toLowerCase().split(/\s+/).filter(Boolean);
       const hay = (p) => `${p.firma} ${p.gewerk} ${p.inhaber} ${p.telefon} ${p.email} ${p.anschrift} ${p.notiz} ${p.konditionen} ${p.weitere.map((x) => x.wert).join(' ')}`.toLowerCase();
       const shown = all.filter((p) => (!artFilter || p.art === artFilter) && q.every((w) => hay(p).includes(w)));
+      if (window.Tabelle?.istBuero()) { // Am Computer: Tabelle mit Spalten wie in einem Kontaktprogramm
+        return window.Tabelle.liste(el, { id: 'partner', oeffnen: (id) => { detail(byId(id)); window.scrollTo(0, 0); },
+          spalten: [{ k: 'firma', t: 'Firma' }, { k: 'art', t: 'Art', b: 130 }, { k: 'gewerk', t: 'Gewerk' }, { k: 'inh', t: 'Ansprechpartner' }, { k: 'tel', t: 'Telefon', b: 170 }, { k: 'mail', t: 'E-Mail' }, { k: 'pf', t: 'Nächster Kontakt', b: 190 }],
+          zeilen: shown.map((p) => { const g = p.geburtstage.map((x) => ({ x, n: Kontakt.bisTag(x.datum) })).filter((y) => y.n !== null && y.n <= 14).sort((a, b) => a.n - b.n)[0];
+            return { id: p.id, werte: { firma: { text: titel(p) || 'Ohne Namen', html: `<b>${esc(titel(p) || 'Ohne Namen')}</b>${g ? ` <span class="geb">${esc(g.x.name || 'Geburtstag')} ${Kontakt.tageText(g.n)}</span>` : ''}` },
+              art: ARTEN.find((a) => a[0] === p.art)[1], gewerk: p.gewerk, inh: p.inhaber, tel: p.telefon, mail: p.email, pf: window.Pflege ? Pflege.zelle(p) : '' } }; }) });
+      }
       el.innerHTML = shown.map((p) => {
         const g = p.geburtstage.map((x) => ({ x, n: Kontakt.bisTag(x.datum) })).filter((y) => y.n !== null && y.n <= 14).sort((a, b) => a.n - b.n)[0];
         return `<button class="pcard kcard" data-p="${p.id}"><span class="av">${esc(initialen(p))}</span>

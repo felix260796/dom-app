@@ -366,6 +366,7 @@ window.Projekt = (() => {
       dateiZeigen(await kvGet(d.key), { name: d.name, typ: 'application/pdf' });
     }));
     bueroFelder(w, list);
+    if ($('#xtAng')) window.Tabelle.angebot($('#xtAng'), w, list, () => view()).catch((e) => { console.error(e); toast('Tabelle: ' + e.message, 5000); });
     if ($('#wNeuAng')) $('#wNeuAng').onclick = () => angebotsRaum(w);
     if ($('#wRechAdr')) $('#wRechAdr').onclick = () => Kunden.oeffnen(k.id);
     if ($('#wAlsVersendet')) $('#wAlsVersendet').onclick = async () => { const b = $('#wAlsVersendet'); b.disabled = true; try { await alsVersendet(w, list); } catch (e) { console.error(e); toast('PDF-Fehler: ' + e.message, 6000); } if (b.isConnected) b.disabled = false; };
@@ -761,11 +762,13 @@ window.Projekt = (() => {
         </div>
         <p class="hint">${list.length ? 'Keine Maße zur Hand? Felder leer lassen und weiter, die Mengen kannst du bei den Positionen auch direkt eintragen. Falsch angelegt? Zeile nach links wischen, dann „Löschen“.' : 'Lege an, worum es geht. Maße aus einem Raumscan werden übernommen, sonst trägst du sie hier ein oder lässt sie weg.'}</p>`,
       pos: () => `
-        ${list.length ? `<div class="sec-h"><h2>Positionen je Bereich</h2></div>
+        ${list.length && window.Tabelle?.istBuero() ? `<div class="sec-h"><h2>Alle Positionen</h2><span class="count">${nPos || ''}</span></div><div id="xtAng" class="xt-box"></div>
+          <div class="xt-raeume"><span>Bereich einzeln öffnen (Paket, Partnerangebot übernehmen, Vorschläge):</span>${list.map((r) => `<button type="button" class="qchip" data-angraum="${r.id}">${esc(raumTitel(r))}</button>`).join('')}</div>` : ''}
+        ${list.length && !window.Tabelle?.istBuero() ? `<div class="sec-h"><h2>Positionen je Bereich</h2></div>
         <div class="docs">${list.map((r) => `<button type="button" class="doc" data-angraum="${r.id}"><span class="d-ico ${r.angebot?.positionen?.length ? 'navy' : 'grey'}">${roomIcon(r.roomType)}</span>
           <span class="d-t"><b>${esc(raumTitel(r))}</b><span>${r.angebot?.positionen?.length ? `${r.angebot.positionen.length} ${r.angebot.positionen.length === 1 ? 'Position' : 'Positionen'}` : 'Noch keine Positionen, tippen zum Eintragen'}</span></span>${icon('chevron', 'pc-chev')}</button>`).join('')}</div>
-        ${mitPos.length ? `<div class="card" style="margin-top:12px">${mitPos.map((r) => `<div class="tot"><span>${esc(raumTitel(r))}</span><span>${r.angebot.positionen.length} Pos.</span></div>`).join('')}<div class="tot big"><span>Gesamt brutto</span><b>${eur2(summe)}</b></div></div>` : ''}
-        <div class="sec-h"><h2>Vorschlag der KI</h2></div>
+        ${mitPos.length ? `<div class="card" style="margin-top:12px">${mitPos.map((r) => `<div class="tot"><span>${esc(raumTitel(r))}</span><span>${r.angebot.positionen.length} Pos.</span></div>`).join('')}<div class="tot big"><span>Gesamt brutto</span><b>${eur2(summe)}</b></div></div>` : ''}` : ''}
+        ${list.length ? `<div class="sec-h"><h2>Vorschlag der KI</h2></div>
         ${window.VorOrt?.bueroKarte(w, list) || ''}
         ${erst ? `<details class="more card bs"><summary>${icon('sliders')}<span>Aufschläge<small>Nur für dieses Angebot, leer = Standard</small></span>${icon('chevron', 'more-chev')}</summary>
           <div class="row">${[['aufLohn', 'Lohn %'], ['aufMat', 'Material %'], ['wagnis', 'Wagnis %']].map(([n, l]) => `<div><label>${l}</label><input type="text" inputmode="decimal" data-bnk="${n}" value="${a.kalk?.[n] !== undefined && a.kalk?.[n] !== null && a.kalk?.[n] !== '' ? proz(a.kalk[n]) : ''}" placeholder="${proz(E[n])}"></div>`).join('')}</div>
@@ -860,6 +863,7 @@ window.Projekt = (() => {
       if (v !== '' && !Number.isFinite(n)) return toast('Bitte eine Zahl eintragen.');
       for (const r of alle) { r.angebot.kalk ??= {}; if (v === '') delete r.angebot.kalk[el.dataset.bnk]; else r.angebot.kalk[el.dataset.bnk] = n / 100; await saveProject(r); }
       toast(v === '' ? 'Wieder der Standard aus den Einstellungen' : 'Aufschlag gilt für dieses Angebot');
+      if ($('#xtAng')) { const y = window.scrollY; await view(); window.scrollTo(0, y); } // Preise in der Tabelle neu
     }));
     // Texte: anhaken, was im Angebot steht. Erst beim ersten Ändern bekommt das Angebot eine eigene Fassung.
     const texte = texteVon(w);

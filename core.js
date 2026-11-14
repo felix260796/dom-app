@@ -124,7 +124,8 @@ async function pdfAnsicht(quelle, name = 'Dokument') {
       <button type="button" class="icon-btn" data-z="-1" aria-label="Kleiner">−</button><span data-zt>100 %</span><button type="button" class="icon-btn" data-z="1" aria-label="Größer">+</button>
       <button type="button" class="icon-btn" data-x aria-label="Schließen">${icon('x')}</button></div>
     <div class="pdfz-b"><div class="pdfz-in">${bild ? `<img src="${url}" alt="">` : '<p class="pdfz-warte">Dokument wird geladen …</p>'}</div></div>
-    <button type="button" class="pdfz-voll" data-voll>${icon('share')} Teilen oder in anderer App öffnen</button>`;
+    ${window.DomDesktop ? `<div class="pdfz-pc"><button type="button" class="btn secondary" data-dsp>${icon('download')} Speichern unter …</button><button type="button" class="btn secondary" data-doe>${icon('file')} Im PDF-Programm öffnen oder drucken</button></div>`
+      : `<button type="button" class="pdfz-voll" data-voll>${icon('share')} Teilen oder in anderer App öffnen</button>`}`;
   document.body.appendChild(bg);
   const b = $('.pdfz-b', bg), inn = $('.pdfz-in', bg);
   const schaerfen = debounce(() => seiten?.neu(b.clientWidth * z), 250);
@@ -158,7 +159,11 @@ async function pdfAnsicht(quelle, name = 'Dokument') {
   });
   b.addEventListener('dblclick', (e) => { const r = b.getBoundingClientRect(); setz(z > 1.2 ? 1 : 2.5, e.clientX - r.left, e.clientY - r.top); });
   $('[data-x]', bg).onclick = () => { bg.remove(); setTimeout(() => URL.revokeObjectURL(url), 60000); };
-  $('[data-voll]', bg).onclick = async () => {
+  const dateiName = () => /\.\w{2,4}$/.test(name) ? name : name + (bild ? '.jpg' : '.pdf');
+  if (window.DomDesktop) {
+    $('[data-dsp]', bg).onclick = () => desktopSpeichern(blob, dateiName());
+    $('[data-doe]', bg).onclick = () => desktopOeffnen(blob, dateiName());
+  } else $('[data-voll]', bg).onclick = async () => {
     const datei = blob instanceof File ? blob : new File([blob], /\.\w{2,4}$/.test(name) ? name : name + (bild ? '.jpg' : '.pdf'), { type: blob.type });
     const nativ = !!window.Capacitor?.isNativePlatform?.() || navigator.standalone === true;
     // Am PC: neues Fenster. Auf dem iPhone: Teilen-Menü (dort auch „In Dateien sichern“, Drucken, andere App).
@@ -366,7 +371,10 @@ async function dokMerken(files) {
 (() => {
   const teilen = navigator.share?.bind(navigator);
   // Ohne Teilen-Menü (z. B. am PC): „Senden“ lädt die Datei herunter
-  const ersatz = async (data) => { for (const f of data.files || []) { const a = document.createElement('a'); a.href = URL.createObjectURL(f); a.download = f.name; a.click(); } };
+  const ersatz = async (data) => {
+    if (window.DomDesktop) return desktopTeilen(data.files || []); // Windows-Programm: Speichern unter oder im Standardprogramm öffnen
+    for (const f of data.files || []) { const a = document.createElement('a'); a.href = URL.createObjectURL(f); a.download = f.name; a.click(); }
+  };
   try {
     if (!navigator.canShare) Object.defineProperty(navigator, 'canShare', { configurable: true, writable: true, value: (d) => !!d?.files?.length });
     Object.defineProperty(navigator, 'share', { configurable: true, writable: true, value: async (data) => {
@@ -447,9 +455,11 @@ document.addEventListener('keydown', (e) => { if (e.key === 'Enter' && e.target.
 const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
 const main = () => $('#main');
 
-function toast(msg, ms = 2600) {
+function toast(msg, ms = 2600, knopf = null) {
   const t = $('#toast');
   t.textContent = msg; t.hidden = false;
+  // Optional ein Knopf in der Meldung, z. B. „Im Ordner zeigen“ nach dem Speichern am Computer
+  if (knopf) { const b = document.createElement('button'); b.className = 'toast-k'; b.textContent = knopf.label; b.onclick = () => { t.hidden = true; knopf.fn(); }; t.append(' ', b); }
   clearTimeout(toast._t); toast._t = setTimeout(() => (t.hidden = true), ms);
 }
 function debounce(fn, ms = 400) { let t; return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), ms); }; }
@@ -973,6 +983,26 @@ async function addFit(doc, dataUrl, x, y, w, h, fmt = 'JPEG') {
   return { x: x + (w - iw) / 2, y: y + (h - ih) / 2, w: iw, h: ih };
 }
 
+
+// ---------- Windows-Programm: Dateien speichern und öffnen (desktop/preload.js) ----------
+async function desktopSpeichern(blob, name) {
+  try {
+    const pfad = await window.DomDesktop.speichern(name, await blob.arrayBuffer());
+    if (pfad) toast(`Gespeichert: ${pfad}`, 5000, { label: 'Im Ordner zeigen', fn: () => window.DomDesktop.zeigen(pfad) });
+    return pfad;
+  } catch (e) { toast('Speichern ging nicht: ' + (e.message || e), 5000); return null; }
+}
+async function desktopOeffnen(blob, name) {
+  try { const r = await window.DomDesktop.oeffnen(name, await blob.arrayBuffer()); if (!r?.ok) toast('Öffnen ging nicht: ' + (r?.fehler || ''), 5000); }
+  catch (e) { toast('Öffnen ging nicht: ' + (e.message || e), 5000); }
+}
+/** Statt Teilen-Menü am Computer: jede Datei speichern oder öffnen. */
+async function desktopTeilen(files) {
+  for (const f of files) {
+    const v = await sheet(f.name, [{ label: 'Speichern unter …', sub: 'In einen Ordner, z. B. OneDrive', value: 's' }, { label: 'Im Standardprogramm öffnen', sub: 'Ansehen, drucken oder von dort per Mail senden', value: 'o' }]);
+    if (v === 's') await desktopSpeichern(f, f.name); else if (v === 'o') await desktopOeffnen(f, f.name); else throw new DOMException('Abgebrochen', 'AbortError');
+  }
+}
 
 async function shareDoc(doc, name) {
   const blob = doc.output('blob');

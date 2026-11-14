@@ -185,3 +185,50 @@ button.pg { border: 0; background: none; text-align: right; font: inherit; color
 .tb-pl select { flex: 1; }
 .tb-plp { padding: 12px 0 4px; }
 .tb-plp > .hint { padding: 0 12px; }
+
+/* ---------- Angebot als Tabelle wie Excel (am Computer, tabelle.js, Version 104) ---------- */
+main:has(.xt-box) { max-width: none; padding-left: 28px; padding-right: 28px; }
+.xt-leiste { display: flex; gap: 8px; align-items: center; margin: 0 0 8px; flex-wrap: wrap; }
+.xt-leiste .btn { width: auto; }
+.xt-sp { flex: 1; }
+.xt-wrap { background: #fff; border: 1px solid var(--line); border-radius: 10px; overflow: auto; }
+.xtab { width: 100%; border-collapse: collapse; font-size: 14px; table-layout: fixed; }
+.xtab col.c-nr { width: 64px; } .xtab col.c-b { width: 150px; } .xtab col.c-m { width: 90px; } .xtab col.c-e { width: 100px; } .xtab col.c-ep { width: 110px; } .xtab col.c-gp { width: 120px; }
+.xtab th { position: sticky; top: 0; z-index: 1; background: #eef1f5; color: var(--muted); font-weight: 600; font-size: 12.5px; text-align: left; padding: 7px 8px; border-bottom: 1px solid var(--line); border-right: 1px solid var(--line); }
+.xtab th.r, .xtab td.r { text-align: right; }
+.xtab td { border-bottom: 1px solid #e6e9ee; border-right: 1px solid #e6e9ee; padding: 0; height: 32px; vertical-align: middle; }
+.xtab td.xt-nr { padding: 0 8px; color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.xtab td.xt-gp { padding: 0 8px; font-variant-numeric: tabular-nums; font-weight: 600; }
+.xtab input, .xtab select { width: 100%; height: 32px; border: 0; border-radius: 0; background: transparent; padding: 0 8px; font: inherit; font-size: 14px; margin: 0; box-shadow: none; min-height: 0; }
+.xtab input.r { text-align: right; font-variant-numeric: tabular-nums; }
+.xtab input.fix { color: var(--navy); font-weight: 600; }
+.xtab input:focus, .xtab select:focus { outline: 2px solid var(--navy); outline-offset: -2px; background: #fff; }
+.xtab tbody tr.akt td { background: #f4f7fb; }
+.xtab tbody tr:hover td { background: #f8fafc; }
+.xtab tr.xt-neu td { background: #fbfaf6; }
+.xtab tr.xt-neu svg.i { width: 14px; height: 14px; }
+.xtab tfoot td { padding: 6px 8px; text-align: right; color: var(--muted); border-right: 0; font-variant-numeric: tabular-nums; }
+.xtab tfoot td.r { color: var(--text); font-weight: 600; }
+.xtab tfoot .xt-brutto td { font-size: 16px; color: var(--navy); font-weight: 700; border-bottom: 0; }
+.xt-m { display: inline-block; margin-left: 4px; font-size: 10px; font-weight: 700; padding: 0 4px; border-radius: 4px; background: #e8edf3; color: var(--navy); }
+.xt-m.g { background: #fdf0d8; color: #9a6400; } .xt-m.p { background: #e7f3ec; color: #2f8a57; }
+.xt-hilfe { margin: 8px 2px 0; }
+.xt-raeume { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin: 12px 0 4px; font-size: 13.5px; color: var(--muted); }
+
+/* ---------- Listen als Tabelle am Computer (Tabelle.liste, Version 104) ---------- */
+.ltab-wrap { background: #fff; border: 1px solid var(--line); border-radius: 10px; overflow: auto; }
+.ltab { width: 100%; border-collapse: collapse; font-size: 14px; }
+.ltab th { text-align: left; font-size: 12.5px; font-weight: 600; color: var(--muted); background: #eef1f5; padding: 8px 10px; border-bottom: 1px solid var(--line); cursor: pointer; user-select: none; white-space: nowrap; position: sticky; top: 0; }
+.ltab th:hover { color: var(--text); }
+.ltab th.r, .ltab td.r { text-align: right; }
+.ltab td { padding: 9px 10px; border-bottom: 1px solid #edf0f3; vertical-align: middle; overflow: hidden; text-overflow: ellipsis; }
+.ltab td.r { font-variant-numeric: tabular-nums; white-space: nowrap; }
+.ltab tbody tr { cursor: pointer; }
+.ltab tbody tr:hover td { background: #f6f8fb; }
+.ltab tbody tr:focus { outline: 2px solid var(--navy); outline-offset: -2px; }
+.ltab tbody tr:last-child td { border-bottom: 0; }
+.ltab .ltab-s { font-style: normal; font-size: 9px; margin-left: 5px; }
+.ltab .muted { color: var(--muted); }
+.ltab .nachfassen { color: #b5651d; font-weight: 600; }
+
+.ltab .rot { color: #c0392b; font-weight: 650; }

@@ -72,3 +72,16 @@ input.bad { border-color: var(--danger) !important; background: var(--danger-sof
 .tvor-f { width: 100%; height: 60vh; border: 0; border-radius: 12px; background: #f3f1ec; }
 .tvor-b { font-size: 13.5px; margin: 0 0 8px; color: var(--muted); }
 .tvor-b b { color: var(--text); }
+
+/* ---------- Computer: Monatsansicht mit Einträgen in den Tagen ---------- */
+.kal-g.pc .kal-d { align-items: stretch; min-height: 104px; padding: 4px 4px 6px; border-radius: 6px; border: 1px solid var(--line, #e6e8ec); gap: 2px; cursor: pointer; }
+.kal-g.pc .kal-d:hover { background: #f5f7fa; }
+.kal-g.pc .kal-d span { width: 26px; height: 26px; font-size: 13.5px; align-self: flex-end; }
+.kal-g.pc .kal-d.sel { outline: 2px solid var(--navy); outline-offset: -2px; }
+.kal-g.pc .kal-d.sel span { background: none; color: var(--navy); font-weight: 800; }
+.kal-g.pc i.kal-pc { display: flex; flex-direction: column; gap: 2px; height: auto; min-width: 0; }
+.kal-g.pc i.kal-pc em { width: auto; height: auto; border-radius: 4px; background: color-mix(in srgb, var(--c) 14%, #fff); border-left: 3px solid var(--c); font-style: normal; font-size: 12px; line-height: 1.3; padding: 1px 5px; text-align: left; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: #1f2a37; }
+.kal-g.pc i.kal-pc small { font-size: 11.5px; color: var(--muted, #6b7280); text-align: left; padding-left: 4px; }
+.kal-g.pc { grid-template-columns: repeat(7, minmax(0, 1fr)); }
+.kal-g.pc.kw { grid-template-columns: 24px repeat(7, minmax(0, 1fr)); }
+.kal-g.pc .kal-d { min-width: 0; }
