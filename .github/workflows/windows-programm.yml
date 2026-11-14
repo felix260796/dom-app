@@ -51,9 +51,22 @@ jobs:
           V="$VER.0.${{ github.run_number }}"
           echo "Programm-Fassung $V"
           npm install --no-audit --no-fund
-          if [ "${{ github.ref }}" = "refs/heads/main" ]; then PUB=always; else PUB=never; fi
-          npx electron-builder --win --x64 --publish $PUB -c.extraMetadata.version="$V"
+          npx electron-builder --win --x64 --publish never -c.extraMetadata.version="$V"
           ls -la dist
+          test -f dist/latest.yml
+          echo "V=$V" >> "$GITHUB_ENV"
+
+      # Selbst ablegen statt über electron-builder (das lädt parallel hoch und legt das Release dabei doppelt an)
+      - name: Als Release ablegen (nur main)
+        if: github.ref == 'refs/heads/main'
+        working-directory: desktop/dist
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          test -f latest.yml
+          gh release create "v$V" "DOM-Setup-$V.exe" "DOM-Setup-$V.exe.blockmap" latest.yml \
+            --repo "${{ github.repository }}" --target "${{ github.sha }}" --title "DOM für Windows $V" \
+            --notes "Zum Installieren DOM-Setup-$V.exe herunterladen und öffnen. Das installierte Programm aktualisiert sich danach selbst." --latest
 
       - name: Setup zum Herunterladen ablegen
         uses: actions/upload-artifact@v4
