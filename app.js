@@ -6,7 +6,7 @@
  * Kern-Funktionen (Speicher, KI, Bilder) stehen in core.js. */
 
 // ---------- Symbole (einfache Linien-Icons) ----------
-const APP_VERSION = '101';
+const APP_VERSION = '102';
 const ICONS = {
   plus: '<path d="M12 5v14M5 12h14"/>',
   camera: '<path d="M3 8.5A2 2 0 0 1 5 6.5h2l1.6-2h6.8l1.6 2h2a2 2 0 0 1 2 2V18a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><circle cx="12" cy="13" r="3.6"/>',
@@ -328,6 +328,7 @@ function zielOeffnen(z) {
   if (new URLSearchParams(location.search).get('ziel')) history.replaceState(null, '', location.pathname);
   zielOeffnen(ziel || (vorgabe('heuteStart') === 'nein' ? 'kunden' : 'heute'));
   window.appGestartet = true;
+  window.Einrichten?.start(); // fehlt auf diesem Gerät noch etwas (Anmeldung, Schlüssel …)? Dann der Reihe nach fragen
   navigator.serviceWorker?.addEventListener('message', (e) => { if (e.data?.ziel) zielOeffnen(e.data.ziel); });
   setTimeout(() => window.Push?.abgleich(), 4000);
   window.Geraet?.start(); // iPhone-App: Kalender abgleichen, über „Teilen“ geschickte Dateien abholen
