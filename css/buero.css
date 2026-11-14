@@ -67,7 +67,7 @@ html.buero main:has(> .search.big + .cta.slim) > .cta.slim { grid-column: 2; }
 html.buero main:has(> .search.big + .cta.slim) > .cta.slim + .notice.plain { grid-column: 3; }
 html.buero main:has(> .search.big + .cta.slim) > .cta.slim:not(:has(+ .notice.plain)) { grid-column: 2 / -1; }
 html.buero .search { border-radius: 7px; padding: 0 10px; margin-bottom: 12px; }
-html.buero .search.big { box-shadow: none; border-radius: 7px; padding: 0 10px; height: 38px; }
+html.buero .search.big { margin: 0 0 12px; box-shadow: none; border-radius: 7px; padding: 0 10px; height: 38px; }
 html.buero .search.big input, html.buero .search input { font-size: 14px; padding: 8px 0; }
 html.buero .search svg.i { width: 17px; }
 html.buero .cta { border-radius: 7px; padding: 0 14px; gap: 8px; min-height: 38px; }
@@ -82,13 +82,13 @@ html.buero .notice svg.i { width: 17px; height: 17px; }
 html.buero main > .cta.slim + .notice.plain { height: 38px; width: auto; white-space: nowrap; }
 html.buero main > .cta.slim + .notice.plain > svg.i:last-child { display: none; }
 /* Filter über Listen (Projekte, Angebote, Rechnungen): Reiter wie in Büro-Programmen statt großer Kacheln */
-html.buero .phasen { display: flex; gap: 0; margin: 4px 0 12px; border-bottom: 1px solid var(--line); }
-html.buero .phasen button, html.buero .phasen .fz { flex: none; flex-direction: row; gap: 7px; align-items: baseline; border: 0; border-bottom: 2px solid transparent; border-radius: 0; background: none; padding: 8px 14px 7px; color: var(--muted); }
-html.buero .phasen button b, html.buero .phasen .fz b { font-size: 13px; order: 2; color: var(--muted); background: #e9ecf1; border-radius: 999px; padding: 0 7px; line-height: 1.5; }
-html.buero .phasen button span, html.buero .phasen .fz span { font-size: 14px; font-weight: 600; }
-html.buero .phasen button.on, html.buero .phasen .fz.on { background: none; border-bottom-color: var(--navy); color: var(--navy); }
-html.buero .phasen button.on b, html.buero .phasen .fz.on b { color: #fff; background: var(--navy); }
-html.buero .phasen button:hover { color: var(--navy); }
+html.buero .phasen:has(> button) { display: flex; gap: 0; margin: 4px 0 12px; border-bottom: 1px solid var(--line); }
+html.buero .phasen > button { flex: none; flex-direction: row; gap: 7px; align-items: baseline; border: 0; border-bottom: 2px solid transparent; border-radius: 0; background: none; padding: 8px 14px 7px; color: var(--muted); }
+html.buero .phasen > button b { font-size: 13px; order: 2; color: var(--muted); background: #e9ecf1; border-radius: 999px; padding: 0 7px; line-height: 1.5; }
+html.buero .phasen > button span { font-size: 14px; font-weight: 600; }
+html.buero .phasen > button.on { background: none; border-bottom-color: var(--navy); color: var(--navy); }
+html.buero .phasen > button.on b { color: #fff; background: var(--navy); }
+html.buero .phasen > button:hover { color: var(--navy); }
 
 /* ---------- Akte (Kunde, Partner): Werkzeugzeile, Stammdaten links, Zusammenhang rechts ---------- */
 html.buero .kd-actions { margin-bottom: 14px; }
@@ -149,3 +149,10 @@ html.buero main .seg2.full { display: inline-flex; flex-wrap: nowrap; gap: 0; bo
 html.buero main .seg2.full button { flex: none; border: 0; border-radius: 0; padding: 6px 16px; font-size: 13px; }
 html.buero main .seg2.full button + button { border-left: 1px solid var(--line); }
 html.buero .topback { max-width: 280px; }
+
+/* ---------- Einstellungen: Bereiche in zwei Spalten wie eine Systemsteuerung ---------- */
+html.buero #eListe .docs { display: grid; grid-template-columns: repeat(auto-fill, minmax(380px, 1fr)); gap: 8px; }
+html.buero .d-ico { width: 32px; height: 32px; border-radius: 7px; }
+html.buero .d-ico svg.i { width: 17px; height: 17px; }
+html.buero .phasen:not(:has(> button)) .fz { border-radius: 8px; border-width: 1px; padding: 8px 4px 7px; }
+html.buero .phasen:not(:has(> button)) .fz b { font-size: 18px; }
