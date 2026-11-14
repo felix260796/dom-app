@@ -216,26 +216,44 @@ window.Finanzen = (() => {
     const jahre = [...new Set([heuer, ...daten.map((e) => String(new Date(e.w.created || Date.now()).getFullYear())), ...aus.map((r) => (r.datum || '').slice(0, 4)).filter(Boolean)])].sort().reverse().slice(0, 4);
     if (!hier()) return;
 
+    // Am Computer: Rechnungen als Tabelle (Spalten sortierbar), Zeilen merken und nach dem Zeichnen füllen (tabellenFuellen)
+    const pc = !!window.Tabelle?.istBuero();
+    let tabA = null, tabE = null;
+    const ausTab = (l) => { tabA = l; return '<div id="fTabA"></div>'; };
+    const einTab = (l) => { tabE = l; return '<div id="fTabE"></div>'; };
+    const datumZ = (d) => ({ text: d ? tagText(d) : '', sort: d || '' });
+    const tabellenFuellen = () => {
+      if (tabA && $('#fTabA')) window.Tabelle.liste($('#fTabA'), { id: 'rechnungenAus', leer: 'Keine Rechnung.', oeffnen: (id) => Rechnung.detail(Rechnung.liste().find((r) => r.id === id), () => view()),
+        spalten: [{ k: 'nr', t: 'Nr.', b: 120 }, { k: 'kunde', t: 'Kunde · Projekt' }, { k: 'art', t: 'Art' }, { k: 'dat', t: 'Datum', b: 105 }, { k: 'fae', t: 'Fällig', b: 105 }, { k: 'st', t: 'Stand', b: 130 }, { k: 'btr', t: 'Betrag', b: 120, r: 1 }],
+        zeilen: tabA.map((r) => { const st = Rechnung.standVon(r); return { id: r.id, werte: { nr: r.nr || '', kunde: pName(r.projektId) || 'Projekt gelöscht', art: Rechnung.artName(r), dat: datumZ(r.datum), fae: datumZ(Rechnung.istOffen(r) ? r.faellig : ''),
+          st: { text: st[0], html: `<span class="st-pill" style="--c:${st[1]}">${st[0]}</span>` }, btr: { text: eur(Rechnung.zahlbetrag(r)), sort: Rechnung.zahlbetrag(r) } } }; }) });
+      if (tabE && $('#fTabE')) window.Tabelle.liste($('#fTabE'), { id: 'rechnungenEin', leer: 'Keine Rechnung.', oeffnen: (id) => erfassen(belege.get(id), () => view()),
+        spalten: [{ k: 'von', t: 'Von' }, { k: 'nr', t: 'Nr.', b: 120 }, { k: 'proj', t: 'Projekt' }, { k: 'gew', t: 'Gewerk' }, { k: 'dat', t: 'Datum', b: 105 }, { k: 'fae', t: 'Fällig', b: 105 }, { k: 'st', t: 'Stand', b: 120 }, { k: 'btr', t: 'Brutto', b: 120, r: 1 }],
+        zeilen: tabE.map((b) => { const st = b.bezahlt ? ['Bezahlt', '#1b5e3a'] : ueberfaellig(b) ? ['Überfällig', '#c0392b'] : ['Offen', '#d2691e'];
+          return { id: b.id, werte: { von: { text: vonText(b), html: `<b>${esc(vonText(b))}</b>` }, nr: b.nr || '', proj: pName(b.projektId), gew: b.gewerk || '', dat: datumZ(b.datum), fae: datumZ(b.bezahlt ? '' : b.faellig),
+            st: { text: st[0], html: `<span class="st-pill" style="--c:${st[1]}">${st[0]}</span>` }, btr: { text: eur(brutto(b)), sort: brutto(b) } } }; }) });
+    };
     const liste_ = (q) => {
+      tabA = tabE = null;
       const w = q.trim().toLowerCase().split(/\s+/).filter(Boolean);
       const passt = (z) => w.every((x) => z.such.includes(x));
       if (w.length) {
         // Suche: über alles, auch Bezahltes
-        const a = aus.map(ausZeile).filter(passt), e = ein.map(einZeile).filter(passt);
-        return `${a.length ? `<div class="sec-h"><h2>An Kunden</h2><span class="count">${a.length}</span></div><div class="plist">${a.map((z) => z.html).join('')}</div>` : ''}
-          ${e.length ? `<div class="sec-h"><h2>Eingang</h2><span class="count">${e.length}</span></div><div class="plist">${e.map((z) => z.html).join('')}</div>` : ''}
+        const a = aus.filter((r) => passt(ausZeile(r))), e = ein.filter((b) => passt(einZeile(b)));
+        return `${a.length ? `<div class="sec-h"><h2>An Kunden</h2><span class="count">${a.length}</span></div>${pc ? ausTab(a) : `<div class="plist">${a.map((r) => ausZeile(r).html).join('')}</div>`}` : ''}
+          ${e.length ? `<div class="sec-h"><h2>Eingang</h2><span class="count">${e.length}</span></div>${pc ? einTab(e) : `<div class="plist">${e.map((b) => einZeile(b).html).join('')}</div>`}` : ''}
           ${a.length || e.length ? '' : '<p class="hint center">Nichts gefunden. Gesucht wird in Kunde, Projekt, Firma, Nummer und Betrag.</p>'}`;
       }
       const filter = `<div class="seg2 full" style="margin:12px 0 4px"><button data-fa="0" class="${fAlle ? '' : 'on'}">Offen</button><button data-fa="1" class="${fAlle ? 'on' : ''}">Alle</button></div>`;
       if (fSeg === 'aus') {
-        const l = (fAlle ? aus : ausOffen).map((r) => ausZeile(r).html).join('');
+        const lr = fAlle ? aus : ausOffen, l = pc && lr.length ? ausTab(lr) : lr.map((r) => ausZeile(r).html).join('');
         return `${abrechnen.length ? `<div class="sec-h"><h2>Abzurechnen</h2><span class="count">${abrechnen.length}</span></div><div class="plist">${abrechnen.map(projZeile).join('')}</div>` : ''}
           ${aus.length ? filter : ''}
-          <div class="plist">${l || `<p class="hint">${aus.length ? 'Alles bezahlt.' : 'Noch keine Rechnungen an Kunden. „Neue Rechnung“ tippen: Projekt suchen, Art wählen, Betrag steht schon da.'}</p>`}</div>`;
+          <div class="${pc && lr.length ? '' : 'plist'}">${l || `<p class="hint">${aus.length ? 'Alles bezahlt.' : 'Noch keine Rechnungen an Kunden. „Neue Rechnung“ tippen: Projekt suchen, Art wählen, Betrag steht schon da.'}</p>`}</div>`;
       }
       if (fSeg === 'ein') {
-        const l = (fAlle ? ein : einOffen).map((b) => belegZeile(b)).join('');
-        return `${ein.length ? filter : ''}<div class="plist">${l || `<p class="hint">${ein.length ? 'Alles bezahlt.' : 'Rechnungen von Subunternehmern und Lieferanten. Foto genügt, die KI liest Betrag, Datum und Absender aus.'}</p>`}</div>`;
+        const lb = fAlle ? ein : einOffen, l = pc && lb.length ? einTab(lb) : lb.map((b) => belegZeile(b)).join('');
+        return `${ein.length ? filter : ''}<div class="${pc && lb.length ? '' : 'plist'}">${l || `<p class="hint">${ein.length ? 'Alles bezahlt.' : 'Rechnungen von Subunternehmern und Lieferanten. Foto genügt, die KI liest Betrag, Datum und Absender aus.'}</p>`}</div>`;
       }
       const jahrWahl = `<div class="seg2 full aw-jahr" style="margin-top:12px;grid-template-columns:repeat(${jahre.length + 1},1fr)">${[...jahre.map((j) => [j, j]), ['alle', 'Alles']].map(([id, n]) => `<button data-awj="${id}" class="${awJahr === id ? 'on' : ''}">${n}</button>`).join('')}</div>`;
       return jahrWahl + auswertung(daten, aus, awJahr === 'alle' ? '' : awJahr)
@@ -260,6 +278,7 @@ window.Finanzen = (() => {
       </div>
       <div id="fListe">${liste_(fQ)}</div>`;
     const binden = () => {
+      tabellenFuellen();
       $$('#fListe [data-rech]').forEach((b) => (b.onclick = () => Rechnung.detail(Rechnung.liste().find((r) => r.id === b.dataset.rech), () => view())));
       $$('#fListe [data-fa]').forEach((b) => (b.onclick = () => { fAlle = b.dataset.fa === '1'; view(); }));
       $$('#fListe [data-fr]').forEach((b) => (b.onclick = async () => { const w = await kvGet('wohnung:' + b.dataset.fr); if (w) Rechnung.neu(w, () => view()); }));

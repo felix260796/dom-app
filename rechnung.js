@@ -118,6 +118,8 @@ window.Rechnung = (() => {
     $$('[data-nt]', el).forEach((b) => (b.onclick = () => nachtrag(w, w.nachtraege.find((n) => n.id === b.dataset.nt), zurueck)));
     $$('[data-rech]', el).forEach((b) => (b.onclick = () => detail(alle.get(b.dataset.rech), zurueck)));
   }
+  const standVon = (r) => (r.art === 'storno' ? ['Storno', '#8a8f98'] : r.storniert ? ['Storniert', '#8a8f98'] : r.bezahlt ? ['Bezahlt', '#1b5e3a']
+    : ueberfaellig(r) ? [r.mahnungen?.length ? MAHN[r.mahnungen.length - 1] : 'Überfällig', '#c0392b'] : ['Offen', '#d2691e']);
   function zeile(r) {
     const st = r.art === 'storno' ? ['Storno', '#8a8f98'] : r.storniert ? ['Storniert', '#8a8f98'] : r.bezahlt ? ['Bezahlt', '#1b5e3a']
       : ueberfaellig(r) ? [r.mahnungen?.length ? MAHN[r.mahnungen.length - 1] : 'Überfällig', '#c0392b'] : ['Offen', '#d2691e'];
@@ -751,5 +753,5 @@ window.Rechnung = (() => {
     return { offen, name, html: offen.map((r) => zeile(r).replace('<b>', `<b>${esc(name(r))} · `)).join('') };
   }
 
-  return { laden, liste, fuerProjekt, projektAbschnitt, uebersicht, detail, auftrag, zahlbetrag, ueberfaellig, istOffen, gilt, neu, nachtrag, zeile, _intern: { pdf, stand, texteStd } };
+  return { laden, liste, fuerProjekt, projektAbschnitt, uebersicht, detail, auftrag, zahlbetrag, ueberfaellig, istOffen, gilt, neu, nachtrag, zeile, standVon, artName, _intern: { pdf, stand, texteStd } };
 })();

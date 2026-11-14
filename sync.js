@@ -11,8 +11,10 @@ window.Sync = (() => {
   const BUCKET = 'dom';
   const LS_CFG = 'dom:syncCfg', LS_META = 'dom:syncMeta';
   const MERGE_KEYS = new Set(['projectIndex', 'projectDeleted']);
-  const lsGet = (k, d) => { try { return JSON.parse(localStorage.getItem(k)) ?? d; } catch { return d; } };
-  const lsSet = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} };
+  // Im Browser über den Link (zugang.js) liegt die Anmeldung nur für dieses Fenster vor (sessionStorage), sonst dauerhaft
+  const LSX = window.Zugang?.fluechtig ? sessionStorage : localStorage;
+  const lsGet = (k, d) => { try { return JSON.parse(LSX.getItem(k)) ?? d; } catch { return d; } };
+  const lsSet = (k, v) => { try { LSX.setItem(k, JSON.stringify(v)); } catch {} };
 
   // Gemeinsamer Firmenspeicher: alle Benutzer des Supabase-Projekts teilen den Ordner „team“.
   // (Bis 6.11.2026 hatte jeder Benutzer einen eigenen Ordner <uid>; der bleibt als Altbestand liegen.)
@@ -339,14 +341,14 @@ window.Sync = (() => {
     cfg = { url: base(url), key: String(key).trim(), email: String(email).trim(), initialized: false, space: SPACE };
     if (!/^https?:\/\/.+/.test(cfg.url) || !cfg.key) throw new Error('Bitte Projekt-URL und Schlüssel eintragen.');
     try { await authCall('password', { email: cfg.email, password }); }
-    catch (e) { cfg = null; localStorage.removeItem(LS_CFG); throw e; }
+    catch (e) { cfg = null; LSX.removeItem(LS_CFG); throw e; }
     meta = {}; saveMeta();
     await run({ quiet: false });
     if (status.ok === false) throw new Error(status.msg);
   }
   function disconnect() {
     cfg = null; meta = {};
-    try { localStorage.removeItem(LS_CFG); localStorage.removeItem(LS_META); } catch {}
+    try { LSX.removeItem(LS_CFG); LSX.removeItem(LS_META); } catch {}
     status = { ok: null, msg: '', last: 0 };
   }
   const pending = () => Object.values(meta).filter((m) => m.dirty).length;
@@ -367,7 +369,7 @@ window.Sync = (() => {
           <div class="row"><button class="btn secondary" id="syNow">Jetzt abgleichen</button><button class="btn danger" id="syOff">Abmelden</button></div>
         </div>`;
       $('#syNow', el).onclick = () => run({ quiet: false });
-      $('#syOff', el).onclick = () => { if (confirm('Cloud-Abgleich auf diesem Gerät beenden? Die Daten bleiben auf dem Gerät und in der Cloud.')) { disconnect(); einstellungenKarte(el); } };
+      $('#syOff', el).onclick = () => { if (window.Zugang?.fluechtig) return window.Zugang.abmelden(); if (confirm('Cloud-Abgleich auf diesem Gerät beenden? Die Daten bleiben auf dem Gerät und in der Cloud.')) { disconnect(); einstellungenKarte(el); } };
       return;
     }
     const old = lsGet(LS_CFG + ':last', {});

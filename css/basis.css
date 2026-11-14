@@ -386,6 +386,8 @@ textarea.sz-auf, .sz-auf input:not([readonly]), .sz-auf textarea { border-color:
   .sheet-bg { align-items: center; }
   .sheet { border-radius: 22px; padding-bottom: 16px; max-height: 78vh; }
 }
+/* Computer mit Maus: mehr Breite für Listen und Tabellen */
+@media (min-width: 1100px) and (pointer: fine) { main { padding-left: max(28px, calc((100% - 1240px) / 2)); padding-right: max(28px, calc((100% - 1240px) / 2)); } }
 /* Maus: Rückmeldung beim Darüberfahren (nur Geräte mit Maus, nicht iPad-Finger) */
 @media (hover: hover) and (pointer: fine) {
   .tabbar button:hover { color: #fff; }

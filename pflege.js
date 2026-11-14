@@ -244,5 +244,17 @@ window.Pflege = (() => {
     namen: { anruf: ARTEN.anruf.titel, essen: ARTEN.essen.titel }, // Wörter in der Mitteilung
   });
 
-  return { ARTEN, RHYTHMEN, norm, heuteListe, eintraege, heute: heute_, abschnitt, nachfrage, anrufen, anrufenEintrag, erledigt, spaeter, morgen, prefs, plusRhythmus, _intern: { werktag, frei, kontakte } };
+  /** Nächster geplanter Kontakt (Anrufen oder Treffen) für die Listen am Computer: { datum, titel, ueber } oder null. */
+  function naechster(x) {
+    const p = norm(x)?.pflege; if (!p) return null;
+    const n = Object.keys(ARTEN).map((a) => ({ a, o: p[a] })).filter((y) => y.o?.r && y.o.faellig).sort((y, z) => y.o.faellig.localeCompare(z.o.faellig))[0];
+    return n ? { datum: n.o.faellig, titel: ARTEN[n.a].titel, ueber: n.o.faellig < heute() } : null;
+  }
+  /** Zelle für Tabelle.liste: Datum mit Art, überfällig rot, sortiert nach Datum (ohne Eintrag ganz unten). */
+  function zelle(x) {
+    const n = naechster(x);
+    if (!n) return { text: '', sort: '9999', html: '<span class="muted">nicht geplant</span>' };
+    return { text: `${Kontakt.de(n.datum)} ${n.titel}`, sort: n.datum, html: `<span class="${n.ueber ? 'rot' : ''}">${esc(Kontakt.de(n.datum))}</span> <span class="muted">${esc(n.titel)}</span>` };
+  }
+  return { naechster, zelle, ARTEN, RHYTHMEN, norm, heuteListe, eintraege, heute: heute_, abschnitt, nachfrage, anrufen, anrufenEintrag, erledigt, spaeter, morgen, prefs, plusRhythmus, _intern: { werktag, frei, kontakte } };
 })();

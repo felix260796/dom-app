@@ -197,7 +197,7 @@ async function viewProjektListe() {
     <label class="search big">${icon('search')}<input type="search" id="q" value="${esc(listFilter)}" placeholder="Kunde, Adresse, Raum oder Nummer" autocomplete="off"></label>
     <button class="cta slim" id="pNeu"><span class="cta-ico">${icon('plus')}</span><span class="cta-t"><b>Neues Projekt</b></span>${icon('chevron', 'cta-chev')}</button>
     <div class="phasen">${Projekt.PHASEN.map(([id, n]) => `<button data-ls="${id}" class="${listStatus === id ? 'on' : ''}"><b>${auftraege.filter((x) => Projekt.phase(x) === id).length}</b><span>${n}</span></button>`).join('')}</div>
-    ${idx.length ? `
+    ${idx.length && window.Tabelle?.istBuero() ? '<div id="pjTab" style="margin-top:12px"></div>' : idx.length ? `
       <div class="plist">${shown.map((x) => `
         <button class="pcard" data-open="${x.id}" data-kind="${x.kind || ''}">
           ${x.thumb ? `<img src="${x.thumb}" alt="">` : `<span class="pc-ph">${icon('home')}</span>`}
@@ -208,6 +208,11 @@ async function viewProjektListe() {
           ${icon('chevron', 'pc-chev')}
         </button>`).join('') || '<p class="empty">Nichts gefunden.</p>'}</div>` : `
       <div class="empty-state">${icon('home')}<b>${{ einplanen: 'Nichts einzuplanen', eingeplant: 'Kein Baustart geplant', laufend: 'Gerade keine Baustelle', abgeschlossen: 'Noch nichts abgeschlossen' }[listStatus]}</b><span>Hier stehen die zugesagten Aufträge. Offene und abgesagte Angebote findest du unter „Angebote“, sobald eins zugesagt ist, erscheint es hier.</span></div>`}`;
+  if ($('#pjTab')) window.Tabelle.liste($('#pjTab'), { id: 'projekte', oeffnen: (id) => Projekt.oeffnen(id),
+    spalten: [{ k: 'nr', t: 'Projekt-Nr.', b: 120 }, { k: 'kunde', t: 'Kunde' }, { k: 'titel', t: 'Projekt' }, { k: 'ort', t: 'Ort' }, { k: 'st', t: 'Stand', b: 190 }, { k: 'bs', t: 'Baustart', b: 110 }, { k: 'fort', t: 'Fortschritt', b: 140 }],
+    zeilen: shown.map((x) => ({ id: x.id, werte: { nr: x.nr || '', kunde: projektKunde(x) || '', titel: { text: x.titel || x.room || 'Projekt', html: `<b>${esc(x.titel || x.room || 'Projekt')}</b>` }, ort: projektOrt(x) || '',
+      st: { text: Projekt.norm(x.status), html: Projekt.pill(x.status) }, bs: { text: x.baustart ? new Date(x.baustart).toLocaleDateString('de-DE') : '', sort: x.baustart || '' },
+      fort: { text: '', sort: x.fort?.n ? x.fort.fertig / x.fort.n : -1, html: x.fort && Projekt.zugesagt(x.status) ? `<span class="bf-mini">${Fortschritt.balken(x.fort)}</span>` : '' } } })) });
   $$('[data-ls]').forEach((b) => (b.onclick = () => { listStatus = b.dataset.ls; viewProjektListe(); }));
   $('#pNeu').onclick = () => { listStatus = 'einplanen'; Projekt.neuDirekt(); };
   if ($('#toSet')) $('#toSet').onclick = () => { switchTab('einstellungen'); einstellungSeite('ki'); };
@@ -255,6 +260,7 @@ function menue() {
     <div class="menu-fuss">
       ${window.Kalender ? `<div class="menu-wer"><span>Auf diesem Gerät</span><div class="seg2 full">${[...Kalender.team().map((p) => [p.id, p.name.split(' ')[0]]), ['', 'Beide']].map(([id, n]) => `<button data-mw="${esc(id)}" class="${Kalender.wer() === id ? 'on' : ''}">${esc(n)}</button>`).join('')}</div></div>` : ''}
       <button class="menu-sync" data-m="cloud">${icon('cloud')}<span>${esc(syncText())}</span></button>
+      ${window.Zugang?.fluechtig ? `<button class="btn secondary block" data-abm>${icon('x')} Abmelden und Daten im Browser löschen</button>` : ''}
       <p class="menu-v">Version ${APP_VERSION}</p></div></nav>`;
   const zu = () => { el.classList.remove('on'); setTimeout(() => el.remove(), 220); };
   el.onclick = (e) => { if (e.target === el || e.target.closest('[data-x]')) zu(); };
@@ -263,6 +269,7 @@ function menue() {
     if (b.dataset.m === 'cloud') { switchTab('einstellungen'); return einstellungSeite('cloud'); }
     MENUE.find((m) => m[0] === b.dataset.m)[4]();
   }));
+  if ($('[data-abm]', el)) $('[data-abm]', el).onclick = () => window.Zugang.abmelden();
   // Wer nutzt dieses Gerät: filtert Kalender und „Heute“ (gemerkt auf dem Gerät)
   $$('[data-mw]', el).forEach((b) => (b.onclick = () => { Kalender.werSetzen(b.dataset.mw); window.Push?.abgleich(); $$('[data-mw]', el).forEach((x) => x.classList.toggle('on', x === b)); Kalender.punkt(); if (state.tab === 'heute') Heute.view(); }));
   let x0 = null; // nach rechts wischen schließt
@@ -303,8 +310,9 @@ $('#brandBtn').onclick = menue;
   const fussZeichnen = () => { try { fussInhalt(); } catch (e) { /* Kalender noch nicht geladen */ } };
   const fussInhalt = () => {
     fuss.innerHTML = `${window.Kalender ? `<div class="seg2 full">${[...Kalender.team().map((p) => [p.id, p.name.split(' ')[0]]), ['', 'Beide']].map(([id, n]) => `<button data-sw="${esc(id)}" class="${Kalender.wer() === id ? 'on' : ''}" title="Auf diesem Gerät">${esc(n)}</button>`).join('')}</div>` : ''}
-      <button class="seite-sync" data-ss title="Cloud-Abgleich">${icon('cloud')}<span>${esc(syncText())}</span></button><small>Version ${APP_VERSION}</small>`;
+      <button class="seite-sync" data-ss title="Cloud-Abgleich">${icon('cloud')}<span>${esc(syncText())}</span></button>${window.Zugang?.fluechtig ? `<button class="seite-sync" data-sabm title="Abmelden">${icon('x')}<span>Abmelden (Daten im Browser löschen)</span></button>` : ''}<small>Version ${APP_VERSION}</small>`;
     $$('[data-sw]', fuss).forEach((b) => (b.onclick = () => { Kalender.werSetzen(b.dataset.sw); window.Push?.abgleich(); Kalender.punkt(); fussZeichnen(); if (state.tab === 'heute') Heute.view(); }));
+    if ($('[data-sabm]', fuss)) $('[data-sabm]', fuss).onclick = () => window.Zugang.abmelden();
     $('[data-ss]', fuss).onclick = () => { switchTab('einstellungen'); einstellungSeite('cloud'); seiteMarkieren('einstellungen'); };
   };
   window.seiteFuss = fussZeichnen;
@@ -342,10 +350,19 @@ function desktopBefehl(b) {
     heute: () => seite('heute'), kalender: () => seite('kalender'), auswertung: () => seite('auswertung'), preisliste: () => seite('preisliste'), hilfe: () => seite('hilfe'),
     kunden: () => reiter('kunden'), partner: () => reiter('partner'), angebote: () => reiter('angebote'), projekt: () => reiter('projekt'), rechnungen: () => reiter('rechnungen'),
     zurueck: () => { const tb = $('#topback'); if (tb && !tb.hidden) tb.click(); },
-    kuerzel: () => sheet('Tastenkürzel', KUERZEL.map(([k, l]) => ({ label: l, sub: k, value: null }))),
+    kuerzel: () => sheet('Tastenkürzel', (window.DomDesktop ? KUERZEL : KUERZEL_BROWSER).map(([k, l]) => ({ label: l, sub: k, value: null }))),
   })[b]?.();
 }
 window.DomDesktop?.befehle?.(desktopBefehl);
+// Im Browser am Computer (Link statt Programm, für fremde Rechner): Kürzel mit Alt, weil Strg+N, Strg+P usw. dem Browser gehören
+const KUERZEL_BROWSER = [['Alt+N', 'Neues Angebot'], ['Alt+K', 'Neuer Kunde'], ['Alt+R', 'Neue Rechnung'], ['Alt+S', 'Suchen'], ['Alt+0', 'Heute'],
+  ['Alt+1 … 5', 'Kunden, Partner, Angebote, Projekte, Rechnungen'], ['Alt+L', 'Kalender'], ['Esc', 'Fenster schließen oder zurück'], ['Strg+Enter', 'Neue Zeile in der Angebotstabelle']];
+if (!window.DomDesktop && matchMedia('(pointer: fine)').matches) document.addEventListener('keydown', (e) => {
+  if (!e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return;
+  const b = { KeyN: 'neuAngebot', KeyK: 'neuKunde', KeyR: 'neuRechnung', KeyS: 'suche', Digit0: 'heute', Digit1: 'kunden', Digit2: 'partner', Digit3: 'angebote', Digit4: 'projekt', Digit5: 'rechnungen', KeyL: 'kalender' }[e.code];
+  if (!b) return;
+  e.preventDefault(); desktopBefehl(b);
+});
 document.addEventListener('keydown', (e) => {
   if (e.key !== 'Escape' || e.defaultPrevented) return;
   const fenster = $$('.sheet-bg, .menu-bg').pop();
@@ -368,6 +385,8 @@ function zielOeffnen(z) {
 // ---------- Start ----------
 (async () => {
   await loadAll();
+  // Link im Browser (zugang.js): ohne Anmeldung keine Daten. Nach der Anmeldung ist alles aus der Cloud da.
+  if (window.Zugang?.fluechtig && !window.Sync?.active()) { await window.Zugang.anmelden(); await loadAll(); }
   try { await Projekt.migrate(); await Projekt.automatik(); } catch (e) { console.error('Umstellung', e); }
   try { await Kunden.laden(); await Kunden.migrate(); await Kunden.nummern(); } catch (e) { console.error('Kunden', e); }
   try { await Partner.laden(); await Kalender.laden(); Kalender.punkt(); } catch (e) { console.error('Kalender', e); }

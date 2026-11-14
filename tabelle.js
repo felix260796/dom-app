@@ -10,7 +10,7 @@ window.Tabelle = (() => {
   const r2 = (x) => Math.round((x + Number.EPSILON) * 100) / 100;
   const zahl = (x, d = 2) => (+x || 0).toLocaleString('de-DE', { minimumFractionDigits: d, maximumFractionDigits: d });
   const mengeText = (x) => (x || x === 0 ? (+x).toLocaleString('de-DE', { maximumFractionDigits: 3 }) : '');
-  const SPALTEN = ['bereich', 'text', 'menge', 'einheit', 'ep'];
+  const SPALTEN = ['text', 'menge', 'einheit', 'ep'];
 
   /** Am Computer? (Windows-Programm, oder breiter Bildschirm mit Maus; nicht am iPad mit Finger oder Stift) */
   const istBuero = () => document.documentElement.classList.contains('desktop') || matchMedia('(min-width: 1100px) and (pointer: fine)').matches;
@@ -42,7 +42,6 @@ window.Tabelle = (() => {
       const nrIn = {}, gNr = {}; let g = 0;
       list.forEach((r, ri) => { if ((r.angebot.positionen || []).length) gNr[ri] = ++g; });
       const marke = (x) => x.ki?.partner && !(x.sub?.ep > 0) ? '<span class="xt-m p" title="Preis kommt vom Partner">P</span>' : x.ki?.sicher === 'geschaetzt' ? '<span class="xt-m g" title="Menge geschätzt, bitte prüfen">?</span>' : x.sub ? '<span class="xt-m s" title="Vom Partner übernommen">S</span>' : '';
-      const sel = (wahl) => `<select data-c="bereich" aria-label="Bereich">${list.map((r) => `<option value="${r.id}" ${r.id === wahl ? 'selected' : ''}>${esc(titel(r))}</option>`).join('')}</select>`;
       box.innerHTML = `
         <div class="xt-leiste">
           <button type="button" class="btn secondary small" data-xa="neu">${icon('plus')} Zeile</button>
@@ -52,23 +51,26 @@ window.Tabelle = (() => {
           <button type="button" class="btn secondary small" data-xa="xlsaus">${icon('download')} Als Excel speichern</button>
         </div>
         <div class="xt-wrap"><table class="xtab">
-          <colgroup><col class="c-nr"><col class="c-b"><col class="c-t"><col class="c-m"><col class="c-e"><col class="c-ep"><col class="c-gp"></colgroup>
-          <thead><tr><th>Pos.</th><th>Bereich</th><th>Leistung</th><th class="r">Menge</th><th>Einheit</th><th class="r">EP netto</th><th class="r">GP netto</th></tr></thead>
-          <tbody>${zeilen.map((z) => { nrIn[z.ri] = (nrIn[z.ri] || 0) + 1; return `<tr data-r="${z.r.id}" data-i="${z.i}" class="${z.x.frei ? 'frei' : ''}">
+          <colgroup><col class="c-nr"><col class="c-t"><col class="c-m"><col class="c-e"><col class="c-ep"><col class="c-gp"></colgroup>
+          <thead><tr><th>Pos.</th><th>Leistung</th><th class="r">Menge</th><th>Einheit</th><th class="r">EP netto</th><th class="r">GP netto</th></tr></thead>
+          <tbody>${list.map((r, ri) => {
+            const zs = zeilen.filter((z) => z.r === r), tn = gNr[ri] || '';
+            return `<tr class="xt-titel"><td class="xt-nr">${g > 1 && tn ? tn : ''}</td><td colspan="4"><b>${esc(titel(r))}</b></td><td class="r" data-zs="${r.id}">${zs.length ? zahl(zs.reduce((a, z) => a + z.gp, 0)) : ''}</td></tr>
+            ${zs.map((z) => { nrIn[z.ri] = (nrIn[z.ri] || 0) + 1; return `<tr data-r="${z.r.id}" data-i="${z.i}" class="${z.x.frei ? 'frei' : ''}">
             <td class="xt-nr">${g > 1 ? `${gNr[z.ri]}.` : ''}${nrIn[z.ri]}${marke(z.x)}</td>
-            <td>${sel(z.r.id)}</td>
             <td><input data-c="text" value="${esc(z.text)}" list="xtPL" title="${esc(z.x.frei ? 'Eigene Position' : `${z.x.nr} aus der Preisliste`)}" autocomplete="off"></td>
             <td><input data-c="menge" class="r" value="${esc(mengeText(z.x.menge))}" autocomplete="off"></td>
             <td><input data-c="einheit" value="${esc(z.einheit)}" list="xtEh" autocomplete="off"></td>
             <td><input data-c="ep" class="r ${z.fix ? 'fix' : ''}" value="${esc(zahl(z.ep))}" title="${z.fix ? 'Eigener Preis' : 'Preis aus der Preisliste'}" autocomplete="off"></td>
             <td class="r xt-gp">${zahl(z.gp)}</td></tr>`; }).join('')}
-            <tr class="xt-neu" data-neu><td class="xt-nr">${icon('plus')}</td><td>${sel(letzteZelle?.r || list[list.length - 1]?.id)}</td>
-              <td><input data-c="text" list="xtPL" placeholder="Neue Position: Leistung eintippen oder aus der Preisliste wählen" autocomplete="off"></td>
-              <td><input data-c="menge" class="r" placeholder="1" autocomplete="off"></td><td><input data-c="einheit" list="xtEh" autocomplete="off"></td><td><input data-c="ep" class="r" autocomplete="off"></td><td></td></tr>
+            <tr class="xt-neu" data-neu="1" data-nr="${r.id}"><td class="xt-nr">${icon('plus')}</td>
+              <td><input data-c="text" list="xtPL" placeholder="Neue Position in „${esc(titel(r))}“: eintippen oder aus der Preisliste wählen" autocomplete="off"></td>
+              <td><input data-c="menge" class="r" placeholder="1" autocomplete="off"></td><td><input data-c="einheit" list="xtEh" autocomplete="off"></td><td><input data-c="ep" class="r" autocomplete="off"></td><td></td></tr>`;
+          }).join('')}
           </tbody>
-          <tfoot><tr><td colspan="6">Summe netto</td><td class="r">${zahl(gesNetto)}</td></tr>
-            <tr><td colspan="6">MwSt.</td><td class="r">${zahl(mwst)}</td></tr>
-            <tr class="xt-brutto"><td colspan="6">Gesamt brutto</td><td class="r">${zahl(r2(gesNetto + mwst))} €</td></tr></tfoot>
+          <tfoot><tr><td colspan="5">Summe netto</td><td class="r">${zahl(gesNetto)}</td></tr>
+            <tr><td colspan="5">MwSt.</td><td class="r">${zahl(mwst)}</td></tr>
+            <tr class="xt-brutto"><td colspan="5">Gesamt brutto</td><td class="r">${zahl(r2(gesNetto + mwst))} €</td></tr></tfoot>
         </table></div>
         <p class="hint xt-hilfe">Pfeiltasten, Tab und Enter wie in Excel. Strg+Enter neue Zeile, Strg+Entf Zeile löschen. Zeilen aus Excel markieren, kopieren und hier mit Strg+V einfügen (Spalten Leistung, Menge, Einheit, Preis).</p>
         <datalist id="xtPL">${PL.positionen.map((it) => `<option value="${esc(it.text)}">${esc(it.nr)} · ${esc(it.gewerk)} · ${zahl(A.ep(it, list[0]?.angebot?.kalk))} € je ${esc(it.einheit)}</option>`).join('')}</datalist>
@@ -77,7 +79,7 @@ window.Tabelle = (() => {
       // Fokus wiederherstellen (nach Hinzufügen, Löschen, Verschieben)
       if (letzteZelle) {
         const { r, i, c, neu } = letzteZelle;
-        const tr = neu ? $('[data-neu]', box) : $(`tr[data-r="${r}"][data-i="${i}"]`, box) || $$('tbody tr', box).filter((t) => !t.dataset.neu).pop();
+        const tr = neu ? $(`[data-nr="${neu}"]`, box) || $('[data-neu]', box) : $(`tr[data-r="${r}"][data-i="${i}"]`, box) || $$('tbody tr', box).filter((t) => !t.dataset.neu).pop();
         const el = tr && $(`[data-c="${c}"]`, tr);
         if (el) { el.focus(); el.select?.(); }
       }
@@ -103,6 +105,7 @@ window.Tabelle = (() => {
       let ges = 0;
       list.forEach((r) => {
         const P = r.angebot.positionen || [], S = A.summen(P, r.angebot.kalk); ges += S.netto;
+        const zsEl = $(`[data-zs="${r.id}"]`, box); if (zsEl) zsEl.textContent = S.zeilen.length ? zahl(S.netto) : '';
         S.zeilen.forEach((z) => { const tr = $(`tr[data-r="${r.id}"][data-i="${z.i}"]`, box); if (!tr) return; $('.xt-gp', tr).textContent = zahl(z.gp); const e = $('[data-c="ep"]', tr); if (document.activeElement !== e) { e.value = zahl(z.ep); e.classList.toggle('fix', z.fix); } });
       });
       const mwst = r2(ges * (A.einstellungen().mwst || 0.19)), f = $$('tfoot td.r', box);
@@ -113,7 +116,7 @@ window.Tabelle = (() => {
       const c = el.dataset.c;
       if (el.closest('[data-neu]')) {
         if (c !== 'text' || !el.value.trim()) return;
-        const tr = el.closest('tr'), r = list.find((x) => x.id === $('[data-c="bereich"]', tr).value) || list[0];
+        const tr = el.closest('tr'), r = list.find((x) => x.id === tr.dataset.nr) || list[0];
         const it = ausKatalog(el.value);
         if (it && (r.angebot.positionen || []).some((x) => x.nr === it.nr)) {
           const i = r.angebot.positionen.findIndex((x) => x.nr === it.nr);
@@ -127,16 +130,6 @@ window.Tabelle = (() => {
       }
       const z = zeileVon(el); if (!z) return;
       const { r, x } = z, kalk = r.angebot.kalk;
-      if (c === 'bereich') {
-        const ziel = list.find((y) => y.id === el.value); if (!ziel || ziel === r) return;
-        if (!x.frei && (ziel.angebot.positionen || []).some((y) => y.nr === x.nr)) { toast('Diese Position steht im anderen Bereich schon drin.', 3500); el.value = r.id; return; }
-        r.angebot.positionen.splice(z.i, 1); ziel.angebot.positionen ??= [];
-        if (x.raum) x.raum = raumName(ziel);
-        ziel.angebot.positionen.push(x); r.angebot.geaendert = ziel.angebot.geaendert = true;
-        await sichern(r); await sichern(ziel);
-        letzteZelle = { r: ziel.id, i: ziel.angebot.positionen.length - 1, c: 'bereich' };
-        return zeichnen();
-      }
       if (c === 'menge') { x.menge = num(el.value); if (x.ki) x.ki.sicher = ''; el.value = mengeText(x.menge); }
       if (c === 'ep') {
         const v = el.value.trim(), it = !x.frei && kat(x.nr);
@@ -191,7 +184,7 @@ window.Tabelle = (() => {
         anlegen(r, { text, menge: zahlen[0], einheit, ep: zahlen[1] });
         n++;
       }
-      if (n) { await sichern(r); letzteZelle = { neu: true, c: 'text' }; zeichnen(); toast(`${n} ${n === 1 ? 'Zeile' : 'Zeilen'} übernommen in „${titel(r)}“. Bitte Preise prüfen.`, 5000); }
+      if (n) { await sichern(r); letzteZelle = { neu: r.id, c: 'text' }; zeichnen(); toast(`${n} ${n === 1 ? 'Zeile' : 'Zeilen'} übernommen in „${titel(r)}“. Bitte Preise prüfen.`, 5000); }
       else toast('Keine Zeilen erkannt. Erwartet: Leistung, Menge, Einheit, Preis.', 5000);
     }
 
@@ -230,9 +223,9 @@ window.Tabelle = (() => {
       box.onfocusin = (e) => { const tr = e.target.closest('tbody tr'); $$('tbody tr.akt', box).forEach((t) => t !== tr && t.classList.remove('akt')); tr?.classList.add('akt'); if (e.target.matches('input') && !tr?.dataset.neu) e.target.select(); };
       box.onkeydown = (e) => {
         const el = e.target; if (!el.matches?.('[data-c]')) return;
-        const tr = el.closest('tr'), zeilen = $$('tbody tr', box), zi = zeilen.indexOf(tr), c = el.dataset.c, ci = SPALTEN.indexOf(c);
+        const tr = el.closest('tr'), zeilen = $$('tbody tr:not(.xt-titel)', box), zi = zeilen.indexOf(tr), c = el.dataset.c, ci = SPALTEN.indexOf(c);
         const geh = (z, s) => { const t = zeilen[z]; const ziel = t && $(`[data-c="${SPALTEN[s]}"]`, t); if (ziel) { e.preventDefault(); el.blur(); ziel.focus(); } };
-        if (e.ctrlKey && e.key === 'Enter') { e.preventDefault(); el.blur(); const n = $('[data-neu] [data-c="text"]', box); n?.focus(); return; }
+        if (e.ctrlKey && (e.key === 'Enter' || e.key === 'Insert')) { e.preventDefault(); el.blur(); const n = $(`[data-nr="${tr.dataset.r || tr.dataset.nr}"] [data-c="text"]`, box) || $('[data-neu] [data-c="text"]', box); n?.focus(); return; }
         if (e.ctrlKey && (e.key === 'Delete' || e.key === 'Backspace') && !tr.dataset.neu) { e.preventDefault(); return loeschen(el); }
         if (e.key === 'Enter') { if (tr.dataset.neu && c === 'text') return; return geh(zi + 1, ci); }
         // Pfeil hoch/runter wechselt die Zeile. In Leistung/Einheit nicht, solange man tippt (dann wählt der Pfeil aus der Preisliste).
@@ -246,15 +239,16 @@ window.Tabelle = (() => {
         const t = e.clipboardData?.getData('text/plain') || '';
         if (!/\t|\n./.test(t.trim())) return;
         e.preventDefault();
-        const tr = e.target.closest('tr'), r = list.find((x) => x.id === (tr?.dataset.r || $('[data-c="bereich"]', tr || box)?.value)) || list[list.length - 1];
+        const tr = e.target.closest('tr'), r = list.find((x) => x.id === (tr?.dataset.r || tr?.dataset.nr)) || list[list.length - 1];
         zeilenUebernehmen(t.replace(/\r/g, '').split('\n').map((z) => z.split('\t')), r).catch((err) => toast('Einfügen ging nicht: ' + err.message, 5000));
       };
       $$('[data-xa]', box).forEach((b) => (b.onclick = () => {
         const akt = $('tbody tr.akt [data-c="text"]', box);
-        ({ neu: () => $('[data-neu] [data-c="text"]', box).focus(),
+        const aktTr = $('tbody tr.akt', box);
+        ({ neu: () => ($(`[data-nr="${aktTr?.dataset.r || aktTr?.dataset.nr}"] [data-c="text"]`, box) || $('[data-neu] [data-c="text"]', box)).focus(),
           weg: () => loeschen(akt),
           xlsaus: () => excelSpeichern().catch((err) => toast('Excel ging nicht: ' + err.message, 5000)),
-          xlsein: async () => { const tr = $('tbody tr.akt', box), r = list.find((x) => x.id === tr?.dataset.r) || list[list.length - 1]; excelEinlesen(r).catch((err) => toast('Excel lesen ging nicht: ' + err.message, 5000)); },
+          xlsein: async () => { const tr = $('tbody tr.akt', box), r = list.find((x) => x.id === (tr?.dataset.r || tr?.dataset.nr)) || list[list.length - 1]; excelEinlesen(r).catch((err) => toast('Excel lesen ging nicht: ' + err.message, 5000)); },
         })[b.dataset.xa]();
       }));
     }
@@ -267,5 +261,32 @@ window.Tabelle = (() => {
     return new Promise((ok, fail) => { const s = document.createElement('script'); s.src = 'vendor/xlsx.mini.min.js'; s.onload = ok; s.onerror = () => fail(new Error('Excel-Leser konnte nicht geladen werden')); document.head.appendChild(s); });
   }
 
-  return { istBuero, angebot };
+  // ---------- Listen als Tabelle (wie Listenseiten in ERP-Programmen) ----------
+  // Am Computer statt Karten untereinander: Spalten, Klick auf den Spaltenkopf sortiert, Klick/Enter auf eine Zeile öffnet.
+  // spalten: [{ k, t, r (rechtsbündig), b (Breite in px) }], zeilen: [{ id, werte: { k: text | { text, html, sort } } }]
+  const sortWahl = {}; // je Liste: { k, ab }
+  function liste(box, { id, spalten, zeilen, leer = 'Nichts gefunden.', oeffnen }) {
+    if (!box) return;
+    const wert = (z, k) => { const v = z.werte[k]; return v && typeof v === 'object' ? v : { text: v ?? '' }; };
+    const s = sortWahl[id];
+    const reihe = s ? [...zeilen].sort((a, b) => {
+      const x = wert(a, s.k), y = wert(b, s.k), xa = x.sort ?? x.text, ya = y.sort ?? y.text;
+      const c = typeof xa === 'number' && typeof ya === 'number' ? xa - ya : String(xa).localeCompare(String(ya), 'de', { numeric: true, sensitivity: 'base' });
+      return s.ab ? -c : c;
+    }) : zeilen;
+    box.innerHTML = zeilen.length ? `<div class="ltab-wrap"><table class="ltab"><colgroup>${spalten.map((c) => `<col${c.b ? ` style="width:${c.b}px"` : ''}>`).join('')}</colgroup>
+      <thead><tr>${spalten.map((c) => `<th class="${c.r ? 'r' : ''}" data-sk="${c.k}" title="Sortieren">${esc(c.t)}${s?.k === c.k ? `<i class="ltab-s">${s.ab ? '▼' : '▲'}</i>` : ''}</th>`).join('')}</tr></thead>
+      <tbody>${reihe.map((z) => `<tr data-lz="${esc(z.id)}" tabindex="0">${spalten.map((c) => { const v = wert(z, c.k); return `<td class="${c.r ? 'r' : ''}">${v.html ?? esc(v.text)}</td>`; }).join('')}</tr>`).join('')}</tbody></table></div>`
+      : `<p class="empty">${esc(leer)}</p>`;
+    $$('[data-sk]', box).forEach((th) => (th.onclick = () => { const alt = sortWahl[id]; sortWahl[id] = { k: th.dataset.sk, ab: alt?.k === th.dataset.sk ? !alt.ab : false }; liste(box, { id, spalten, zeilen, leer, oeffnen }); }));
+    $$('[data-lz]', box).forEach((tr) => {
+      tr.onclick = () => oeffnen(tr.dataset.lz);
+      tr.onkeydown = (e) => {
+        if (e.key === 'Enter') { e.preventDefault(); oeffnen(tr.dataset.lz); }
+        else if (e.key === 'ArrowDown' || e.key === 'ArrowUp') { e.preventDefault(); (e.key === 'ArrowDown' ? tr.nextElementSibling : tr.previousElementSibling)?.focus(); }
+      };
+    });
+  }
+
+  return { istBuero, angebot, liste };
 })();
