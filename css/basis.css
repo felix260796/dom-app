@@ -380,3 +380,15 @@ textarea.sz-auf, .sz-auf input:not([readonly]), .sz-auf textarea { border-color:
   .btn.secondary:hover { filter: brightness(.97); }
   .sheet-item:hover, .menu-i:hover { background: var(--soft); }
 }
+
+/* ---------- Gerät einrichten (einrichten.js) ---------- */
+.einr { position: fixed; inset: 0; z-index: 95; background: var(--bg); overflow-y: auto; -webkit-overflow-scrolling: touch;
+  padding: calc(env(safe-area-inset-top) + 24px) 16px calc(env(safe-area-inset-bottom) + 24px); }
+.einr-k { max-width: 560px; margin: 0 auto; }
+.einr-kopf { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 18px; }
+.einr-kopf img { height: 30px; width: auto; }
+.einr h2 { margin: 0 0 8px; font-size: 24px; letter-spacing: -.01em; }
+.einr-wahl { display: flex; flex-direction: column; gap: 10px; margin-top: 14px; }
+.einr-fuss { display: flex; gap: 10px; margin-top: 22px; }
+.einr-fuss .btn { flex: 1; }
+.einr-offen .toast { z-index: 100; }

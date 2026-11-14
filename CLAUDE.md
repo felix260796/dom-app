@@ -113,6 +113,10 @@ Großer Bildschirm: Ab 900 px Breite (iPad quer, großes iPad, Computer) wird di
 Stift: Unterschriftenfelder (`unterschrift.js`, Abnahme in `baustelle.js`) laufen über `stiftLinien(canvas, ctx, beimStart)` in `core.js`: Druck macht die Linie dicker, nach dem ersten Stiftstrich zählt die aufgelegte Hand nicht mehr. Zeichnen sonst nur über `zeichnen.js`.
 Computer: Ordner `desktop/` (Electron). `main.js` lädt die App über `app://dom/` (fester Ort für den Speicher), Links nach draußen im Standardprogramm, Kamera/Mikrofon erlaubt, keine Mitteilungen (`push.js` prüft `window.DomDesktop`). `preload.js` setzt `window.DomDesktop`, `app.js` die Klasse `desktop` und Escape (Fenster zu bzw. Zurück). Bau: `.github/workflows/windows-programm.yml` auf windows-latest, kopiert die Dateien mit `desktop/app-bauen.js` (neue Ordner, die nicht ins Programm gehören, dort in `WEG` eintragen), bei Merge auf `main` als GitHub-Release `v<APP_VERSION>.0.<Lauf>` mit `DOM-Setup-….exe`. Das installierte Programm holt neue Fassungen selbst (electron-updater) und spielt sie beim Schließen ein. Nicht signiert: Windows warnt beim ersten Installieren („Weitere Informationen“ › „Trotzdem ausführen“).
 
+## Neuerungen aus Version 102 (Gerät einrichten)
+
+`einrichten.js` (`Einrichten`): Beim Start (`Einrichten.start()` in `app.js`) fragt DOM auf jedem Gerät der Reihe nach, was dort noch fehlt (`SCHRITTE`): Anmelden beim Cloud-Abgleich (`Sync.einstellungenKarte`, holt auch KI-Schlüssel, Unterschriften, Stempel), wem das Gerät gehört (`Kalender.werSetzen`, gilt als gewählt, sobald `dom.kal.wer` gesetzt ist), KI-Schlüssel, nur in der App aus TestFlight Mitteilungen (`Push.karte`) und Geräte-Funktionen (`Geraet.karte`). Fehlt noch etwas, fragt DOM beim nächsten Start wieder; Mitteilungen und Funktionen nur einmal (`dom:einrichten` in localStorage). Von Hand: Einstellungen › Gerät einrichten. Neue Dinge, die ein Gerät braucht, dort als Schritt eintragen, nicht als eigene Abfrage.
+
 ## Bereiche
 
 | Bereich | Dateien | Inhalt |

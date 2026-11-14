@@ -21,6 +21,7 @@ const EINST = [
   ['bau', 'Baufortschritt', 'check', 'grey', 'Abläufe', 'Vorlagen der Arbeitsschritte je Raumtyp'],
   ['ki', 'KI', 'sparkle', 'navy', 'Technik', 'Schlüssel und Modell für Bilder und Texte'],
   ['iphone', 'iPhone-Funktionen', 'phone', 'navy', 'Technik', 'Scanner, LiDAR-Aufmaß, Face ID, Kalender, Kontakte, Teilen: je Gerät ein- und ausschalten'],
+  ['einrichten', 'Gerät einrichten', 'check', 'navy', 'Technik', 'Alles der Reihe nach: Anmelden, wem das Gerät gehört, KI-Schlüssel, Mitteilungen, Funktionen'],
   ['cloud', 'Cloud-Abgleich', 'refresh', 'brass', 'Technik', 'Anmelden, Abgleich mit dem Kollegen'],
   ['sicherung', 'Datensicherung', 'download', 'grey', 'Technik', 'Excel-Sicherung aller Daten, Sicherung als Datei'],
 ];
@@ -117,6 +118,7 @@ function mailVorschau(r, satz) {
 }
 async function einstellungSeite(k) {
   k = EINST_ALT[k] || k;
+  if (k === 'einrichten') { viewEinstellungen(); return window.Einrichten?.oeffnen({ alle: true }); }
   if (k === 'moodboards') { state.editPkg = null; return viewPakete(); }
   if (k === 'preisliste') return Vorgaben.preisliste('');
   const S = state.settings;
