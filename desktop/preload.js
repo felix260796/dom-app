@@ -12,4 +12,10 @@ contextBridge.exposeInMainWorld('DomDesktop', {
   oeffnen: (name, daten) => ipcRenderer.invoke('dom:oeffnen', name, daten),
   /** Gespeicherte Datei im Explorer zeigen. */
   zeigen: (pfad) => ipcRenderer.invoke('dom:zeigen', pfad),
+  /** Neue Fassung geladen: fn(version). Auch wenn sie schon vor dem Laden der Seite bereitlag. */
+  updateBereit: (fn) => { ipcRenderer.on('dom:updateBereit', (e, v) => fn(v)); ipcRenderer.invoke('dom:updateBereit').then((v) => v && fn(v)); },
+  /** Neue Fassung einspielen: DOM schließt sich, spielt sie ein und startet von selbst wieder. */
+  jetztUpdaten: () => ipcRenderer.invoke('dom:jetztUpdaten'),
+  /** Fehler der Seite ins Protokoll (fehler.log im Benutzerordner). */
+  fehler: (text) => ipcRenderer.send('dom:fehler', text),
 });

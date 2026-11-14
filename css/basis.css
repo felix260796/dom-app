@@ -408,3 +408,6 @@ textarea.sz-auf, .sz-auf input:not([readonly]), .sz-auf textarea { border-color:
 .einr-fuss { display: flex; gap: 10px; margin-top: 22px; }
 .einr-fuss .btn { flex: 1; }
 .einr-offen .toast { z-index: 100; }
+
+/* Windows-Programm: neue Fassung bereit (Seitenleiste unten) */
+.seite-upd { color: #f2c46d; font-weight: 650; }

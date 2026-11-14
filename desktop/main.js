@@ -32,7 +32,13 @@ function oeffnen() {
   // Rechtschreibung: Deutsch
   fenster.webContents.session.setSpellCheckerLanguages(['de-DE']);
   fenster.loadURL('app://dom/index.html');
+  // Absturz der Seite (z. B. zu wenig Speicher): nicht weiß stehen lassen, sondern neu laden und im Protokoll vermerken
+  fenster.webContents.on('render-process-gone', (e, d) => { protokoll(`Seite abgestürzt: ${d.reason} (${d.exitCode})`); if (d.reason !== 'clean-exit' && fenster && !fenster.isDestroyed()) setTimeout(() => fenster.loadURL('app://dom/index.html'), 500); });
+  fenster.webContents.on('unresponsive', () => protokoll('Seite reagiert nicht'));
 }
+/** Fehlerprotokoll im Benutzerordner (%APPDATA%/DOM/fehler.log), damit Abstürze nachvollziehbar sind. */
+function protokoll(text) { try { fs.appendFileSync(path.join(app.getPath('userData'), 'fehler.log'), `${new Date().toISOString()} v${app.getVersion()} ${text}\n`); } catch {} }
+process.on('uncaughtException', (e) => protokoll('Fehler im Programm: ' + (e?.stack || e)));
 
 app.whenReady().then(() => {
   Menu.setApplicationMenu(menue());
@@ -56,6 +62,10 @@ app.whenReady().then(() => {
   });
   ipcMain.handle('dom:version', () => app.getVersion());
   ipcMain.handle('dom:update', () => updaten(true));
+  // Neue Fassung ist geladen: Felix entscheidet in DOM selbst „Jetzt neu starten“ (kein heimliches Einspielen beim Schließen)
+  ipcMain.handle('dom:jetztUpdaten', () => { const { autoUpdater } = require('electron-updater'); autoUpdater.quitAndInstall(true, true); });
+  ipcMain.handle('dom:updateBereit', () => updateBereit);
+  ipcMain.on('dom:fehler', (e, text) => protokoll('Seite: ' + String(text).slice(0, 2000)));
   ipcMain.handle('dom:speichern', async (e, name, daten) => {
     const ziel = await dialog.showSaveDialog(fenster, { title: 'Speichern unter', defaultPath: path.join(einst().ordner || app.getPath('documents'), sauber(name)), filters: filter(name) });
     if (ziel.canceled || !ziel.filePath) return null;
@@ -80,12 +90,20 @@ app.whenReady().then(() => {
 app.on('second-instance', () => { if (fenster) { if (fenster.isMinimized()) fenster.restore(); fenster.focus(); } });
 app.on('window-all-closed', () => app.quit());
 
-// Neue Fassung: im Hintergrund laden, beim nächsten Schließen einspielen
+// Neue Fassung: im Hintergrund laden, dann in DOM fragen „Jetzt neu starten“. Das Einspielen startet DOM danach selbst wieder.
+// Nicht mehr beim Schließen einspielen (bis v104): Wer DOM gleich wieder öffnete, während das Setup im Hintergrund lief,
+// wurde vom Setup hinausgeworfen und die Verknüpfung zeigte kurz „DOM.exe wurde verändert oder verschoben“ (Felix, 14.11.).
+let updateBereit = null, updateHorcht = false;
 async function updaten(sofort) {
   if (!app.isPackaged) return { ok: false, grund: 'nicht installiert' };
   try {
     const { autoUpdater } = require('electron-updater');
-    autoUpdater.autoInstallOnAppQuit = true;
+    autoUpdater.autoInstallOnAppQuit = false;
+    if (!updateHorcht) {
+      updateHorcht = true;
+      autoUpdater.on('update-downloaded', (info) => { updateBereit = info?.version || 'neu'; fenster?.webContents.send('dom:updateBereit', updateBereit); });
+      autoUpdater.on('error', (e) => protokoll('Update: ' + (e?.message || e)));
+    }
     const r = await autoUpdater.checkForUpdates();
     if (sofort && r?.downloadPromise) { await r.downloadPromise; autoUpdater.quitAndInstall(true, true); }
     return { ok: true, neu: r?.updateInfo?.version || null };

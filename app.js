@@ -6,7 +6,7 @@
  * Kern-Funktionen (Speicher, KI, Bilder) stehen in core.js. */
 
 // ---------- Symbole (einfache Linien-Icons) ----------
-const APP_VERSION = '104';
+const APP_VERSION = '105';
 const ICONS = {
   plus: '<path d="M12 5v14M5 12h14"/>',
   camera: '<path d="M3 8.5A2 2 0 0 1 5 6.5h2l1.6-2h6.8l1.6 2h2a2 2 0 0 1 2 2V18a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><circle cx="12" cy="13" r="3.6"/>',
@@ -310,7 +310,8 @@ $('#brandBtn').onclick = menue;
   const fussZeichnen = () => { try { fussInhalt(); } catch (e) { /* Kalender noch nicht geladen */ } };
   const fussInhalt = () => {
     fuss.innerHTML = `${window.Kalender ? `<div class="seg2 full">${[...Kalender.team().map((p) => [p.id, p.name.split(' ')[0]]), ['', 'Beide']].map(([id, n]) => `<button data-sw="${esc(id)}" class="${Kalender.wer() === id ? 'on' : ''}" title="Auf diesem Gerät">${esc(n)}</button>`).join('')}</div>` : ''}
-      <button class="seite-sync" data-ss title="Cloud-Abgleich">${icon('cloud')}<span>${esc(syncText())}</span></button>${window.Zugang?.fluechtig ? `<button class="seite-sync" data-sabm title="Abmelden">${icon('x')}<span>Abmelden (Daten im Browser löschen)</span></button>` : ''}<small>Version ${APP_VERSION}</small>`;
+      <button class="seite-sync" data-ss title="Cloud-Abgleich">${icon('cloud')}<span>${esc(syncText())}</span></button>${window.Zugang?.fluechtig ? `<button class="seite-sync" data-sabm title="Abmelden">${icon('x')}<span>Abmelden (Daten im Browser löschen)</span></button>` : ''}${window.__updateBereit ? `<button class="seite-sync seite-upd" data-supd title="Neue Fassung einspielen">${icon('download')}<span>Neue Fassung bereit: jetzt neu starten</span></button>` : ''}<small>Version ${APP_VERSION}</small>`;
+    if ($('[data-supd]', fuss)) $('[data-supd]', fuss).onclick = () => window.DomDesktop?.jetztUpdaten();
     $$('[data-sw]', fuss).forEach((b) => (b.onclick = () => { Kalender.werSetzen(b.dataset.sw); window.Push?.abgleich(); Kalender.punkt(); fussZeichnen(); if (state.tab === 'heute') Heute.view(); }));
     if ($('[data-sabm]', fuss)) $('[data-sabm]', fuss).onclick = () => window.Zugang.abmelden();
     $('[data-ss]', fuss).onclick = () => { switchTab('einstellungen'); einstellungSeite('cloud'); seiteMarkieren('einstellungen'); };
@@ -354,6 +355,16 @@ function desktopBefehl(b) {
   })[b]?.();
 }
 window.DomDesktop?.befehle?.(desktopBefehl);
+// Windows-Programm: neue Fassung geladen → fragen, ob jetzt neu gestartet werden soll (startet danach von selbst wieder)
+window.DomDesktop?.updateBereit?.((v) => {
+  window.__updateBereit = v; try { window.seiteFuss?.(); } catch {}
+  toast(`Neue Fassung von DOM ist geladen.`, 15000, { label: 'Jetzt neu starten', fn: () => window.DomDesktop.jetztUpdaten() });
+});
+// Fehler der Seite ins Protokoll des Programms, damit ein Absturz nachvollziehbar ist
+if (window.DomDesktop?.fehler) {
+  addEventListener('error', (e) => window.DomDesktop.fehler(`${e.message} @ ${e.filename}:${e.lineno}`));
+  addEventListener('unhandledrejection', (e) => window.DomDesktop.fehler('Promise: ' + (e.reason?.stack || e.reason)));
+}
 // Im Browser am Computer (Link statt Programm, für fremde Rechner): Kürzel mit Alt, weil Strg+N, Strg+P usw. dem Browser gehören
 const KUERZEL_BROWSER = [['Alt+N', 'Neues Angebot'], ['Alt+K', 'Neuer Kunde'], ['Alt+R', 'Neue Rechnung'], ['Alt+S', 'Suchen'], ['Alt+0', 'Heute'],
   ['Alt+1 … 5', 'Kunden, Partner, Angebote, Projekte, Rechnungen'], ['Alt+L', 'Kalender'], ['Esc', 'Fenster schließen oder zurück'], ['Strg+Enter', 'Neue Zeile in der Angebotstabelle']];
