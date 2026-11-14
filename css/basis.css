@@ -271,10 +271,15 @@ input, select, textarea { font-size: max(16px, 1em); }
 .pdfz-h [data-zt] { font-size: 13px; min-width: 44px; text-align: center; opacity: .8; }
 .pdfz-b { flex: 1; overflow: auto; -webkit-overflow-scrolling: touch; touch-action: pan-x pan-y; }
 .pdfz-in { width: 100%; min-height: 100%; }
+/* Computer: Seite nicht über die ganze Bildschirmbreite (Zoom geht weiter über + und −) */
+@media (min-width: 1100px) and (pointer: fine) { .pdfz-b { padding: 16px calc((100% - 860px) / 2); background: #5b6573; } .pdfz-in img, .pdfz-in canvas { box-shadow: 0 2px 12px rgba(0,0,0,.3); } }
 .pdfz-in iframe { display: block; width: 100%; height: calc(var(--voll, 100vh) * 1.6); border: 0; background: #fff; }
 .pdfz-in img { display: block; width: 100%; height: auto; }
 .pdfz-warte { color: rgba(255,255,255,.8); text-align: center; padding: 40px 0; }
 .pdfz-voll { margin: 8px 12px; padding: 12px; border: 0; border-radius: 12px; background: #fff; color: var(--navy); font-weight: 650; font-size: 15px; display: flex; align-items: center; justify-content: center; gap: 8px; }
+.pdfz-pc { display: flex; gap: 10px; justify-content: center; margin: 8px 12px; }
+.pdfz-pc .btn { width: auto; height: 40px; padding: 0 18px; }
+.toast-k { margin-left: 10px; border: 0; background: rgba(255,255,255,.18); color: #fff; font: inherit; font-weight: 650; padding: 5px 10px; border-radius: 8px; cursor: pointer; }
 
 /* ---------- Listen in den Einstellungen (ein Feld je Eintrag) ---------- */
 .lf { display: flex; flex-direction: column; gap: 6px; margin-top: 4px; }
@@ -362,6 +367,15 @@ textarea.sz-auf, .sz-auf input:not([readonly]), .sz-auf textarea { border-color:
   .tabbar .seite-trenn { height: 1px; flex: none; background: rgba(255,255,255,.14); margin: 10px 8px; }
   .tabbar button.klein { height: 42px; font-size: 14px; }
   .tabbar button.klein span { font-size: 14px; }
+  .tabbar .seite-fuss { display: flex; flex-direction: column; gap: 8px; margin-top: auto; padding: 16px 4px 0; }
+  .seite-fuss .seg2 { background: rgba(255,255,255,.08); }
+  .tabbar .seite-fuss .seg2 button { height: 30px; font-size: 13px; color: rgba(255,255,255,.75); background: transparent; border-color: transparent; padding: 0 6px; justify-content: center; border-radius: 8px; }
+  .tabbar .seite-fuss .seg2 button.on { background: rgba(255,255,255,.18); color: #fff; }
+  .tabbar .seite-fuss button::after { display: none; }
+  .tabbar .seite-fuss .seite-sync { height: auto; padding: 4px 2px; gap: 8px; font-size: 12px; align-items: flex-start; border-radius: 6px; }
+  .tabbar .seite-fuss .seite-sync span { white-space: normal; font-size: 12px; line-height: 1.35; }
+  .seite-fuss .seite-sync svg.i { width: 16px; height: 16px; flex: none; margin-top: 1px; }
+  .seite-fuss small { font-size: 11px; color: rgba(255,255,255,.45); padding: 0 2px; }
   .topbar { padding-left: 28px; padding-right: 28px; }
   .brand { display: none; }
   .brand-row:has(> #topback[hidden]) { display: none; }

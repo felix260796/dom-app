@@ -118,6 +118,13 @@ Computer: Ordner `desktop/` (Electron). `main.js` lädt die App über `app://dom
 `einrichten.js` (`Einrichten`): Beim Start (`Einrichten.start()` in `app.js`) fragt DOM auf jedem Gerät der Reihe nach, was dort noch fehlt (`SCHRITTE`): Anmelden beim Cloud-Abgleich (`Sync.einstellungenKarte`, holt auch KI-Schlüssel, Unterschriften, Stempel), wem das Gerät gehört (`Kalender.werSetzen`, gilt als gewählt, sobald `dom.kal.wer` gesetzt ist), KI-Schlüssel, nur in der App aus TestFlight Mitteilungen (`Push.karte`) und Geräte-Funktionen (`Geraet.karte`). Fehlt noch etwas, fragt DOM beim nächsten Start wieder; Mitteilungen und Funktionen nur einmal (`dom:einrichten` in localStorage). Von Hand: Einstellungen › Gerät einrichten. Neue Dinge, die ein Gerät braucht, dort als Schritt eintragen, nicht als eigene Abfrage.
 Seitenleiste (v103, Rückmeldung Felix vom iPad): markiert wird der angetippte Eintrag (`seiteMarkieren(id)` in `app.js`, Knöpfe mit `data-seite`), nicht der Reiter, in dem die Seite intern liegt (Auswertung liegt in Rechnungen, Preisliste in Einstellungen, Kalender in keinem Reiter). Auswertung hat oben den Titel „Auswertung“. Dokumentenscanner am iPad im Vollbild.
 
+## Neuerungen aus Version 104 (Windows-Programm wie Büro-Software)
+
+Felix will am PC ein richtiges Büroprogramm, keine vergrößerte iPad-App. iPhone und iPad bleiben unverändert.
+Seitenleiste (ab 900 px): das DOM-Zeichen führt zu „Heute“ und öffnet nicht mehr das Menü vom iPhone; unten in der Leiste Gerät gehört Felix/Deniel/Beide, Cloud-Stand, Version (`seiteFuss`), dazu „Preislisten der Partner“.
+Windows-Programm: Menüleiste Datei/Bearbeiten/Ansicht/Hilfe mit Tastenkürzeln (`menue()` in `desktop/main.js`, schickt `dom:befehl`, ausgeführt in `desktopBefehl` in `app.js`, Liste `KUERZEL`). Dateien: `DomDesktop.speichern/oeffnen/zeigen` (preload), in `core.js` `desktopSpeichern`, `desktopOeffnen`, `desktopTeilen` (ersetzt am PC das Teilen-Menü); PDF-Ansicht hat am PC „Speichern unter …“ und „Im PDF-Programm öffnen oder drucken“. Herunterladen merkt sich den Ordner (`programm.json` im Benutzerordner).
+Angebot als Tabelle wie Excel: `tabelle.js` (`Tabelle.angebot(box, w, list)`, `Tabelle.istBuero()` = Windows-Programm oder breit mit Maus). Im Büro Schritt 3 statt der Bereichsliste: alle Positionen aller Bereiche in einer Tabelle (Bereich wählbar, Text mit Preisliste als Vorschlag, Menge, Einheit, EP, GP, Summen), Tastatur wie Excel, Einfügen aus Excel (Strg+V), Excel speichern/einlesen. Schreibt dieselben Daten wie am iPhone (`r.angebot.positionen`, `x.frei`, `x.epFix`). CSS-Klasse `xtab` (nicht `.xt`, die gibt es schon).
+
 ## Bereiche
 
 | Bereich | Dateien | Inhalt |

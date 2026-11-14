@@ -2,8 +2,9 @@
 /* DOM als Programm für Windows (Electron). Lädt dieselben App-Dateien wie die iPhone-App (Ordner app/, beim Bau kopiert)
  * über die eigene Adresse app://dom/, damit der Speicher (IndexedDB) immer am selben Ort bleibt. Daten kommen wie
  * überall über den Cloud-Abgleich (sync.js). Neue Fassungen holt sich das Programm selbst von GitHub (electron-updater). */
-const { app, BrowserWindow, protocol, net, shell, session, ipcMain, Menu } = require('electron');
+const { app, BrowserWindow, protocol, net, shell, session, ipcMain, Menu, dialog } = require('electron');
 const path = require('path');
+const fs = require('fs');
 const { pathToFileURL } = require('url');
 
 protocol.registerSchemesAsPrivileged([
@@ -19,7 +20,7 @@ let fenster = null;
 function oeffnen() {
   fenster = new BrowserWindow({
     width: 1400, height: 900, minWidth: 420, minHeight: 600,
-    backgroundColor: '#14263b', title: 'DOM', autoHideMenuBar: true, show: false,
+    backgroundColor: '#14263b', title: 'DOM', autoHideMenuBar: false, show: false,
     icon: path.join(ORDNER, 'icons', 'icon-512.png'),
     webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, sandbox: true, spellcheck: true },
   });
@@ -34,7 +35,7 @@ function oeffnen() {
 }
 
 app.whenReady().then(() => {
-  Menu.setApplicationMenu(null);
+  Menu.setApplicationMenu(menue());
   protocol.handle('app', (req) => {
     const p = decodeURIComponent(new URL(req.url).pathname);
     const datei = path.normalize(path.join(ORDNER, p));
@@ -48,8 +49,29 @@ app.whenReady().then(() => {
     d.requestHeaders.Referer = 'https://felix260796.github.io/dom-app/';
     cb({ requestHeaders: d.requestHeaders });
   });
+  // Herunterladen (Excel-Sicherung, Bilder …): „Speichern unter“ im zuletzt gewählten Ordner
+  session.defaultSession.on('will-download', (e, item) => {
+    item.setSaveDialogOptions({ title: 'Speichern unter', defaultPath: path.join(einst().ordner || app.getPath('documents'), item.getFilename()) });
+    item.once('done', (ev, stand) => { if (stand === 'completed' && item.getSavePath()) einstSetzen({ ordner: path.dirname(item.getSavePath()) }); });
+  });
   ipcMain.handle('dom:version', () => app.getVersion());
   ipcMain.handle('dom:update', () => updaten(true));
+  ipcMain.handle('dom:speichern', async (e, name, daten) => {
+    const ziel = await dialog.showSaveDialog(fenster, { title: 'Speichern unter', defaultPath: path.join(einst().ordner || app.getPath('documents'), sauber(name)), filters: filter(name) });
+    if (ziel.canceled || !ziel.filePath) return null;
+    fs.writeFileSync(ziel.filePath, Buffer.from(daten));
+    einstSetzen({ ordner: path.dirname(ziel.filePath) });
+    return ziel.filePath;
+  });
+  ipcMain.handle('dom:oeffnen', async (e, name, daten) => {
+    const ordner = path.join(app.getPath('temp'), 'DOM');
+    fs.mkdirSync(ordner, { recursive: true });
+    const datei = path.join(ordner, sauber(name));
+    fs.writeFileSync(datei, Buffer.from(daten));
+    const fehler = await shell.openPath(datei);
+    return fehler ? { ok: false, fehler } : { ok: true, pfad: datei };
+  });
+  ipcMain.handle('dom:zeigen', (e, pfad) => { if (typeof pfad === 'string' && fs.existsSync(pfad)) shell.showItemInFolder(pfad); });
   oeffnen();
   updaten(false);
   setInterval(() => updaten(false), 4 * 60 * 60 * 1000);
@@ -70,4 +92,72 @@ async function updaten(sofort) {
   } catch (e) {
     return { ok: false, grund: String(e?.message || e) };
   }
+}
+
+// ---------- Menüleiste wie bei einem Windows-Programm ----------
+// Die Menüpunkte schicken einen Befehl an die App (app.js, desktopBefehl). Bearbeiten und Ansicht nutzen die eingebauten Rollen.
+function befehl(b) { return () => fenster?.webContents.send('dom:befehl', b); }
+function menue() {
+  const p = (label, b, accelerator) => ({ label, accelerator, click: befehl(b) });
+  return Menu.buildFromTemplate([
+    { label: 'Datei', submenu: [
+      p('Neues Angebot', 'neuAngebot', 'CmdOrCtrl+N'),
+      p('Neuer Kunde', 'neuKunde', 'CmdOrCtrl+Shift+K'),
+      p('Neue Rechnung', 'neuRechnung', 'CmdOrCtrl+Shift+R'),
+      p('Neuer Partner', 'neuPartner'),
+      { type: 'separator' },
+      p('Speichern', 'speichern', 'CmdOrCtrl+S'),
+      p('PDF speichern unter …', 'pdfSpeichern', 'CmdOrCtrl+Shift+S'),
+      p('Drucken (im PDF-Programm öffnen)', 'drucken', 'CmdOrCtrl+P'),
+      { type: 'separator' },
+      p('Einstellungen', 'einstellungen', 'CmdOrCtrl+,'),
+      { type: 'separator' },
+      { label: 'Beenden', role: 'quit' },
+    ] },
+    { label: 'Bearbeiten', submenu: [
+      { label: 'Rückgängig', role: 'undo' }, { label: 'Wiederholen', role: 'redo' }, { type: 'separator' },
+      { label: 'Ausschneiden', role: 'cut' }, { label: 'Kopieren', role: 'copy' }, { label: 'Einfügen', role: 'paste' },
+      { label: 'Alles auswählen', role: 'selectAll' }, { type: 'separator' },
+      p('Suchen', 'suche', 'CmdOrCtrl+F'),
+    ] },
+    { label: 'Ansicht', submenu: [
+      p('Heute', 'heute', 'CmdOrCtrl+0'),
+      p('Kunden', 'kunden', 'CmdOrCtrl+1'),
+      p('Partner', 'partner', 'CmdOrCtrl+2'),
+      p('Angebote', 'angebote', 'CmdOrCtrl+3'),
+      p('Projekte', 'projekt', 'CmdOrCtrl+4'),
+      p('Rechnungen', 'rechnungen', 'CmdOrCtrl+5'),
+      p('Kalender', 'kalender', 'CmdOrCtrl+K'),
+      p('Auswertung', 'auswertung'),
+      p('Preisliste', 'preisliste'),
+      { type: 'separator' },
+      p('Zurück', 'zurueck', 'Alt+Left'),
+      { type: 'separator' },
+      { label: 'Größer', role: 'zoomIn', accelerator: 'CmdOrCtrl+Plus' }, { label: 'Kleiner', role: 'zoomOut' }, { label: 'Normale Größe', role: 'resetZoom' },
+      { label: 'Vollbild', role: 'togglefullscreen' },
+      { type: 'separator' },
+      { label: 'Neu laden', role: 'reload' },
+    ] },
+    { label: 'Hilfe', submenu: [
+      p('Wie geht das?', 'hilfe', 'F1'),
+      p('Tastenkürzel', 'kuerzel'),
+      { type: 'separator' },
+      { label: 'Nach neuer Fassung suchen', click: async () => {
+        const r = await updaten(false);
+        dialog.showMessageBox(fenster, { type: 'info', title: 'DOM', message: !r.ok ? 'Konnte nicht nachsehen: ' + r.grund : r.neu && r.neu !== app.getVersion() ? `Fassung ${r.neu} wird geladen und beim Schließen eingespielt.` : `DOM ist aktuell (${app.getVersion()}).` });
+      } },
+      { label: 'Über DOM', click: () => dialog.showMessageBox(fenster, { type: 'info', title: 'DOM', message: `DOM Projektmanagement\nFassung ${app.getVersion()}` }) },
+    ] },
+  ]);
+}
+
+// Kleine Merkliste des Programms (z. B. zuletzt gewählter Ordner zum Speichern)
+const EINST = () => path.join(app.getPath('userData'), 'programm.json');
+function einst() { try { return JSON.parse(fs.readFileSync(EINST(), 'utf8')); } catch { return {}; } }
+function einstSetzen(neu) { try { fs.writeFileSync(EINST(), JSON.stringify({ ...einst(), ...neu })); } catch {} }
+function sauber(name) { return String(name || 'Dokument').replace(/[\\/:*?"<>|]+/g, '_').slice(0, 150); }
+function filter(name) {
+  const e = path.extname(String(name)).slice(1).toLowerCase();
+  const n = { pdf: 'PDF-Dokument', xlsx: 'Excel-Mappe', csv: 'CSV', jpg: 'Bild', png: 'Bild' }[e];
+  return n ? [{ name: n, extensions: [e] }, { name: 'Alle Dateien', extensions: ['*'] }] : [];
 }

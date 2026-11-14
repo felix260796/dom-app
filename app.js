@@ -6,7 +6,7 @@
  * Kern-Funktionen (Speicher, KI, Bilder) stehen in core.js. */
 
 // ---------- Symbole (einfache Linien-Icons) ----------
-const APP_VERSION = '103';
+const APP_VERSION = '104';
 const ICONS = {
   plus: '<path d="M12 5v14M5 12h14"/>',
   camera: '<path d="M3 8.5A2 2 0 0 1 5 6.5h2l1.6-2h6.8l1.6 2h2a2 2 0 0 1 2 2V18a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><circle cx="12" cy="13" r="3.6"/>',
@@ -281,11 +281,12 @@ $('#brandBtn').onclick = menue;
   const logo = document.createElement('button');
   logo.className = 'seite-logo nur-breit'; logo.setAttribute('aria-label', 'Menü öffnen');
   logo.innerHTML = '<img src="assets/dom_logo_weiss.png" alt="DOM"><small>Projektmanagement GmbH</small>';
-  logo.onclick = menue;
+  // Links steht schon alles: das Logo führt zu „Heute“ und öffnet nicht das Menü vom iPhone (Rückmeldung Felix 14.11.)
+  logo.onclick = () => { if (innerWidth >= 900) { switchTab('heute'); seiteMarkieren('heute'); } else menue(); };
   nav.prepend(logo);
   const trenn = document.createElement('i'); trenn.className = 'seite-trenn nur-breit'; nav.append(trenn);
   const TABS = ['heute', 'suche', 'karte', 'unterlagen', 'hilfe', 'einstellungen'];
-  ['heute', 'suche', 'kalender', 'karte', 'auswertung', 'preisliste', 'unterlagen', 'hilfe', 'einstellungen'].forEach((id) => {
+  ['heute', 'suche', 'kalender', 'karte', 'auswertung', 'preisliste', 'ppreise', 'unterlagen', 'hilfe', 'einstellungen'].forEach((id) => {
     const m = MENUE.find((x) => x[0] === id); if (!m) return;
     const b = document.createElement('button');
     b.className = 'nur-breit klein';
@@ -296,6 +297,19 @@ $('#brandBtn').onclick = menue;
     b.onclick = () => { m[4](); seiteMarkieren(id); };
     nav.append(b);
   });
+  // Unten wie im Menü: wem das Gerät gehört, Cloud-Stand, Version
+  const fuss = document.createElement('div'); fuss.className = 'seite-fuss nur-breit';
+  nav.append(fuss);
+  const fussZeichnen = () => { try { fussInhalt(); } catch (e) { /* Kalender noch nicht geladen */ } };
+  const fussInhalt = () => {
+    fuss.innerHTML = `${window.Kalender ? `<div class="seg2 full">${[...Kalender.team().map((p) => [p.id, p.name.split(' ')[0]]), ['', 'Beide']].map(([id, n]) => `<button data-sw="${esc(id)}" class="${Kalender.wer() === id ? 'on' : ''}" title="Auf diesem Gerät">${esc(n)}</button>`).join('')}</div>` : ''}
+      <button class="seite-sync" data-ss title="Cloud-Abgleich">${icon('cloud')}<span>${esc(syncText())}</span></button><small>Version ${APP_VERSION}</small>`;
+    $$('[data-sw]', fuss).forEach((b) => (b.onclick = () => { Kalender.werSetzen(b.dataset.sw); window.Push?.abgleich(); Kalender.punkt(); fussZeichnen(); if (state.tab === 'heute') Heute.view(); }));
+    $('[data-ss]', fuss).onclick = () => { switchTab('einstellungen'); einstellungSeite('cloud'); seiteMarkieren('einstellungen'); };
+  };
+  window.seiteFuss = fussZeichnen;
+  setTimeout(fussZeichnen, 0);
+  setInterval(() => { if (innerWidth >= 900 && !document.hidden) fussZeichnen(); }, 60000);
 })();
 /** Seitenleiste: genau diesen Eintrag als aktiv zeigen. */
 function seiteMarkieren(id) {
@@ -303,6 +317,35 @@ function seiteMarkieren(id) {
 }
 // Am Computer (Programm aus desktop/): Escape schließt Fenster oder geht zurück
 if (window.DomDesktop) document.documentElement.classList.add('desktop');
+// Menüleiste und Tastenkürzel des Windows-Programms (desktop/main.js schickt den Befehl)
+const KUERZEL = [['Strg+N', 'Neues Angebot'], ['Strg+Umschalt+K', 'Neuer Kunde'], ['Strg+Umschalt+R', 'Neue Rechnung'], ['Strg+S', 'Speichern'],
+  ['Strg+Umschalt+S', 'PDF speichern unter …'], ['Strg+P', 'Drucken (PDF-Programm)'], ['Strg+F', 'Suchen'], ['Strg+0', 'Heute'], ['Strg+1 … 5', 'Kunden, Partner, Angebote, Projekte, Rechnungen'],
+  ['Strg+K', 'Kalender'], ['Alt+Pfeil links', 'Zurück'], ['Esc', 'Fenster schließen oder zurück'], ['Strg+Plus / Minus', 'Größer, kleiner'], ['F1', 'Wie geht das?']];
+function desktopBefehl(b) {
+  if (document.documentElement.classList.contains('einr-offen')) return;
+  const klick = (sel) => { const el = $(sel); if (el) el.click(); return !!el; };
+  const seite = (id) => klick(`.tabbar button[data-seite="${id}"]`);
+  const reiter = (t) => { $$('.sheet-bg, .menu-bg').forEach((x) => x.remove()); klick(`.tabbar button[data-tab="${t}"]`); };
+  const zurListe = (t, sel) => { $$('.sheet-bg').forEach((x) => x.remove()); state.kunde = state.objekt = state.project = state.wohnung = state.partner = null; tabState[t] = {}; switchTab(t); setTimeout(() => klick(sel), 60); };
+  const pdf = $$('.pdfz').pop();
+  const ae = document.activeElement;
+  ({
+    neuAngebot: () => zurListe('angebote', '#aNeu'),
+    neuKunde: () => zurListe('kunden', '#kNew'),
+    neuPartner: () => zurListe('partner', '#pNew'),
+    neuRechnung: () => { switchTab('rechnungen'); setTimeout(() => window.Rechnung?.neu(null, () => switchTab('rechnungen')), 60); },
+    speichern: () => { if (ae?.matches?.('input, textarea, select')) { ae.blur(); ae.focus?.(); } toast('Gespeichert. DOM speichert jede Eingabe sofort.'); },
+    pdfSpeichern: () => pdf ? klick('.pdfz [data-dsp]') : klick('#aSpeichern') || klick('#rSpeichern') || toast('Zuerst ein Dokument öffnen, z. B. „Angebot ansehen“.', 4000),
+    drucken: () => pdf ? klick('.pdfz [data-doe]') : toast('Zuerst ein Dokument öffnen, dann Strg+P.', 4000),
+    einstellungen: () => seite('einstellungen'),
+    suche: () => { seite('suche'); setTimeout(() => $('#suQ')?.focus(), 80); },
+    heute: () => seite('heute'), kalender: () => seite('kalender'), auswertung: () => seite('auswertung'), preisliste: () => seite('preisliste'), hilfe: () => seite('hilfe'),
+    kunden: () => reiter('kunden'), partner: () => reiter('partner'), angebote: () => reiter('angebote'), projekt: () => reiter('projekt'), rechnungen: () => reiter('rechnungen'),
+    zurueck: () => { const tb = $('#topback'); if (tb && !tb.hidden) tb.click(); },
+    kuerzel: () => sheet('Tastenkürzel', KUERZEL.map(([k, l]) => ({ label: l, sub: k, value: null }))),
+  })[b]?.();
+}
+window.DomDesktop?.befehle?.(desktopBefehl);
 document.addEventListener('keydown', (e) => {
   if (e.key !== 'Escape' || e.defaultPrevented) return;
   const fenster = $$('.sheet-bg, .menu-bg').pop();
@@ -334,6 +377,7 @@ function zielOeffnen(z) {
   if (new URLSearchParams(location.search).get('ziel')) history.replaceState(null, '', location.pathname);
   zielOeffnen(ziel || (vorgabe('heuteStart') === 'nein' ? 'kunden' : 'heute'));
   window.appGestartet = true;
+  window.seiteFuss?.();
   window.Einrichten?.start(); // fehlt auf diesem Gerät noch etwas (Anmeldung, Schlüssel …)? Dann der Reihe nach fragen
   navigator.serviceWorker?.addEventListener('message', (e) => { if (e.data?.ziel) zielOeffnen(e.data.ziel); });
   setTimeout(() => window.Push?.abgleich(), 4000);
