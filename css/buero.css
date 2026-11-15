@@ -317,3 +317,60 @@ html.buero main:has(> .db) .heute-zu { display: none; }
 .zl-t { display: flex; flex-direction: column; padding-top: 3px; min-width: 0; }
 .zl-t b { font-size: 14px; } .zl-t span { font-size: 13px; color: var(--muted); white-space: pre-wrap; }
 .zl-x { width: 26px; height: 26px; opacity: .5; } .zl-x:hover { opacity: 1; }
+
+/* ---------- Version 109: Dashboard eigene Seite, Objekte beim Kunden, Qualität beim Partner, Preislisten ---------- */
+html:not(.buero) .tabbar .nur-buero { display: none !important; }
+/* Objekte und Vor-Ort-Aufnahmen über die ganze Breite (beim Kunden das Wichtigste) */
+html.buero .akte-obj { background: var(--card); border: 1px solid var(--line); border-left: 4px solid var(--brass); border-radius: 8px; margin-bottom: 16px; }
+html.buero .akte-obj .akte-h, html.buero .akte-vo .akte-h { display: flex; gap: 8px; align-items: baseline; }
+html.buero .akte-objl { padding: 12px 16px 14px; }
+html.buero .akte-objl > .sec-h, html.buero .akte-objl > .hint { display: none; }
+html.buero .akte-objl .olist { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 10px; }
+html.buero .akte-objl .olist .ocard { margin: 0; height: 100%; }
+html.buero .akte-objl .olist .row { grid-column: 1 / -1; display: flex; gap: 8px; margin: 0; }
+html.buero .akte-objl .olist .row .add-room { width: auto; margin: 0; padding: 8px 14px; }
+html.buero .akte-objl > .docs { margin: 0 !important; display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); }
+html.buero .akte-objl > .link-add { display: inline-flex; }
+html.buero .akte-vo { border-top: 1px solid var(--line); }
+html.buero .akte-vo .akte-h { border-radius: 0; }
+html.buero .akte-vo [data-akvo] { padding: 10px 16px 14px; }
+.vo-st { font-weight: 600; } .vo-st.gelb { color: #8a5a0f; } .vo-st.gruen { color: #2f7a4b; } .vo-st.muted { color: var(--muted); }
+.vo-los { display: inline-flex; gap: 6px; } .vo-los .btn.small { height: 28px; padding: 0 10px; font-size: 12.5px; }
+html.buero .db-auf { margin-bottom: 18px; }
+/* Am Angebot: von der Aufnahme weiter zum Angebot */
+html.buero .ape-weiter { display: flex; align-items: center; gap: 12px; background: #fdf8ef; border: 1px solid #ecdcbc; border-radius: 8px; padding: 10px 14px; margin: 0 0 14px; font-size: 14px; }
+html.buero .ape-weiter span { flex: 1; }
+html.buero .ape-weiter .btn svg.i { width: 15px; height: 15px; }
+/* Qualität beim Partner: klar an/aus wie Umschalter */
+html.buero #pStufe { gap: 6px; }
+html.buero #pStufe .qchip { background: #fff; color: var(--text); border: 1px solid var(--line); border-radius: 6px; height: 34px; padding: 0 14px; font-weight: 600; }
+html.buero #pStufe .qchip svg.i { display: none; }
+html.buero #pStufe .qchip:hover { border-color: var(--navy); }
+html.buero #pStufe .qchip.on { background: var(--navy); color: #fff; border-color: var(--navy); }
+html.buero #pStufe .qchip.on svg.i { display: inline-block; color: #fff; width: 14px; height: 14px; margin-right: 4px; }
+/* Preisliste der Firma steht am PC in eigener Registerkarte */
+html.buero .akte [data-apane="re"] :is(#pPreisH, #pPreisH + .hint, #pPreise) { display: none; }
+html.buero .pp-tab td { padding: 5px 10px; }
+html.buero .pp-tab tbody tr { cursor: default; }
+html.buero .pp-in { height: 32px; margin: 0; width: 100%; text-align: right; font-size: 14px; padding: 0 8px; }
+html.buero .pp-in.l { text-align: left; }
+html.buero .pp-x { width: 28px; height: 28px; opacity: .55; } html.buero .pp-x:hover { opacity: 1; }
+html.buero .pp-neu td { background: #f8f9fb; }
+html.buero .pp-neu select { height: 32px; margin: 0 8px 0 0; width: auto; max-width: 520px; font-size: 13.5px; }
+html.buero .pp-neu .btn.small { height: 32px; }
+html.buero .pp-kopf { display: flex; flex-direction: column; gap: 8px; margin-bottom: 12px; }
+html.buero .pp-kopf .search { margin: 0; max-width: 520px; }
+html.buero .pp-info { display: flex; align-items: center; gap: 18px; margin-bottom: 10px; font-size: 14px; }
+html.buero .pp-info .btn { margin-left: auto; }
+html.buero .pp-kond { display: flex; gap: 12px; background: var(--card); border: 1px solid var(--line); border-radius: 8px; padding: 10px 14px; margin-bottom: 12px; font-size: 14px; white-space: pre-line; }
+/* Preislisten im Angebot: Gruppen zum Aufklappen */
+.apl-gr + .apl-gr { border-top: 1px solid var(--line); }
+.apl-g { display: flex; align-items: center; gap: 6px; width: 100%; position: sticky; top: 0; z-index: 1; background: #eef1f5; border: 0; padding: 7px 10px; font: inherit; font-size: 13px; font-weight: 650; color: var(--text); cursor: pointer; text-align: left; }
+.apl-g:hover { background: #e3e8ef; }
+.apl-g svg.i { width: 14px; height: 14px; flex: none; transition: transform .15s; }
+.apl-gr.auf > .apl-g svg.i { transform: rotate(90deg); }
+.apl-g span { flex: 1; }
+.apl-g small { color: var(--muted); font-weight: 500; }
+html.buero .pp-tab { table-layout: fixed; }
+.vo-los .btn.small { white-space: nowrap; }
+html.buero .akte-objl .olist .row .add-room { flex: 0 0 auto; }

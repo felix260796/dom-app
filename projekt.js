@@ -175,8 +175,9 @@ window.Projekt = (() => {
       if (r) { Object.assign(r, { customer, address, kundeId: k.id }); const { status, ...data } = r; await kvSet('project:' + id, data); }
     }
   }
-  async function oeffnen(id) {
+  async function oeffnen(id, opt = {}) {
     schrittWahl.delete(id);
+    if (opt.pc) pcWahl.set(id, opt.pc); // am PC: 'vorort' (Vor-Ort-Aufnahme) oder 'angebot'
     const w = await kvGet(key(id));
     if (!w) { toast('Projekt nicht gefunden.'); return; }
     w.mappe ??= {};
@@ -654,10 +655,12 @@ window.Projekt = (() => {
     const nr = zu ? sperrInfo(w).nr : aktNr(w, list);
     const kopf = `<div class="ape-top">
         <div class="ape-tt"><span class="ang-st ${stand[0]}">${stand[1]}</span><b>Angebot${nr ? ` Nr. ${esc(nr)}` : ''}</b>${w.titel ? `<span class="muted">· ${esc(w.titel)}</span>` : ''}</div>
-        <div class="seg ape-seg">${[['angebot', 'Angebot'], ['vorort', `Vor Ort aufgenommen${nVo ? ` (${nVo})` : ''}`]].map(([id, n]) => `<button type="button" data-pcs="${id}" class="${seite === id ? 'on' : ''}">${n}</button>`).join('')}</div>
+        <div class="seg ape-seg">${[['angebot', 'Angebot'], ['vorort', `Vor-Ort-Aufnahme${nVo ? ` (${nVo})` : ''}`]].map(([id, n]) => `<button type="button" data-pcs="${id}" class="${seite === id ? 'on' : ''}">${n}</button>`).join('')}</div>
       </div>`;
     const versteckt = `<button id="dMappe" hidden></button><button id="dBau" hidden></button><button id="dAngebot" hidden></button>`;
-    if (seite === 'vorort') return `${kopf}<div class="ape-vo">${vorOrtTab(ctx)}</div>${versteckt}<button id="wDel" hidden></button>`;
+    // Roter Faden am PC: Aufnahme ansehen → „Weiter zum Angebot“ (Rückmeldung Felix 15.11.)
+    if (seite === 'vorort') return `${kopf}<div class="ape-weiter"><span>${nVo ? 'Das wurde vor Ort aufgenommen. Daraus entsteht das Angebot.' : 'Noch nichts vor Ort aufgenommen. Das Angebot geht auch ohne.'}</span>
+        <button type="button" class="btn small" data-pcs="angebot">${zu ? 'Zum Angebot' : 'Weiter zum Angebot'} ${icon('chevron')}</button></div><div class="ape-vo">${vorOrtTab(ctx)}</div>${versteckt}<button id="wDel" hidden></button>`;
     if (zu) return `${kopf}<div class="ape ape-zu"><div class="ape-main">${angeboteTab(ctx)}</div></div>${versteckt}`;
     const A = window.Angebot._intern, texte = texteVon(w), anspr = A.ansprechpartner(), E = A.einstellungen();
     const K = kopfVon(w, list), erst = K.erst, a = K.a, mitPos = mitPosVon(list), sq = schnellVon(k);
