@@ -6,7 +6,7 @@
  * Kern-Funktionen (Speicher, KI, Bilder) stehen in core.js. */
 
 // ---------- Symbole (einfache Linien-Icons) ----------
-const APP_VERSION = '108';
+const APP_VERSION = '109';
 const ICONS = {
   plus: '<path d="M12 5v14M5 12h14"/>',
   camera: '<path d="M3 8.5A2 2 0 0 1 5 6.5h2l1.6-2h6.8l1.6 2h2a2 2 0 0 1 2 2V18a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><circle cx="12" cy="13" r="3.6"/>',
@@ -127,7 +127,7 @@ function switchTab(tab, restore) {
   $$('.tabbar button').forEach((b) => b.classList.toggle('active', b.dataset.tab === tab));
   window.scrollTo(0, 0);
   if (tab === 'einstellungen') state.editPkg = null;
-  ({ kunden: viewProjekt, partner: () => Partner.start(), projekt: viewProjekt, angebote: viewProjekt, rechnungen: () => Finanzen.view(), heute: () => Heute.view(), suche: () => Suche.view(), karte: () => Karte.view(), auswertung: () => Finanzen.auswertungView(), unterlagen: () => Unterlagen.view(), hilfe: () => Hilfe.view(), einstellungen: viewEinstellungen })[tab]();
+  ({ dashboard: () => window.Buero?.dashboardView(), kunden: viewProjekt, partner: () => Partner.start(), projekt: viewProjekt, angebote: viewProjekt, rechnungen: () => Finanzen.view(), heute: () => Heute.view(), suche: () => Suche.view(), karte: () => Karte.view(), auswertung: () => Finanzen.auswertungView(), unterlagen: () => Unterlagen.view(), hilfe: () => Hilfe.view(), einstellungen: viewEinstellungen })[tab]();
 }
 /** Reiter wechseln und dort direkt etwas öffnen, z. B. openTab('kunden', { kunde }). */
 window.openTab = (tab, s) => switchTab(tab, s);
@@ -292,11 +292,13 @@ $('#brandBtn').onclick = menue;
   logo.onclick = () => { if (innerWidth >= 900) { switchTab('heute'); seiteMarkieren('heute'); } else menue(); };
   nav.prepend(logo);
   const trenn = document.createElement('i'); trenn.className = 'seite-trenn nur-breit'; nav.append(trenn);
-  const TABS = ['heute', 'suche', 'karte', 'unterlagen', 'hilfe', 'einstellungen'];
-  ['heute', 'suche', 'kalender', 'karte', 'auswertung', 'preisliste', 'ppreise', 'unterlagen', 'hilfe', 'einstellungen'].forEach((id) => {
-    const m = MENUE.find((x) => x[0] === id); if (!m) return;
+  const TABS = ['dashboard', 'heute', 'suche', 'karte', 'unterlagen', 'hilfe', 'einstellungen'];
+  // Dashboard nur im Büro-Programm (html.buero), nicht am iPhone/iPad
+  const DB = ['dashboard', 'Dashboard', 'chart', () => '', () => switchTab('dashboard')];
+  ['dashboard', 'heute', 'suche', 'kalender', 'karte', 'auswertung', 'preisliste', 'ppreise', 'unterlagen', 'hilfe', 'einstellungen'].forEach((id) => {
+    const m = id === 'dashboard' ? DB : MENUE.find((x) => x[0] === id); if (!m) return;
     const b = document.createElement('button');
-    b.className = 'nur-breit klein';
+    b.className = 'nur-breit klein' + (id === 'dashboard' ? ' nur-buero' : '');
     if (TABS.includes(id)) b.dataset.tab = id;
     b.dataset.seite = id;
     b.innerHTML = `${icon(m[2])}<span>${esc(m[1])}</span>`;
@@ -357,7 +359,7 @@ function desktopBefehl(b) {
     suche: () => { seite('suche'); setTimeout(() => $('#suQ')?.focus(), 80); },
     karte: () => seite('karte'), ppreise: () => seite('ppreise'), unterlagen: () => seite('unterlagen'),
     sicherung: () => window.Backup?.excel(),
-    heute: () => seite('heute'), kalender: () => seite('kalender'), auswertung: () => seite('auswertung'), preisliste: () => seite('preisliste'), hilfe: () => seite('hilfe'),
+    dashboard: () => seite('dashboard'), heute: () => seite('heute'), kalender: () => seite('kalender'), auswertung: () => seite('auswertung'), preisliste: () => seite('preisliste'), hilfe: () => seite('hilfe'),
     kunden: () => reiter('kunden'), partner: () => reiter('partner'), angebote: () => reiter('angebote'), projekt: () => reiter('projekt'), rechnungen: () => reiter('rechnungen'),
     zurueck: () => { const tb = $('#topback'); if (tb && !tb.hidden) tb.click(); },
     kuerzel: () => sheet('Tastenkürzel', (window.DomDesktop ? KUERZEL : KUERZEL_BROWSER).map(([k, l]) => ({ label: l, sub: k, value: null }))),
@@ -399,7 +401,7 @@ $('#micBtn').onclick = () => { const t = state.tab; Sprache.view(() => switchTab
 
 function zielOeffnen(z) {
   if (z === 'kalender') { switchTab('heute'); Kalender.view(); return; }
-  switchTab(['kunden', 'heute', 'projekt', 'angebote', 'auftraege', 'kontakte', 'rechnungen', 'partner'].includes(z) ? z : 'heute');
+  switchTab(['kunden', 'heute', 'dashboard', 'projekt', 'angebote', 'auftraege', 'kontakte', 'rechnungen', 'partner'].includes(z) ? z : 'heute');
 }
 
 // ---------- Start ----------

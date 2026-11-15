@@ -245,6 +245,7 @@ window.Partner = (() => {
   async function preislistenView() {
     state.partner = null;
     if (!alle.size) await laden();
+    if (window.Tabelle?.istBuero() && window.Buero?.partnerPreislisten) return Buero.partnerPreislisten(); // am PC als Tabelle
     header('Preislisten der Partner', 'nach Gewerk', { label: 'Zurück', fn: () => switchTab('partner') });
     const ps = liste().filter((p) => p.art !== 'lief');
     const gruppen = {};

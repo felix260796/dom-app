@@ -58,6 +58,7 @@ window.Buero = (() => {
     }));
   }
   /** Allgemeine Preisliste oder die eines Partners: suchen, mit + übernehmen oder in die Tabelle ziehen. */
+  const plOffen = new Set();
   async function plPane(el, tabBox) {
     const A = window.Angebot._intern, PL = await A.preisliste();
     const partner = (window.Partner?.liste() || []).filter((p) => Object.keys(p.preise || {}).length || (p.eigenePreise || []).length)
@@ -71,16 +72,20 @@ window.Buero = (() => {
     };
     el.innerHTML = `<select class="apl-q" aria-label="Preisliste"><option value="">Allgemeine Preisliste</option>${partner.map((p) => `<option value="${esc(p.id)}" ${p.id === plQuelle ? 'selected' : ''}>${esc(Partner.titel(p))}${p.gewerk ? ' · ' + esc(p.gewerk) : ''}</option>`).join('')}</select>
       <label class="search apl-s">${icon('search')}<input type="search" placeholder="Leistung suchen …" value="${esc(plSuche)}" autocomplete="off"></label>
-      <p class="hint apl-h">${plQuelle ? 'Partnerpreise ohne Zuschlag.' : 'Preise netto für den Kunden.'} Mit + übernehmen oder in die Tabelle ziehen.</p>
+      <p class="hint apl-h">${plQuelle ? 'Partnerpreise ohne Zuschlag.' : 'Preise netto für den Kunden.'} Gruppe anklicken zum Aufklappen, mit + übernehmen oder in die Tabelle ziehen.</p>
       <div class="apl-l"></div>`;
     const liste = $('.apl-l', el);
     const zeichnen = () => {
       const w = plSuche.trim().toLowerCase().split(/\s+/).filter(Boolean);
-      const alle = zeilen().filter((z) => !w.length || w.every((t) => `${z.text} ${z.gruppe}`.toLowerCase().includes(t)));
-      const l = alle.slice(0, 300);
-      let gr = null;
-      liste.innerHTML = l.map((z, i) => `${z.gruppe !== gr ? `<div class="apl-g">${esc((gr = z.gruppe) || 'Ohne Gewerk')}</div>` : ''}<div class="apl-z" draggable="true" data-pi="${i}"><span class="apl-t">${esc(z.text)}<small>${esc(z.einheit || '')}${z.preis ? ' · ' + eur(z.preis) : ''}</small></span><button type="button" class="icon-btn apl-plus" data-pp="${i}" title="Ins Angebot übernehmen">${icon('plus')}</button></div>`).join('')
-        + (alle.length > l.length ? `<p class="hint">${alle.length - l.length} weitere, bitte genauer suchen.</p>` : '') || '<p class="hint">Nichts gefunden.</p>';
+      const l = zeilen().filter((z) => !w.length || w.every((t) => `${z.text} ${z.gruppe}`.toLowerCase().includes(t)));
+      // Gruppen (Gewerke) zugeklappt; beim Suchen ist alles offen (Wunsch Felix 15.11.)
+      const gruppen = new Map();
+      l.forEach((z, i) => { const g = z.gruppe || 'Ohne Gewerk'; if (!gruppen.has(g)) gruppen.set(g, []); gruppen.get(g).push(i); });
+      liste.innerHTML = [...gruppen].map(([g, ii]) => { const auf = w.length > 0 || plOffen.has(g);
+        return `<div class="apl-gr ${auf ? 'auf' : ''}"><button type="button" class="apl-g" data-plg="${esc(g)}" aria-expanded="${auf}">${icon('chevron')}<span>${esc(g)}</span><small>${ii.length}</small></button>
+          ${auf ? ii.map((i) => { const z = l[i]; return `<div class="apl-z" draggable="true" data-pi="${i}"><span class="apl-t">${esc(z.text)}<small>${esc(z.einheit || '')}${z.preis ? ' · ' + eur(z.preis) : ''}</small></span><button type="button" class="icon-btn apl-plus" data-pp="${i}" title="Ins Angebot übernehmen">${icon('plus')}</button></div>`; }).join('') : ''}</div>`; }).join('')
+        || '<p class="hint">Nichts gefunden.</p>';
+      $$('[data-plg]', liste).forEach((b) => (b.onclick = () => { const g = b.dataset.plg; plOffen.has(g) ? plOffen.delete(g) : plOffen.add(g); zeichnen(); }));
       $$('[data-pp]', liste).forEach((b) => (b.onclick = () => tabBox?.__einfuegen?.(l[+b.dataset.pp].pos)));
       $$('[data-pi]', liste).forEach((z) => (z.ondragstart = (e) => { e.dataTransfer.setData('application/x-dom-pos', JSON.stringify(l[+z.dataset.pi].pos)); e.dataTransfer.setData('text/plain', l[+z.dataset.pi].text); e.dataTransfer.effectAllowed = 'copy'; }));
     };
@@ -462,9 +467,9 @@ window.Buero = (() => {
     const x = typ === 'k' ? state.kunde : state.partner;
     const rest = [...m.children].filter((c) => c !== act && c !== form);
     const gruppen = typ === 'k'
-      ? [['ap', 'Angebote und Projekte'], ['zeit', 'Zeitleiste'], ['obj', $('#oVorOrt', m) ? 'Vor Ort' : 'Objekte'], ['re', 'Rechnungen'], ['pf', 'Kontakt halten']]
-      : [['kond', 'Konditionen und Verträge'], ['pers', 'Persönliches'], ['re', 'Rechnungen'], ['pf', 'Kontakt halten']];
-    const inhalt = Object.fromEntries(gruppen.map(([id]) => [id, []]));
+      ? [['ap', 'Angebote und Projekte'], ['zeit', 'Zeitleiste'], ['re', 'Rechnungen'], ['pf', 'Kontakt halten']]
+      : [['kond', 'Konditionen und Verträge'], ['preis', 'Preisliste'], ['pers', 'Persönliches'], ['re', 'Rechnungen'], ['pf', 'Kontakt halten']];
+    const inhalt = Object.fromEntries([...gruppen.map(([id]) => [id, []]), ['obj', []]]);
     const stamm = [];
     let akt = gruppen[0][0];
     for (const c of rest) {
@@ -481,12 +486,26 @@ window.Buero = (() => {
       inhalt[akt].push(c);
     }
     const box = document.createElement('div'); box.className = 'akte';
-    box.innerHTML = `<div class="akte-kopf"></div><div class="akte-leib"><section class="akte-stamm"><div class="akte-h"><b>Stammdaten</b></div></section>
+    // Objekte sind beim Kunden das Wichtigste: eigener Streifen über die ganze Breite (Rückmeldung Felix 15.11.)
+    const objN = typ === 'k' ? (x?.objekte?.length || 0) : 0;
+    box.innerHTML = `<div class="akte-kopf"></div>${typ === 'k' ? `<section class="akte-obj"><div class="akte-h"><b>${$('#oVorOrt', m) ? 'Objekt' : 'Objekte'}</b>${objN > 1 ? `<span class="muted">${objN}</span>` : ''}</div><div class="akte-objl"></div></section>` : ''}<div class="akte-leib"><section class="akte-stamm"><div class="akte-h"><b>Stammdaten</b></div></section>
       <section class="akte-reg"><div class="akte-tabs">${gruppen.map(([id, n]) => `<button type="button" data-areg="${id}">${esc(n)}</button>`).join('')}</div>${gruppen.map(([id]) => `<div class="akte-pane" data-apane="${id}" hidden></div>`).join('')}</section></div>`;
     m.prepend(box);
     $('.akte-kopf', box).append(act);
     $('.akte-stamm', box).append(form, ...stamm);
     for (const [id] of gruppen) $(`[data-apane="${id}"]`, box).append(...inhalt[id]);
+    if (typ === 'k') {
+      $('.akte-objl', box).append(...inhalt.obj);
+      if (!x?.isNew) projectIndex().then((idx) => aufnahmen(idx.filter((y) => y.kundeId === x.id))).then((l) => {
+        if (!l.length || !box.isConnected) return;
+        const s = document.createElement('div'); s.className = 'akte-vo';
+        s.innerHTML = `<div class="akte-h"><b>Vor-Ort-Aufnahmen</b><span class="muted">${l.length}</span></div><div data-akvo></div>`;
+        $('.akte-obj', box).append(s);
+        aufnahmenTabelle($('[data-akvo]', s), l, { id: 'kundeAufnahmen' });
+      }).catch((e) => console.warn('Aufnahmen', e));
+    }
+    else if (!x?.isNew && x?.art !== 'lief') partnerPreise($('[data-apane="preis"]', box), x);
+    else $('[data-areg="preis"]', box)?.remove();
     if (x?.isNew) { $('.akte-reg', box).hidden = true; box.classList.add('neu'); return; }
     const zeig = (id) => {
       regWahl[typ] = id;
@@ -496,7 +515,7 @@ window.Buero = (() => {
       if (typ === 'k' && id === 're') kundenRechnungen($('[data-apane="re"]', box), x).catch((e) => console.warn(e));
     };
     $$('[data-areg]', box).forEach((b) => (b.onclick = () => zeig(b.dataset.areg)));
-    zeig(regWahl[typ]);
+    zeig(gruppen.some((g) => g[0] === regWahl[typ]) ? regWahl[typ] : gruppen[0][0]);
   }
   async function kundenRechnungen(el, k) {
     if (!window.Rechnung) return;
@@ -510,12 +529,130 @@ window.Buero = (() => {
       zeilen: l.map((r) => { const st = Rechnung.standVon(r), w = idx.find((x) => x.id === r.projektId); return { id: r.id, werte: { nr: r.nr || 'Entwurf', datum: { text: tag(r.datum), sort: r.datum || '' }, art: Rechnung.artName?.(r) || '', prj: w?.titel || '',
         betrag: { text: eur(Rechnung.zahlbetrag(r)), sort: Rechnung.zahlbetrag(r) }, st: { text: st[0], html: `<span style="color:${st[1]};font-weight:600">${esc(st[0])}</span>` } } }; }) });
   }
+  // ---------- Version 109: Vor-Ort-Aufnahmen (roter Faden Aufnahme → Angebot) ----------
+  /** Projekte mit Vor-Ort-Aufnahme (Gespräch, Notiz, Scans, offene Fragen). [{ x, w, t, was, stand }] */
+  async function aufnahmen(idx) {
+    const l = await Promise.all(idx.map(async (x) => {
+      const w = await kvGet('wohnung:' + x.id); if (!w) return null;
+      const g = w.gespraech || {}, vo = w.vorOrt || {}, scans = vo.scans || [];
+      const was = [];
+      if (g.transcript?.trim() || g.zus) was.push('Gespräch');
+      if (scans.length) was.push(scans.length === 1 ? '1 Raumscan' : `${scans.length} Raumscans`);
+      if (String(vo.notiz || '').trim()) was.push('Notiz');
+      if ((vo.fragen || []).length) was.push('Fragen');
+      let fotos = 0; try { fotos = w.kundeId ? await Bilder.anzahl(w.kundeId, w.objektId, w.id) : 0; } catch {}
+      if (fotos) was.push(fotos === 1 ? '1 Foto' : `${fotos} Fotos`);
+      if (!was.length) return null;
+      const t = Math.max(g.t || 0, ...scans.map((sc) => sc.t || 0), vo.t || 0) || w.created || 0;
+      const st = Projekt.norm(w.status);
+      const stand = st === 'besichtigung' ? ['Noch kein Angebot', 'gelb'] : st === 'entwurf' ? ['Angebot in Arbeit', ''] : st === 'angebot' ? ['Angebot verschickt', ''] : st === 'abgesagt' ? ['Abgesagt', 'muted'] : ['Zugesagt', 'gruen'];
+      return { x, w, t, was, stand, neu: ['besichtigung', 'entwurf'].includes(st) };
+    }));
+    return l.filter(Boolean).sort((a, b) => b.t - a.t);
+  }
+  /** Tabelle der Aufnahmen mit Knöpfen „Aufnahme“ und „Angebot“. */
+  function aufnahmenTabelle(el, l, { id, mitKunde }) {
+    window.Tabelle.liste(el, { id, leer: 'Keine Vor-Ort-Aufnahme.', oeffnen: (pid) => Projekt.oeffnen(pid, { pc: 'vorort' }),
+      spalten: [{ k: 'tag', t: 'Aufgenommen', b: 110 }, ...(mitKunde ? [{ k: 'kunde', t: 'Kunde' }] : []), { k: 'prj', t: 'Projekt' }, { k: 'was', t: 'Was' }, { k: 'stand', t: 'Angebot', b: 150 }, { k: 'los', t: '', b: 260 }],
+      zeilen: l.map((a) => ({ id: a.x.id, werte: { tag: { text: tag(a.t), sort: a.t }, kunde: { text: Kunden.name(Kunden.byId(a.w.kundeId)) || a.w.customer || '', html: `<b>${esc(Kunden.name(Kunden.byId(a.w.kundeId)) || a.w.customer || '')}</b>` },
+        prj: { text: a.w.titel || 'Projekt', html: mitKunde ? esc(a.w.titel || 'Projekt') : `<b>${esc(a.w.titel || 'Projekt')}</b>` }, was: a.was.join(', '),
+        stand: { text: a.stand[0], html: `<span class="vo-st ${a.stand[1]}">${esc(a.stand[0])}</span>` },
+        los: { text: '', html: `<span class="vo-los"><button type="button" class="btn secondary small" data-vo="${esc(a.x.id)}">Aufnahme</button><button type="button" class="btn small" data-voa="${esc(a.x.id)}">${a.stand[0] === 'Noch kein Angebot' ? 'Angebot erstellen' : 'Zum Angebot'}</button></span>` } } })) });
+    $$('[data-vo]', el).forEach((b) => (b.onclick = (e) => { e.stopPropagation(); Projekt.oeffnen(b.dataset.vo, { pc: 'vorort' }); }));
+    $$('[data-voa]', el).forEach((b) => (b.onclick = (e) => { e.stopPropagation(); Projekt.oeffnen(b.dataset.voa, { pc: 'angebot' }); }));
+  }
+
+  // ---------- Version 109: Preislisten der Partner wie in einer Büro-Software ----------
+  const zahl = (v) => { const n = parseFloat(String(v).replace(/\./g, '').replace(',', '.')); return isFinite(n) ? Math.round(n * 100) / 100 : 0; };
+  const komma = (n) => (n || n === 0 ? (+n).toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '');
+  /** Preisliste eines Partners als Tabelle: Position, Einheit, unser Preis, Preis der Firma, Abstand. Eingaben speichern sofort. */
+  async function partnerPreise(el, p) {
+    if (!el || !p) return;
+    const A = window.Angebot?._intern; let PL; try { PL = await A.preisliste(); } catch { el.innerHTML = '<p class="empty">Preisliste nicht geladen.</p>'; return; }
+    const pos = (nr) => PL.positionen.find((x) => x.nr === nr);
+    const sichern = async () => { p.updated = Date.now(); await kvSet('partner:' + p.id, p); window.Backup?.markChange?.(); await window.Partner?.laden(); };
+    const zeichnen = () => {
+      const ein = Object.entries(p.preise || {}).filter(([nr]) => pos(nr)).sort((a, b) => a[0].localeCompare(b[0], 'de', { numeric: true }));
+      const gew = [...new Set(PL.positionen.map((x) => x.gewerk))];
+      const abstand = (unser, preis) => { if (!unser || !preis) return ''; const d = Math.round((1 - preis / unser) * 100); return `<span class="${d < 10 ? 'rot' : ''}">${d} %</span>`; };
+      el.innerHTML = `<div class="ltab-wz pp-wz"><span class="muted">${ein.length + (p.eigenePreise || []).length} Positionen · was diese Firma pro Einheit verlangt (netto). Die Kalkulation rechnet damit.</span>
+          <button type="button" class="btn secondary small" data-ppx>${icon('download')} Als Excel speichern</button></div>
+        <div class="ltab-wrap"><table class="ltab pp-tab"><colgroup><col style="width:90px"><col><col style="width:80px"><col style="width:120px"><col style="width:130px"><col style="width:90px"><col style="width:44px"></colgroup>
+          <thead><tr><th>Nr.</th><th>Leistung</th><th>Einheit</th><th class="r">Unser Preis</th><th class="r">Preis der Firma</th><th class="r" title="Wie viel die Firma unter unserem Angebotspreis liegt">Spanne</th><th></th></tr></thead>
+          <tbody>${ein.map(([nr, ep]) => { const it = pos(nr), u = A.ep(it); return `<tr><td>${esc(nr)}</td><td>${esc(it.text)}</td><td>${esc(it.einheit)}</td><td class="r">${komma(u)} €</td>
+              <td class="r"><input type="text" inputmode="decimal" class="pp-in" data-sp="${esc(nr)}" value="${komma(ep)}"></td><td class="r">${abstand(u, +ep)}</td>
+              <td><button type="button" class="icon-btn pp-x" data-spdel="${esc(nr)}" title="Entfernen">${icon('trash')}</button></td></tr>`; }).join('')}
+            ${(p.eigenePreise || []).map((x) => `<tr data-ep="${esc(x.id)}"><td class="muted">eigene</td><td><input type="text" class="pp-in l" data-epf="text" value="${esc(x.text)}" placeholder="Leistung, z. B. Stundenlohn Helfer"></td>
+              <td><input type="text" class="pp-in l" data-epf="einheit" value="${esc(x.einheit)}" placeholder="Einh."></td><td></td>
+              <td class="r"><input type="text" inputmode="decimal" class="pp-in" data-epf="preis" value="${komma(x.preis)}"></td><td></td>
+              <td><button type="button" class="icon-btn pp-x" data-epdel="${esc(x.id)}" title="Entfernen">${icon('trash')}</button></td></tr>`).join('')}
+            <tr class="pp-neu"><td colspan="7"><select data-spneu><option value="">+ Position aus unserer Preisliste …</option>${gew.map((g) => `<optgroup label="${esc(g)}">${PL.positionen.filter((x) => x.gewerk === g && !(p.preise || {})[x.nr]).map((x) => `<option value="${esc(x.nr)}">${esc(x.nr)} ${esc(x.text)}</option>`).join('')}</optgroup>`).join('')}</select>
+              <button type="button" class="btn secondary small" data-epneu>${icon('plus')} Eigene Position</button></td></tr></tbody></table></div>`;
+      $$('[data-sp]', el).forEach((i) => (i.onchange = async () => { p.preise[i.dataset.sp] = zahl(i.value); await sichern(); zeichnen(); }));
+      $$('[data-spdel]', el).forEach((b) => (b.onclick = async () => { delete p.preise[b.dataset.spdel]; await sichern(); zeichnen(); }));
+      $$('[data-ep]', el).forEach((tr) => { const x = (p.eigenePreise || []).find((y) => y.id === tr.dataset.ep);
+        $$('[data-epf]', tr).forEach((i) => (i.onchange = async () => { x[i.dataset.epf] = i.dataset.epf === 'preis' ? zahl(i.value) : i.value.trim(); await sichern(); if (i.dataset.epf === 'preis') i.value = komma(x.preis); })); });
+      $$('[data-epdel]', el).forEach((b) => (b.onclick = async () => { p.eigenePreise = (p.eigenePreise || []).filter((y) => y.id !== b.dataset.epdel); await sichern(); zeichnen(); }));
+      $('[data-spneu]', el).onchange = async (e) => { const nr = e.target.value; if (!nr) return; (p.preise ??= {})[nr] = 0; await sichern(); zeichnen(); $(`[data-sp="${CSS.escape(nr)}"]`, el)?.select(); };
+      $('[data-epneu]', el).onclick = async () => { (p.eigenePreise ??= []).push({ id: uid(), text: '', einheit: 'Std.', preis: 0 }); await sichern(); zeichnen(); $$('[data-ep] [data-epf="text"]', el).pop()?.focus(); };
+      $('[data-ppx]', el).onclick = () => excelSpeichern(`Preisliste ${Partner.titel(p) || 'Partner'}`, [['Nr.', 'Leistung', 'Einheit', 'Unser Preis', 'Preis der Firma'],
+        ...ein.map(([nr, ep]) => { const it = pos(nr); return [nr, it.text, it.einheit, A.ep(it), +ep]; }), ...(p.eigenePreise || []).map((x) => ['', x.text, x.einheit, '', +x.preis || 0])], 'Preisliste');
+      $$('.pp-in', el).forEach((i) => i.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); i.blur(); } }));
+    };
+    zeichnen();
+  }
+  let ppGewerk = '';
+  /** „Preislisten der Partner“ am PC: alle Partner in einer Tabelle, Klick öffnet die Preisliste zum Bearbeiten. */
+  function partnerPreislisten() {
+    state.partner = null;
+    header('Preislisten der Partner', 'wer macht was zu welchem Preis');
+    const gewerke = (p) => String(p.gewerk || '').split(/\s*[,/&+;]\s*|\s+und\s+/i).map((s) => s.trim()).filter(Boolean);
+    const anzahl = (p) => Object.keys(p.preise || {}).length + (p.eigenePreise || []).length;
+    const ps = Partner.liste().filter((p) => p.art !== 'lief');
+    const alleG = [...new Set(ps.flatMap(gewerke))].sort((a, b) => a.localeCompare(b, 'de'));
+    if (ppGewerk && !alleG.includes(ppGewerk)) ppGewerk = '';
+    main().innerHTML = `<div class="pp-kopf"><label class="search">${icon('search')}<input type="search" id="ppQ" placeholder="Firma, Gewerk oder Leistung suchen" autocomplete="off"></label>
+        <div class="chips gfilter">${[['', 'Alle Gewerke'], ...alleG.map((g) => [g, g])].map(([id, n]) => `<button class="qchip ${ppGewerk === id ? 'on' : ''}" data-ppg="${esc(id)}">${esc(n)}</button>`).join('')}</div></div>
+      <div id="ppL"></div>`;
+    const zeichnen = () => {
+      const w = ($('#ppQ').value || '').trim().toLowerCase().split(/\s+/).filter(Boolean);
+      const such = (p) => `${p.firma} ${p.inhaber} ${p.gewerk} ${(p.eigenePreise || []).map((x) => x.text).join(' ')}`.toLowerCase();
+      const l = ps.filter((p) => (!ppGewerk || gewerke(p).includes(ppGewerk)) && w.every((t) => such(p).includes(t)));
+      window.Tabelle.liste($('#ppL'), { id: 'ppreise', leer: ps.length ? 'Nichts gefunden.' : 'Noch keine Subunternehmer angelegt.', oeffnen: (id) => partnerPreisSeite(Partner.byId(id)),
+        spalten: [{ k: 'firma', t: 'Firma' }, { k: 'gewerk', t: 'Gewerk' }, { k: 'stufe', t: 'Qualität', b: 170 }, { k: 'n', t: 'Positionen', r: 1, b: 110 }, { k: 'inh', t: 'Ansprechpartner' }, { k: 'tel', t: 'Telefon', b: 170 }],
+        zeilen: l.map((p) => ({ id: p.id, werte: { firma: { text: Partner.titel(p) || 'Ohne Namen', html: `<b>${esc(Partner.titel(p) || 'Ohne Namen')}</b>` }, gewerk: p.gewerk, stufe: (p.stufen || []).join(', '),
+          n: { text: anzahl(p) ? String(anzahl(p)) : 'keine', sort: anzahl(p), html: anzahl(p) ? String(anzahl(p)) : '<span class="muted">keine</span>' }, inh: p.inhaber, tel: p.telefon } })) });
+    };
+    $('#ppQ').oninput = debounce(zeichnen, 120);
+    $$('[data-ppg]').forEach((b) => (b.onclick = () => { ppGewerk = b.dataset.ppg; $$('[data-ppg]').forEach((x) => x.classList.toggle('on', x === b)); zeichnen(); }));
+    zeichnen();
+  }
+  function partnerPreisSeite(p) {
+    if (!p) return;
+    header(Partner.titel(p) || 'Partner', `Preisliste · ${p.gewerk || 'ohne Gewerk'}`, { label: 'Preislisten', fn: () => { partnerPreislisten(); window.scrollTo(0, 0); } });
+    main().innerHTML = `<div class="pp-info">${(p.stufen || []).length ? `<span>Qualität: <b>${esc(p.stufen.join(', '))}</b></span>` : ''}${p.inhaber ? `<span>${esc(p.inhaber)}</span>` : ''}${p.telefon ? `<a href="${esc(telLink(p.telefon))}">${esc(p.telefon)}</a>` : ''}
+        <button type="button" class="btn secondary small" id="ppAkte">${icon('user')} Partner öffnen</button></div>
+      ${p.konditionen ? `<div class="pp-kond"><b>Konditionen</b><span>${esc(p.konditionen)}</span></div>` : ''}<div id="ppT"></div>`;
+    $('#ppAkte').onclick = () => Partner.oeffnen(p.id);
+    partnerPreise($('#ppT'), p);
+    window.scrollTo(0, 0);
+  }
+
   const akteBeob = new MutationObserver(() => akte());
   addEventListener('DOMContentLoaded', () => { const m = $('#main'); if (m) akteBeob.observe(m, { childList: true }); });
 
   // ---------- Version 108: Dashboard (gemeinsam für Felix und Deniel), Wiedervorlage, offene Posten ----------
   // Am PC wird „Heute“ zur Übersicht: oben Kennzahlen, links was heute dran ist, rechts Wiedervorlage und offene Posten.
   const tagIso = (d) => d.toISOString().slice(0, 10);
+  /** Eigene Seite „Dashboard“ in der Seitenleiste (nur am PC, Wunsch Felix 15.11.: nicht in „Heute“). */
+  async function dashboardView() {
+    state.tab = 'dashboard'; state.kalender = false; state.finanzen = false;
+    header('Dashboard', new Date().toLocaleDateString('de-DE', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }));
+    main().innerHTML = '';
+    window.scrollTo(0, 0);
+    await dashboard(main(), { idx: await projectIndex() });
+  }
+  const PHASE = { einplanen: 'Einzuplanen', eingeplant: 'Eingeplant', laufend: 'In Durchführung' };
   async function dashboard(el, { idx }) {
     if (!istPc() || !el || $('.db', el)) return;
     const h = tagIso(new Date()), jahr = h.slice(0, 4), monat = h.slice(0, 7);
@@ -535,10 +672,11 @@ window.Buero = (() => {
     let wert = 0;
     const werte = new Map();
     await Promise.all(versendet.map(async (x) => { try { const w = await kvGet('wohnung:' + x.id); const n = w ? (await Finanzen.kalkulation(w)).soll.netto || 0 : 0; werte.set(x.id, n); wert += n; } catch {} }));
-    if (!el.isConnected || state.tab !== 'heute') return;
+    if (!el.isConnected || state.tab !== 'dashboard') return;
     const e0 = (x) => Math.round(x).toLocaleString('de-DE') + ' €';
     const kachel = (ziel, zahl, text, farbe = '') => `<button type="button" class="db-k ${farbe}" data-dbz="${ziel}"><b>${zahl}</b><span>${text}</span></button>`;
-    const links = [...el.children];
+    let neuAuf = []; try { neuAuf = (await aufnahmen(idx.filter((x) => ['besichtigung', 'entwurf'].includes(Projekt.norm(x.status))))).filter((a) => a.neu); } catch (e) { console.warn(e); }
+    if (!el.isConnected || state.tab !== 'dashboard') return;
     const box = document.createElement('div'); box.className = 'db';
     box.innerHTML = `<div class="db-kpi">
         ${kachel('angebote', offenAng.length, `Offene Angebote${wert ? ` · ${e0(wert)} verschickt` : ''}`)}
@@ -548,26 +686,30 @@ window.Buero = (() => {
         ${kachel('auswertung', e0(umsatz), `Umsatz ${jahr} netto`)}
         ${kachel('auswertung', e0(eingangM), 'Zahlungseingang diesen Monat')}
       </div>
-      <div class="db-leib"><section class="db-sp"><div class="db-h"><b>Heute dran</b></div><div class="db-heute"></div></section>
+      ${neuAuf.length ? `<div class="db-h" id="dbAuf"><b>Neue Vor-Ort-Aufnahmen: daraus Angebote machen</b><span class="muted">${neuAuf.length}</span></div><div class="db-t db-auf" data-dbauf></div>` : ''}
+      <div class="db-leib"><section class="db-sp"><div class="db-h" id="dbPj"><b>Projekte eingeplant oder laufend</b><span class="muted">${laufend.length}</span></div><div class="db-t" data-dbpj></div></section>
         <section class="db-sp"><div class="db-h" id="dbWv"><b>Wiedervorlage: verschickte Angebote</b><span class="muted">${wv.length}</span></div><div class="db-t" data-dbwv></div>
           <div class="db-h" id="dbOp"><b>Offene Posten</b><span class="muted">${op.length}${op.length ? ' · ' + e0(summe(op)) : ''}</span></div><div class="db-t" data-dbop></div></section></div>`;
     el.prepend(box);
-    $('.db-heute', box).append(...links.filter((c) => !c.matches('.heute-zu')));
-    if (!$('.db-heute', box).children.length) $('.db-heute', box).innerHTML = '<p class="empty">Heute ist nichts offen.</p>';
     $$('[data-dbz]', box).forEach((b) => (b.onclick = () => {
       const z = b.dataset.dbz;
-      if (z === 'wv' || z === 'op') return $(z === 'wv' ? '#dbWv' : '#dbOp', box).scrollIntoView({ behavior: 'smooth', block: 'start' });
+      if (z === 'wv' || z === 'op' || z === 'projekt') return $({ wv: '#dbWv', op: '#dbOp', projekt: '#dbPj' }[z], box).scrollIntoView({ behavior: 'smooth', block: 'start' });
       if (z === 'auswertung') return desktopBefehl('auswertung');
       $(`.tabbar button[data-tab="${z}"]`)?.click();
     }));
+    if (neuAuf.length) aufnahmenTabelle($('[data-dbauf]', box), neuAuf, { id: 'dbAufnahmen', mitKunde: true });
+    window.Tabelle.liste($('[data-dbpj]', box), { id: 'dbProjekte', leer: 'Kein Projekt eingeplant oder laufend.', oeffnen: (id) => Projekt.oeffnen(id),
+      spalten: [{ k: 'kunde', t: 'Kunde' }, { k: 'titel', t: 'Projekt' }, { k: 'phase', t: 'Stand', b: 140 }, { k: 'start', t: 'Baustart', b: 100 }],
+      zeilen: laufend.map((x) => ({ id: x.id, werte: { kunde: { text: Kunden.name(Kunden.byId(x.kundeId)) || x.customer || '', html: `<b>${esc(Kunden.name(Kunden.byId(x.kundeId)) || x.customer || '')}</b>` }, titel: x.titel || 'Projekt',
+        phase: PHASE[Projekt.phase(x)] || '', start: { text: x.baustart ? tag(x.baustart) : '', sort: x.baustart || '' } } })) });
     const kName = (x) => Kunden.name(Kunden.byId(x?.kundeId)) || x?.customer || '';
     const tel = (x) => Kunden.byId(x?.kundeId)?.telefon || '';
     window.Tabelle.liste($('[data-dbwv]', box), { id: 'wiedervorlage', leer: 'Kein verschicktes Angebot offen.', oeffnen: (id) => Projekt.oeffnen(id),
       spalten: [{ k: 'kunde', t: 'Kunde' }, { k: 'titel', t: 'Angebot' }, { k: 'tage', t: 'Seit', r: 1, b: 90 }, { k: 'wert', t: 'Netto', r: 1, b: 110 }, { k: 'tel', t: '', b: 50 }],
       zeilen: wv.map((v) => ({ id: v.x.id, werte: { kunde: { text: kName(v.x), html: `<b>${esc(kName(v.x))}</b>` }, titel: v.x.titel || v.x.room || 'Angebot',
-        tage: { text: v.tage + ' Tage', sort: v.tage, html: `<span class="${v.tage >= nf ? 'db-faellig' : ''}">${v.tage} Tage</span>` }, wert: { text: werte.get(v.x.id) ? e0(werte.get(v.x.id)) : '', sort: werte.get(v.x.id) || 0 },
+        tage: { text: v.tage >= 0 ? v.tage + ' Tage' : '', sort: v.tage, html: v.tage >= 0 ? `<span class="${v.tage >= nf ? 'db-faellig' : ''}">${v.tage} Tage</span>` : '' }, wert: { text: werte.get(v.x.id) ? e0(werte.get(v.x.id)) : '', sort: werte.get(v.x.id) || 0 },
         tel: { text: tel(v.x), html: tel(v.x) ? `<a class="icon-btn db-tel" href="${esc(telLink(tel(v.x)))}" title="Anrufen ${esc(tel(v.x))}" data-stop>${icon('phone')}</a>` : '' } } })) });
-    window.Tabelle.liste($('[data-dbop]', box), { id: 'offenePosten', leer: 'Alles bezahlt.', oeffnen: (id) => Rechnung.detail(op.find((r) => r.id === id), () => switchTab('heute')),
+    window.Tabelle.liste($('[data-dbop]', box), { id: 'offenePosten', leer: 'Alles bezahlt.', oeffnen: (id) => Rechnung.detail(op.find((r) => r.id === id), () => dashboardView()),
       spalten: [{ k: 'nr', t: 'Rechnung', b: 110 }, { k: 'kunde', t: 'Kunde' }, { k: 'faellig', t: 'Fällig', b: 100 }, { k: 'stufe', t: 'Stand', b: 150 }, { k: 'betrag', t: 'Betrag', r: 1, b: 110 }, { k: 'mahn', t: '', b: 100 }],
       zeilen: op.map((r) => { const x = idx.find((y) => y.id === r.projektId), st = Rechnung.standVon(r), mahnbar = Rechnung.ueberfaellig(r) && (r.mahnungen?.length || 0) < 3;
         return { id: r.id, werte: { nr: r.nr || 'Entwurf', kunde: kName(x), faellig: { text: tag(r.faellig), sort: r.faellig || '' }, stufe: { text: st[0], html: `<span style="color:${st[1]};font-weight:600">${esc(st[0])}</span>` },
@@ -575,7 +717,7 @@ window.Buero = (() => {
     $$('[data-stop]', box).forEach((a) => a.addEventListener('click', (e) => e.stopPropagation()));
     $$('[data-mahn]', box).forEach((b) => (b.onclick = async (e) => {
       e.stopPropagation();
-      await Rechnung.detail(op.find((r) => r.id === b.dataset.mahn), () => switchTab('heute'));
+      await Rechnung.detail(op.find((r) => r.id === b.dataset.mahn), () => dashboardView());
       (await warte('#rMahn', 5000))?.click();
     }));
   }
@@ -668,5 +810,5 @@ window.Buero = (() => {
   const anker = /^#seite=([a-z]+)$/.exec(location.hash);
   if (anker) addEventListener('load', () => setTimeout(() => { try { desktopBefehl(anker[1]); } catch {} history.replaceState(null, '', location.pathname); }, 1500));
 
-  return { dashboard, zeitleiste, rechnungAus, angebotSeite, drucken, druckeBlob, kundenblatt, ablage, ablageJetzt, ordnerWaehlen, listeExtras, kontextMenue, excelSpeichern, preislisteExcel, rundmail, dateienAblegen, zuletztZeichnen };
+  return { aufnahmen, dashboardView, partnerPreislisten, partnerPreise, dashboard, zeitleiste, rechnungAus, angebotSeite, drucken, druckeBlob, kundenblatt, ablage, ablageJetzt, ordnerWaehlen, listeExtras, kontextMenue, excelSpeichern, preislisteExcel, rundmail, dateienAblegen, zuletztZeichnen };
 })();
