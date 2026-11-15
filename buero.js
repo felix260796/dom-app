@@ -281,6 +281,7 @@ window.Buero = (() => {
       const punkte = [['Öffnen', 'eye', () => oeffnen(z.id)],
         ['Zeile kopieren (für Excel)', 'clipboard', async () => { await navigator.clipboard.writeText(spalten.map((c) => nurText(z.werte[c.k])).join('\t')); toast('Kopiert.', 2000); }]];
       if (['kunden', 'angebote', 'projekte', 'rechnungenAus'].includes(id)) punkte.push(['Als PDF ansehen', 'file', async () => { oeffnen(z.id); await pause(700); dokumentDerSeite(); }], ['Drucken', 'file', async () => { oeffnen(z.id); await pause(700); drucken(); }]);
+      if (['angebote', 'projekte'].includes(id)) punkte.push(['Rechnung schreiben', 'euro', () => rechnungAus(z.id)]);
       punkte.push(['Liste als Excel speichern', 'download', export_]);
       if (['kunden', 'partner', 'angebote', 'projekte'].includes(id)) punkte.push(['Löschen …', 'trash', async () => {
         oeffnen(z.id);
@@ -461,7 +462,7 @@ window.Buero = (() => {
     const x = typ === 'k' ? state.kunde : state.partner;
     const rest = [...m.children].filter((c) => c !== act && c !== form);
     const gruppen = typ === 'k'
-      ? [['ap', 'Angebote und Projekte'], ['obj', $('#oVorOrt', m) ? 'Vor Ort' : 'Objekte'], ['re', 'Rechnungen'], ['pf', 'Kontakt halten']]
+      ? [['ap', 'Angebote und Projekte'], ['zeit', 'Zeitleiste'], ['obj', $('#oVorOrt', m) ? 'Vor Ort' : 'Objekte'], ['re', 'Rechnungen'], ['pf', 'Kontakt halten']]
       : [['kond', 'Konditionen und Verträge'], ['pers', 'Persönliches'], ['re', 'Rechnungen'], ['pf', 'Kontakt halten']];
     const inhalt = Object.fromEntries(gruppen.map(([id]) => [id, []]));
     const stamm = [];
@@ -491,6 +492,7 @@ window.Buero = (() => {
       regWahl[typ] = id;
       $$('[data-areg]', box).forEach((b) => b.classList.toggle('on', b.dataset.areg === id));
       $$('[data-apane]', box).forEach((p) => (p.hidden = p.dataset.apane !== id));
+      if (typ === 'k' && id === 'zeit') zeitleiste($('[data-apane="zeit"]', box), x).catch((e) => console.warn(e));
       if (typ === 'k' && id === 're') kundenRechnungen($('[data-apane="re"]', box), x).catch((e) => console.warn(e));
     };
     $$('[data-areg]', box).forEach((b) => (b.onclick = () => zeig(b.dataset.areg)));
@@ -511,6 +513,148 @@ window.Buero = (() => {
   const akteBeob = new MutationObserver(() => akte());
   addEventListener('DOMContentLoaded', () => { const m = $('#main'); if (m) akteBeob.observe(m, { childList: true }); });
 
+  // ---------- Version 108: Dashboard (gemeinsam für Felix und Deniel), Wiedervorlage, offene Posten ----------
+  // Am PC wird „Heute“ zur Übersicht: oben Kennzahlen, links was heute dran ist, rechts Wiedervorlage und offene Posten.
+  const tagIso = (d) => d.toISOString().slice(0, 10);
+  async function dashboard(el, { idx }) {
+    if (!istPc() || !el || $('.db', el)) return;
+    const h = tagIso(new Date()), jahr = h.slice(0, 4), monat = h.slice(0, 7);
+    const offenAng = idx.filter((x) => ['besichtigung', 'entwurf', 'angebot'].includes(Projekt.norm(x.status)));
+    const versendet = idx.filter((x) => Projekt.norm(x.status) === 'angebot');
+    const nf = Projekt.nachfassen();
+    const wv = versendet.map((x) => ({ x, tage: Projekt.seitTagen(x.versendetAm) })).sort((a, b) => b.tage - a.tage);
+    const laufend = idx.filter((x) => ['einplanen', 'eingeplant', 'laufend'].includes(Projekt.phase(x)));
+    const rech = window.Rechnung?.liste() || [];
+    const op = rech.filter(Rechnung.istOffen).sort((a, b) => (a.faellig || '').localeCompare(b.faellig || ''));
+    const ueber = op.filter(Rechnung.ueberfaellig);
+    const summe = (l) => l.reduce((s, r) => s + Rechnung.zahlbetrag(r), 0);
+    const netto = (r) => (r.netto || 0) - (r.abzuege || []).reduce((t, a) => t + (a.netto || 0), 0);
+    const umsatz = rech.filter((r) => Rechnung.gilt(r) && String(r.datum || '').startsWith(jahr)).reduce((s, r) => s + netto(r), 0);
+    const eingangM = rech.filter((r) => r.art !== 'storno' && !r.storniert && String(r.bezahlt || '').startsWith(monat)).reduce((s, r) => s + Rechnung.zahlbetrag(r), 0);
+    // Wert der versendeten Angebote (netto, aus der Kalkulation)
+    let wert = 0;
+    const werte = new Map();
+    await Promise.all(versendet.map(async (x) => { try { const w = await kvGet('wohnung:' + x.id); const n = w ? (await Finanzen.kalkulation(w)).soll.netto || 0 : 0; werte.set(x.id, n); wert += n; } catch {} }));
+    if (!el.isConnected || state.tab !== 'heute') return;
+    const e0 = (x) => Math.round(x).toLocaleString('de-DE') + ' €';
+    const kachel = (ziel, zahl, text, farbe = '') => `<button type="button" class="db-k ${farbe}" data-dbz="${ziel}"><b>${zahl}</b><span>${text}</span></button>`;
+    const links = [...el.children];
+    const box = document.createElement('div'); box.className = 'db';
+    box.innerHTML = `<div class="db-kpi">
+        ${kachel('angebote', offenAng.length, `Offene Angebote${wert ? ` · ${e0(wert)} verschickt` : ''}`)}
+        ${kachel('wv', wv.filter((v) => v.tage >= nf).length, `Zum Nachfassen (ab ${nf} Tagen)`, wv.some((v) => v.tage >= nf) ? 'gelb' : '')}
+        ${kachel('projekt', laufend.length, 'Projekte eingeplant oder laufend')}
+        ${kachel('op', e0(summe(op)), `Offene Posten${ueber.length ? `, ${e0(summe(ueber))} überfällig` : ''}`, ueber.length ? 'rot' : '')}
+        ${kachel('auswertung', e0(umsatz), `Umsatz ${jahr} netto`)}
+        ${kachel('auswertung', e0(eingangM), 'Zahlungseingang diesen Monat')}
+      </div>
+      <div class="db-leib"><section class="db-sp"><div class="db-h"><b>Heute dran</b></div><div class="db-heute"></div></section>
+        <section class="db-sp"><div class="db-h" id="dbWv"><b>Wiedervorlage: verschickte Angebote</b><span class="muted">${wv.length}</span></div><div class="db-t" data-dbwv></div>
+          <div class="db-h" id="dbOp"><b>Offene Posten</b><span class="muted">${op.length}${op.length ? ' · ' + e0(summe(op)) : ''}</span></div><div class="db-t" data-dbop></div></section></div>`;
+    el.prepend(box);
+    $('.db-heute', box).append(...links.filter((c) => !c.matches('.heute-zu')));
+    if (!$('.db-heute', box).children.length) $('.db-heute', box).innerHTML = '<p class="empty">Heute ist nichts offen.</p>';
+    $$('[data-dbz]', box).forEach((b) => (b.onclick = () => {
+      const z = b.dataset.dbz;
+      if (z === 'wv' || z === 'op') return $(z === 'wv' ? '#dbWv' : '#dbOp', box).scrollIntoView({ behavior: 'smooth', block: 'start' });
+      if (z === 'auswertung') return desktopBefehl('auswertung');
+      $(`.tabbar button[data-tab="${z}"]`)?.click();
+    }));
+    const kName = (x) => Kunden.name(Kunden.byId(x?.kundeId)) || x?.customer || '';
+    const tel = (x) => Kunden.byId(x?.kundeId)?.telefon || '';
+    window.Tabelle.liste($('[data-dbwv]', box), { id: 'wiedervorlage', leer: 'Kein verschicktes Angebot offen.', oeffnen: (id) => Projekt.oeffnen(id),
+      spalten: [{ k: 'kunde', t: 'Kunde' }, { k: 'titel', t: 'Angebot' }, { k: 'tage', t: 'Seit', r: 1, b: 90 }, { k: 'wert', t: 'Netto', r: 1, b: 110 }, { k: 'tel', t: '', b: 50 }],
+      zeilen: wv.map((v) => ({ id: v.x.id, werte: { kunde: { text: kName(v.x), html: `<b>${esc(kName(v.x))}</b>` }, titel: v.x.titel || v.x.room || 'Angebot',
+        tage: { text: v.tage + ' Tage', sort: v.tage, html: `<span class="${v.tage >= nf ? 'db-faellig' : ''}">${v.tage} Tage</span>` }, wert: { text: werte.get(v.x.id) ? e0(werte.get(v.x.id)) : '', sort: werte.get(v.x.id) || 0 },
+        tel: { text: tel(v.x), html: tel(v.x) ? `<a class="icon-btn db-tel" href="${esc(telLink(tel(v.x)))}" title="Anrufen ${esc(tel(v.x))}" data-stop>${icon('phone')}</a>` : '' } } })) });
+    window.Tabelle.liste($('[data-dbop]', box), { id: 'offenePosten', leer: 'Alles bezahlt.', oeffnen: (id) => Rechnung.detail(op.find((r) => r.id === id), () => switchTab('heute')),
+      spalten: [{ k: 'nr', t: 'Rechnung', b: 110 }, { k: 'kunde', t: 'Kunde' }, { k: 'faellig', t: 'Fällig', b: 100 }, { k: 'stufe', t: 'Stand', b: 150 }, { k: 'betrag', t: 'Betrag', r: 1, b: 110 }, { k: 'mahn', t: '', b: 100 }],
+      zeilen: op.map((r) => { const x = idx.find((y) => y.id === r.projektId), st = Rechnung.standVon(r), mahnbar = Rechnung.ueberfaellig(r) && (r.mahnungen?.length || 0) < 3;
+        return { id: r.id, werte: { nr: r.nr || 'Entwurf', kunde: kName(x), faellig: { text: tag(r.faellig), sort: r.faellig || '' }, stufe: { text: st[0], html: `<span style="color:${st[1]};font-weight:600">${esc(st[0])}</span>` },
+          betrag: { text: e0(Rechnung.zahlbetrag(r)), sort: Rechnung.zahlbetrag(r) }, mahn: { text: '', html: mahnbar ? `<button type="button" class="btn secondary small db-mahn" data-mahn="${esc(r.id)}">Mahnen</button>` : '' } } }; }) });
+    $$('[data-stop]', box).forEach((a) => a.addEventListener('click', (e) => e.stopPropagation()));
+    $$('[data-mahn]', box).forEach((b) => (b.onclick = async (e) => {
+      e.stopPropagation();
+      await Rechnung.detail(op.find((r) => r.id === b.dataset.mahn), () => switchTab('heute'));
+      (await warte('#rMahn', 5000))?.click();
+    }));
+  }
+
+  // ---------- Version 108: Zeitleiste beim Kunden wie im CRM ----------
+  // Alles nach Datum: eigene Notizen, Anrufe, Mails, Treffen (k.zeitleiste) und was DOM ohnehin weiß
+  // (Angebote, Statuswechsel, Rechnungen, Zahlungen, Termine, Kontakt halten). Nichts doppelt gespeichert.
+  const ZL_ARTEN = [['notiz', 'Notiz', 'edit'], ['anruf', 'Anruf', 'phone'], ['mail', 'E-Mail', 'mail'], ['treffen', 'Treffen', 'users']];
+  async function zeitleiste(el, k) {
+    const idx = (await projectIndex()).filter((x) => x.kundeId === k.id);
+    const ws = (await Promise.all(idx.map((x) => kvGet('wohnung:' + x.id)))).filter(Boolean);
+    try { await window.Rechnung?.laden(); } catch {}
+    const ein = [];
+    const dazu = (t, ic, titel, sub = '', ziel = '', eigen = null) => { const ms = typeof t === 'number' ? t : t ? new Date(String(t).slice(0, 10) + 'T12:00').getTime() : 0; if (ms) ein.push({ t: ms, ic, titel, sub, ziel, eigen }); };
+    if (k.created) dazu(k.created, 'user', 'Kunde angelegt', k.quelle ? 'Quelle: ' + k.quelle : '');
+    for (const w of ws) {
+      const n = w.titel || 'Projekt';
+      dazu(w.created, 'file', `Angebot angelegt: ${n}`, w.nr || '', 'p:' + w.id);
+      for (const v of w.verlauf || []) if (v.t && v.st !== undefined) dazu(v.t, 'sliders', `${n}: ${Projekt.statusName(v.st)}`, '', 'p:' + w.id);
+      if (w.versendetAm && !(w.verlauf || []).some((v) => v.st === 'angebot')) dazu(w.versendetAm, 'mail', `Angebot verschickt: ${n}`, '', 'p:' + w.id);
+      if (w.absage?.t) dazu(w.absage.t, 'x', `Abgesagt: ${n}`, w.absage.grund ? 'Grund: ' + w.absage.grund : '', 'p:' + w.id);
+      if (w.auftragsbestaetigung?.t) dazu(w.auftragsbestaetigung.t, 'check', `Auftragsbestätigung: ${n}`, w.auftragsbestaetigung.gesendetAm ? 'gesendet ' + tag(w.auftragsbestaetigung.gesendetAm) : '', 'p:' + w.id);
+      if (w.baustart) dazu(w.baustart, 'home', `Baustart: ${n}`, '', 'p:' + w.id);
+    }
+    const ids = new Set(idx.map((x) => x.id));
+    for (const r of (window.Rechnung?.liste() || []).filter((r) => ids.has(r.projektId))) {
+      const betrag = Rechnung.zahlbetrag(r).toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' €';
+      dazu(r.datum, 'euro', `${Rechnung.artName(r)} ${r.nr || ''}`.trim(), betrag, 'r:' + r.id);
+      if (r.bezahlt && r.art !== 'storno' && !r.storniert) dazu(r.bezahlt, 'check', `Bezahlt: ${r.nr || 'Rechnung'}`, betrag, 'r:' + r.id);
+      for (const [i, m] of (r.mahnungen || []).entries()) dazu(m.datum, 'bell', `${i ? `${i + 1}. Mahnung` : 'Zahlungserinnerung'}: ${r.nr || ''}`, '', 'r:' + r.id);
+    }
+    const heute = tagIso(new Date()), von = String(+heute.slice(0, 4) - 3) + heute.slice(4), bis = String(+heute.slice(0, 4) + 1) + heute.slice(4);
+    for (const t of (window.Kalender?.eintraege(von, bis, { filter: false }) || []).filter((t) => t.typ === 'termin' && t.kundeId === k.id))
+      dazu(t.datum, 'calendar', `Termin: ${t.titel || 'Termin'}`, [t.von, t.ort].filter(Boolean).join(' · '), 'kal:' + t.datum);
+    if (k.pflege?.anruf?.zuletzt) dazu(k.pflege.anruf.zuletzt, 'phone', 'Angerufen (Kontakt halten)');
+    if (k.pflege?.essen?.zuletzt) dazu(k.pflege.essen.zuletzt, 'users', 'Getroffen (Kontakt halten)');
+    for (const z of k.zeitleiste || []) { const a = ZL_ARTEN.find((x) => x[0] === z.art) || ZL_ARTEN[0]; dazu(z.t, a[2], a[1] + (z.wer ? ' · ' + z.wer : ''), z.text, '', z); }
+    ein.sort((a, b) => b.t - a.t);
+    const jetzt = Date.now();
+    el.innerHTML = `<div class="zl-neu"><select id="zlArt" aria-label="Art">${ZL_ARTEN.map(([id, n]) => `<option value="${id}">${n}</option>`).join('')}</select>
+        <input type="text" id="zlText" placeholder="Was war? z. B. Angerufen, will Angebot bis Freitag" autocomplete="off">
+        <input type="text" id="zlTag" value="${tag(jetzt)}" aria-label="Datum" maxlength="10">
+        <button type="button" class="btn small" id="zlDazu">${icon('plus')} Eintragen</button></div>
+      <div class="zl">${ein.map((e, i) => `<div class="zl-z ${e.t > jetzt ? 'zukunft' : ''} ${e.eigen ? 'eigen' : ''}" ${e.ziel ? `data-zlz="${esc(e.ziel)}"` : ''}>
+        <span class="zl-d">${tag(e.t)}</span><span class="zl-i">${icon(e.ic)}</span>
+        <span class="zl-t"><b>${esc(e.titel)}</b>${e.sub ? `<span>${esc(e.sub)}</span>` : ''}</span>
+        ${e.eigen ? `<button type="button" class="icon-btn zl-x" data-zlx="${i}" title="Eintrag löschen">${icon('x')}</button>` : ''}</div>`).join('') || '<p class="empty">Noch nichts eingetragen.</p>'}</div>`;
+    const sichern = async () => { await Kunden.speichern(k); window.Backup?.markChange?.(); zeitleiste(el, k); };
+    $('#zlDazu', el).onclick = async () => {
+      const text = $('#zlText', el).value.trim(); if (!text) return $('#zlText', el).focus();
+      const d = Kontakt.lesen?.($('#zlTag', el).value) || '';
+      const t = d ? new Date(d + 'T' + new Date().toTimeString().slice(0, 8)).getTime() : Date.now();
+      const wer = (Kalender.team?.() || []).find((p) => p.id === Kalender.wer())?.name?.split(' ')[0] || '';
+      k.zeitleiste = [...(Array.isArray(k.zeitleiste) ? k.zeitleiste : []), { id: uid(), t, art: $('#zlArt', el).value, text, wer }];
+      await sichern();
+    };
+    $('#zlText', el).onkeydown = (e) => { if (e.key === 'Enter') { e.preventDefault(); $('#zlDazu', el).click(); } };
+    $$('[data-zlx]', el).forEach((b) => (b.onclick = async (e) => {
+      e.stopPropagation();
+      const z = ein[+b.dataset.zlx].eigen;
+      if (!(await sheet('Eintrag löschen?', [{ label: 'Löschen', sub: z.text, icon: icon('trash'), value: 'ja' }, { label: 'Behalten', icon: icon('x'), value: null }]))) return;
+      k.zeitleiste = (k.zeitleiste || []).filter((x) => x.id !== z.id); await sichern();
+    }));
+    $$('[data-zlz]', el).forEach((z) => (z.onclick = () => {
+      const [a, id] = z.dataset.zlz.split(/:(.*)/);
+      if (a === 'p') Projekt.oeffnen(id);
+      else if (a === 'r') { const r = Rechnung.liste().find((x) => x.id === id); if (r) Rechnung.detail(r, () => Kunden.oeffnen(k.id)); }
+      else if (a === 'kal') desktopBefehl('kalender');
+    }));
+  }
+
+  /** Angebot oder Projekt mit einem Klick in eine Rechnung (Art wählen, dann Rechnung aus den Positionen). */
+  async function rechnungAus(id) {
+    const w = await kvGet('wohnung:' + id);
+    if (!w) return toast('Nicht gefunden.');
+    if (!Projekt.zugesagt(w.status)) { toast('Erst wenn der Kunde zugesagt hat. Im Angebot unter „Stand“ auf „Zugesagt“ stellen, dann geht es mit einem Klick.', 7000); return Projekt.oeffnen(id); }
+    Rechnung.neu(w, () => Projekt.oeffnen(w.id));
+  }
+
   // ---------- Start: Druck-Knopf oben, eigenes Fenster (z. B. Kalender) ----------
   addEventListener('DOMContentLoaded', () => {
     const cal = $('#calBtn');
@@ -524,5 +668,5 @@ window.Buero = (() => {
   const anker = /^#seite=([a-z]+)$/.exec(location.hash);
   if (anker) addEventListener('load', () => setTimeout(() => { try { desktopBefehl(anker[1]); } catch {} history.replaceState(null, '', location.pathname); }, 1500));
 
-  return { angebotSeite, drucken, druckeBlob, kundenblatt, ablage, ablageJetzt, ordnerWaehlen, listeExtras, kontextMenue, excelSpeichern, preislisteExcel, rundmail, dateienAblegen, zuletztZeichnen };
+  return { dashboard, zeitleiste, rechnungAus, angebotSeite, drucken, druckeBlob, kundenblatt, ablage, ablageJetzt, ordnerWaehlen, listeExtras, kontextMenue, excelSpeichern, preislisteExcel, rundmail, dateienAblegen, zuletztZeichnen };
 })();

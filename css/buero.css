@@ -277,3 +277,43 @@ html.buero .akte-pane > .card.kform { border: 0; box-shadow: none; padding: 0; m
 html.buero .akte-pane .btn.big.block { width: auto; display: inline-flex; height: 40px; font-size: 14px; padding: 0 18px; }
 html.buero .akte-sum { margin: 0 0 8px; font-size: 13.5px; }
 html.buero .akte-sum .rot { color: var(--danger); }
+
+/* ---------- Version 108: Dashboard (Heute am PC) ---------- */
+html.buero main:has(> .db) .heute-zu { display: none; }
+.db-kpi { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 10px; margin-bottom: 16px; }
+@media (max-width: 1350px) { .db-kpi { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+.db-k { display: flex; flex-direction: column; align-items: flex-start; gap: 3px; text-align: left; background: var(--card); border: 1px solid var(--line); border-left: 4px solid var(--navy); border-radius: 8px; padding: 12px 14px; font: inherit; cursor: pointer; min-width: 0; }
+.db-k:hover { background: #f8fafc; }
+.db-k b { font-size: 22px; color: var(--navy-ink); line-height: 1.15; }
+.db-k span { font-size: 12.5px; color: var(--muted); }
+.db-k.gelb { border-left-color: #b7791f; } .db-k.gelb b { color: #8a5a0f; }
+.db-k.rot { border-left-color: var(--danger); } .db-k.rot b { color: var(--danger); }
+.db-leib { display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 7fr); gap: 16px; align-items: start; }
+@media (max-width: 1150px) { .db-leib { grid-template-columns: minmax(0, 1fr); } }
+.db-sp { min-width: 0; }
+.db-h { display: flex; align-items: baseline; gap: 8px; margin: 0 0 8px; font-size: 15px; scroll-margin-top: 80px; }
+.db-h + .db-t { margin-bottom: 18px; }
+.db-heute > .sec-h:first-child { margin-top: 0; }
+.db-heute .sec-h h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .03em; color: var(--muted); }
+.db-faellig { color: #8a5a0f; font-weight: 700; }
+.db-tel { width: 30px; height: 30px; display: inline-grid; place-items: center; }
+.db-tel svg.i { width: 15px; height: 15px; }
+.db-mahn { height: 28px; padding: 0 10px; font-size: 12.5px; }
+
+/* ---------- Version 108: Zeitleiste beim Kunden ---------- */
+.zl-neu { display: grid; grid-template-columns: 120px minmax(0, 1fr) 110px auto; gap: 8px; margin-bottom: 14px; }
+.zl-neu input, .zl-neu select { height: 36px; font-size: 14px; margin: 0; }
+.zl-neu .btn { height: 36px; }
+.zl { position: relative; }
+.zl::before { content: ''; position: absolute; left: 116px; top: 4px; bottom: 4px; width: 2px; background: var(--line); }
+.zl-z { position: relative; display: grid; grid-template-columns: 92px 30px minmax(0, 1fr) auto; gap: 0 8px; align-items: start; padding: 6px 4px; border-radius: 6px; }
+.zl-z[data-zlz] { cursor: pointer; }
+.zl-z[data-zlz]:hover { background: #f8fafc; }
+.zl-d { font-size: 12.5px; color: var(--muted); padding-top: 5px; text-align: right; }
+.zl-i { width: 26px; height: 26px; border-radius: 50%; background: #fff; border: 2px solid var(--line); display: grid; place-items: center; position: relative; z-index: 1; }
+.zl-i svg.i { width: 13px; height: 13px; color: var(--navy); }
+.zl-z.eigen .zl-i { border-color: var(--brass); } .zl-z.eigen .zl-i svg.i { color: var(--brass); }
+.zl-z.zukunft { opacity: .6; }
+.zl-t { display: flex; flex-direction: column; padding-top: 3px; min-width: 0; }
+.zl-t b { font-size: 14px; } .zl-t span { font-size: 13px; color: var(--muted); white-space: pre-wrap; }
+.zl-x { width: 26px; height: 26px; opacity: .5; } .zl-x:hover { opacity: 1; }

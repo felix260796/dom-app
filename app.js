@@ -6,7 +6,7 @@
  * Kern-Funktionen (Speicher, KI, Bilder) stehen in core.js. */
 
 // ---------- Symbole (einfache Linien-Icons) ----------
-const APP_VERSION = '107';
+const APP_VERSION = '108';
 const ICONS = {
   plus: '<path d="M12 5v14M5 12h14"/>',
   camera: '<path d="M3 8.5A2 2 0 0 1 5 6.5h2l1.6-2h6.8l1.6 2h2a2 2 0 0 1 2 2V18a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><circle cx="12" cy="13" r="3.6"/>',
@@ -329,7 +329,10 @@ if (window.DomDesktop) document.documentElement.classList.add('desktop');
 // Menüleiste und Tastenkürzel des Windows-Programms (desktop/main.js schickt den Befehl)
 const KUERZEL = [['Strg+N', 'Neues Angebot'], ['Strg+Umschalt+K', 'Neuer Kunde'], ['Strg+Umschalt+R', 'Neue Rechnung'], ['Strg+S', 'Speichern'],
   ['Strg+Umschalt+S', 'PDF speichern unter …'], ['Strg+P', 'Drucken'], ['Strg+F', 'Suchen'], ['Strg+0', 'Heute'], ['Strg+1 … 5', 'Kunden, Partner, Angebote, Projekte, Rechnungen'],
-  ['Strg+K', 'Kalender'], ['Alt+Pfeil links', 'Zurück'], ['Esc', 'Fenster schließen oder zurück'], ['Strg+Plus / Minus', 'Größer, kleiner'], ['F1', 'Wie geht das?']];
+  ['Strg+K', 'Kalender'], ['Alt+Pfeil links', 'Zurück'], ['Esc', 'Fenster schließen oder zurück'], ['Strg+Plus / Minus', 'Größer, kleiner'],
+  ['Rechtsklick auf eine Zeile', 'Öffnen, kopieren, als PDF, drucken, Rechnung schreiben, löschen'], ['Datei auf das Fenster ziehen', 'Fotos und PDFs ablegen'],
+  ['In der Angebotstabelle: Strg+Enter', 'Neue Zeile'], ['In der Angebotstabelle: Strg+Entf', 'Zeile löschen'], ['Strg+V in der Angebotstabelle', 'Positionen aus Excel einfügen'],
+  ['F1', 'Diese Übersicht'], ['Umschalt+F1', 'Wie geht das?']];
 function desktopBefehl(b) {
   if (document.documentElement.classList.contains('einr-offen')) return;
   const klick = (sel) => { const el = $(sel); if (el) el.click(); return !!el; };
