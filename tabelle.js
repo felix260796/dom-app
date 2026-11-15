@@ -184,6 +184,20 @@ window.Tabelle = (() => {
       r.angebot.geaendert = true; rechnen(); await sichern(r);
     }
 
+    /** Position von außen (Seitenleiste Preislisten): { text, einheit, ep } in den Titel tid, sonst in den zuletzt benutzten. */
+    async function einfuegen(pos, tid) {
+      let r = list.find((x) => x.id === tid) || list.find((x) => x.id === box.dataset.aktTitel) || list[list.length - 1];
+      if (!r && opt.titelNeu) { r = await opt.titelNeu(String(vorgabe('kleinName') || 'Leistungen'), { klein: true }); if (!r) return; A.init(r); list.push(r); }
+      if (!r) return;
+      const it = !pos.ep && ausKatalog(pos.text);
+      if (it && (r.angebot.positionen || []).some((x) => x.nr === it.nr)) return toast(`Steht in „${titel(r)}“ schon drin.`, 3500);
+      const i = anlegen(r, { text: pos.text, menge: 0, einheit: pos.einheit || '', ep: +pos.ep || 0 });
+      await sichern(r);
+      box.dataset.aktTitel = r.id; letzteZelle = { r: r.id, i, c: 'menge' };
+      zeichnen(); toast(`In „${titel(r)}“ übernommen. Menge eintragen.`, 2500);
+    }
+    box.__einfuegen = (pos, tid) => einfuegen(pos, tid);
+
     /** Titel (Bereich): neu anlegen, umbenennen, Maße, löschen. */
     async function titelAendern(el) {
       const t = el.dataset.t, v = el.value.trim();
@@ -275,7 +289,20 @@ window.Tabelle = (() => {
         else if (e.target.matches('[data-t]')) titelAendern(e.target).catch((err) => toast('Ging nicht: ' + err.message, 5000));
       };
       box.onclick = (e) => { const b = e.target.closest('[data-t="del"]'); if (b) titelLoeschen(b).catch((err) => toast('Ging nicht: ' + err.message, 5000)); };
-      box.onfocusin = (e) => { const tr = e.target.closest('tbody tr'); $$('tbody tr.akt', box).forEach((t) => t !== tr && t.classList.remove('akt')); tr?.classList.add('akt'); if (e.target.matches('input') && !tr?.dataset.neu) e.target.select(); };
+      box.onfocusin = (e) => {
+        const tr = e.target.closest('tbody tr'); $$('tbody tr.akt', box).forEach((t) => t !== tr && t.classList.remove('akt')); tr?.classList.add('akt');
+        const tid = tr?.dataset.r || tr?.dataset.tr || (tr?.dataset.nr !== '__auto' && tr?.dataset.nr); if (tid) box.dataset.aktTitel = tid; // für „Übernehmen“ aus der Seitenleiste
+        if (e.target.matches('input') && !tr?.dataset.neu) e.target.select();
+      };
+      // Positionen aus der Seitenleiste (Preislisten) hineinziehen: landet im Titel der Zeile, auf die man loslässt
+      box.ondragover = (e) => { if (e.dataTransfer?.types?.includes('application/x-dom-pos')) { e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; $$('tr.drop', box).forEach((t) => t.classList.remove('drop')); e.target.closest?.('tbody tr')?.classList.add('drop'); } };
+      box.ondragleave = (e) => { if (!box.contains(e.relatedTarget)) $$('tr.drop', box).forEach((t) => t.classList.remove('drop')); };
+      box.ondrop = (e) => {
+        const d = e.dataTransfer?.getData('application/x-dom-pos'); if (!d) return;
+        e.preventDefault(); e.stopPropagation(); $$('tr.drop', box).forEach((t) => t.classList.remove('drop'));
+        const tr = e.target.closest?.('tbody tr');
+        einfuegen(JSON.parse(d), tr?.dataset.r || tr?.dataset.tr || tr?.dataset.nr).catch((err) => toast('Ging nicht: ' + err.message, 5000));
+      };
       box.onkeydown = (e) => {
         const el = e.target;
         if (el.matches?.('[data-t]') && e.key === 'Enter') { e.preventDefault(); el.blur(); return; } // Titel: Enter übernimmt (change)
@@ -344,6 +371,7 @@ window.Tabelle = (() => {
         else if (e.key === 'ArrowDown' || e.key === 'ArrowUp') { e.preventDefault(); (e.key === 'ArrowDown' ? tr.nextElementSibling : tr.previousElementSibling)?.focus(); }
       };
     });
+    window.Buero?.listeExtras(box, { id, spalten, reihe, oeffnen }); // Rechtsklick-Menü, Excel
   }
 
   return { istBuero, angebot, liste };

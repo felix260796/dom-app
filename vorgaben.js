@@ -124,6 +124,13 @@ const VORGABEN = {
       { k: 'spracheAdresse', l: 'Anschrift automatisch vervollständigen (Postleitzahl und Ort)', t: 'janein', d: 'ja', h: 'Sagst du nur Straße, Hausnummer und Ort, sucht die App die Postleitzahl dazu. Bei mehreren Treffern wählst du auf der Prüfseite aus.' },
       { k: 'spracheProjekt', l: 'Bei Kundenterminen gleich ein Projekt „Besichtigung“ vorschlagen', t: 'janein', d: 'ja' },
     ]],
+    ['Windows-Programm', [
+      { k: 'ablageAuto', l: 'Jedes PDF zusätzlich in den Kundenordner legen (z. B. OneDrive)', t: 'janein', d: 'ja', h: 'Den Ordner wählst du einmal je Computer: Einstellungen › Gerät einrichten. Gilt nur im Windows-Programm.' },
+      { k: 'ablageMuster', l: 'Unterordner in der Kundenablage', t: 'zeile', d: '{kunde}/{projekt}', h: 'Platzhalter: {kunde} (Nummer und Name), {projekt} (Nummer und Projektname). Schrägstrich = weiterer Unterordner.' },
+      { k: 'zuletztAnzahl', l: 'So viele zuletzt geöffnete Einträge in der Seitenleiste', t: 'zahl', d: 5 },
+      { k: 'rundmailBetreff', l: 'Rundmail: Betreff vorbelegt', t: 'zeile', d: '' },
+      { k: 'rundmailText', l: 'Rundmail: Text vorbelegt', t: 'text', d: 'Hallo,\n\n\n\nViele Grüße\n{absender}\n{firma}', h: 'Platzhalter: {absender} (wem das Gerät gehört), {firma}. Die Mail geht an alle in BCC, darum ohne persönlichen Namen.' },
+    ]],
     ['Baustelle', [
       { k: 'textAbnahme', l: 'Text im Abnahmeprotokoll', t: 'text', d: 'Die oben genannten Leistungen wurden am {datum} gemeinsam begangen und {ergebnis} abgenommen. Mit der Abnahme beginnt die Gewährleistungsfrist. Aufgeführte Mängel beseitigt der Auftragnehmer innerhalb der genannten Fristen.' },
     ]],

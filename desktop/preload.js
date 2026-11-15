@@ -18,6 +18,12 @@ contextBridge.exposeInMainWorld('DomDesktop', {
   updateBereit: (fn) => { ipcRenderer.on('dom:updateBereit', (e, v) => fn(v)); ipcRenderer.invoke('dom:updateBereit').then((v) => v && fn(v)); },
   /** Neue Fassung einspielen: DOM schließt sich, spielt sie ein und startet von selbst wieder. */
   jetztUpdaten: () => ipcRenderer.invoke('dom:jetztUpdaten'),
+  /** Kundenablage: gewählter Ordner (oder null), Ordner wählen, Datei ablegen (teile = Unterordner, z. B. [Kunde, Projekt]). */
+  ablageOrdner: () => ipcRenderer.invoke('dom:ablageOrdner'),
+  ordnerWaehlen: () => ipcRenderer.invoke('dom:ordnerWaehlen'),
+  ablegen: (teile, name, daten) => ipcRenderer.invoke('dom:ablegen', teile, name, daten),
+  /** Weiteres Fenster, z. B. fenster('kalender') für den zweiten Bildschirm. */
+  fenster: (seite) => ipcRenderer.invoke('dom:fenster', seite),
   /** Fehler der Seite ins Protokoll (fehler.log im Benutzerordner). */
   fehler: (text) => ipcRenderer.send('dom:fehler', text),
 });

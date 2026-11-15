@@ -550,7 +550,9 @@ window.Rechnung = (() => {
       if (state.wohnung?.id === w.id) state.wohnung.dokumente = w.dokumente;
       r.dokKey = key; await speichern(r);
     }
-    return new File([doc.output('blob')], name, { type: 'application/pdf' });
+    const datei = new File([doc.output('blob')], name, { type: 'application/pdf' });
+    if (w) window.Buero?.ablage(w, name, datei);
+    return datei;
   }
   /** Die Rechnung als Datei: nach dem Versenden immer die abgelegte Fassung, vorher frisch gebaut (Texte können sich noch ändern). */
   async function datei(r, w) {

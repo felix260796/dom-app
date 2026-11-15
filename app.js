@@ -6,7 +6,7 @@
  * Kern-Funktionen (Speicher, KI, Bilder) stehen in core.js. */
 
 // ---------- Symbole (einfache Linien-Icons) ----------
-const APP_VERSION = '106';
+const APP_VERSION = '107';
 const ICONS = {
   plus: '<path d="M12 5v14M5 12h14"/>',
   camera: '<path d="M3 8.5A2 2 0 0 1 5 6.5h2l1.6-2h6.8l1.6 2h2a2 2 0 0 1 2 2V18a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><circle cx="12" cy="13" r="3.6"/>',
@@ -328,7 +328,7 @@ function seiteMarkieren(id) {
 if (window.DomDesktop) document.documentElement.classList.add('desktop');
 // Menüleiste und Tastenkürzel des Windows-Programms (desktop/main.js schickt den Befehl)
 const KUERZEL = [['Strg+N', 'Neues Angebot'], ['Strg+Umschalt+K', 'Neuer Kunde'], ['Strg+Umschalt+R', 'Neue Rechnung'], ['Strg+S', 'Speichern'],
-  ['Strg+Umschalt+S', 'PDF speichern unter …'], ['Strg+P', 'Drucken (PDF-Programm)'], ['Strg+F', 'Suchen'], ['Strg+0', 'Heute'], ['Strg+1 … 5', 'Kunden, Partner, Angebote, Projekte, Rechnungen'],
+  ['Strg+Umschalt+S', 'PDF speichern unter …'], ['Strg+P', 'Drucken'], ['Strg+F', 'Suchen'], ['Strg+0', 'Heute'], ['Strg+1 … 5', 'Kunden, Partner, Angebote, Projekte, Rechnungen'],
   ['Strg+K', 'Kalender'], ['Alt+Pfeil links', 'Zurück'], ['Esc', 'Fenster schließen oder zurück'], ['Strg+Plus / Minus', 'Größer, kleiner'], ['F1', 'Wie geht das?']];
 function desktopBefehl(b) {
   if (document.documentElement.classList.contains('einr-offen')) return;
@@ -345,7 +345,11 @@ function desktopBefehl(b) {
     neuRechnung: () => { switchTab('rechnungen'); setTimeout(() => window.Rechnung?.neu(null, () => switchTab('rechnungen')), 60); },
     speichern: () => { if (ae?.matches?.('input, textarea, select')) { ae.blur(); ae.focus?.(); } toast('Gespeichert. DOM speichert jede Eingabe sofort.'); },
     pdfSpeichern: () => pdf ? klick('.pdfz [data-dsp]') : klick('#aSpeichern') || klick('#rSpeichern') || toast('Zuerst ein Dokument öffnen, z. B. „Angebot ansehen“.', 4000),
-    drucken: () => pdf ? klick('.pdfz [data-doe]') : toast('Zuerst ein Dokument öffnen, dann Strg+P.', 4000),
+    drucken: () => window.Buero ? Buero.drucken() : pdf ? klick('.pdfz [data-doe]') : toast('Zuerst ein Dokument öffnen, dann Strg+P.', 4000),
+    ablage: () => window.Buero?.ablageJetzt(),
+    rundmail: () => window.Buero?.rundmail(),
+    excel: () => { const b = $('[data-lxls]'); b ? b.click() : toast('Zuerst eine Liste öffnen (Kunden, Partner, Angebote, Projekte, Rechnungen).', 4000); },
+    kalFenster: () => window.DomDesktop?.fenster?.('kalender'),
     einstellungen: () => seite('einstellungen'),
     suche: () => { seite('suche'); setTimeout(() => $('#suQ')?.focus(), 80); },
     karte: () => seite('karte'), ppreise: () => seite('ppreise'), unterlagen: () => seite('unterlagen'),

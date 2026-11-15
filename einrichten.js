@@ -22,15 +22,18 @@ window.Einrichten = (() => {
     ['ki', 'KI-Schlüssel', () => !state.settings.apiKey],
     ['push', 'Mitteilungen', () => !gefragt('push'), true],
     ['geraet', 'Funktionen dieses Geräts', () => !gefragt('geraet'), true],
+    ['ablage', 'Ordner für die Kundenablage', () => !gefragt('ablage'), false, true], // nur Windows-Programm
   ];
-  const offen = () => SCHRITTE.filter(([, , fehlt, nurApp]) => (!nurApp || nativ()) && fehlt());
+  const pc = () => !!window.DomDesktop?.ordnerWaehlen;
+  const gilt = ([, , , nurApp, nurPc]) => (!nurApp || nativ()) && (!nurPc || pc());
+  const offen = () => SCHRITTE.filter((s) => gilt(s) && s[2]());
 
   let el = null;
   function zu() { el?.remove(); el = null; document.documentElement.classList.remove('einr-offen'); }
 
   /** Zeigt die Schritte, die noch fehlen. alle = true: jeden Schritt zeigen (von Hand aus den Einstellungen). */
   function oeffnen({ alle = false } = {}) {
-    const liste = alle ? SCHRITTE.filter(([, , , nurApp]) => !nurApp || nativ()) : offen();
+    const liste = alle ? SCHRITTE.filter(gilt) : offen();
     if (!liste.length) { if (alle) toast('Auf diesem Gerät ist alles eingerichtet.'); return; }
     zu();
     el = document.createElement('div');
@@ -52,7 +55,7 @@ window.Einrichten = (() => {
         <h2>${esc(titel)}</h2><div id="einrInhalt"></div>
         <div class="einr-fuss"><button class="btn secondary" id="einrSpaeter">${i + 1 < liste.length ? 'Überspringen' : 'Später'}</button><button class="btn" id="einrWeiter">${i + 1 < liste.length ? 'Weiter' : 'Fertig'}</button></div></div>`;
       const box = $('#einrInhalt', el);
-      $('#einrSpaeter', el).onclick = () => { if (liste[i][3]) merken(liste[i][0]); i++; if (i >= liste.length) return fertig(); zeigen(); };
+      $('#einrSpaeter', el).onclick = () => { if (liste[i][3] || liste[i][4]) merken(liste[i][0]); i++; if (i >= liste.length) return fertig(); zeigen(); };
       $('#einrWeiter', el).onclick = weiter;
       el.scrollTop = 0;
       if (id === 'cloud') {
@@ -76,6 +79,14 @@ window.Einrichten = (() => {
       } else if (id === 'push') {
         box.innerHTML = '<p class="muted">Morgens eine Übersicht, Erinnerungen vor Terminen und an Anrufe. Einmal erlauben, die Uhrzeiten stellst du später in den Einstellungen ein.</p><div id="einrPush"></div>';
         window.Push?.karte($('#einrPush', box));
+      } else if (id === 'ablage') {
+        const zeig = async () => {
+          const p = await window.DomDesktop.ablageOrdner();
+          box.innerHTML = `<p class="muted">Jedes PDF (Angebot, Rechnung, Auftragsbestätigung, hineingezogene Dokumente) legt DOM zusätzlich ohne Nachfrage in diesen Ordner, je Kunde und Projekt ein Unterordner. Am besten ein Ordner in OneDrive, z. B. „Kunden“.</p>
+            <p><b>${p ? esc(p) : 'Noch kein Ordner gewählt'}</b></p><button class="btn secondary block" id="einrOrdner">${p ? 'Anderen Ordner wählen' : 'Ordner wählen'}</button>`;
+          $('#einrOrdner', box).onclick = async () => { if (await window.Buero?.ordnerWaehlen()) zeig(); };
+        };
+        zeig();
       } else if (id === 'geraet') {
         box.innerHTML = '<div id="einrGeraet"></div>';
         window.Geraet?.karte($('#einrGeraet', box));

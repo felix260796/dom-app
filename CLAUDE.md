@@ -141,6 +141,21 @@ Titel in der Tabelle (`opt.titelNeu/titelLoeschen/mehrere/geaendert`): Titel = B
 Senden am PC: `navigator.share` geht im Programm immer über `desktopTeilen(files, { an, betreff, text })` in `core.js`: Vorher ansehen, Per E-Mail senden (`DomDesktop.mail` → Outlook klassisch mit Anhang `outlook /c ipm.note /a`, sonst `mailto:` und Explorer mit der Datei in Dokumente\DOM\Versand), Speichern unter, Im Standardprogramm öffnen. Nach der Mail fragt DOM „Ist die Mail verschickt?“; nur „Ja“ zählt als versendet.
 Büro-Optik: `css/buero.css` (als letzte CSS-Datei), alle Regeln unter `html.buero` (Klasse setzt `tabelle.js`). Idee: jede Seite hat dieselben Zonen: Seitenleiste, Titelleiste in einer Zeile, Arbeitsfläche (Liste = Tabelle mit Werkzeugzeile: Suche, Neu, weitere Knöpfe in einer Zeile; Akte Kunde/Partner = Stammdaten links, Zusammenhang rechts; Angebot = Dokument mit Aktionen rechts), Menüleiste Datei/Bearbeiten/Ansicht/Extras/Hilfe. Filter über Listen als Reiter mit Unterstrich, Listen aus Karten als Zeilen. Neue Seiten am PC bekommen das von selbst, solange sie die vorhandenen Bausteine nutzen.
 
+## Neuerungen aus Version 107 (Büro-Programm am PC, Wünsche Felix 15.11.)
+
+Alles nur am PC (`Tabelle.istBuero()`), iPhone und iPad unverändert. Neue Datei `buero.js` (`Buero`, nach `tabelle.js` geladen):
+- Angebot rechts Reiter Angebot/Bilder/Preislisten (`.ape-tabs`, `angebotSeite`): Bilder des Projekts zuerst (`Bilder.laden`), Dokumente; Preislisten allgemein oder Partner, mit + oder Ziehen in die Tabelle (`application/x-dom-pos`, `box.__einfuegen` in `tabelle.js`, landet im Titel der Zeile bzw. dem zuletzt benutzten).
+- Dateien hineinziehen (`dateienAblegen`): im Projekt Fotos in den Ordner aus `ordnerFotos`, PDFs zu `w.dokumente`; beim Kunden Fotos ins Objekt; sonst `Kamera.ausDatei`.
+- Drucken (`#druckBtn` oben, Strg+P, „Drucken“ in der PDF-Ansicht): PDF.js-Seiten als Bilder in `#druckBlatt`, dann `print()`. Ohne offenes PDF: Ansehen-Knopf der Seite, beim Kunden `kundenblatt(k)`. `pdfAnsicht` merkt `bg.__blob/__name`.
+- Kundenablage: `Buero.ablage(w, name, blob)` nach jedem `wdok:`-Speichern (core `dokMerken`, Auftragsbestätigung, Rechnung) über `DomDesktop.ablegen` in den gewählten Ordner (main.js `programm.json` `ablage`), Unterordner nach Vorgabe `ablageMuster`, an/aus `ablageAuto`. Ordner wählen: Einrichten-Schritt `ablage` (nur Programm). Menü Datei › Als PDF in den Kundenordner (`ablageJetzt`).
+- Listen (`Tabelle.liste` ruft `Buero.listeExtras`): Werkzeugzeile „Als Excel speichern“, Kunden „Aus Excel einlesen“, Rechtsklick-Menü `kontextMenue` (Öffnen, Zeile kopieren, Als PDF, Drucken, Löschen). Preisliste als Excel in Einstellungen › Preisliste (`#plExport`).
+- Auswertung: Monatstabelle `#awMon` in `auswertung()` (`finanzen.js`).
+- Zuletzt geöffnet (`.seite-zul` in der Seitenleiste, localStorage `dom:zuletzt`, Vorgabe `zuletztAnzahl`). Kalender im eigenen Fenster: `DomDesktop.fenster('kalender')` öffnet `#seite=kalender`.
+- Rundmail/Serienbrief (`rundmail`, Menü Datei): Gruppen (Kunden, offene Angebote, laufende Projekte, Partner, Subunternehmer, Lieferanten, Kontakt halten Anrufen/Treffen), Mail mit allen in BCC (`mailto`, zu lang = Adressen in die Zwischenablage), Excel für Word-Serienbrief. Vorgaben `rundmailBetreff`, `rundmailText`.
+- Akte Kunde/Partner wie im CRM (`akte()`): baut die fertige Seite um, links Stammdaten als Formular (`.akte-stamm`, Bezeichnung links), rechts Registerkarten (`.akte-tabs`: Angebote und Projekte, Objekte bzw. Vor Ort, Rechnungen, Kontakt halten; Partner: Konditionen, Persönliches, Rechnungen, Kontakt halten). Neue Felder in `kunden.js`/`partner.js` erscheinen von selbst.
+- Am PC ausgeblendet: Kamera oben, Fotos machen, Plan scannen, Raumscan, Gesprächsaufnahme (CSS in `buero.css`). Route bleibt.
+Merkliste für danach: `MERKLISTE-PC.md`.
+
 ## Bereiche
 
 | Bereich | Dateien | Inhalt |

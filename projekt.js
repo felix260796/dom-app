@@ -382,6 +382,7 @@ window.Projekt = (() => {
       mehrere: () => angebotsRaum(w),
         geaendert: (mit) => $$('#wSpeichern, #wSenden, #wAlsVersendet').forEach((b) => { b.disabled = !mit; }),
     } : undefined).catch((e) => { console.error(e); toast('Tabelle: ' + e.message, 5000); });
+    if ($('.ape-seite')) window.Buero?.angebotSeite($('.ape-seite'), w, list, $('#xtAng'));
     if ($('#wNeuAng')) $('#wNeuAng').onclick = () => angebotsRaum(w);
     if ($('#wRechAdr')) $('#wRechAdr').onclick = () => Kunden.oeffnen(k.id);
     if ($('#wAlsVersendet')) $('#wAlsVersendet').onclick = async () => { const b = $('#wAlsVersendet'); b.disabled = true; try { await alsVersendet(w, list); } catch (e) { console.error(e); toast('PDF-Fehler: ' + e.message, 6000); } if (b.isConnected) b.disabled = false; };
@@ -686,6 +687,10 @@ window.Projekt = (() => {
           <p class="hint">Ganz am Schluss stehen die Auftragserteilung und „${esc(vorgabeText('textGruss'))}“ mit ${esc(A.einePerson(K.anspr) || anspr[0] || 'Name')}, Unterschrift und Stempel.</p>
         </div>
         <aside class="ape-seite">
+          <div class="ape-tabs">${[['akt', 'Angebot'], ['bild', 'Bilder'], ['pl', 'Preislisten']].map(([id, n]) => `<button type="button" data-apt="${id}">${n}</button>`).join('')}</div>
+          <div class="ape-pane" data-apc="bild" hidden></div>
+          <div class="ape-pane" data-apc="pl" hidden></div>
+          <div class="ape-pane" data-apc="akt">
           <div class="card ape-akt">
             <button class="btn block" id="wSpeichern" ${mitPos.length ? '' : 'disabled'}>${icon('eye')} Ansehen (PDF)</button>
             <button class="btn block" id="wSenden" ${mitPos.length ? '' : 'disabled'}>${icon('mail')} Senden</button>
@@ -705,6 +710,7 @@ window.Projekt = (() => {
             <button class="link-danger" id="wDel">${icon('trash')} Angebot löschen</button>
           </div>
           ${w.angebotKopieVon ? `<p class="hint">Kopie von Angebot Nr. ${esc(w.angebotKopieVon)}</p>` : ''}
+          </div>
         </aside>
       </div>${versteckt}`;
   }
@@ -1099,6 +1105,7 @@ window.Projekt = (() => {
     await kvSet(key, doc.output('datauristring'));
     w.dokumente = [...(w.dokumente || []).filter((x) => x.key !== key), { key, name, t: Date.now(), art: 'auftragsbestaetigung' }];
     w.auftragsbestaetigung = { t: Date.now(), nr, dokId: key, gesendetAm: '' };
+    window.Buero?.ablage(w, name, file);
     await save(w);
     return file;
   }
