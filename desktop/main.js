@@ -232,8 +232,8 @@ function menue() {
       p('Einstellungen', 'einstellungen'),
     ] },
     { label: 'Hilfe', submenu: [
-      p('Wie geht das?', 'hilfe', 'F1'),
-      p('Tastenkürzel', 'kuerzel'),
+      p('Tastenkürzel', 'kuerzel', 'F1'),
+      p('Wie geht das?', 'hilfe', 'Shift+F1'),
       { type: 'separator' },
       { label: 'Nach neuer Fassung suchen', click: async () => {
         const r = await updaten(false);

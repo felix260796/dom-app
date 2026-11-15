@@ -156,6 +156,12 @@ Alles nur am PC (`Tabelle.istBuero()`), iPhone und iPad unverändert. Neue Datei
 - Am PC ausgeblendet: Kamera oben, Fotos machen, Plan scannen, Raumscan, Gesprächsaufnahme (CSS in `buero.css`). Route bleibt.
 Merkliste für danach: `MERKLISTE-PC.md`.
 
+## Neuerungen aus Version 108 (Dashboard, Zeitleiste)
+
+Nur am PC. „Heute“ wird zur Übersicht (`Buero.dashboard(main(), { idx })`, aufgerufen am Ende von `Heute.view`): oben Kennzahlen (`.db-kpi`: offene Angebote, Nachfassen, Projekte, offene Posten, Umsatz Jahr, Zahlungseingang Monat), links die Heute-Blöcke, rechts Wiedervorlage (verschickte Angebote, Tage seit Versand, Anrufen) und offene Posten (Stand, „Mahnen“ öffnet die Rechnung und drückt `#rMahn`). Gemeinsam für Felix und Deniel, nicht nach Person gefiltert (Wunsch Felix).
+Zeitleiste beim Kunden (Registerkarte in der Akte, `Buero.zeitleiste`): eigene Einträge in `k.zeitleiste = [{ id, t, art: notiz|anruf|mail|treffen, text, wer }]`, dazu ohne Speichern aus den Daten: Kunde angelegt, Angebote, Statuswechsel (`w.verlauf`), Absage, Auftragsbestätigung, Baustart, Rechnungen, Zahlungen, Mahnungen, Termine (`kundeId`), Kontakt halten (`zuletzt`).
+Rechtsklick in Angebote/Projekte: „Rechnung schreiben“ (`Buero.rechnungAus` → `Rechnung.neu(w)`, nur wenn zugesagt). F1 = Tastenkürzel (`KUERZEL`), Umschalt+F1 = Wie geht das?.
+
 ## Bereiche
 
 | Bereich | Dateien | Inhalt |

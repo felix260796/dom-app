@@ -62,6 +62,7 @@ window.Heute = (() => {
     window.Push?.badge(termine.filter((t) => t.datum === h && t.typ === 'termin').length + pf.anzahl + nachf.length + geld.length + bau.length + fdok.length);
     main().innerHTML = `<div class="heute-zu"><button type="button" class="icon-btn" id="hZu" aria-label="Heute schließen">${icon('x')}</button></div>` + (bloecke.join('') || `<div class="empty-state">${icon('check')}<b>Heute ist nichts offen</b><span>Termine, Nachfassen, Rechnungen und Baustellen erscheinen hier, sobald etwas ansteht.</span></div>`);
     $('#hZu').onclick = () => switchTab(window.__vorHeute || 'kunden'); // X: zurück zum Reiter davor (beim Start: Kunden)
+    if (window.Tabelle?.istBuero()) window.Buero?.dashboard(main(), { idx }).catch((e) => console.warn('Dashboard', e)); // am PC: Übersicht mit Kennzahlen
     $$('[data-hz]').forEach((b) => (b.onclick = () => oeffnen(b.dataset.hz)));
     pf.binden(main(), () => { if (state.tab === 'heute') view(); });
     if ($('#hRoute')) $('#hRoute').onclick = () => route(stopps.map((t) => String(t.ort).split(/\s*\n\s*/).join(', ').trim()));
