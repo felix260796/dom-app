@@ -372,12 +372,17 @@ async function dokMerken(files) {
   const teilen = navigator.share?.bind(navigator);
   // Ohne Teilen-Menü (z. B. am PC): „Senden“ lädt die Datei herunter
   const ersatz = async (data) => {
-    if (window.DomDesktop) return desktopTeilen(data.files || []); // Windows-Programm: Speichern unter oder im Standardprogramm öffnen
+    if (window.DomDesktop) return desktopTeilen(data.files || [], { an: data.an, betreff: data.title, text: data.text }); // Windows-Programm: Speichern unter oder im Standardprogramm öffnen
     for (const f of data.files || []) { const a = document.createElement('a'); a.href = URL.createObjectURL(f); a.download = f.name; a.click(); }
   };
   try {
     if (!navigator.canShare) Object.defineProperty(navigator, 'canShare', { configurable: true, writable: true, value: (d) => !!d?.files?.length });
     Object.defineProperty(navigator, 'share', { configurable: true, writable: true, value: async (data) => {
+      if (window.DomDesktop) { // Windows-Programm: ablegen und gleich das Senden-Fenster (Ansehen, E-Mail, Speichern, Öffnen)
+        if (data?.files?.some((f) => f.type === 'application/pdf') && !data.ohneDialog) await dokMerken(data.files).catch(() => false);
+        const { ohneDialog, ...rest } = data || {};
+        return ersatz(rest);
+      }
       if (data?.files?.some((f) => f.type === 'application/pdf') && !data.ohneDialog) {
         const gesp = await dokMerken(data.files).catch(() => false);
         if (!(await pdfVorschau(data.files, gesp))) throw new DOMException('Abgebrochen', 'AbortError');
@@ -997,7 +1002,33 @@ async function desktopOeffnen(blob, name) {
   catch (e) { toast('Öffnen ging nicht: ' + (e.message || e), 5000); }
 }
 /** Statt Teilen-Menü am Computer: jede Datei speichern oder öffnen. */
-async function desktopTeilen(files) {
+/** Am PC statt Teilen-Menü: per E-Mail senden (Outlook mit Anhang bzw. Mailprogramm), speichern oder öffnen.
+ *  meta = { an, betreff, text }. Bei E-Mail wird danach gefragt, ob sie raus ist; „Noch nicht“ zählt nicht als versendet. */
+async function desktopTeilen(files, meta = {}) {
+  if (window.DomDesktop?.mail && files.length) {
+    let v0;
+    for (;;) { // „Ansehen“ zeigt das PDF und kommt danach hierher zurück
+      v0 = await sheet(files.length === 1 ? 'Senden: ' + files[0].name.replace(/\.pdf$/i, '').replace(/_/g, ' ') : `${files.length} Dateien senden`, [
+      { label: 'Vorher ansehen', sub: 'Groß ansehen und zoomen, danach geht es hier weiter', icon: icon('eye'), value: 'v' },
+      { label: 'Per E-Mail senden', sub: meta.an ? `An ${meta.an}. Outlook öffnet sich mit Anhang, sonst dein Mailprogramm und der Ordner mit der Datei` : 'Outlook öffnet sich mit Anhang, sonst dein Mailprogramm und der Ordner mit der Datei', icon: icon('mail'), value: 'm' },
+      { label: 'Speichern unter …', sub: 'In einen Ordner, z. B. OneDrive', icon: icon('download'), value: 's' },
+      { label: 'Im Standardprogramm öffnen', sub: 'Ansehen oder drucken', icon: icon('file'), value: 'o' }]);
+      if (v0 !== 'v') break;
+      await pdfAnsicht(files[0], files[0].name);
+      await new Promise((fertig) => { const o = new MutationObserver(() => { if (!$('.pdfz')) { o.disconnect(); fertig(); } }); o.observe(document.body, { childList: true }); });
+    }
+    if (v0 === 'm') {
+      const dateien = await Promise.all(files.map(async (f) => ({ name: f.name, daten: await f.arrayBuffer() })));
+      const r = await window.DomDesktop.mail(dateien, meta.an || '', meta.betreff || files[0].name.replace(/\.pdf$/i, '').replace(/_/g, ' '), meta.text || '');
+      if (r?.weg === 'mailto') toast(files.length > 1 ? 'Mail ist offen. Die Dateien liegen im geöffneten Ordner, bitte in die Mail ziehen.' : 'Mail ist offen. Die Datei liegt im geöffneten Ordner, bitte in die Mail ziehen.', 9000);
+      const ok = await sheet('Ist die Mail verschickt?', [{ label: 'Ja, verschickt', icon: icon('check'), value: 'ja' }, { label: 'Noch nicht', sub: 'Dann bleibt es beim Entwurf', icon: icon('x'), value: 'nein' }]);
+      if (ok !== 'ja') throw new DOMException('Abgebrochen', 'AbortError');
+      return;
+    }
+    if (!v0) throw new DOMException('Abgebrochen', 'AbortError');
+    for (const f of files) { if (v0 === 's') await desktopSpeichern(f, f.name); else await desktopOeffnen(f, f.name); }
+    return;
+  }
   for (const f of files) {
     const v = await sheet(f.name, [{ label: 'Speichern unter …', sub: 'In einen Ordner, z. B. OneDrive', value: 's' }, { label: 'Im Standardprogramm öffnen', sub: 'Ansehen, drucken oder von dort per Mail senden', value: 'o' }]);
     if (v === 's') await desktopSpeichern(f, f.name); else if (v === 'o') await desktopOeffnen(f, f.name); else throw new DOMException('Abgebrochen', 'AbortError');

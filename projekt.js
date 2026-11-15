@@ -252,7 +252,8 @@ window.Projekt = (() => {
     };
     let summe = 0;
     if (phase(w) === 'angebot') { try { await window.Angebot._intern.preisliste(); await kopfAnwenden(w, list); summe = summeVon(list); } catch (e) { console.warn(e); } if (state.wohnung !== w || state.project) return; }
-    main().innerHTML = phase(w) === 'angebot' ? angebotSeite({ w, list, k, nFotos, anyResult, withPhotos, nBilder, stand, summe }) : auftragSeite({ w, list, k, nFotos, stand });
+    const pc = !!window.Tabelle?.istBuero();
+    main().innerHTML = phase(w) === 'angebot' ? (pc ? angebotPc : angebotSeite)({ w, list, k, nFotos, anyResult, withPhotos, nBilder, stand, summe }) : auftragSeite({ w, list, k, nFotos, stand });
     if ($('#wKosten')) window.Finanzen?.projektAbschnitt($('#wKosten'), w);
     if ($('#wRech')) window.Rechnung?.projektAbschnitt($('#wRech'), w, $('#wNt') || phase(w) !== 'angebot' ? 'rechnungen' : '');
     if ($('#wNt')) window.Rechnung?.projektAbschnitt($('#wNt'), w, 'nachtraege');
@@ -349,7 +350,8 @@ window.Projekt = (() => {
     if ($('#wVis')) $('#wVis').ontoggle = (e) => { e.target.open ? visOffen.add(w.id) : visOffen.delete(w.id); };
     // Angebotsablauf: weitere Knöpfe
     $$('[data-bilder]').forEach((b) => (b.onclick = () => $('#wBilder')?.click()));
-    $$('[data-reiter]').forEach((b) => (b.onclick = () => { reiterSetzen(w, b.dataset.reiter); view(); window.scrollTo(0, 0); }));
+    $$('[data-reiter]').forEach((b) => (b.onclick = () => { reiterSetzen(w, b.dataset.reiter); pcWahl.set(w.id, b.dataset.reiter === 'vorort' ? 'vorort' : 'angebot'); view(); window.scrollTo(0, 0); }));
+    $$('[data-pcs]').forEach((b) => (b.onclick = () => { pcWahl.set(w.id, b.dataset.pcs); view(); window.scrollTo(0, 0); }));
     if ($('#wFotos')) $('#wFotos').onclick = async () => {
       if (!k) return toast('Bitte zuerst einen Kunden zuordnen.');
       if (w.isNew) { delete w.isNew; await save(w); }
@@ -366,7 +368,20 @@ window.Projekt = (() => {
       dateiZeigen(await kvGet(d.key), { name: d.name, typ: 'application/pdf' });
     }));
     bueroFelder(w, list);
-    if ($('#xtAng')) window.Tabelle.angebot($('#xtAng'), w, list, () => view()).catch((e) => { console.error(e); toast('Tabelle: ' + e.message, 5000); });
+    if ($('#xtAng')) window.Tabelle.angebot($('#xtAng'), w, list, () => view(), $('.ape') ? {
+      // Angebots-Editor am PC: Titel direkt in der Tabelle anlegen, umbenennen, löschen
+      titelNeu: async (name, { klein } = {}) => {
+        if (gesperrt(w)) { gesperrtFrage(w); return null; }
+        if (norm(w.status) === 'besichtigung') { w.status = 'entwurf'; (w.verlauf ??= []).push({ st: 'entwurf', t: Date.now() }); }
+        const da = await raeume(w), rt = klein ? 'sonstiges' : roomTypeIdFromName(name);
+        const r = await raumAnlegen(w, rt, { room: titelFrei(da, name), ...(rt === 'sonstiges' ? { nurAngebot: true } : {}) });
+        await kopfAnwenden(w, await raeume(w));
+        return r;
+      },
+      titelLoeschen: (r) => raumLoeschen(w, r),
+      mehrere: () => angebotsRaum(w),
+        geaendert: (mit) => $$('#wSpeichern, #wSenden, #wAlsVersendet').forEach((b) => { b.disabled = !mit; }),
+    } : undefined).catch((e) => { console.error(e); toast('Tabelle: ' + e.message, 5000); });
     if ($('#wNeuAng')) $('#wNeuAng').onclick = () => angebotsRaum(w);
     if ($('#wRechAdr')) $('#wRechAdr').onclick = () => Kunden.oeffnen(k.id);
     if ($('#wAlsVersendet')) $('#wAlsVersendet').onclick = async () => { const b = $('#wAlsVersendet'); b.disabled = true; try { await alsVersendet(w, list); } catch (e) { console.error(e); toast('PDF-Fehler: ' + e.message, 6000); } if (b.isConnected) b.disabled = false; };
@@ -625,6 +640,74 @@ window.Projekt = (() => {
       ${tab === 'vorort' ? vorOrtTab(ctx) : tab === 'buero' ? bueroTab(ctx) : angeboteTab(ctx)}
       <button id="dMappe" hidden></button><button id="dBau" hidden></button><button id="dAngebot" hidden></button>${tab === 'angebote' ? '' : '<button id="wDel" hidden></button>'}`;
   }
+  /** Angebot am Computer (Wunsch Felix 14.11.: „99 % meiner Angebote mache ich am Computer, es soll einfach, schnell und übersichtlich sein“).
+   *  Eine Seite in der Reihenfolge des Papiers wie in Handwerker-Programmen: Kopf → Anfangstext → Positionen (Titel = Bereiche,
+   *  direkt in der Tabelle) → Schlusstext. Rechts daneben, was man damit tut: Ansehen, Senden, KI-Vorschlag, Aufschläge.
+   *  Kein Schritt setzt etwas voraus: Kunde gewählt, erste Position eintippen, fertig. iPhone und iPad behalten Reiter und Schritte. */
+  const pcWahl = new Map(); // je Projekt: 'angebot' | 'vorort'
+  function angebotPc(ctx) {
+    const { w, list, k } = ctx, st = norm(w.status), seite = pcWahl.get(w.id) || 'angebot';
+    const zu = gesperrt(w) || st === 'angebot' || st === 'abgesagt';
+    const nVo = (w.vorOrt?.scans?.length || 0) + (w.gespraech?.zus || w.gespraech?.text ? 1 : 0) + (ctx.nFotos || 0);
+    const stand = st === 'abgesagt' ? ['ab', 'Abgesagt'] : zu ? ['raus', 'Versendet'] : ['entw', 'Entwurf'];
+    const nr = zu ? sperrInfo(w).nr : aktNr(w, list);
+    const kopf = `<div class="ape-top">
+        <div class="ape-tt"><span class="ang-st ${stand[0]}">${stand[1]}</span><b>Angebot${nr ? ` Nr. ${esc(nr)}` : ''}</b>${w.titel ? `<span class="muted">· ${esc(w.titel)}</span>` : ''}</div>
+        <div class="seg ape-seg">${[['angebot', 'Angebot'], ['vorort', `Vor Ort aufgenommen${nVo ? ` (${nVo})` : ''}`]].map(([id, n]) => `<button type="button" data-pcs="${id}" class="${seite === id ? 'on' : ''}">${n}</button>`).join('')}</div>
+      </div>`;
+    const versteckt = `<button id="dMappe" hidden></button><button id="dBau" hidden></button><button id="dAngebot" hidden></button>`;
+    if (seite === 'vorort') return `${kopf}<div class="ape-vo">${vorOrtTab(ctx)}</div>${versteckt}<button id="wDel" hidden></button>`;
+    if (zu) return `${kopf}<div class="ape ape-zu"><div class="ape-main">${angeboteTab(ctx)}</div></div>${versteckt}`;
+    const A = window.Angebot._intern, texte = texteVon(w), anspr = A.ansprechpartner(), E = A.einstellungen();
+    const K = kopfVon(w, list), erst = K.erst, a = K.a, mitPos = mitPosVon(list), sq = schnellVon(k);
+    const proz = (x) => String(Math.round((+x || 0) * 1000) / 10).replace('.', ',');
+    const offen = window.VorOrt?.offenListe(w, list) || [];
+    return `${kopf}
+      <div class="ape">
+        <div class="ape-main">
+          <section class="card ape-kopf">
+            <div class="ape-f ape-kunde"><label>Kunde</label>${k ? `<button type="button" class="ape-k" id="wKunde"><b>${esc(Kunden.name(k) || 'Ohne Namen')}</b><span>${esc(k.privat.trim() ? Kunden.einzeilig(k.privat) : 'Rechnungsanschrift fehlt noch')}</span></button>`
+              : `<button type="button" class="ape-k leer" id="wKundeWahl"><b>${esc(w.customer || 'Kunde wählen')}</b><span>Kunde auswählen oder neu anlegen</span></button>`}</div>
+            ${k ? `<div class="ape-f"><label for="wObjekt">Objekt (Baustelle)</label><select id="wObjekt">
+              ${w.objektId && Kunden.objekt(k, w.objektId) ? '' : `<option value="" selected>${esc(w.address || 'Objekt wählen …')}</option>`}
+              ${k.objekte.map((o) => `<option value="${o.id}" ${o.id === w.objektId ? 'selected' : ''}>${esc(Kunden.objektText(o) || 'Objekt ohne Anschrift')}</option>`).join('')}
+              <option value="__neu">Andere Anschrift …</option></select></div>` : ''}
+            <div class="ape-f ape-betr"><label for="wTitel">Betreff (Projektname)</label><input type="text" id="wTitel" value="${esc(w.titel || '')}" placeholder="z. B. Badsanierung, Türgriffe tauschen" autocomplete="off"></div>
+            <div class="ape-f"><label for="bNr">Angebotsnummer</label><input type="text" id="bNr" value="${esc(K.nr)}" placeholder="kommt beim Speichern" autocomplete="off"></div>
+            <div class="ape-f"><label for="bAnspr">Ansprechpartner</label><select id="bAnspr">${anspr.map((x) => `<option ${x === (A.einePerson(K.anspr) || anspr[0]) ? 'selected' : ''}>${esc(x)}</option>`).join('')}</select></div>
+            <div class="ape-f"><label for="bAnrede">Anrede</label><input type="text" id="bAnrede" value="${esc(K.anrede)}" placeholder="${esc(erst ? A.anredeDefault(erst) : 'Sehr geehrte Damen und Herren,')}" autocomplete="off"></div>
+            ${sq ? `<p class="ab-schnell ape-voll">${icon('phone')}<span>Am Telefon genannt: <b>ca. ${eurRund(sq.von)} – ${eurRund(sq.bis)}</b>${sq.text ? ` · ${esc(sq.text)}` : ''}</span></p>` : ''}
+          </section>
+          ${window.Bausteine.block({ wo: 'vor', titel: 'Anfangstext', leer: 'Kein Text vor den Positionen', liste: texte })}
+          <div class="ape-h"><h2>Positionen</h2><span class="muted">Titel = Bereich (Bad, Küche, Elektro …). Positionen eintippen oder aus der Preisliste wählen.</span></div>
+          <div id="xtAng" class="xt-box"></div>
+          ${list.length ? `<div class="xt-raeume"><span>Einzeln bearbeiten (Paket, Partnerangebot übernehmen):</span>${list.map((r) => `<button type="button" class="qchip" data-angraum="${r.id}">${esc(raumTitel(r))}</button>`).join('')}</div>` : ''}
+          ${window.Bausteine.block({ wo: 'nach', titel: 'Schlusstext', leer: 'Kein Text nach den Positionen', liste: texte })}
+          <p class="hint">Ganz am Schluss stehen die Auftragserteilung und „${esc(vorgabeText('textGruss'))}“ mit ${esc(A.einePerson(K.anspr) || anspr[0] || 'Name')}, Unterschrift und Stempel.</p>
+        </div>
+        <aside class="ape-seite">
+          <div class="card ape-akt">
+            <button class="btn block" id="wSpeichern" ${mitPos.length ? '' : 'disabled'}>${icon('eye')} Ansehen (PDF)</button>
+            <button class="btn block" id="wSenden" ${mitPos.length ? '' : 'disabled'}>${icon('mail')} Senden</button>
+            <button class="btn secondary block" id="wAlsVersendet" ${mitPos.length ? '' : 'disabled'}>${icon('check')} Als versendet markieren</button>
+            <p class="hint">${mitPos.length ? '„Ansehen“ speichert das PDF beim Projekt. Nach dem Senden ist das Angebot fest, Ändern geht dann über eine Kopie mit neuer Nummer.' : 'Sobald die erste Position steht, kannst du ansehen und senden.'}</p>
+          </div>
+          ${offen.length ? `<div class="card wf-offen"><b>Noch offen (${offen.length})</b><ul class="wf-o">${offen.map((o) => `<li>${esc(o.text)}</li>`).join('')}</ul></div>` : ''}
+          <details class="more card ape-ki" ${list.length ? '' : 'open'}><summary>${icon('sparkle')}<span>Positionen vorschlagen lassen<small>Die KI schlägt aus Notizen, Gespräch und Fotos Positionen vor</small></span>${icon('chevron', 'more-chev')}</summary>
+            ${window.VorOrt?.bueroKarte(w, list) || ''}</details>
+          ${erst ? `<details class="more card bs"><summary>${icon('sliders')}<span>Aufschläge<small>Nur für dieses Angebot, leer = Standard</small></span>${icon('chevron', 'more-chev')}</summary>
+            <div class="row">${[['aufLohn', 'Lohn %'], ['aufMat', 'Material %'], ['wagnis', 'Wagnis %']].map(([n, l]) => `<div><label>${l}</label><input type="text" inputmode="decimal" data-bnk="${n}" value="${a.kalk?.[n] !== undefined && a.kalk?.[n] !== null && a.kalk?.[n] !== '' ? proz(a.kalk[n]) : ''}" placeholder="${proz(E[n])}"></div>`).join('')}</div>
+          </details>` : ''}
+          ${dokListe(w)}
+          <div class="ape-links">
+            <button class="link-add" id="wAngUpload">${icon('upload')} Fertiges PDF hochladen (z. B. aus Excel)</button>
+            <button class="link-add" id="stAlle">${icon('sliders')} Status von Hand ändern</button>
+            <button class="link-danger" id="wDel">${icon('trash')} Angebot löschen</button>
+          </div>
+          ${w.angebotKopieVon ? `<p class="hint">Kopie von Angebot Nr. ${esc(w.angebotKopieVon)}</p>` : ''}
+        </aside>
+      </div>${versteckt}`;
+  }
   const punkt = (attr, ico, farbe, titel, sub) => `<button type="button" class="doc" ${attr}><span class="d-ico ${farbe}">${icon(ico)}</span><span class="d-t"><b>${titel}</b><span>${sub}</span></span>${icon('chevron', 'pc-chev')}</button>`;
 
   /** Kunde, Rechnungsanschrift, Objekt und Projektname. Steht oben in „Vor Ort“ und im Büro in Schritt 1. */
@@ -837,7 +920,7 @@ window.Projekt = (() => {
 
   /** Büro: Nummer, Betreff, Anrede, Ansprechpartner, Aufschläge und Texte gelten für das ganze Angebot (alle Räume). */
   function bueroFelder(w, list) {
-    if (!$('.ab-schritte')) return;
+    if (!$('.ab-schritte, .ape')) return;
     const A = window.Angebot._intern, mitPos = mitPosVon(list), mehrere = mitPos.length > 1;
     const alle = list.filter((r) => r.angebot), erst = mitPos[0] || alle[0];
     const sichern = debounce(async () => { for (const r of alle) await saveProject(r); delete w.isNew; await save(w); }, 500);
@@ -1028,7 +1111,7 @@ window.Projekt = (() => {
     const { ang, files } = r;
     // „Wie verschickt“ wird erst gemerkt, wenn wirklich gesendet wird
     if (navigator.canShare?.({ files })) {
-      try { await navigator.share({ files, title: ang.name, text: A.mailText(ang.syn) }); await angebotMerken(w.id, ang.doc, ang.name); await angebotVersendet(w.id); return neuZeichnen(w); }
+      try { await navigator.share({ files, title: ang.name.replace(/\.pdf$/i, '').replace(/_/g, ' '), text: A.mailText(ang.syn), an: Kunden.byId(w.kundeId)?.email || '' }); await angebotMerken(w.id, ang.doc, ang.name); await angebotVersendet(w.id); return neuZeichnen(w); }
       catch (e) { if (e.name === 'AbortError') return neuZeichnen(w); }
     }
     for (const f of files) { const a = document.createElement('a'); a.href = URL.createObjectURL(f); a.download = f.name; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 60000); }

@@ -36,6 +36,19 @@ function oeffnen() {
   fenster.webContents.on('render-process-gone', (e, d) => { protokoll(`Seite abgestürzt: ${d.reason} (${d.exitCode})`); if (d.reason !== 'clean-exit' && fenster && !fenster.isDestroyed()) setTimeout(() => fenster.loadURL('app://dom/index.html'), 500); });
   fenster.webContents.on('unresponsive', () => protokoll('Seite reagiert nicht'));
 }
+/** Pfad zu Outlook (klassisch), falls installiert. Das neue Outlook kann keine Anhänge von außen übernehmen. */
+let outlookGefunden;
+function outlookPfad() {
+  if (outlookGefunden !== undefined) return Promise.resolve(outlookGefunden);
+  return new Promise((fertig) => {
+    if (process.platform !== 'win32') return fertig((outlookGefunden = null));
+    require('child_process').execFile('reg', ['query', 'HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\App Paths\\OUTLOOK.EXE', '/ve'], { windowsHide: true }, (err, out) => {
+      const m = !err && /REG_SZ\s+(.+\.exe)/i.exec(String(out));
+      outlookGefunden = m && fs.existsSync(m[1].trim()) ? m[1].trim() : null;
+      fertig(outlookGefunden);
+    });
+  });
+}
 /** Fehlerprotokoll im Benutzerordner (%APPDATA%/DOM/fehler.log), damit Abstürze nachvollziehbar sind. */
 function protokoll(text) { try { fs.appendFileSync(path.join(app.getPath('userData'), 'fehler.log'), `${new Date().toISOString()} v${app.getVersion()} ${text}\n`); } catch {} }
 process.on('uncaughtException', (e) => protokoll('Fehler im Programm: ' + (e?.stack || e)));
@@ -80,6 +93,25 @@ app.whenReady().then(() => {
     fs.writeFileSync(datei, Buffer.from(daten));
     const fehler = await shell.openPath(datei);
     return fehler ? { ok: false, fehler } : { ok: true, pfad: datei };
+  });
+  // Per E-Mail senden: Dateien in Dokumente\DOM\Versand ablegen, dann Outlook (klassisch) mit Anhang öffnen.
+  // Ohne Outlook: Mailprogramm über mailto: öffnen und die Datei im Explorer zeigen (zum Hineinziehen).
+  ipcMain.handle('dom:mail', async (e, dateien, an, betreff, text) => {
+    const ordner = path.join(app.getPath('documents'), 'DOM', 'Versand');
+    fs.mkdirSync(ordner, { recursive: true });
+    const pfade = (dateien || []).map((d) => { const p = path.join(ordner, sauber(d.name)); fs.writeFileSync(p, Buffer.from(d.daten)); return p; });
+    const q = [betreff && 'subject=' + encodeURIComponent(betreff), text && 'body=' + encodeURIComponent(text)].filter(Boolean).join('&');
+    const outlook = await outlookPfad();
+    if (outlook && pfade.length === 1) {
+      try {
+        const { spawn } = require('child_process');
+        spawn(outlook, ['/c', 'ipm.note', '/m', `${an || ''}${q ? '?' + q : ''}`, '/a', pfade[0]], { detached: true, stdio: 'ignore' }).unref();
+        return { weg: 'outlook', pfade };
+      } catch (err) { protokoll('Outlook: ' + err.message); }
+    }
+    await shell.openExternal(`mailto:${encodeURIComponent(an || '').replace(/%40/g, '@')}${q ? '?' + q : ''}`);
+    if (pfade[0]) shell.showItemInFolder(pfade[0]);
+    return { weg: 'mailto', pfade };
   });
   ipcMain.handle('dom:zeigen', (e, pfad) => { if (typeof pfad === 'string' && fs.existsSync(pfad)) shell.showItemInFolder(pfad); });
   oeffnen();
@@ -145,9 +177,6 @@ function menue() {
       p('Angebote', 'angebote', 'CmdOrCtrl+3'),
       p('Projekte', 'projekt', 'CmdOrCtrl+4'),
       p('Rechnungen', 'rechnungen', 'CmdOrCtrl+5'),
-      p('Kalender', 'kalender', 'CmdOrCtrl+K'),
-      p('Auswertung', 'auswertung'),
-      p('Preisliste', 'preisliste'),
       { type: 'separator' },
       p('Zurück', 'zurueck', 'Alt+Left'),
       { type: 'separator' },
@@ -156,13 +185,25 @@ function menue() {
       { type: 'separator' },
       { label: 'Neu laden', role: 'reload' },
     ] },
+    { label: 'Extras', submenu: [
+      p('Kalender', 'kalender', 'CmdOrCtrl+K'),
+      p('Karte der Baustellen', 'karte'),
+      p('Auswertung', 'auswertung'),
+      { type: 'separator' },
+      p('Preisliste', 'preisliste'),
+      p('Preislisten der Partner', 'ppreise'),
+      p('Unterlagen und Vorlagen', 'unterlagen'),
+      { type: 'separator' },
+      p('Excel-Sicherung machen', 'sicherung'),
+      p('Einstellungen', 'einstellungen'),
+    ] },
     { label: 'Hilfe', submenu: [
       p('Wie geht das?', 'hilfe', 'F1'),
       p('Tastenkürzel', 'kuerzel'),
       { type: 'separator' },
       { label: 'Nach neuer Fassung suchen', click: async () => {
         const r = await updaten(false);
-        dialog.showMessageBox(fenster, { type: 'info', title: 'DOM', message: !r.ok ? 'Konnte nicht nachsehen: ' + r.grund : r.neu && r.neu !== app.getVersion() ? `Fassung ${r.neu} wird geladen und beim Schließen eingespielt.` : `DOM ist aktuell (${app.getVersion()}).` });
+        dialog.showMessageBox(fenster, { type: 'info', title: 'DOM', message: !r.ok ? 'Konnte nicht nachsehen: ' + r.grund : r.neu && r.neu !== app.getVersion() ? `Fassung ${r.neu} wird geladen. Danach fragt DOM, ob jetzt neu gestartet werden soll.` : `DOM ist aktuell (${app.getVersion()}).` });
       } },
       { label: 'Über DOM', click: () => dialog.showMessageBox(fenster, { type: 'info', title: 'DOM', message: `DOM Projektmanagement\nFassung ${app.getVersion()}` }) },
     ] },

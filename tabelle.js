@@ -14,16 +14,25 @@ window.Tabelle = (() => {
 
   /** Am Computer? (Windows-Programm, oder breiter Bildschirm mit Maus; nicht am iPad mit Finger oder Stift) */
   const istBuero = () => document.documentElement.classList.contains('desktop') || matchMedia('(min-width: 1100px) and (pointer: fine)').matches;
+  // Klasse buero an <html>: dichte Büro-Optik (css, html.buero) nur im Windows-Programm bzw. breit mit Maus; iPhone und iPad nie.
+  const bueroKlasse = () => document.documentElement.classList.toggle('buero', istBuero());
+  bueroKlasse(); try { matchMedia('(min-width: 1100px) and (pointer: fine)').addEventListener('change', bueroKlasse); } catch {}
+  window.addEventListener('load', bueroKlasse);
 
   let letzteZelle = null; // nach dem Neuzeichnen wieder dorthin
 
-  async function angebot(box, w, list, neuZeichnen) {
+  /* opt (Angebots-Editor am PC, projekt.js angebotPc): titelNeu(name) → neuer Bereich (Raum), titelLoeschen(r) → true/false.
+   * Dann sind die Titelzeilen bearbeitbar (Name, Länge/Breite/Höhe, Löschen), unten steht „Neuer Titel“, und ohne Titel
+   * legt die erste Position von selbst den Titel „Leistungen“ (Vorgabe kleinName) an. */
+  async function angebot(box, w, list, neuZeichnen, opt = {}) {
     if (!box) return;
     const A = window.Angebot._intern, PL = await A.preisliste();
     const kat = (nr) => PL.positionen.find((x) => x.nr === nr);
     const raumName = (r) => r.aufmass?.raeume?.[0]?.name || r.room || '';
     const titel = (r) => r.room || r.aufmass?.raeume?.[0]?.name || 'Bereich';
     list.forEach((r) => A.init(r));
+    const masse = (r) => { const q = r.aufmass?.raeume?.[0]; return { l: q?.teile?.[0]?.l || '', b: q?.teile?.[0]?.b || '', h: q?.h || '' }; };
+    const ohneMasse = (r) => !!r.nurAngebot && r.roomType === 'sonstiges';
     const sichern = async (r) => { await saveProject(r); if (w.isNew) { delete w.isNew; await Projekt.save(w); } };
 
     function zeichnen() {
@@ -46,6 +55,7 @@ window.Tabelle = (() => {
         <div class="xt-leiste">
           <button type="button" class="btn secondary small" data-xa="neu">${icon('plus')} Zeile</button>
           <button type="button" class="btn secondary small" data-xa="weg">${icon('trash')} Zeile löschen</button>
+          ${opt.mehrere ? `<button type="button" class="btn secondary small" data-xa="mehr">${icon('list')} Räume übernehmen</button>` : ''}
           <span class="xt-sp"></span>
           <button type="button" class="btn secondary small" data-xa="xlsein">${icon('upload')} Excel einlesen</button>
           <button type="button" class="btn secondary small" data-xa="xlsaus">${icon('download')} Als Excel speichern</button>
@@ -55,7 +65,14 @@ window.Tabelle = (() => {
           <thead><tr><th>Pos.</th><th>Leistung</th><th class="r">Menge</th><th>Einheit</th><th class="r">EP netto</th><th class="r">GP netto</th></tr></thead>
           <tbody>${list.map((r, ri) => {
             const zs = zeilen.filter((z) => z.r === r), tn = gNr[ri] || '';
-            return `<tr class="xt-titel"><td class="xt-nr">${g > 1 && tn ? tn : ''}</td><td colspan="4"><b>${esc(titel(r))}</b></td><td class="r" data-zs="${r.id}">${zs.length ? zahl(zs.reduce((a, z) => a + z.gp, 0)) : ''}</td></tr>
+            const m = masse(r);
+            return (opt.titelNeu ? `<tr class="xt-titel ed" data-tr="${r.id}"><td class="xt-nr">${g > 1 && tn ? tn : ''}</td>
+              <td colspan="4"><div class="xt-tn"><input data-t="name" value="${esc(titel(r))}" title="Titel (Bereich) umbenennen" autocomplete="off">
+                ${ohneMasse(r) ? '' : `<span class="xt-masse" title="Raummaße in Metern, für Mengen aus dem Aufmaß. Dürfen leer bleiben.">${[['l', 'L'], ['b', 'B'], ['h', 'H']].map(([f, k]) => `<label>${k}<input data-t="${f}" class="r xt-mass" value="${esc(m[f])}" placeholder="–" autocomplete="off" aria-label="${{ l: 'Länge', b: 'Breite', h: 'Höhe' }[f]} in m"></label>`).join('')}<span>m</span></span>`}
+                <button type="button" class="xt-tdel" data-t="del" title="Titel mit seinen Positionen löschen" aria-label="Titel löschen">${icon('trash')}</button></div></td>
+              <td class="r" data-zs="${r.id}">${zs.length ? zahl(zs.reduce((a, z) => a + z.gp, 0)) : ''}</td></tr>`
+              : `<tr class="xt-titel"><td class="xt-nr">${g > 1 && tn ? tn : ''}</td><td colspan="4"><b>${esc(titel(r))}</b></td><td class="r" data-zs="${r.id}">${zs.length ? zahl(zs.reduce((a, z) => a + z.gp, 0)) : ''}</td></tr>`)
+            + `
             ${zs.map((z) => { nrIn[z.ri] = (nrIn[z.ri] || 0) + 1; return `<tr data-r="${z.r.id}" data-i="${z.i}" class="${z.x.frei ? 'frei' : ''}">
             <td class="xt-nr">${g > 1 ? `${gNr[z.ri]}.` : ''}${nrIn[z.ri]}${marke(z.x)}</td>
             <td><input data-c="text" value="${esc(z.text)}" list="xtPL" title="${esc(z.x.frei ? 'Eigene Position' : `${z.x.nr} aus der Preisliste`)}" autocomplete="off"></td>
@@ -67,6 +84,10 @@ window.Tabelle = (() => {
               <td><input data-c="text" list="xtPL" placeholder="Neue Position in „${esc(titel(r))}“: eintippen oder aus der Preisliste wählen" autocomplete="off"></td>
               <td><input data-c="menge" class="r" placeholder="1" autocomplete="off"></td><td><input data-c="einheit" list="xtEh" autocomplete="off"></td><td><input data-c="ep" class="r" autocomplete="off"></td><td></td></tr>`;
           }).join('')}
+          ${opt.titelNeu && !list.length ? `<tr class="xt-neu" data-neu="1" data-nr="__auto"><td class="xt-nr">${icon('plus')}</td>
+              <td><input data-c="text" list="xtPL" placeholder="Erste Position: eintippen oder aus der Preisliste wählen" autocomplete="off"></td>
+              <td><input data-c="menge" class="r" placeholder="1" autocomplete="off"></td><td><input data-c="einheit" list="xtEh" autocomplete="off"></td><td><input data-c="ep" class="r" autocomplete="off"></td><td></td></tr>` : ''}
+          ${opt.titelNeu ? `<tr class="xt-titelneu"><td class="xt-nr">${icon('plus')}</td><td colspan="5"><input data-t="neu" placeholder="Neuer Titel, z. B. Bad, Küche, Malerarbeiten, Elektro (Enter)" autocomplete="off"></td></tr>` : ''}
           </tbody>
           <tfoot><tr><td colspan="5">Summe netto</td><td class="r">${zahl(gesNetto)}</td></tr>
             <tr><td colspan="5">MwSt.</td><td class="r">${zahl(mwst)}</td></tr>
@@ -110,13 +131,17 @@ window.Tabelle = (() => {
       });
       const mwst = r2(ges * (A.einstellungen().mwst || 0.19)), f = $$('tfoot td.r', box);
       f[0].textContent = zahl(ges); f[1].textContent = zahl(mwst); f[2].textContent = zahl(r2(ges + mwst)) + ' €';
+      opt.geaendert?.(list.some((r) => (r.angebot.positionen || []).length));
     }
 
     async function aendern(el) {
       const c = el.dataset.c;
       if (el.closest('[data-neu]')) {
         if (c !== 'text' || !el.value.trim()) return;
-        const tr = el.closest('tr'), r = list.find((x) => x.id === tr.dataset.nr) || list[0];
+        const tr = el.closest('tr');
+        let r = list.find((x) => x.id === tr.dataset.nr) || list[0];
+        if (!r && opt.titelNeu) { r = await opt.titelNeu(String(vorgabe('kleinName') || 'Leistungen'), { klein: true }); if (!r) return; A.init(r); list.push(r); }
+        if (!r) return;
         const it = ausKatalog(el.value);
         if (it && (r.angebot.positionen || []).some((x) => x.nr === it.nr)) {
           const i = r.angebot.positionen.findIndex((x) => x.nr === it.nr);
@@ -157,6 +182,32 @@ window.Tabelle = (() => {
         return;
       }
       r.angebot.geaendert = true; rechnen(); await sichern(r);
+    }
+
+    /** Titel (Bereich): neu anlegen, umbenennen, Maße, löschen. */
+    async function titelAendern(el) {
+      const t = el.dataset.t, v = el.value.trim();
+      if (t === 'neu') {
+        if (!v) return;
+        el.value = '';
+        const r = await opt.titelNeu(v); if (!r) return;
+        A.init(r); if (!list.includes(r)) list.push(r);
+        letzteZelle = { neu: r.id, c: 'text' }; return zeichnen();
+      }
+      const r = list.find((x) => x.id === el.closest('tr')?.dataset.tr); if (!r) return;
+      if (t === 'name') { if (!v) { el.value = titel(r); return; } r.room = v; if (r.aufmass?.raeume?.[0]) r.aufmass.raeume[0].name = v; await sichern(r); return; }
+      if (['l', 'b', 'h'].includes(t)) {
+        A.init(r);
+        const q = r.aufmass.raeume[0]; q.teile ??= [{ l: '', b: '' }]; q.teile[0] ??= { l: '', b: '' };
+        if (t === 'h') q.h = v; else q.teile[0][t] = v;
+        r.masse = { l: q.teile[0].l, b: q.teile[0].b, h: q.h };
+        await sichern(r); rechnen();
+      }
+    }
+    async function titelLoeschen(b) {
+      const r = list.find((x) => x.id === b.closest('tr')?.dataset.tr); if (!r) return;
+      if (!(await opt.titelLoeschen(r))) return;
+      list.splice(list.indexOf(r), 1); letzteZelle = null; zeichnen();
     }
 
     async function loeschen(el) {
@@ -219,10 +270,16 @@ window.Tabelle = (() => {
     function binden() {
       box.oninput = (e) => { if (e.target.matches('input')) e.target.dataset.getippt = '1'; };
       box.onfocusout = (e) => { if (e.target.dataset) delete e.target.dataset.getippt; };
-      box.onchange = (e) => { if (e.target.matches('[data-c]')) aendern(e.target).catch((err) => toast('Ging nicht: ' + err.message, 5000)); };
+      box.onchange = (e) => {
+        if (e.target.matches('[data-c]')) aendern(e.target).catch((err) => toast('Ging nicht: ' + err.message, 5000));
+        else if (e.target.matches('[data-t]')) titelAendern(e.target).catch((err) => toast('Ging nicht: ' + err.message, 5000));
+      };
+      box.onclick = (e) => { const b = e.target.closest('[data-t="del"]'); if (b) titelLoeschen(b).catch((err) => toast('Ging nicht: ' + err.message, 5000)); };
       box.onfocusin = (e) => { const tr = e.target.closest('tbody tr'); $$('tbody tr.akt', box).forEach((t) => t !== tr && t.classList.remove('akt')); tr?.classList.add('akt'); if (e.target.matches('input') && !tr?.dataset.neu) e.target.select(); };
       box.onkeydown = (e) => {
-        const el = e.target; if (!el.matches?.('[data-c]')) return;
+        const el = e.target;
+        if (el.matches?.('[data-t]') && e.key === 'Enter') { e.preventDefault(); el.blur(); return; } // Titel: Enter übernimmt (change)
+        if (!el.matches?.('[data-c]')) return;
         const tr = el.closest('tr'), zeilen = $$('tbody tr:not(.xt-titel)', box), zi = zeilen.indexOf(tr), c = el.dataset.c, ci = SPALTEN.indexOf(c);
         const geh = (z, s) => { const t = zeilen[z]; const ziel = t && $(`[data-c="${SPALTEN[s]}"]`, t); if (ziel) { e.preventDefault(); el.blur(); ziel.focus(); } };
         if (e.ctrlKey && (e.key === 'Enter' || e.key === 'Insert')) { e.preventDefault(); el.blur(); const n = $(`[data-nr="${tr.dataset.r || tr.dataset.nr}"] [data-c="text"]`, box) || $('[data-neu] [data-c="text"]', box); n?.focus(); return; }
@@ -247,6 +304,7 @@ window.Tabelle = (() => {
         const aktTr = $('tbody tr.akt', box);
         ({ neu: () => ($(`[data-nr="${aktTr?.dataset.r || aktTr?.dataset.nr}"] [data-c="text"]`, box) || $('[data-neu] [data-c="text"]', box)).focus(),
           weg: () => loeschen(akt),
+          mehr: () => opt.mehrere?.(),
           xlsaus: () => excelSpeichern().catch((err) => toast('Excel ging nicht: ' + err.message, 5000)),
           xlsein: async () => { const tr = $('tbody tr.akt', box), r = list.find((x) => x.id === (tr?.dataset.r || tr?.dataset.nr)) || list[list.length - 1]; excelEinlesen(r).catch((err) => toast('Excel lesen ging nicht: ' + err.message, 5000)); },
         })[b.dataset.xa]();
