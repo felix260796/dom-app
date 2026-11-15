@@ -17,6 +17,17 @@ if (!app.requestSingleInstanceLock()) app.quit();
 const ORDNER = path.join(__dirname, 'app');
 let fenster = null;
 
+/** Weiteres Fenster (z. B. Kalender auf dem zweiten Bildschirm): dieselbe App, startet auf der Seite aus dem Anker. */
+function weiteresFenster(seite) {
+  const f = new BrowserWindow({
+    width: 1200, height: 850, minWidth: 420, minHeight: 600, backgroundColor: '#14263b', title: 'DOM',
+    icon: path.join(ORDNER, 'icons', 'icon-512.png'),
+    webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, sandbox: true, spellcheck: true },
+  });
+  f.webContents.setWindowOpenHandler(({ url }) => { if (!url.startsWith('app:')) shell.openExternal(url); return { action: 'deny' }; });
+  f.webContents.on('will-navigate', (e, url) => { if (!url.startsWith('app:')) { e.preventDefault(); shell.openExternal(url); } });
+  f.loadURL('app://dom/index.html#seite=' + encodeURIComponent(String(seite || 'kalender').replace(/[^a-z]/g, '')));
+}
 function oeffnen() {
   fenster = new BrowserWindow({
     width: 1400, height: 900, minWidth: 420, minHeight: 600,
@@ -113,6 +124,24 @@ app.whenReady().then(() => {
     if (pfade[0]) shell.showItemInFolder(pfade[0]);
     return { weg: 'mailto', pfade };
   });
+  // Ablage im Kundenordner (z. B. OneDrive\\Kunden): Ordner einmal wählen, danach legt DOM jedes PDF ohne Nachfrage dort ab.
+  ipcMain.handle('dom:ablageOrdner', () => einst().ablage || null);
+  ipcMain.handle('dom:ordnerWaehlen', async () => {
+    const start = einst().ablage || process.env.OneDriveCommercial || process.env.OneDrive || app.getPath('documents');
+    const r = await dialog.showOpenDialog(BrowserWindow.getFocusedWindow() || fenster, { title: 'Ordner für die Kundenablage wählen', defaultPath: start, properties: ['openDirectory', 'createDirectory'] });
+    if (r.canceled || !r.filePaths?.[0]) return null;
+    einstSetzen({ ablage: r.filePaths[0] });
+    return r.filePaths[0];
+  });
+  ipcMain.handle('dom:ablegen', async (e, teile, name, daten) => {
+    const wurzel = einst().ablage;
+    if (!wurzel || !fs.existsSync(wurzel)) return { ok: false, fehler: 'Kein Ordner gewählt' };
+    const ordner = path.join(wurzel, ...(teile || []).map((t) => sauber(t).replace(/^\.+/, '').trim() || '_').slice(0, 4));
+    if (!path.normalize(ordner).startsWith(path.normalize(wurzel))) return { ok: false, fehler: 'Ungültiger Ordner' };
+    try { fs.mkdirSync(ordner, { recursive: true }); const p = path.join(ordner, sauber(name)); fs.writeFileSync(p, Buffer.from(daten)); return { ok: true, pfad: p }; }
+    catch (err) { protokoll('Ablage: ' + err.message); return { ok: false, fehler: err.message }; }
+  });
+  ipcMain.handle('dom:fenster', (e, seite) => weiteresFenster(seite));
   ipcMain.handle('dom:zeigen', (e, pfad) => { if (typeof pfad === 'string' && fs.existsSync(pfad)) shell.showItemInFolder(pfad); });
   oeffnen();
   updaten(false);
@@ -146,7 +175,7 @@ async function updaten(sofort) {
 
 // ---------- Menüleiste wie bei einem Windows-Programm ----------
 // Die Menüpunkte schicken einen Befehl an die App (app.js, desktopBefehl). Bearbeiten und Ansicht nutzen die eingebauten Rollen.
-function befehl(b) { return () => fenster?.webContents.send('dom:befehl', b); }
+function befehl(b) { return () => (BrowserWindow.getFocusedWindow() || fenster)?.webContents.send('dom:befehl', b); }
 function menue() {
   const p = (label, b, accelerator) => ({ label, accelerator, click: befehl(b) });
   return Menu.buildFromTemplate([
@@ -158,7 +187,11 @@ function menue() {
       { type: 'separator' },
       p('Speichern', 'speichern', 'CmdOrCtrl+S'),
       p('PDF speichern unter …', 'pdfSpeichern', 'CmdOrCtrl+Shift+S'),
-      p('Drucken (im PDF-Programm öffnen)', 'drucken', 'CmdOrCtrl+P'),
+      p('Drucken …', 'drucken', 'CmdOrCtrl+P'),
+      p('Als PDF in den Kundenordner', 'ablage'),
+      { type: 'separator' },
+      p('Rundmail oder Serienbrief …', 'rundmail'),
+      p('Liste als Excel speichern', 'excel'),
       { type: 'separator' },
       p('Einstellungen', 'einstellungen', 'CmdOrCtrl+,'),
       { type: 'separator' },
@@ -179,6 +212,7 @@ function menue() {
       p('Rechnungen', 'rechnungen', 'CmdOrCtrl+5'),
       { type: 'separator' },
       p('Zurück', 'zurueck', 'Alt+Left'),
+      p('Kalender in neuem Fenster', 'kalFenster'),
       { type: 'separator' },
       { label: 'Größer', role: 'zoomIn', accelerator: 'CmdOrCtrl+Plus' }, { label: 'Kleiner', role: 'zoomOut' }, { label: 'Normale Größe', role: 'resetZoom' },
       { label: 'Vollbild', role: 'togglefullscreen' },

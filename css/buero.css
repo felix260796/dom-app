@@ -156,3 +156,124 @@ html.buero .d-ico { width: 32px; height: 32px; border-radius: 7px; }
 html.buero .d-ico svg.i { width: 17px; height: 17px; }
 html.buero .phasen:not(:has(> button)) .fz { border-radius: 8px; border-width: 1px; padding: 8px 4px 7px; }
 html.buero .phasen:not(:has(> button)) .fz b { font-size: 18px; }
+
+/* ---------- Version 107: Angebot mit Bildern und Preislisten rechts ---------- */
+.ape-tabs { display: flex; gap: 0; border-bottom: 1px solid var(--line); margin: 0 0 10px; }
+.ape-tabs button { flex: 1; background: none; border: 0; border-bottom: 2px solid transparent; padding: 8px 6px; font: inherit; font-size: 13.5px; font-weight: 600; color: var(--muted); cursor: pointer; }
+.ape-tabs button.on { color: var(--navy); border-bottom-color: var(--brass); }
+.ape-pane[hidden] { display: none !important; }
+.apb-o { display: flex; justify-content: space-between; align-items: baseline; margin: 10px 2px 6px; font-size: 13px; }
+.apb-g { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+.apb-b { padding: 0; border: 1px solid var(--line); border-radius: 6px; overflow: hidden; background: #fff; cursor: zoom-in; aspect-ratio: 1; }
+.apb-b img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.apb-b:hover { outline: 2px solid var(--brass); }
+.apb-mehr { margin-top: 10px; } .apb-mehr summary { cursor: pointer; font-size: 13px; color: var(--muted); }
+.apb-d { display: flex; flex-direction: column; gap: 4px; }
+.apb-dok { display: flex; align-items: center; gap: 8px; text-align: left; background: #fff; border: 1px solid var(--line); border-radius: 6px; padding: 6px 8px; font: inherit; font-size: 13px; cursor: pointer; }
+.apb-dok span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.apl-q { width: 100%; margin-bottom: 6px; }
+.apl-s { margin: 0 0 4px; }
+.apl-h { margin: 2px 0 6px; font-size: 12px; }
+.apl-l { max-height: calc(100vh - 290px); overflow: auto; background: #fff; border: 1px solid var(--line); border-radius: 8px; }
+.apl-g { position: sticky; top: 0; background: #eef1f5; font-size: 12px; font-weight: 600; color: var(--muted); padding: 4px 10px; }
+.apl-z { display: flex; align-items: center; gap: 6px; padding: 5px 4px 5px 10px; border-top: 1px solid #edf0f3; cursor: grab; }
+.apl-z:hover { background: #f8fafc; }
+.apl-t { flex: 1; font-size: 13px; line-height: 1.3; } .apl-t small { display: block; color: var(--muted); font-size: 11.5px; }
+.apl-plus { width: 28px; height: 28px; flex: none; }
+.xt-box tr.drop td { background: var(--brass-soft) !important; box-shadow: inset 0 2px 0 var(--brass); }
+
+/* ---------- Dateien hineinziehen ---------- */
+.drop-ziel { position: fixed; inset: 0; z-index: 9000; background: rgba(20, 38, 59, .55); display: grid; place-items: center; pointer-events: none; }
+.drop-ziel > div { background: #fff; border: 2px dashed var(--brass); border-radius: 14px; padding: 28px 40px; text-align: center; display: flex; flex-direction: column; gap: 6px; align-items: center; max-width: 520px; }
+.drop-ziel svg.i { width: 34px; height: 34px; color: var(--brass); }
+.drop-ziel b { font-size: 18px; } .drop-ziel span { color: var(--muted); font-size: 14px; }
+
+/* ---------- Rechtsklick-Menü und Werkzeugzeile über Listen ---------- */
+.kmenue { position: fixed; z-index: 9500; min-width: 220px; background: #fff; border: 1px solid #cfd6df; border-radius: 8px; box-shadow: 0 8px 28px rgba(20, 38, 59, .18); padding: 4px; display: flex; flex-direction: column; }
+.kmenue button { display: flex; align-items: center; gap: 10px; background: none; border: 0; border-radius: 5px; padding: 7px 10px; font: inherit; font-size: 13.5px; text-align: left; cursor: pointer; color: var(--text); }
+.kmenue button:hover, .kmenue button:focus { background: #eef1f5; outline: none; }
+.kmenue button.rot { color: var(--danger); border-top: 1px solid var(--line); border-radius: 0 0 5px 5px; }
+.kmenue svg.i { width: 16px; height: 16px; }
+.ltab-wz { display: flex; align-items: center; gap: 8px; margin: 0 0 6px; }
+.ltab-wz .muted { flex: 1; font-size: 12.5px; }
+.ltab-wz .btn.small { height: 30px; padding: 0 12px; font-size: 13px; }
+.ltab-wz svg.i { width: 15px; height: 15px; }
+
+/* ---------- Seitenleiste: zuletzt geöffnet ---------- */
+.seite-zul { display: none; }
+html.buero .tabbar .seite-zul { display: flex; flex-direction: column; gap: 1px; padding: 14px 4px 0; }
+html.buero .seite-zul small { color: rgba(255,255,255,.5); font-size: 11px; text-transform: uppercase; letter-spacing: .04em; padding: 0 8px 4px; }
+html.buero .tabbar .seite-zul button { display: flex; align-items: center; gap: 8px; height: auto; min-height: 30px; padding: 4px 8px; background: none; border: 0; color: rgba(255,255,255,.8); font-size: 12.5px; text-align: left; border-radius: 6px; cursor: pointer; flex-direction: row; }
+html.buero .tabbar .seite-zul button:hover { background: rgba(255,255,255,.08); }
+html.buero .seite-zul button svg.i { width: 14px; height: 14px; flex: none; }
+html.buero .seite-zul button span { overflow: hidden; display: flex; flex-direction: column; min-width: 0; }
+html.buero .seite-zul button span, html.buero .seite-zul button i { white-space: nowrap; text-overflow: ellipsis; overflow: hidden; }
+html.buero .seite-zul button i { font-style: normal; font-size: 11px; color: rgba(255,255,255,.5); }
+
+/* ---------- Rundmail und Serienbrief ---------- */
+.rm-bg .sheet.rm { max-width: 720px; }
+.rm-in { padding: 0 18px 18px; overflow: auto; flex: 1; min-height: 0; }
+.rm-bg .sheet.rm { display: flex; flex-direction: column; max-height: calc(100vh - 40px); }
+.rm-g { margin: 6px 0 10px; }
+.rm-kopf { display: flex; align-items: center; gap: 14px; margin: 4px 0 6px; } .rm-kopf b { flex: 1; font-size: 13.5px; }
+.rm-l { max-height: 200px; overflow: auto; border: 1px solid var(--line); border-radius: 8px; background: #fff; }
+.rm-z { display: flex; gap: 10px; align-items: center; padding: 6px 10px; border-top: 1px solid #edf0f3; margin: 0; }
+.rm-z:first-child { border-top: 0; }
+.rm-z span { display: flex; flex-direction: column; font-size: 13.5px; } .rm-z small { color: var(--muted); font-size: 12px; }
+.rm-z.leer { opacity: .55; }
+.rm-akt { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 12px; }
+
+/* ---------- Auswertung: Monate als Tabelle ---------- */
+html.buero .aw-mon .ltab tbody tr:last-child td { font-weight: 700; background: #f6f4f0; }
+
+/* ---------- Am PC weglassen: Kamera, Scanner, LiDAR, Gesprächsaufnahme (Diktieren in Textfeldern bleibt) ---------- */
+.nur-pc { display: none; }
+html.buero .nur-pc { display: inline-flex; }
+html.buero #camBtn, html.buero #vrec, html.buero #vpause, html.buero #wFotos, html.buero #vPlan, html.buero #vScan, html.buero .vo-sammel [data-bilder] { display: none !important; }
+
+/* ---------- Drucken: nur das Druckblatt ---------- */
+#druckBlatt { display: none; }
+@media print {
+  @page { margin: 0; size: A4; }
+  body > *:not(#druckBlatt) { display: none !important; }
+  html, body { background: #fff !important; min-height: 0 !important; height: auto !important; }
+  #druckBlatt { display: block !important; }
+  #druckBlatt img { display: block; width: 100%; height: auto; max-height: 100vh; object-fit: contain; break-after: page; page-break-after: always; }
+  #druckBlatt img:last-child { break-after: auto; page-break-after: auto; }
+}
+
+/* ---------- Version 107: Akte Kunde und Partner wie im CRM (buero.js akte) ---------- */
+/* Kopf: Schnellknöpfe; links Stammdaten als Formular (Bezeichnung links, Feld rechts); rechts Registerkarten */
+html.buero .akte-kopf .kd-actions { margin: 0 0 12px; }
+html.buero .akte-leib { display: grid; grid-template-columns: minmax(420px, 5fr) minmax(0, 7fr); gap: 16px; align-items: start; }
+html.buero .akte.neu .akte-leib { grid-template-columns: minmax(0, 760px); }
+@media (max-width: 1150px) { html.buero .akte-leib { grid-template-columns: minmax(0, 1fr); } }
+html.buero .akte-stamm, html.buero .akte-reg { background: var(--card); border: 1px solid var(--line); border-radius: 8px; min-width: 0; }
+html.buero .akte-h { padding: 10px 16px; border-bottom: 1px solid var(--line); background: #f8f9fb; border-radius: 8px 8px 0 0; font-size: 14px; }
+html.buero .akte-stamm > .kform { border: 0; box-shadow: none; border-radius: 0; margin: 0; padding: 12px 16px 14px;
+  display: grid; grid-template-columns: 150px minmax(0, 1fr); gap: 7px 14px; align-items: center; }
+html.buero .akte-stamm > .kform > * { grid-column: 2; min-width: 0; }
+html.buero .akte-stamm > .kform > label, html.buero .akte-stamm > .kform > .lab-plus,
+html.buero .akte-stamm > .kform > div:is(#kGebArtBox, #pLiefBox) > label { grid-column: 1; margin: 0; font-size: 13px; color: var(--muted); font-weight: 600; align-self: center; }
+html.buero .akte-stamm > .kform > label:has(+ textarea), html.buero .akte-stamm > .kform > label:has(+ .chips) { align-self: start; padding-top: 8px; }
+html.buero .akte-stamm > .kform > div:is(#kGebArtBox, #pLiefBox):not([hidden]) { display: contents; }
+html.buero .akte-stamm > .kform > div:is(#kGebArtBox, #pLiefBox) > :not(label) { grid-column: 2; }
+html.buero .akte-stamm > .kform > :is(.row, .hvbox, .seg2) { grid-column: 1 / -1; }
+html.buero .akte-stamm > .kform > .seg2.full { display: inline-flex; justify-self: start; }
+html.buero .akte-stamm > .kform > :is(#kTelMehr, #kMailMehr, #pTelMehr, #pMailMehr):empty { display: none; }
+html.buero .akte-stamm > .kform input, html.buero .akte-stamm > .kform select { height: 36px; font-size: 14px; }
+html.buero .akte-stamm > .kform textarea { min-height: 80px; font-size: 14px; }
+html.buero .akte-stamm > .kform .lab-plus { display: flex; align-items: center; gap: 4px; }
+html.buero .akte-stamm > .link-danger, html.buero .akte-stamm > .link-add { display: flex; margin: 0 16px 14px; }
+html.buero .akte-tabs { display: flex; gap: 0; border-bottom: 1px solid var(--line); padding: 0 8px; background: #f8f9fb; border-radius: 8px 8px 0 0; overflow-x: auto; }
+html.buero .akte-tabs button { background: none; border: 0; border-bottom: 2px solid transparent; padding: 10px 14px 9px; font: inherit; font-size: 14px; font-weight: 600; color: var(--muted); cursor: pointer; white-space: nowrap; }
+html.buero .akte-tabs button:hover { color: var(--navy); }
+html.buero .akte-tabs button.on { color: var(--navy); border-bottom-color: var(--brass); }
+html.buero .akte-pane { padding: 14px 16px 16px; }
+html.buero .akte-pane[hidden] { display: none; }
+html.buero .akte-pane > .akte-weg { display: none; }
+html.buero .akte-pane > :first-child, html.buero .akte-pane > .akte-weg + * { margin-top: 0; }
+html.buero .akte-pane > .card.kform { border: 0; box-shadow: none; padding: 0; margin: 0; }
+html.buero .akte-pane .btn.big.block { width: auto; display: inline-flex; height: 40px; font-size: 14px; padding: 0 18px; }
+html.buero .akte-sum { margin: 0 0 8px; font-size: 13.5px; }
+html.buero .akte-sum .rot { color: var(--danger); }

@@ -124,8 +124,9 @@ async function pdfAnsicht(quelle, name = 'Dokument') {
       <button type="button" class="icon-btn" data-z="-1" aria-label="Kleiner">−</button><span data-zt>100 %</span><button type="button" class="icon-btn" data-z="1" aria-label="Größer">+</button>
       <button type="button" class="icon-btn" data-x aria-label="Schließen">${icon('x')}</button></div>
     <div class="pdfz-b"><div class="pdfz-in">${bild ? `<img src="${url}" alt="">` : '<p class="pdfz-warte">Dokument wird geladen …</p>'}</div></div>
-    ${window.DomDesktop ? `<div class="pdfz-pc"><button type="button" class="btn secondary" data-dsp>${icon('download')} Speichern unter …</button><button type="button" class="btn secondary" data-doe>${icon('file')} Im PDF-Programm öffnen oder drucken</button></div>`
+    ${window.DomDesktop ? `<div class="pdfz-pc">${window.Buero ? `<button type="button" class="btn" data-druck>${icon('file')} Drucken</button>` : ''}<button type="button" class="btn secondary" data-dsp>${icon('download')} Speichern unter …</button><button type="button" class="btn secondary" data-doe>${icon('file')} Im PDF-Programm öffnen oder drucken</button></div>`
       : `<button type="button" class="pdfz-voll" data-voll>${icon('share')} Teilen oder in anderer App öffnen</button>`}`;
+  bg.__blob = blob; bg.__name = /\.\w{2,4}$/.test(name) ? name : name + (bild ? '.jpg' : '.pdf'); // für Drucken und Kundenablage (buero.js)
   document.body.appendChild(bg);
   const b = $('.pdfz-b', bg), inn = $('.pdfz-in', bg);
   const schaerfen = debounce(() => seiten?.neu(b.clientWidth * z), 250);
@@ -163,6 +164,7 @@ async function pdfAnsicht(quelle, name = 'Dokument') {
   if (window.DomDesktop) {
     $('[data-dsp]', bg).onclick = () => desktopSpeichern(blob, dateiName());
     $('[data-doe]', bg).onclick = () => desktopOeffnen(blob, dateiName());
+    if ($('[data-druck]', bg)) $('[data-druck]', bg).onclick = () => window.Buero.druckeBlob(blob);
   } else $('[data-voll]', bg).onclick = async () => {
     const datei = blob instanceof File ? blob : new File([blob], /\.\w{2,4}$/.test(name) ? name : name + (bild ? '.jpg' : '.pdf'), { type: blob.type });
     const nativ = !!window.Capacitor?.isNativePlatform?.() || navigator.standalone === true;
@@ -364,6 +366,7 @@ async function dokMerken(files) {
     const key = 'wdok:' + w.id + ':' + f.name.replace(/[^\wäöüÄÖÜß.-]+/g, '_');
     await kvSet(key, await datUrl(f));
     w.dokumente = [...(w.dokumente || []).filter((x) => x.key !== key), { key, name: f.name, t: Date.now() }];
+    window.Buero?.ablage(w, f.name, f); // am PC zusätzlich in den Kundenordner
   }
   await Projekt.save(w);
   return true;

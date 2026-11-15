@@ -160,6 +160,22 @@ window.Finanzen = (() => {
     // Umsatz je Monat (nur wenn ein Jahr gewählt ist)
     const monate = Array.from({ length: 12 }, (_, m) => umsatzR.filter((r) => +(r.datum || '').slice(5, 7) === m + 1).reduce((s, r) => s + netto(r), 0));
     const maxM = Math.max(...monate, 1);
+    // Am PC: alle Monate als Tabelle wie Excel (sortierbar, Rechtsklick, als Excel speichern)
+    if (jahr && window.Tabelle?.istBuero()) {
+      const mon = (t) => { if (!t) return 0; const d = typeof t === 'number' ? new Date(t) : new Date(String(t).slice(0, 10) + 'T12:00'); return String(d.getFullYear()) === String(jahr) ? d.getMonth() + 1 : 0; };
+      const z = Array.from({ length: 12 }, (_, m) => {
+        const am = ang.filter((e) => mon(e.w.created) === m + 1), zm = zuL.filter((e) => mon(wann(e, ZU)) === m + 1), abm = abL.filter((e) => mon(e.w.absage?.t) === m + 1);
+        const rm = umsatzR.filter((r) => mon(r.datum) === m + 1), em = rechnungen.filter((r) => r.bezahlt && mon(r.bezahlt) === m + 1);
+        return { m, ang: am.length, angW: wert(am), zu: zm.length, zuW: wert(zm), ab: abm.length, rn: rm.length, ums: rm.reduce((s, r) => s + netto(r), 0), ein: em.reduce((s, r) => s + Rechnung.zahlbetrag(r), 0) };
+      });
+      const summe = (k) => z.reduce((s, x) => s + x[k], 0);
+      const zeile = (x, id, name) => ({ id, werte: { mon: { text: name, sort: x.m ?? 99 }, ang: { text: x.ang || '', sort: x.ang }, angW: { text: x.angW ? eur0(x.angW) : '', sort: x.angW }, zu: { text: x.zu || '', sort: x.zu }, zuW: { text: x.zuW ? eur0(x.zuW) : '', sort: x.zuW },
+        ab: { text: x.ab || '', sort: x.ab }, rn: { text: x.rn || '', sort: x.rn }, ums: { text: x.ums ? eur0(x.ums) : '', sort: x.ums }, ein: { text: x.ein ? eur0(x.ein) : '', sort: x.ein } } });
+      const NM = ['Januar', 'Februar', 'März', 'April', 'Mai', 'Juni', 'Juli', 'August', 'September', 'Oktober', 'November', 'Dezember'];
+      const zeilen = [...z.map((x) => zeile(x, 'm' + x.m, NM[x.m])), zeile({ m: 99, ang: summe('ang'), angW: summe('angW'), zu: summe('zu'), zuW: summe('zuW'), ab: summe('ab'), rn: summe('rn'), ums: summe('ums'), ein: summe('ein') }, 'summe', 'Summe ' + jahr)];
+      setTimeout(() => { const box = $('#awMon'); if (box) window.Tabelle.liste(box, { id: 'monate', oeffnen: () => {}, zeilen,
+        spalten: [{ k: 'mon', t: 'Monat', b: 130 }, { k: 'ang', t: 'Angebote', r: 1 }, { k: 'angW', t: 'Angebotswert netto', r: 1 }, { k: 'zu', t: 'Zusagen', r: 1 }, { k: 'zuW', t: 'Auftragswert netto', r: 1 }, { k: 'ab', t: 'Absagen', r: 1 }, { k: 'rn', t: 'Rechnungen', r: 1 }, { k: 'ums', t: 'Umsatz netto', r: 1 }, { k: 'ein', t: 'Zahlungseingang', r: 1 }] }); }, 0);
+    }
     return `
       <div class="card aw"><b class="aw-h">Aus Angeboten wurden Projekte</b>
         ${ang.length ? `<p class="aw-satz">Von <b>${ang.length}</b> ${ang.length === 1 ? 'Angebot' : 'Angeboten'} ${ang.length === 1 ? 'wurde' : 'wurden'} <b>${zu}</b> zum Projekt${proz(zu, ang.length)}.${tageSchnitt !== null ? ` Von „verschickt“ bis zur Zusage dauert es im Schnitt <b>${tageSchnitt} ${tageSchnitt === 1 ? 'Tag' : 'Tage'}</b>.` : ''}</p>
@@ -172,6 +188,7 @@ window.Finanzen = (() => {
       <div class="phasen zwei"><div class="fz"><b>${quote == null ? '–' : quote + ' %'}</b><span>Zusagequote (${zu} zu, ${ab} ab)</span></div><div class="fz"><b>${mitWert.length ? eur0(wert(mitWert) / mitWert.length) : '–'}</b><span>Ø Auftragswert netto</span></div></div>
       <div class="phasen zwei" style="margin-top:8px"><div class="fz"><b>${eur0(umsatz)}</b><span>Umsatz netto (Rechnungen)</span></div><div class="fz"><b>${eur0(eingang)}</b><span>Zahlungseingang</span></div></div>
       <div class="phasen zwei" style="margin-top:8px"><div class="fz ${ueberR.length ? 'rot' : ''}"><b>${eur0(sum(offenR))}</b><span>Offen bei Kunden${ueberR.length ? `, davon ${eur0(sum(ueberR))} überfällig` : ''}</span></div><div class="fz"><b>${sollSum ? Math.round((margeSum / sollSum) * 100) + ' %' : '–'}</b><span>Marge Ø (${marge.length} ${marge.length === 1 ? 'Projekt' : 'Projekte'})</span></div></div>
+      ${jahr && window.Tabelle?.istBuero() ? `<div class="card aw aw-mon"><b class="aw-h">Monate ${jahr}</b><div id="awMon"></div></div>` : ''}
       ${jahr && umsatz ? `<div class="card aw"><b class="aw-h">Umsatz je Monat ${jahr}</b><div class="aw-m">${monate.map((v, m) => `<div title="${eur0(v)}"><i class="${v ? '' : 'leer'}" style="--h:${Math.round((v / maxM) * 100)}%"></i>${['J', 'F', 'M', 'A', 'M', 'J', 'J', 'A', 'S', 'O', 'N', 'D'][m]}</div>`).join('')}</div><p class="hint" style="margin:6px 0 0">Bester Monat: ${eur0(maxM)}</p></div>` : ''}
       ${quellen.length ? `<div class="card aw"><b class="aw-h">Woher kommen die Kunden?</b>${balken(quellen, kunden.filter((k) => k.quelle).length, (q) => { const n = quelleZu(q); return n ? ` <small>· ${n} Auftr.</small>` : ''; })}</div>` : ''}
       ${ab ? `<div class="card aw"><b class="aw-h">Abgesagte Angebote</b>${gruende.length ? balken(gruende, ab) : ''}<div class="aw-abl">${abListe}</div></div>` : ''}`;

@@ -1393,6 +1393,7 @@ Gib Länge (längere Seite) und Breite der Grundfläche, Raumhöhe, Anzahl und G
       <div class="tot"><span class="muted">Firma</span><span style="text-align:right">${esc(E.firma)}<br>${esc(E.strasse)}, ${esc(E.ort)}</span></div>
       ${/0000|Muster/.test(E.telefon + E.strasse) ? '<p class="muted">Adresse und Telefon sind noch Platzhalter. Unter Einstellungen › Firma & Logo ändern.</p>' : ''}
       <button class="btn block" id="plImport" style="margin-top:10px">Excel-Angebotstool laden</button>
+      ${window.Buero && window.Tabelle?.istBuero() ? '<button class="btn secondary block" id="plExport" style="margin-top:8px">Preisliste als Excel speichern</button>' : ''}
       <div class="row" style="margin-top:10px"><button class="btn secondary" id="plVorl">Paket-Vorlagen</button><button class="btn danger" id="plReset">Standard</button></div>
     </div>`;
     $('#plImport').onclick = () => {
@@ -1400,6 +1401,7 @@ Gib Länge (längere Seite) und Breite der Grundfläche, Raumhöhe, Anzahl und G
       inp.onchange = async () => { try { const r = await importExcel(inp.files[0]); toast(`${r.positionen.length} Positionen übernommen`); einstellungenKarte(); } catch (e) { toast('Import fehlgeschlagen: ' + e.message, 6000); } };
       inp.click();
     };
+    if ($('#plExport')) $('#plExport').onclick = () => window.Buero.preislisteExcel();
     $('#plReset').onclick = async () => { if (!loeschFrage('Preisliste auf die Standard-Schätzpreise zurücksetzen?')) return; await kvDel('preisliste'); PL = null; einstellungenKarte(); };
     $('#plVorl').onclick = () => vorlagenView();
   }
