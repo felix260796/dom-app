@@ -224,6 +224,13 @@ Position `x.art`: '' normal, 'bedarf', 'alternativ', 'kostenlos' (`ARTEN_POS`, `
 
 Angebots-PDF (`baueAngebotPdf`): bei mehreren Titeln Titel mit Nummer, Positionen 1.1, 1.2 … (wie die Tabelle am PC), „Summe n Titel“ unter jedem Titel und vor den Summen die „Zusammenstellung“ (Summe je Titel, Vorgabe `angebotZusammenstellung`). Angebot am PC rechts: Karte „Bei Subunternehmern angefragt“ aus `w.subAnfragen` (Frist, überfällig). `Tabelle.istBuero()` ist auf dem iPad (auch mit Tastatur/Trackpad) und in der TestFlight-App nie wahr (`istIpad`): drei Ansichten iPhone, iPad, PC.
 
+## Neuerungen aus Version 122 (Teil B: Schluss des Angebots, Verfasser, vorzeitiger Beginn, Skonto)
+
+Reihenfolge am Schluss bewusst geändert (Runde 12/13, ersetzt die Regel aus v100): Schlusstexte, dann Gruß mit Name, Unterschrift und Stempel des Verfassers, ganz zuletzt die Auftragserteilung für den Kunden (`FEST = ['gruss', 'auftrag']`, `rang` im `textEditor`, PDF in `baueAngebotPdf`). Nicht zurückdrehen.
+Verfasser: Das interne Feld heißt in der Oberfläche „Verfasser“ (`bAnspr`, `aAnspr`, Vorgabe `ansprechAngebot`), Daten weiter in `anspr`; im PDF steht er als „Ansprechpartner“ und unterschreibt. Der Ansprechpartner im Projekt nach der Zusage (`ansprechProjekt`, `w.ansprechpartner`) bleibt.
+Vorzeitiger Beginn: Kästchen über der Kundenunterschrift, Text Vorgabe `textVorzeitig` (Rechtstext, leer = kein Kästchen), nur Privat/WEG (`Angebot._intern.privatArt(k)`). Im Projekt (eingeplant) Haken „Kunde hat den vorzeitigen Beginn angekreuzt“ (`w.vorzeitig = { t, wer }`, `vorzeitigHtml` in `projekt.js`), stiller Hinweis, wenn der Baustart vor `widerrufBis(w)` liegt (Zusage aus `w.verlauf` + Vorgabe `widerrufTage`). Nichts wird gesperrt.
+Skonto: Vorgaben `skontoProzent` (0 = aus), `skontoTage`; je Vorgang `w.skonto = { p, tage }` (`skontoKarte` in `projekt.js`, am PC rechts, am iPhone Schritt 4). `Angebot._intern.skontoVon(w, brutto)` → `{ p, tage, betrag, zahlbetrag }` vom Brutto der zählenden Positionen. PDF unter der Gesamtsumme, Platzhalter `{skonto}`, `{skontobetrag}`, `{zahlbetrag}`, `{brutto}`. Ob Skonto auch auf Abschläge gilt, ist offen (Schritt 12).
+
 ## Bereiche
 
 | Bereich | Dateien | Inhalt |

@@ -324,6 +324,11 @@ window.Projekt = (() => {
       if (!w.isNew) await save(w);
       toast('Unterschriebenes Angebot abgelegt'); const y = window.scrollY; await view(); window.scrollTo(0, y);
     };
+    if ($('#wVorzeitig')) $('#wVorzeitig').onchange = async (e) => {
+      if (e.target.checked) w.vorzeitig = { t: Date.now(), wer: window.Kalender?.wer?.() || '' }; else delete w.vorzeitig;
+      if (!w.isNew) await save(w);
+      const y = window.scrollY; await view(); window.scrollTo(0, y);
+    };
     if ($('#wBaustart')) $('#wBaustart').onchange = async (e) => {
       w.baustart = e.target.value;
       await baustartTermin(w);
@@ -758,7 +763,7 @@ window.Projekt = (() => {
               <option value="__neu">Andere Anschrift …</option></select></div>` : ''}
             <div class="ape-f ape-betr"><label for="wTitel">Betreff (Projektname)</label><input type="text" id="wTitel" value="${esc(w.titel || '')}" placeholder="z. B. Badsanierung, Türgriffe tauschen" autocomplete="off"></div>
             <div class="ape-f"><label for="bNr">Angebotsnummer</label><input type="text" id="bNr" value="${esc(K.nr)}" placeholder="kommt beim Speichern" autocomplete="off"${angNr(w) ? ' readonly title="Wird beim Anlegen vergeben: Kunde, Vorgang, Angebot"' : ''}></div>
-            <div class="ape-f"><label for="bAnspr">Ansprechpartner</label><select id="bAnspr">${anspr.map((x) => `<option ${x === (A.einePerson(K.anspr) || anspr[0]) ? 'selected' : ''}>${esc(x)}</option>`).join('')}</select></div>
+            <div class="ape-f"><label for="bAnspr" title="Steht im Angebot als Ansprechpartner und unterschreibt">Verfasser</label><select id="bAnspr">${anspr.map((x) => `<option ${x === (A.einePerson(K.anspr) || anspr[0]) ? 'selected' : ''}>${esc(x)}</option>`).join('')}</select></div>
             <div class="ape-f"><label for="bAnrede">Anrede</label><input type="text" id="bAnrede" value="${esc(K.anrede)}" placeholder="${esc(erst ? A.anredeDefault(erst) : 'Sehr geehrte Damen und Herren,')}" autocomplete="off"></div>
             ${sq ? `<p class="ab-schnell ape-voll">${icon('phone')}<span>Am Telefon genannt: <b>ca. ${eurRund(sq.von)} – ${eurRund(sq.bis)}</b>${sq.text ? ` · ${esc(sq.text)}` : ''}</span></p>` : ''}
           </section>
@@ -767,7 +772,7 @@ window.Projekt = (() => {
           <div id="xtAng" class="xt-box"></div>
           ${list.length ? `<div class="xt-raeume"><span>Einzeln bearbeiten (Paket, Partnerangebot übernehmen):</span>${list.map((r) => `<button type="button" class="qchip" data-angraum="${r.id}">${esc(raumTitel(r))}</button>`).join('')}</div>` : ''}
           ${window.Bausteine.block({ wo: 'nach', titel: 'Schlusstext', leer: 'Kein Text nach den Positionen', liste: texte })}
-          <p class="hint">Ganz am Schluss stehen die Auftragserteilung und „${esc(vorgabeText('textGruss'))}“ mit ${esc(A.einePerson(K.anspr) || anspr[0] || 'Name')}, Unterschrift und Stempel.</p>
+          <p class="hint">Am Schluss stehen „${esc(vorgabeText('textGruss'))}“ mit ${esc(A.einePerson(K.anspr) || anspr[0] || 'Name')}, Unterschrift und Stempel, danach die Auftragserteilung für den Kunden.</p>
         </div>
         <aside class="ape-seite">
           <div class="ape-tabs">${[['akt', 'Angebot'], ['bild', 'Bilder'], ['pl', 'Preislisten']].map(([id, n]) => `<button type="button" data-apt="${id}">${n}</button>`).join('')}</div>
@@ -788,6 +793,7 @@ window.Projekt = (() => {
           ${erst ? `<details class="more card bs"><summary>${icon('sliders')}<span>Aufschläge<small>Nur für dieses Angebot, leer = Standard</small></span>${icon('chevron', 'more-chev')}</summary>
             <div class="row">${[['aufLohn', 'Lohn %'], ['aufMat', 'Material %'], ['wagnis', 'Wagnis %']].map(([n, l]) => `<div><label>${l}</label><input type="text" inputmode="decimal" data-bnk="${n}" value="${a.kalk?.[n] !== undefined && a.kalk?.[n] !== null && a.kalk?.[n] !== '' ? proz(a.kalk[n]) : ''}" placeholder="${proz(E[n])}"></div>`).join('')}</div>
           </details>` : ''}
+          ${skontoKarte(w)}
           ${dokListe(w)}
           <div class="ape-links">
             <button class="link-add" id="wAngUpload">${icon('upload')} Fertiges PDF hochladen (z. B. aus Excel)</button>
@@ -931,7 +937,7 @@ window.Projekt = (() => {
         <div class="sec-h"><h2>So steht es oben im Angebot</h2></div>
         <div class="card kform">
           <div class="row"><div><label style="margin-top:0">Angebotsnummer</label><input type="text" id="bNr" value="${esc(K.nr)}" placeholder="kommt beim Speichern" autocomplete="off"${angNr(w) ? ' readonly title="Wird beim Anlegen vergeben: Kunde, Vorgang, Angebot"' : ''}></div>
-            <div><label style="margin-top:0">Ansprechpartner</label><select id="bAnspr">${anspr.map((x) => `<option ${x === (A.einePerson(K.anspr) || anspr[0]) ? 'selected' : ''}>${esc(x)}</option>`).join('')}</select></div></div>
+            <div><label style="margin-top:0">Verfasser</label><select id="bAnspr">${anspr.map((x) => `<option ${x === (A.einePerson(K.anspr) || anspr[0]) ? 'selected' : ''}>${esc(x)}</option>`).join('')}</select></div></div>
           ${k ? '<p class="hint" style="margin:8px 0 0">Betreff ist der Projektname (oben beim Kunden).</p>' : `<label>Projektname (= Betreff)</label><input type="text" id="wTitel" value="${esc(w.titel || '')}" placeholder="z. B. Badumbau" autocomplete="off">`}
           <label>Anrede</label><input type="text" id="bAnrede" value="${esc(K.anrede)}" placeholder="${esc(erst ? A.anredeDefault(erst) : 'Sehr geehrte Damen und Herren,')}" autocomplete="off">
         </div>
@@ -960,7 +966,8 @@ window.Projekt = (() => {
       danach: () => `
         <div class="sec-h"><h2>Was steht nach den Positionen?</h2></div>
         ${window.Bausteine.block({ wo: 'nach', titel: 'Schlusstexte', leer: 'Kein Text nach den Positionen', liste: texte, offen: true })}
-        <p class="hint">Am Schluss stehen immer die Auftragserteilung und ganz zuletzt „${esc(vorgabeText('textGruss'))}“ mit ${esc(A.einePerson(K.anspr) || anspr[0] || 'Name')}, Unterschrift und Stempel. Abwählen oder Text ändern geht hier.</p>`,
+        <p class="hint">Am Schluss stehen immer „${esc(vorgabeText('textGruss'))}“ mit ${esc(A.einePerson(K.anspr) || anspr[0] || 'Name')}, Unterschrift und Stempel und ganz zuletzt die Auftragserteilung für den Kunden. Abwählen oder Text ändern geht hier.</p>
+        ${skontoKarte(w)}`,
       ansicht: () => `
         <div class="sec-h"><h2>Alles beisammen?</h2></div>
         <div class="card bs-ueb">
@@ -968,7 +975,7 @@ window.Projekt = (() => {
             ['davor', 'Rechnungsanschrift', k?.privat.trim() ? Kunden.einzeilig(k.privat) : 'fehlt noch', !!k?.privat.trim()],
             ['davor', 'Objekt', w.address || 'fehlt noch', !!w.address],
             ['davor', 'Betreff (Projektname)', w.titel || 'fehlt noch, wird sonst vorgeschlagen', !!w.titel],
-            ['davor', 'Ansprechpartner', A.einePerson(K.anspr) || anspr[0] || '', true],
+            ['davor', 'Verfasser', A.einePerson(K.anspr) || anspr[0] || '', true],
             ['masse', 'Angeboten wird', list.length ? list.map(raumTitel).join(', ') : 'noch nichts angelegt', list.length > 0],
             ['pos', 'Positionen', nPos ? `${nPos} ${nPos === 1 ? 'Position' : 'Positionen'} · ${eur2(summe)} brutto` : 'noch keine', nPos > 0],
             ['danach', 'Schlusstexte', window.Bausteine.teil(texte, 'nach').filter((b) => !b.aus).map((b) => b.titel || 'Text').join(', ') || 'keine', true],
@@ -1019,7 +1026,15 @@ window.Projekt = (() => {
         <button class="link-danger" id="wDel">${icon('trash')} Angebot löschen</button></div>`;
   }
 
-  /** Büro: Nummer, Betreff, Anrede, Ansprechpartner, Aufschläge und Texte gelten für das ganze Angebot (alle Räume). */
+  /** Skonto für dieses Angebot (v122): leer = Standard aus den Einstellungen, 0 = kein Skonto. Betrag vom Zahlbetrag brutto. */
+  function skontoKarte(w) {
+    const o = w.skonto || {}, wert = (v) => (v === undefined || v === null || v === '' ? '' : String(v).replace('.', ','));
+    return `<details class="more card bs"><summary>${icon('euro')}<span>Skonto<small>Nur für dieses Angebot, leer = Standard${+vorgabe('skontoProzent') > 0 ? ` (${wert(vorgabe('skontoProzent'))} % in ${vorgabe('skontoTage')} Tagen)` : ' (aus)'}</small></span>${icon('chevron', 'more-chev')}</summary>
+      <div class="row"><div><label>Skonto %</label><input type="text" inputmode="decimal" data-sko="p" value="${esc(wert(o.p))}" placeholder="${esc(wert(vorgabe('skontoProzent')))}"></div>
+        <div><label>innerhalb von Tagen</label><input type="text" inputmode="numeric" data-sko="tage" value="${esc(wert(o.tage))}" placeholder="${esc(wert(vorgabe('skontoTage')))}"></div></div>
+      <p class="hint" style="margin:6px 0 0">Im Angebot steht unter der Gesamtsumme der Skonto-Betrag und der Zahlbetrag. Bedarfs- und Alternativpositionen zählen nicht mit. 0 = kein Skonto.</p></details>`;
+  }
+  /** Büro: Nummer, Betreff, Anrede, Verfasser, Aufschläge und Texte gelten für das ganze Angebot (alle Räume). */
   function bueroFelder(w, list) {
     if (!$('.ab-schritte, .ape')) return;
     const A = window.Angebot._intern, mitPos = mitPosVon(list), mehrere = mitPos.length > 1;
@@ -1048,6 +1063,14 @@ window.Projekt = (() => {
       for (const r of alle) { r.angebot.kalk ??= {}; if (v === '') delete r.angebot.kalk[el.dataset.bnk]; else r.angebot.kalk[el.dataset.bnk] = n / 100; await saveProject(r); }
       toast(v === '' ? 'Wieder der Standard aus den Einstellungen' : 'Aufschlag gilt für dieses Angebot');
       if ($('#xtAng')) { const y = window.scrollY; await view(); window.scrollTo(0, y); } // Preise in der Tabelle neu
+    }));
+    $$('[data-sko]').forEach((el) => (el.onchange = async () => {
+      const v = el.value.trim().replace(',', '.'), n = parseFloat(v);
+      if (v !== '' && !(Number.isFinite(n) && n >= 0)) return toast('Bitte eine Zahl eintragen.');
+      w.skonto ??= {}; if (v === '') delete w.skonto[el.dataset.sko]; else w.skonto[el.dataset.sko] = n;
+      if (!Object.keys(w.skonto).length) delete w.skonto;
+      delete w.isNew; await save(w);
+      toast(v === '' ? 'Wieder der Standard aus den Einstellungen' : n === 0 && el.dataset.sko === 'p' ? 'Kein Skonto in diesem Angebot' : 'Skonto gilt für dieses Angebot');
     }));
     // Texte: anhaken, was im Angebot steht. Erst beim ersten Ändern bekommt das Angebot eine eigene Fassung.
     const texte = texteVon(w);
@@ -1250,6 +1273,21 @@ window.Projekt = (() => {
     } catch (e) { console.warn('Angebot-PDF nicht gespeichert', e); }
   }
   /** Baustart als ganztägiger Baustellen-Termin im Kalender (ein Termin je Projekt, wird angepasst oder entfernt). */
+  /** Vorzeitiger Beginn (Runde 12/13): Hat der Privatkunde das Kästchen angekreuzt? w.vorzeitig = { t, wer }.
+   *  Stiller Hinweis, wenn der Baustart in der Widerrufsfrist liegt und kein Kreuz gemerkt ist. Keine Sperre. */
+  function widerrufBis(w) {
+    const z = [...(w.verlauf || [])].reverse().find((v) => norm(v.st) === 'geplant')?.t || w.auftragsbestaetigung?.t;
+    if (!z) return '';
+    const d = new Date(z); d.setDate(d.getDate() + (+vorgabe('widerrufTage') || 14));
+    return d.toISOString().slice(0, 10);
+  }
+  function vorzeitigHtml(w) {
+    const k = window.Kunden?.byId?.(w.kundeId);
+    if (!window.Angebot._intern.privatArt(k)) return '';
+    const bis = widerrufBis(w), frueh = w.baustart && bis && w.baustart <= bis && !w.vorzeitig;
+    return `<label class="stk-vz"><input type="checkbox" id="wVorzeitig" ${w.vorzeitig ? 'checked' : ''}><span>Kunde hat den vorzeitigen Beginn angekreuzt${w.vorzeitig?.t ? ` <small>(${esc(new Date(w.vorzeitig.t).toLocaleDateString('de-DE'))})</small>` : ''}</span></label>
+      ${frueh ? `<p class="hint warn" style="margin:0 0 6px">Der Baustart liegt in der Widerrufsfrist (bis ${esc(datumText(bis))}). Ohne Kreuz beim vorzeitigen Beginn erst danach anfangen.</p>` : ''}`;
+  }
   async function baustartTermin(w) {
     const id = 'bau-' + w.id;
     if (!w.baustart) { await kvDel('termin:' + id); return; }
@@ -1277,7 +1315,8 @@ window.Projekt = (() => {
       <div class="stk-top"><span class="stk-dot"></span><span class="stk-t"><small>Status</small><b>${esc(st === 'geplant' && w.baustart ? `Eingeplant · Baustart ${datumText(w.baustart)}` : statusName(st))}</b></span><button class="stk-alle" id="stAlle">Ändern</button></div>
       <div class="stk-pfad" aria-hidden="true">${PFAD.map((id, j) => `<i class="${st === 'abgesagt' ? (j <= 2 ? 'ab' : '') : j < i ? 'ok' : j === i ? 'jetzt' : ''}" style="--c:${farbe(id)}"></i>`).join('')}</div>
       ${st === 'geplant' ? `<label class="stk-feld">${icon('calendar')}<span>Baustart</span><input type="date" id="wBaustart" value="${esc(w.baustart || '')}"></label>
-        <p class="hint" style="margin:0 0 6px">${w.baustart ? 'Am Tag des Baustarts springt der Status von selbst auf „Baustelle läuft“.' : 'Noch kein Baustart. Trag ihn ein, dann steht er im Kalender und das Projekt ist eingeplant.'}</p>` : ''}
+        <p class="hint" style="margin:0 0 6px">${w.baustart ? 'Am Tag des Baustarts springt der Status von selbst auf „Baustelle läuft“.' : 'Noch kein Baustart. Trag ihn ein, dann steht er im Kalender und das Projekt ist eingeplant.'}</p>
+        ${vorzeitigHtml(w)}` : ''}
       ${st === 'angebot' && tage >= nachfassen() ? `<p class="stk-tipp warn">${icon('phone')} Seit ${tage} Tagen beim Kunden. Zeit zum Nachfassen.</p>` : ''}
       ${st === 'angebot' && w.versendetAm && tage < nachfassen() ? `<p class="hint" style="margin:0 0 10px">Versendet am ${esc(datumText(w.versendetAm))}</p>` : ''}
       ${st === 'abgesagt' && w.absage?.grund ? `<p class="hint" style="margin:0 0 10px">Grund: ${esc(w.absage.grund)} · ${esc(new Date(w.absage.t).toLocaleDateString('de-DE'))}</p>` : ''}

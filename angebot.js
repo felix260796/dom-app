@@ -658,7 +658,7 @@ Gib Länge (längere Seite) und Breite der Grundfläche, Raumhöhe, Anzahl und G
       <details class="more card"><summary>${icon('sliders')}<span>Weitere Einstellungen<small>Nummer, Betreff, Anrede, Aufschläge, Preisrichtung, Excel</small></span>${icon('chevron', 'more-chev')}</summary>
         <div class="kform">
         <div class="row"><div><label>Angebotsnummer</label><input type="text" id="aNr" value="${esc(A.nr)}" placeholder="wird beim PDF vergeben"${p[window.AngebotDaten?.REF] && A.nr ? ' readonly title="Die Nummer wird beim Anlegen vergeben (Kunde, Vorgang, Angebot)."' : ''}></div>
-          <div><label>Ansprechpartner</label><select id="aAnspr">${ansprechpartner().map((x) => `<option ${x === ansprVon(A) ? 'selected' : ''}>${esc(x)}</option>`).join('')}</select></div></div>
+          <div><label>Verfasser</label><select id="aAnspr">${ansprechpartner().map((x) => `<option ${x === ansprVon(A) ? 'selected' : ''}>${esc(x)}</option>`).join('')}</select></div></div>
         <label>Betreff (= Projektname)</label><input type="text" id="aTitel" value="${esc(betreffWert(p))}" placeholder="${esc(titelDefault(p, pk))}">
         <label>Anrede</label><input type="text" id="aAnrede" value="${esc(A.anrede)}" placeholder="${esc(anredeDefault(p))}">
         <label>Aufschläge nur für dieses Angebot (leer = Standard)</label>
@@ -805,7 +805,7 @@ Gib Länge (längere Seite) und Breite der Grundfläche, Raumhöhe, Anzahl und G
       <details class="more card"><summary>${icon('sliders')}<span>${ausPrj ? 'Mehr<small>Alle Mengen auf 0, Excel</small>' : 'Weitere Einstellungen<small>Nummer, Betreff, Anrede, Aufschläge, Excel</small>'}</span>${icon('chevron', 'more-chev')}</summary>
         ${ausPrj ? '' : `<div class="kform">
         <div class="row"><div><label>Angebotsnummer</label><input type="text" id="aNr" value="${esc(A.nr)}" placeholder="wird beim PDF vergeben"${p[window.AngebotDaten?.REF] && A.nr ? ' readonly title="Die Nummer wird beim Anlegen vergeben (Kunde, Vorgang, Angebot)."' : ''}></div>
-          <div><label>Ansprechpartner</label><select id="aAnspr">${ansprechpartner().map((x) => `<option ${x === ansprVon(A) ? 'selected' : ''}>${esc(x)}</option>`).join('')}</select></div></div>
+          <div><label>Verfasser</label><select id="aAnspr">${ansprechpartner().map((x) => `<option ${x === ansprVon(A) ? 'selected' : ''}>${esc(x)}</option>`).join('')}</select></div></div>
         <label>Betreff (= Projektname)</label><input type="text" id="aTitel" value="${esc(betreffWert(p))}" placeholder="${esc(titelDefault(p, pk))}">
         <label>Anrede</label><input type="text" id="aAnrede" value="${esc(A.anrede)}" placeholder="${esc(anredeDefault(p))}">
         <label>Aufschläge nur für dieses Angebot (leer = Standard)</label>
@@ -945,6 +945,17 @@ Gib Länge (längere Seite) und Breite der Grundfläche, Raumhöhe, Anzahl und G
 
   // Ansprechpartner (Wunsch Felix, Version 100): immer genau eine Person. Standard im Angebot: Vorgabe ansprechAngebot,
   // im Projekt nach der Zusage: ansprechProjekt. Je Angebot wählbar (A.anspr). Ältere Werte mit zwei Namen gelten als „nicht gewählt“.
+  /** Privatkunde oder WEG (Widerruf, vorzeitiger Beginn)? Firma = nein. Alte Kunden ohne Art: nach der Anrede. */
+  const privatArt = (kd) => !kd || (kd.art ? kd.art !== 'firma' : !/^(firma|hausverwaltung)$/i.test(String(kd.anrede || '').trim()));
+  /** Skonto des Angebots: je Vorgang w.skonto { p, tage } (leer = Vorgabe), p = 0 schaltet ab. Betrag vom Zahlbetrag brutto (nur Positionen, die zählen). */
+  function skontoVon(w, brutto) {
+    const o = w?.skonto || {};
+    const p = o.p !== undefined && o.p !== '' && o.p !== null ? +o.p : +vorgabe('skontoProzent') || 0;
+    const tage = o.tage !== undefined && o.tage !== '' && o.tage !== null ? +o.tage : +vorgabe('skontoTage') || 0;
+    if (!(p > 0) || !(tage > 0) || !(brutto > 0)) return null;
+    const betrag = r2(brutto * p / 100);
+    return { p, tage, betrag, zahlbetrag: r2(brutto - betrag) };
+  }
   const einePerson = (v) => { const s = String(v || '').trim(); return s && !/\s·\s|,|&|\s+und\s+/.test(s) ? s : ''; };
   const ansprechpartner = () => {
     const team = (window.Kalender?.team() || []).map((x) => x.name);
@@ -1021,7 +1032,11 @@ Gib Länge (längere Seite) und Breite der Grundfläche, Raumhöhe, Anzahl und G
     // Abgewählte Bausteine (b.aus, im Büro abgehakt) stehen nicht im PDF
     const B = texteFuer(WA).filter((b) => !b.aus && (String(b.text || '').trim() || String(b.titel || '').trim()));
     const VOR = ab ? [{ titel: '', text: vorgabe('abEinleitung') }] : B.filter((x) => x.wo === 'vor');
-    const platzh = (s) => String(s || '').replace(/\{(\w+)\}/g, (m, n) => ({ zeitraum: zeitraumText(bz), nr: nrText, gueltig: fmtDate(gueltig), datum: fmtDate(heute), kunde: (kd && Kunden.name(kd)) || p.customer || '' })[n] ?? m);
+    const SK = skontoVon(WA, S.brutto);
+    const skSatz = SK ? `Bei Zahlung innerhalb von ${SK.tage} Tagen gewähren wir ${fmtNum(SK.p, SK.p % 1 ? 1 : 0)} % Skonto (${fmtEur(SK.betrag)}), Zahlbetrag dann ${fmtEur(SK.zahlbetrag)}.` : '';
+    const platzh = (s) => String(s || '').replace(/\{(\w+)\}/g, (m, n) => ({ zeitraum: zeitraumText(bz), nr: nrText, gueltig: fmtDate(gueltig), datum: fmtDate(heute), kunde: (kd && Kunden.name(kd)) || p.customer || '',
+      skonto: skSatz, skontoprozent: SK ? fmtNum(SK.p, SK.p % 1 ? 1 : 0) + ' %' : '', skontotage: SK ? String(SK.tage) : '', skontobetrag: SK ? fmtEur(SK.betrag) : '', zahlbetrag: fmtEur(SK ? SK.zahlbetrag : S.brutto), brutto: fmtEur(S.brutto) })[n] ?? m)
+      .replace(/[ \t]+\n/g, '\n').replace(/\n{3,}/g, '\n\n');
     for (const b of VOR) {
       if (String(b.titel || '').trim()) { doc.setFont('helvetica', 'bold'); doc.setTextColor(...NAVY); t(b.titel, M, y); y += 5; doc.setFont('helvetica', 'normal'); doc.setTextColor(30); }
       for (const abs of platzh(b.text).split(/\n\s*\n/)) { const ls = doc.splitTextToSize(abs.trim(), R - M); t(ls, M, y); y += 4.6 * ls.length + 1.5; }
@@ -1080,6 +1095,8 @@ Gib Länge (längere Seite) und Breite der Grundfläche, Raumhöhe, Anzahl und G
     doc.setDrawColor(...NAVY); doc.line(C.txt, y - 3.8, R, y - 3.8);
     doc.setTextColor(...NAVY); sumZ('Gesamtsumme brutto', fmtEur(S.brutto), true); doc.setTextColor(90);
     doc.setFontSize(8.5); sumZ('Darin enthaltener Lohnanteil brutto (§ 35a EStG)', fmtEur(S.lohnBrutto)); doc.setTextColor(30);
+    // Skonto (v122): vom Zahlbetrag brutto; Bedarfs- und Alternativpositionen sind darin nicht enthalten
+    if (SK && !ab) { doc.setFontSize(9); doc.setTextColor(60); sumZ(`Bei Zahlung innerhalb von ${SK.tage} Tagen ${fmtNum(SK.p, SK.p % 1 ? 1 : 0)} % Skonto`, '- ' + fmtEur(SK.betrag)); doc.setTextColor(...NAVY); sumZ('Zahlbetrag mit Skonto', fmtEur(SK.zahlbetrag), true); doc.setTextColor(30); }
     y += 4;
 
     // Texte
@@ -1094,19 +1111,7 @@ Gib Länge (längere Seite) und Breite der Grundfläche, Raumhöhe, Anzahl und G
     const NACH = B.filter((x) => x.wo !== 'vor');
     for (const b of NACH.filter((x) => !x.fest)) await abschnitt(String(b.titel || '').trim(), platzh(b.text).split(/\n\s*\n/).map((s) => s.trim()));
     const fest = (k) => NACH.find((x) => x.fest === k);
-    // Auftragserteilung (Baustein, nicht in der Auftragsbestätigung): darunter unterschreibt der Kunde
-    if (!ab && fest('auftrag')) {
-      const fa = fest('auftrag');
-      await platz(44);
-      doc.setFont('helvetica', 'bold'); doc.setFontSize(10); doc.setTextColor(...NAVY); t(String(fa.titel || '').trim() || 'Auftragserteilung', M, y); y += 5;
-      doc.setFont('helvetica', 'normal'); doc.setFontSize(9); doc.setTextColor(40);
-      const ls = doc.splitTextToSize(`${platzh(fa.text).trim()} (Angebot Nr. ${nrText} vom ${fmtDate(heute)}, ${fmtEur(S.brutto)} brutto)`.trim(), R - M);
-      t(ls, M, y); y += 4.3 * ls.length + 15;
-      doc.setDrawColor(120); doc.line(M, y, M + 60, y); doc.line(M + 80, y, R, y);
-      doc.setFontSize(8); doc.setTextColor(120); t('Ort, Datum', M, y + 4); t('Unterschrift Auftraggeber', M + 80, y + 4);
-      y += 14;
-    }
-    // Ganz zum Schluss: Gruß, Name des Ansprechpartners, Unterschrift und Stempel (unterschrift.js)
+    // Gruß, Name des Verfassers, Unterschrift und Stempel (unterschrift.js); seit v122 vor der Auftragserteilung
     if (fest('gruss')) {
       const gruss = ab ? vorgabe('abSchluss') : platzh(fest('gruss').text);
       await platz(44); doc.setFont('helvetica', 'normal'); doc.setFontSize(10); doc.setTextColor(30);
@@ -1114,6 +1119,26 @@ Gib Länge (längere Seite) und Breite der Grundfläche, Raumhöhe, Anzahl und G
       if (window.Unterschrift?.pdf) y = (await window.Unterschrift.pdf(doc, M, y, { firma: E.firma, name: ansprVon(A) })) || y + 12;
       else { t(String(vorgabe('textGruss') || 'Mit freundlichen Grüßen'), M, y); y += 5; t(ansprVon(A), M, y); y += 5; t(E.firma, M, y); y += 5; }
       y += 7;
+    }
+    // Auftragserteilung (Baustein, nicht in der Auftragsbestätigung): darunter unterschreibt der Kunde
+    if (!ab && fest('auftrag')) {
+      const fa = fest('auftrag');
+      await platz(44);
+      doc.setFont('helvetica', 'bold'); doc.setFontSize(10); doc.setTextColor(...NAVY); t(String(fa.titel || '').trim() || 'Auftragserteilung', M, y); y += 5;
+      doc.setFont('helvetica', 'normal'); doc.setFontSize(9); doc.setTextColor(40);
+      const ls = doc.splitTextToSize(`${platzh(fa.text).trim()} (Angebot Nr. ${nrText} vom ${fmtDate(heute)}, ${fmtEur(S.brutto)} brutto)`.trim(), R - M);
+      t(ls, M, y); y += 4.3 * ls.length + 4;
+      // Vorzeitiger Beginn (Runde 12/13): eigenes Kästchen zum Ankreuzen über der Unterschrift, nur bei Privatkunden und WEG.
+      // Text = Vorgabe textVorzeitig (Rechtstext, bleibt leer, bis Felix ihn geprüft einträgt; leer = kein Kästchen).
+      const vzText = String(vorgabe('textVorzeitig') || '').trim();
+      if (vzText && privatArt(kd)) {
+        const vz = doc.splitTextToSize(platzh(vzText), R - M - 7);
+        doc.setDrawColor(90); doc.rect(M, y - 3, 3.6, 3.6); t(vz, M + 6, y); y += 4.3 * vz.length;
+      }
+      y += 11;
+      doc.setDrawColor(120); doc.line(M, y, M + 60, y); doc.line(M + 80, y, R, y);
+      doc.setFontSize(8); doc.setTextColor(120); t('Ort, Datum', M, y + 4); t('Unterschrift Auftraggeber', M + 80, y + 4);
+      y += 14;
     }
 
     // Visualisierung
@@ -1223,10 +1248,11 @@ Gib Länge (längere Seite) und Breite der Grundfläche, Raumhöhe, Anzahl und G
     { id: 'zahl', wo: 'nach', titel: 'Preis und Zahlung', text: [...(E.hinweise || []).filter((h) => !/freuen uns/i.test(h)), E.textZahlung].filter(Boolean).join('\n\n') },
     { id: 'gew', wo: 'nach', titel: 'Gewährleistung und Widerruf', text: [E.textGewaehr, E.textWiderruf].filter(Boolean).join('\n\n') },
   ];
-  // Auftragserteilung und Gruß sind seit Version 100 Bausteine (Wunsch Felix): Text änderbar, abwählbar, stehen immer am Schluss,
-  // erst die Auftragserteilung, ganz zuletzt der Gruß mit Name, Unterschrift und Stempel. Kennzeichen b.fest = 'auftrag' | 'gruss'.
+  // Auftragserteilung und Gruß sind seit Version 100 Bausteine (Wunsch Felix): Text änderbar, abwählbar, stehen immer am Schluss.
+  // Seit v122 (Runde 13, bewusst geändert): erst der Gruß mit Name des Verfassers, Unterschrift und Stempel, danach die Auftragserteilung,
+  // unter der der Kunde unterschreibt. Nicht „zurückreparieren“. Kennzeichen b.fest = 'gruss' | 'auftrag'.
   // Vorher hießen sie „feste Zusätze“ (w.angebotOpt.gruss/auftrag); deren An/Aus wird beim ersten Lesen übernommen.
-  const FEST = ['auftrag', 'gruss'];
+  const FEST = ['gruss', 'auftrag'];
   function festStd(k, opt) {
     const E = PL.einstellungen;
     const aus = opt?.[k] === false || (opt?.[k] === undefined && vorgabe(k === 'gruss' ? 'angebotGruss' : 'angebotAuftragsfeld') === 'nein');
@@ -1257,9 +1283,9 @@ Gib Länge (längere Seite) und Breite der Grundfläche, Raumhöhe, Anzahl und G
   /** Seite zum Bearbeiten der Textfelder. liste wird direkt verändert, speichern() sichert sie. */
   function textEditor({ titel, sub, liste, speichern, zurueck, std, vorlagen, hinweis }) {
     const sichern = debounce(() => speichern(), 500);
-    const rang = (b) => (b.fest === 'auftrag' ? 1 : b.fest === 'gruss' ? 2 : 0); // feste Bausteine (Angebot) immer am Schluss
-    const FEST_HINWEIS = { auftrag: 'Steht nach den Schlusstexten. Darunter unterschreibt der Kunde (Ort, Datum, Unterschrift). Nicht in der Auftragsbestätigung.',
-      gruss: 'Steht ganz am Schluss. Darunter: Mit freundlichen Grüßen, Name des Ansprechpartners, Unterschrift und Stempel.' };
+    const rang = (b) => (b.fest === 'gruss' ? 1 : b.fest === 'auftrag' ? 2 : 0); // feste Bausteine (Angebot) immer am Schluss: Gruß, dann Auftragserteilung
+    const FEST_HINWEIS = { gruss: 'Steht nach den Schlusstexten. Darunter: Mit freundlichen Grüßen, Name des Verfassers, Unterschrift und Stempel.',
+      auftrag: 'Steht ganz am Schluss. Darunter unterschreibt der Kunde (Ort, Datum, Unterschrift), bei Privatkunden mit dem Kästchen zum vorzeitigen Beginn. Nicht in der Auftragsbestätigung.' };
     const zeichne = () => {
       liste.sort((a, b) => rang(a) - rang(b));
       header(titel, sub, { label: 'Zurück', fn: zurueck });
@@ -1272,7 +1298,7 @@ Gib Länge (längere Seite) und Breite der Grundfläche, Raumhöhe, Anzahl und G
             <button type="button" class="icon-btn" data-txdel="${i}" data-edit-nur aria-label="Entfernen">${icon('trash')}</button></div>
           <textarea data-txf="text" rows="${Math.min(12, Math.max(3, Math.ceil(String(b.text || '').length / 42) + String(b.text || '').split('\n').length - 1))}" placeholder="Text">${esc(b.text || '')}</textarea>
           <select data-txf="wo" aria-label="Wo im Angebot"><option value="vor" ${b.wo === 'vor' ? 'selected' : ''}>Steht vor den Positionen</option><option value="nach" ${b.wo !== 'vor' ? 'selected' : ''}>Steht nach den Positionen</option></select></div>`;
-      main().innerHTML = `<p class="hint" style="margin-top:0">${esc(hinweis || 'Jedes Textfeld hat eine Überschrift und einen Text. Ohne Überschrift steht nur der Text da. Eine Leerzeile beginnt einen neuen Absatz. Platzhalter: {zeitraum} Ausführungszeitraum, {gueltig} gültig bis, {nr} Angebotsnummer, {kunde} Kunde.')}</p>
+      main().innerHTML = `<p class="hint" style="margin-top:0">${esc(hinweis || 'Jedes Textfeld hat eine Überschrift und einen Text. Ohne Überschrift steht nur der Text da. Eine Leerzeile beginnt einen neuen Absatz. Platzhalter: {zeitraum} Ausführungszeitraum, {gueltig} gültig bis, {nr} Angebotsnummer, {kunde} Kunde, {brutto} Gesamtsumme, {skonto} Satz zum Skonto (leer ohne Skonto), {skontobetrag}, {zahlbetrag}.')}</p>
         ${[['vor', 'Vor den Positionen'], ['nach', 'Nach den Positionen']].map(([wo, n]) => `<div class="sec-h"><h2>${n}</h2></div>
           ${liste.map((b, i) => [b, i]).filter(([b]) => (b.wo === 'vor') === (wo === 'vor')).map(([b, i]) => karte(b, i)).join('') || '<p class="hint">Noch kein Textfeld.</p>'}
           <button type="button" class="link-add" data-txneu="${wo}">${icon('plus')} Textfeld ${wo === 'vor' ? 'vor' : 'nach'} den Positionen</button>`).join('')}
@@ -1524,6 +1550,6 @@ Gib Länge (längere Seite) und Breite der Grundfläche, Raumhöhe, Anzahl und G
     $('#vReset').onclick = async () => { if (!loeschFrage('Alle Paket-Vorlagen zurücksetzen?')) return; await kvDel('angebotVorlagen'); VORL = null; vorlagenView(pkgId, grp); };
   }
 
-  return { projektKarte, ansicht, einstellungenKarte, _intern: { posDetails, preisHinweis, artText, NICHT_SUMME, init, gruppe, materialliste, uebernimmSchaetzung, masse, rechne, erzeuge, summen, bauzeit, ep, lohnEp, preisliste, vorlagen, neuerRaum, baueAngebotPdf, importExcel, naechsteNummer, mailText, bausteine, textEditor, texteAuftrag, texteEinstellungen, subUebernehmen, ansprechpartner, ansprVon, einePerson, texteFuer, anredeDefault, einstellungen: () => PL.einstellungen } };
+  return { projektKarte, ansicht, einstellungenKarte, _intern: { privatArt, skontoVon, posDetails, preisHinweis, artText, NICHT_SUMME, init, gruppe, materialliste, uebernimmSchaetzung, masse, rechne, erzeuge, summen, bauzeit, ep, lohnEp, preisliste, vorlagen, neuerRaum, baueAngebotPdf, importExcel, naechsteNummer, mailText, bausteine, textEditor, texteAuftrag, texteEinstellungen, subUebernehmen, ansprechpartner, ansprVon, einePerson, texteFuer, anredeDefault, einstellungen: () => PL.einstellungen } };
 })();
 window.Angebot = Angebot;
