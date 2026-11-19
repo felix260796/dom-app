@@ -308,3 +308,7 @@ details.bs .tot span:last-child { color: var(--muted); }
 .so-inhalt section { border-left: 3px solid var(--brass, #b08d57); padding: 4px 0 4px 14px; margin: 0 0 20px; }
 .so-inhalt h3 { margin: 0 0 4px; font-size: 19px; }
 .so-inhalt p { margin: 0; font-size: 17px; line-height: 1.5; }
+.be-bereiche { margin-top: 4px; }
+.be-masse { margin-top: 12px; }
+.be-masse textarea { margin-top: 10px; }
+.be-masse .btn { margin-top: 8px; }

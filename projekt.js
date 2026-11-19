@@ -359,6 +359,23 @@ window.Projekt = (() => {
     window.Gespraech?.bind(w, list);
     window.VorOrt?.bind(w, list, () => view());
     window.Besuch?.bind(w, async () => { const y = window.scrollY; await view(); window.scrollTo(0, y); });
+    // Bereichsleiste vor Ort
+    const neuZeichnen = async () => { const y = window.scrollY; await view(); window.scrollTo(0, y); };
+    $$('[data-bereich]').forEach((b) => (b.onclick = () => { bereichWahl.set(w.id, b.dataset.bereich); neuZeichnen(); }));
+    if ($('[data-bereichneu]')) $('[data-bereichneu]').onclick = async () => {
+      const v = await sheet('Neuer Bereich', ROOM_TYPES.filter((r) => r.id !== 'sonstiges').map((r) => ({ label: r.name, icon: roomIcon(r.id), value: r.id })), { text: 'Eigener Name, z. B. Reinigung, Fenster, Garten', suche: '' });
+      if (!v) return;
+      const da = await raeume(w), eigen = typeof v === 'object' ? String(v.text || '').trim() : '';
+      if (typeof v === 'object' && !eigen) return;
+      const rt = eigen ? roomTypeIdFromName(eigen) : v;
+      const r = await raumAnlegen(w, rt, eigen ? { room: titelFrei(da, eigen), ...(rt === 'sonstiges' ? { nurAngebot: true } : {}) } : {});
+      bereichWahl.set(w.id, r.id); neuZeichnen();
+    };
+    if ($('#beMasseGo')) $('#beMasseGo').onclick = async () => {
+      const t = $('#beMasse').value.trim(); if (!t) return $('#beMasse').focus();
+      if (w.isNew) { delete w.isNew; await save(w); }
+      if (await masseEintragen(w, t)) neuZeichnen();
+    };
     window.VorOrt?.bueroBind(w, list);
     if ($('#wVis')) $('#wVis').ontoggle = (e) => { e.target.open ? visOffen.add(w.id) : visOffen.delete(w.id); };
     // Angebotsablauf: weitere Knöpfe
@@ -368,7 +385,8 @@ window.Projekt = (() => {
     if ($('#wFotos')) $('#wFotos').onclick = async () => {
       if (!k) return toast('Bitte zuerst einen Kunden zuordnen.');
       if (w.isNew) { delete w.isNew; await save(w); }
-      const n = await Bilder.fotosMachen({ kundeId: k.id, objektId: w.objektId, projektId: w.id });
+      const br = bereichVon(w, list);
+      const n = await Bilder.fotosMachen({ kundeId: k.id, objektId: w.objektId, projektId: w.id, ...(br ? { ordnerName: vorgabeText('ordnerBereich', { bereich: raumTitel(br), datum: new Date().toLocaleDateString('de-DE') }) || raumTitel(br), bereichId: br.id } : {}) });
       if (n) { const y = window.scrollY; await view(); window.scrollTo(0, y); }
     };
     // Was wird angeboten: nach links wischen zeigt „Löschen“
@@ -635,6 +653,48 @@ window.Projekt = (() => {
   /** Letztes Schnellangebot des Kunden (z. B. am Telefon genannt). */
   const schnellVon = (k) => (Array.isArray(k?.schnell) && k.schnell.length ? k.schnell[k.schnell.length - 1] : null);
   const visOffen = new Set(); // Visualisieren aufgeklappt (je Projekt, solange die App offen ist)
+  // Bereichsleiste vor Ort (v118): gewählter Bereich je Vorgang, solange die App offen ist ('' = Allgemein)
+  const bereichWahl = new Map();
+  const bereichVon = (w, list) => { const id = bereichWahl.get(w.id) || ''; return list.find((r) => r.id === id) || null; };
+  /** Maße per Sprache oder Text: „Bad zwei vierzig mal eins achtzig, Höhe zwei fünfzig“ → [{ name, l, b, h }]. KI, ohne Schlüssel einfache Erkennung. */
+  async function masseLesen(text, list) {
+    const n = (x) => { const v = parseFloat(String(x ?? '').replace(',', '.')); return Number.isFinite(v) && v > 0 ? String(Math.round(v * 100) / 100).replace('.', ',') : ''; };
+    if (state.settings.apiKey && typeof geminiText === 'function') {
+      const p = `${vorgabe('promptMasse')}\nExisting areas: ${list.map(raumTitel).join(', ') || 'none'}\n\nText:\n${text}`;
+      const j = JSON.parse(await geminiText([{ text: p }], true, { responseSchema: { type: 'OBJECT', properties: { bereiche: { type: 'ARRAY', items: { type: 'OBJECT', properties: { name: { type: 'STRING' }, laenge: { type: 'NUMBER' }, breite: { type: 'NUMBER' }, hoehe: { type: 'NUMBER' } }, required: ['name'] } } } } }));
+      return (j.bereiche || []).map((x) => ({ name: String(x.name || '').trim(), l: n(x.laenge), b: n(x.breite), h: n(x.hoehe) })).filter((x) => x.name && (x.l || x.b || x.h));
+    }
+    // Ohne KI: „Bad 2,40 x 1,80 Höhe 2,50; Flur 4 mal 1,2“
+    return String(text).split(/[;\n]+|\.\s+/).map((t) => {
+      const m = t.match(/^\s*([^\d]+?)\s+(\d+(?:[.,]\d+)?)\s*(?:m\s*)?(?:x|×|mal)\s*(\d+(?:[.,]\d+)?)(?:.*?(?:höhe|hoch)\s*(\d+(?:[.,]\d+)?))?/i);
+      return m ? { name: m[1].replace(/[,:]$/, '').trim(), l: n(m[2]), b: n(m[3]), h: n(m[4]) } : null;
+    }).filter(Boolean);
+  }
+  async function masseEintragen(w, text) {
+    let list = await raeume(w);
+    let gefunden;
+    try { gefunden = await masseLesen(text, list); } catch (e) { toast('Konnte die Maße nicht lesen: ' + (e.message || e), 5000); return false; }
+    if (!gefunden.length) { toast('Keine Maße erkannt. Beispiel: „Bad 2,40 mal 1,80, Höhe 2,50“', 5000); return false; }
+    const passt = (x) => list.find((r) => raumTitel(r).toLowerCase() === x.name.toLowerCase()) || list.find((r) => { const a = raumTitel(r).toLowerCase(), b = x.name.toLowerCase(); return a.includes(b) || b.includes(a); }) || null;
+    const zeilen = gefunden.map((x) => ({ ...x, r: passt(x) }));
+    const v = await sheet('Maße übernehmen?', [
+      ...zeilen.map((x, i) => ({ label: `${x.r ? raumTitel(x.r) : x.name}: ${[x.l, x.b].filter(Boolean).join(' × ')} m${x.h ? `, Höhe ${x.h} m` : ''}`, sub: x.r ? 'in den vorhandenen Bereich' : 'neuer Bereich', icon: icon('ruler'), value: 'z' + i })),
+      { label: 'Übernehmen', icon: icon('check'), value: 'ok' },
+    ]);
+    if (v !== 'ok') return false;
+    const A = window.Angebot._intern;
+    for (const x of zeilen) {
+      let r = x.r;
+      if (!r) { list = await raeume(w); const rt = roomTypeIdFromName(x.name); r = await raumAnlegen(w, rt, { room: titelFrei(list, x.name.charAt(0).toUpperCase() + x.name.slice(1)) }); }
+      A.init(r);
+      const q = r.aufmass.raeume[0]; q.teile ??= [{ l: '', b: '' }]; q.teile[0] ??= { l: '', b: '' };
+      if (x.l) q.teile[0].l = x.l; if (x.b) q.teile[0].b = x.b; if (x.h) q.h = x.h;
+      r.masse = { l: q.teile[0].l, b: q.teile[0].b, h: q.h, von: 'sprache' };
+      await saveProject(r);
+    }
+    toast(`Maße für ${zeilen.length} ${zeilen.length === 1 ? 'Bereich' : 'Bereiche'} eingetragen`);
+    return true;
+  }
   const raumTitel = (r) => r.room || roomType(r.roomType).name;
   const mitPosVon = (list) => list.filter((r) => r.angebot?.positionen?.length);
   /** Nummer des Angebots, an dem gerade gearbeitet wird (ein Raum: dessen Nummer, mehrere: die des Gesamtangebots). */
@@ -761,6 +821,12 @@ window.Projekt = (() => {
     return `
       ${kundeKarte(w, k)}
       ${window.Besuch?.leiste(w) || ''}
+      ${k && !gesperrt(w) ? `<div class="sec-h"><h2>Bereiche</h2>${list.length ? `<span class="count">${list.length}</span>` : ''}</div>
+      <div class="chips be-bereiche">${[{ id: '', t: 'Allgemein' }, ...list.map((r) => ({ id: r.id, t: raumTitel(r) }))].map((x) => `<button type="button" class="qchip ${(bereichVon(w, list)?.id || '') === x.id ? 'on' : ''}" data-bereich="${x.id}">${esc(x.t)}</button>`).join('')}<button type="button" class="qchip" data-bereichneu>${icon('plus')} Bereich</button></div>
+      <p class="hint" style="margin:6px 0 0">${bereichVon(w, list) ? `Fotos landen jetzt bei „${esc(raumTitel(bereichVon(w, list)))}“.` : 'Bereich antippen, dann landen die Fotos dort. Ein Bereich kann ein Raum oder ein Thema sein (z. B. Reinigung).'}</p>
+      <details class="more card be-masse"><summary>${icon('ruler')}<span>Maße sagen<small>z. B. „Bad 2,40 mal 1,80, Höhe 2,50“, mit dem Mikrofon der Tastatur</small></span>${icon('chevron', 'more-chev')}</summary>
+        <textarea id="beMasse" rows="2" data-frei placeholder="Bad 2,40 mal 1,80, Höhe 2,50. Flur 4 mal 1,20."></textarea>
+        <button type="button" class="btn small" id="beMasseGo">${icon('check')} Eintragen</button></details>` : ''}
       ${norm(w.status) === 'besichtigung' ? `<button type="button" class="link-add ab-ohne" data-reiter="buero">${icon('edit')} Nicht vor Ort gewesen? Angebot gleich im Büro anlegen</button>` : ''}
 
       <div class="sec-h"><h2>Gespräch aufnehmen</h2></div>
