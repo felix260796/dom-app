@@ -59,7 +59,7 @@ window.Rechnung = (() => {
     await A.preisliste();
     const zeilen = []; let lohn = 0;
     for (const id of w.rooms || []) {
-      const r = await kvGet('project:' + id);
+      const r = await AngebotDaten.raum(id, w);
       if (!r?.angebot?.positionen?.length) continue;
       const S = A.summen(r.angebot.positionen, r.angebot.kalk);
       for (const z of S.zeilen) zeilen.push({ raum: z.raum || r.room || '', text: z.it.text + (z.bem ? ' – ' + z.bem : ''), menge: z.menge, einheit: z.it.einheit, ep: z.ep, gp: z.gp, gewerk: z.it.gewerk });

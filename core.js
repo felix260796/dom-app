@@ -487,8 +487,11 @@ async function kvGet(k) {
   return new Promise((res, rej) => { const q = d.transaction('kv').objectStore('kv').get(k); q.onsuccess = () => res(q.result); q.onerror = () => rej(q.error); });
 }
 async function kvSet(k, v) {
+  if (typeof k === 'string' && k.startsWith('wohnung:')) window.AngebotDaten?.ergaenzen(v);
   const d = await db();
   return new Promise((res, rej) => { const tx = d.transaction('kv', 'readwrite'); tx.objectStore('kv').put(v, k); tx.oncomplete = () => { window.Backup?.markChange(); window.Sync?.changed(k); res(); }; tx.onerror = () => rej(tx.error); });
+  // Raum gespeichert: sein Teil im Angebot (r.angebot, liegt seit v110 im Angebot am Vorgang) mitspeichern
+  if (typeof k === 'string' && k.startsWith('project:')) window.AngebotDaten?.merken(v);
 }
 async function kvDel(k) {
   const d = await db();
@@ -580,6 +583,7 @@ async function projectIndex() { return (await kvGet('projectIndex')) || []; }
 async function saveProject(proj) {
   const { status, ...p } = proj;
   await kvSet('project:' + p.id, p);
+  window.AngebotDaten?.merken(proj);
   // Räume einer Wohnung stehen nicht einzeln in der Projektliste, sondern unter ihrer Wohnung (projekt.js)
   if (p.wohnungId) return window.Projekt?.raumGespeichert(p);
   const idx = (await projectIndex()).filter((x) => x.id !== p.id);

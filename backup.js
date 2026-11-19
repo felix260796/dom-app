@@ -113,10 +113,17 @@ window.Backup = (() => {
       'Preise Partner': [],
       Aufträge: projekte.map((w) => ({ 'Projekt-Nr.': w.nr, Kunde: kname(w.kundeId) || w.customer, Titel: w.titel, Anschrift: w.address, Status: window.Projekt?.statusName(w.status) || w.status, 'Versendet am': dt(w.versendetAm), Baustart: dt(w.baustart),
         'Absagegrund': w.absage?.grund || '', Räume: (w.rooms || []).map((id) => raeume.get(id)?.room).filter(Boolean).join(', '), 'Angelegt am': dt(w.created && new Date(w.created).toISOString()) })),
-      Angebotspositionen: projekte.flatMap((w) => (w.rooms || []).map((id) => raeume.get(id)).filter((r) => r?.angebot?.positionen?.length).flatMap((r) => {
+      // Seit v110 liegen die Positionen im Angebot am Vorgang (angebot:<id>), je Bereich; ältere Räume noch mit eigenem Angebot
+      Angebotspositionen: [...alleK('angebot:').flatMap((a) => {
+        const w = projekte.find((x) => x.id === a.vorgangId); if (!w) return [];
+        return Object.entries(a.inhalt?.bereiche || {}).filter(([, B]) => B?.positionen?.length).flatMap(([rid, B]) => {
+          let z = []; try { z = A.summen(B.positionen, B.kalk).zeilen; } catch {}
+          return z.map((x) => ({ 'Projekt-Nr.': w.nr, Kunde: kname(w.kundeId) || w.customer, Raum: raeume.get(rid)?.room || '', 'Angebot-Nr.': window.AngebotDaten?.nr(a, w) || '', Stand: window.AngebotDaten?.STAND[a.status] || a.status, Position: x.nr, Leistung: x.it.text, Menge: x.menge, Einheit: x.it.einheit, 'EP netto': x.ep, 'GP netto': x.gp }));
+        });
+      }), ...projekte.flatMap((w) => (w.rooms || []).map((id) => raeume.get(id)).filter((r) => r?.angebot?.positionen?.length).flatMap((r) => {
         let z = []; try { z = A.summen(r.angebot.positionen, r.angebot.kalk).zeilen; } catch {}
-        return z.map((x) => ({ 'Projekt-Nr.': w.nr, Kunde: kname(w.kundeId) || w.customer, Raum: r.room, 'Angebot-Nr.': r.angebot.nr, Position: x.nr, Leistung: x.it.text, Menge: x.menge, Einheit: x.it.einheit, 'EP netto': x.ep, 'GP netto': x.gp }));
-      })),
+        return z.map((x) => ({ 'Projekt-Nr.': w.nr, Kunde: kname(w.kundeId) || w.customer, Raum: r.room, 'Angebot-Nr.': r.angebot.nr, Stand: '', Position: x.nr, Leistung: x.it.text, Menge: x.menge, Einheit: x.it.einheit, 'EP netto': x.ep, 'GP netto': x.gp }));
+      }))],
       Rechnungen: alleK('rechnung:').map((r) => ({ 'Rechnung-Nr.': r.nr, Art: r.art, Titel: r.titel, Kunde: kname(projekte.find((w) => w.id === r.projektId)?.kundeId), 'Projekt-Nr.': projekte.find((w) => w.id === r.projektId)?.nr || '',
         Datum: dt(r.datum), 'Fällig': dt(r.faellig), 'Netto': r.netto, 'Bezahlt am': dt(r.bezahlt), Mahnungen: (r.mahnungen || []).length })),
       Eingangsrechnungen: alleK('beleg:').map((b) => ({ Von: partner.find((p) => p.id === b.partnerId)?.firma || b.von, 'Rechnung-Nr.': b.nr, Datum: dt(b.datum), Netto: b.netto, 'USt %': b.satz, Gewerk: b.gewerk,

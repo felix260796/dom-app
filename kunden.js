@@ -113,18 +113,22 @@ window.Kunden = (() => {
     state.settings.kundenNrBis = n; saveSettings();
     return String(n);
   };
-  /** Projektnummer: einmal vergeben, danach nie mehr geändert. Eigener Nummernkreis je Jahr, Aufbau in
-   *  Einstellungen › Projekte (Standard P2026-001). Gelöschte Nummern werden nicht neu vergeben. */
+  /** Vorgangsnummer (seit v110): Kundennummer + laufende Nummer je Kunde, z. B. 1001-01. Einmal vergeben, nie wieder neu
+   *  (höchste je Kunde in den Einstellungen, auch nach dem Löschen). Aufbau in Einstellungen › Abläufe (muss {kunde} enthalten).
+   *  Ohne Kunde mit Nummer bleibt die Nummer leer, bis einer zugeordnet ist. Ältere Nummern (P2026-001) werden ersetzt. */
+  const vgFmt = () => { const f = String(vorgabe('projektNrFormat') || ''); return f.includes('{kunde}') && f.includes('{nr}') ? f : '{kunde}-{nr}'; };
+  const vgNr = (kn, n, jahr = new Date().getFullYear()) => vgFmt().replace('{kunde}', kn).replace('{jahr}', jahr).replace('{nr}', String(n).padStart(2, '0'));
+  const vgMuster = (kn) => new RegExp('^' + vgFmt().replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace('\\{kunde\\}', kn.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).replace('\\{jahr\\}', '\\d{4}').replace('\\{nr\\}', '(\\d{2,})') + '$');
   async function projektNr(w, idx) {
-    if (w.nr) return w.nr;
-    const jahr = String(new Date(w.created || Date.now()).getFullYear());
-    const fmt = (n) => String(vorgabe('projektNrFormat') || 'P{jahr}-{nr}').replace('{jahr}', jahr).replace('{nr}', String(n).padStart(3, '0'));
-    const muster = new RegExp('^' + fmt(0).replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace('000', '(\\d{3,})') + '$');
-    const vorhanden = (idx || (await projectIndex())).map((x) => (muster.exec(String(x.nr || '')) || [])[1]).filter(Boolean).map(Number);
-    const bis = state.settings.projektNrBis || {};
-    const n = Math.max(0, +bis[jahr] || 0, ...vorhanden) + 1;
-    state.settings.projektNrBis = { ...bis, [jahr]: n }; saveSettings();
-    return fmt(n);
+    const k = w.kundeId ? byId(w.kundeId) : null;
+    if (!k?.nr) return w.nr || '';
+    const m = vgMuster(k.nr);
+    if (w.nr && m.test(w.nr)) return w.nr;
+    const vorhanden = (idx || (await projectIndex())).filter((x) => x.id !== w.id).map((x) => (m.exec(String(x.nr || '')) || [])[1]).filter(Boolean).map(Number);
+    const bis = state.settings.vorgangNrBis || {};
+    const n = Math.max(0, +bis[k.nr] || 0, ...vorhanden) + 1;
+    state.settings.vorgangNrBis = { ...bis, [k.nr]: n }; saveSettings();
+    return vgNr(k.nr, n, new Date(w.created || Date.now()).getFullYear());
   }
   /** Fehlende Nummern nachtragen: Kunden in der Reihenfolge, in der sie angelegt wurden, danach ihre Projekte. */
   // Haben zwei Geräte gleichzeitig (ohne Abgleich dazwischen) dieselbe Nummer vergeben, bekommt der später angelegte die nächste freie.
@@ -144,13 +148,14 @@ window.Kunden = (() => {
     for (const x of [...idx].sort(reihenfolge)) {
       if (x.kind !== 'wohnung' || !x.kundeId) continue;
       const k = byId(x.kundeId);
+      const alt = x.nr && k?.nr && !vgMuster(k.nr).test(x.nr); // Nummer im alten Aufbau (P2026-001): einmal neu vergeben
       const doppelt = x.nr && pv.has(x.nr);
-      if (x.nr && !doppelt) pv.add(x.nr);
-      if (!k || (x.nr && !doppelt)) continue; // vergebene Nummern bleiben fest
-      if (doppelt) x.nr = '';
+      if (x.nr && !doppelt && !alt) pv.add(x.nr);
+      if (!k?.nr || (x.nr && !doppelt && !alt)) continue; // vergebene Nummern bleiben fest
+      if (doppelt || alt) x.nr = '';
       const w = await kvGet('wohnung:' + x.id);
       if (!w) continue;
-      if (doppelt) w.nr = '';
+      if (doppelt || alt) w.nr = '';
       w.nr = await projektNr(w, idx);
       await kvSet('wohnung:' + w.id, w);
       x.nr = w.nr; pv.add(w.nr); changed = true;
@@ -599,6 +604,7 @@ window.Kunden = (() => {
       for (const x of idx) {
         const w = await kvGet('wohnung:' + x.id);
         for (const rid of w?.rooms || []) { await kvDel('project:' + rid); Projekt.forget(rid); }
+        for (const id of w?.angebote || []) await kvDel('angebot:' + id);
         await kvDel('wohnung:' + x.id);
       }
       if (idx.length) await kvSet('projectIndex', (await projectIndex()).filter((x) => x.kundeId !== k.id));
