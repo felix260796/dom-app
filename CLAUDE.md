@@ -176,6 +176,10 @@ Nummern: Kunde 1001 → Vorgang 1001-01 (`Kunden.projektNr`, Vorgabe `projektNrF
 Transkript als Zeilenliste: `w.gespraech.zeilen [{ id, aufnahmeId, sprecher, text, bereichId }]`, `w.gespraech.aufnahmen [{ id, art, t, dabei }]` (`Transkript` in `angebotdaten.js`); `w.gespraech.transcript` wird daraus gebaut und bleibt für alle Leser.
 Offen für P7: Kopf und Texte liegen noch in `w.angebotKopf`/`w.angebotTexte` am Vorgang, nicht je Angebot.
 
+## Neuerungen aus Version 111 (P2 Teil 1: To-dos, Heute)
+
+To-dos: `todos.js` (`Todos`), Speicher `todo:<id>` { text, prio hoch/mittel/niedrig, faellig, wer (Team-ID, '' = beide), bezug { kundeId, partnerId, vorgangId }, art, schluessel, erledigt }. Seite Menü › To-dos (`state.tab = 'todos'`, auch in der Seitenleiste). Andere Bereiche legen To-dos still an: `Todos.anlegen({ text, …, schluessel })` (gleicher Schlüssel wird nie doppelt angelegt). Heute oben unterteilt in Heute / Morgen / Diese Woche (`ab` in `heute.js`), unter Heute zuerst überfällige und heutige To-dos nach Priorität (`Todos.zeitraeume`).
+
 ## Bereiche
 
 | Bereich | Dateien | Inhalt |

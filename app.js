@@ -6,7 +6,7 @@
  * Kern-Funktionen (Speicher, KI, Bilder) stehen in core.js. */
 
 // ---------- Symbole (einfache Linien-Icons) ----------
-const APP_VERSION = '110';
+const APP_VERSION = '111';
 const ICONS = {
   plus: '<path d="M12 5v14M5 12h14"/>',
   camera: '<path d="M3 8.5A2 2 0 0 1 5 6.5h2l1.6-2h6.8l1.6 2h2a2 2 0 0 1 2 2V18a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><circle cx="12" cy="13" r="3.6"/>',
@@ -75,7 +75,7 @@ const fmtDay = (t) => new Date(t).toLocaleDateString('de-DE', { day: '2-digit', 
 
 // ---------- Kopfzeile & Navigation ----------
 /** Titel, Untertitel und Zurück-Knopf oben setzen. back = { label, fn } oder null. */
-const MENUE_SEITEN = ['suche', 'karte', 'auswertung', 'unterlagen', 'hilfe'];
+const MENUE_SEITEN = ['suche', 'todos', 'karte', 'auswertung', 'unterlagen', 'hilfe'];
 function header(title, sub = '', back = null) {
   // Jede Seite hat oben links „Zurück“ (Wunsch Felix): Menü-Seiten ohne eigenes Ziel führen zurück, woher man kam
   if (!back && MENUE_SEITEN.includes(state.tab)) {
@@ -127,7 +127,7 @@ function switchTab(tab, restore) {
   $$('.tabbar button').forEach((b) => b.classList.toggle('active', b.dataset.tab === tab));
   window.scrollTo(0, 0);
   if (tab === 'einstellungen') state.editPkg = null;
-  ({ dashboard: () => window.Buero?.dashboardView(), kunden: viewProjekt, partner: () => Partner.start(), projekt: viewProjekt, angebote: viewProjekt, rechnungen: () => Finanzen.view(), heute: () => Heute.view(), suche: () => Suche.view(), karte: () => Karte.view(), auswertung: () => Finanzen.auswertungView(), unterlagen: () => Unterlagen.view(), hilfe: () => Hilfe.view(), einstellungen: viewEinstellungen })[tab]();
+  ({ dashboard: () => window.Buero?.dashboardView(), kunden: viewProjekt, partner: () => Partner.start(), projekt: viewProjekt, angebote: viewProjekt, rechnungen: () => Finanzen.view(), heute: () => Heute.view(), todos: () => Todos.view(), suche: () => Suche.view(), karte: () => Karte.view(), auswertung: () => Finanzen.auswertungView(), unterlagen: () => Unterlagen.view(), hilfe: () => Hilfe.view(), einstellungen: viewEinstellungen })[tab]();
 }
 /** Reiter wechseln und dort direkt etwas öffnen, z. B. openTab('kunden', { kunde }). */
 window.openTab = (tab, s) => switchTab(tab, s);
@@ -232,6 +232,7 @@ async function viewProjektListe() {
 const MENUE = [
   ['suche', 'Suche', 'search', () => 'Kunden, Projekte, Angebote, Rechnungen, Termine', () => switchTab('suche')],
   ['heute', 'Heute', 'sun', () => 'Was heute dran ist', () => switchTab('heute')],
+  ['todos', 'To-dos', 'check', () => { const n = window.Todos?.offen(window.Kalender?.wer() || '').length || 0; return n ? `${n} offen` : 'Alle offenen Aufgaben'; }, () => switchTab('todos')],
   ['kalender', 'Kalender', 'calendar', () => { const n = window.Kalender?.eintraege(Kalender._heute(), Kalender._heute()).length || 0; return n ? `Heute ${n} ${n === 1 ? 'Eintrag' : 'Einträge'}` : 'Termine, Geburtstage'; }, () => { state.finanzen = false; Kalender.view(); window.scrollTo(0, 0); }],
   ['karte', 'Karte', 'map', () => 'Alle Baustellen auf der Karte', () => switchTab('karte')],
   ['auswertung', 'Auswertung', 'chart', () => 'Umsatz, Zusagen, Marge, Kalkulation je Projekt', () => Finanzen.auswertungView()],
@@ -292,10 +293,10 @@ $('#brandBtn').onclick = menue;
   logo.onclick = () => { if (innerWidth >= 900) { switchTab('heute'); seiteMarkieren('heute'); } else menue(); };
   nav.prepend(logo);
   const trenn = document.createElement('i'); trenn.className = 'seite-trenn nur-breit'; nav.append(trenn);
-  const TABS = ['dashboard', 'heute', 'suche', 'karte', 'unterlagen', 'hilfe', 'einstellungen'];
+  const TABS = ['dashboard', 'heute', 'todos', 'suche', 'karte', 'unterlagen', 'hilfe', 'einstellungen'];
   // Dashboard nur im Büro-Programm (html.buero), nicht am iPhone/iPad
   const DB = ['dashboard', 'Dashboard', 'chart', () => '', () => switchTab('dashboard')];
-  ['dashboard', 'heute', 'suche', 'kalender', 'karte', 'auswertung', 'preisliste', 'ppreise', 'unterlagen', 'hilfe', 'einstellungen'].forEach((id) => {
+  ['dashboard', 'heute', 'todos', 'suche', 'kalender', 'karte', 'auswertung', 'preisliste', 'ppreise', 'unterlagen', 'hilfe', 'einstellungen'].forEach((id) => {
     const m = id === 'dashboard' ? DB : MENUE.find((x) => x[0] === id); if (!m) return;
     const b = document.createElement('button');
     b.className = 'nur-breit klein' + (id === 'dashboard' ? ' nur-buero' : '');
