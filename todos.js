@@ -138,12 +138,14 @@ window.Todos = (() => {
     const erl = [...alle.values()].filter((t) => t.erledigt && fuer(t, filter)).sort((a, b) => b.erledigt - a.erledigt).slice(0, 50);
     main().innerHTML = `
       <button class="cta slim" id="tdNeu"><span class="cta-ico">${icon('plus')}</span><span class="cta-t"><b>Neues To-do</b></span>${icon('chevron', 'cta-chev')}</button>
+      <div id="tdNotiz" style="margin-top:12px"></div>
       <div class="seg2 full" style="margin-top:12px">${[...team().map((p) => [p.id, p.name.split(' ')[0]]), ['', 'Alle']].map(([id, n]) => `<button data-tdf="${esc(id)}" class="${filter === id ? 'on' : ''}">${esc(n)}</button>`).join('')}</div>
       ${gruppen.map(([titel, xs]) => `<div class="sec-h"><h2>${esc(titel)}</h2><span class="count">${xs.length}</span></div><div class="card td-liste">${xs.map(zeile).join('')}</div>`).join('')
         || `<div class="empty-state">${icon('check')}<b>Nichts offen</b><span>Neue To-dos legst du oben an. Andere entstehen von selbst, zum Beispiel „Bei … bedanken“ nach einer Empfehlung.</span></div>`}
       ${erl.length ? `<button type="button" class="link-add" id="tdErl" style="margin-top:14px">${icon('check')} ${zeigeErledigt ? 'Erledigte ausblenden' : `Erledigte zeigen (${erl.length})`}</button>
         ${zeigeErledigt ? `<div class="card td-liste">${erl.map(zeile).join('')}</div>` : ''}` : ''}`;
     $('#tdNeu').onclick = () => bearbeiten(null, view);
+    window.Notiz?.karte($('#tdNotiz'), view); // Kurz notieren: KI erkennt Kontakt, Info, Erinnerung
     $$('[data-tdf]').forEach((b) => (b.onclick = () => { filter = b.dataset.tdf; view(); }));
     if ($('#tdErl')) $('#tdErl').onclick = () => { zeigeErledigt = !zeigeErledigt; view(); };
     binden(main(), view);

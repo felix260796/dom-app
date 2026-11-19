@@ -470,7 +470,7 @@ window.Buero = (() => {
     const rest = [...m.children].filter((c) => c !== act && c !== form);
     const gruppen = typ === 'k'
       ? [['ap', 'Angebote und Projekte'], ['zeit', 'Zeitleiste'], ['re', 'Rechnungen'], ['pf', 'Kontakt halten']]
-      : [['kond', 'Konditionen und Verträge'], ['preis', 'Preisliste'], ['pers', 'Persönliches'], ['re', 'Rechnungen'], ['pf', 'Kontakt halten']];
+      : [['kond', 'Konditionen und Verträge'], ['preis', 'Preisliste'], ['zeit', 'Zeitleiste'], ['pers', 'Persönliches'], ['re', 'Rechnungen'], ['pf', 'Kontakt halten']];
     const inhalt = Object.fromEntries([...gruppen.map(([id]) => [id, []]), ['obj', []]]);
     const stamm = [], kopf = [];
     let akt = gruppen[0][0];
@@ -514,7 +514,7 @@ window.Buero = (() => {
       regWahl[typ] = id;
       $$('[data-areg]', box).forEach((b) => b.classList.toggle('on', b.dataset.areg === id));
       $$('[data-apane]', box).forEach((p) => (p.hidden = p.dataset.apane !== id));
-      if (typ === 'k' && id === 'zeit') zeitleiste($('[data-apane="zeit"]', box), x).catch((e) => console.warn(e));
+      if (id === 'zeit') zeitleiste($('[data-apane="zeit"]', box), x, typ === 'p').catch((e) => console.warn(e));
       if (typ === 'k' && id === 're') kundenRechnungen($('[data-apane="re"]', box), x).catch((e) => console.warn(e));
     };
     $$('[data-areg]', box).forEach((b) => (b.onclick = () => zeig(b.dataset.areg)));
@@ -733,13 +733,19 @@ window.Buero = (() => {
   // Alles nach Datum: eigene Notizen, Anrufe, Mails, Treffen (k.zeitleiste) und was DOM ohnehin weiß
   // (Angebote, Statuswechsel, Rechnungen, Zahlungen, Termine, Kontakt halten). Nichts doppelt gespeichert.
   const ZL_ARTEN = [['notiz', 'Notiz', 'edit'], ['anruf', 'Anruf', 'phone'], ['mail', 'E-Mail', 'mail'], ['treffen', 'Treffen', 'users']];
-  async function zeitleiste(el, k) {
-    const idx = (await projectIndex()).filter((x) => x.kundeId === k.id);
+  async function zeitleiste(el, k, istPartner = false) {
+    const idx = istPartner ? [] : (await projectIndex()).filter((x) => x.kundeId === k.id);
     const ws = (await Promise.all(idx.map((x) => kvGet('wohnung:' + x.id)))).filter(Boolean);
     try { await window.Rechnung?.laden(); } catch {}
     const ein = [];
     const dazu = (t, ic, titel, sub = '', ziel = '', eigen = null) => { const ms = typeof t === 'number' ? t : t ? new Date(String(t).slice(0, 10) + 'T12:00').getTime() : 0; if (ms) ein.push({ t: ms, ic, titel, sub, ziel, eigen }); };
-    if (k.created) dazu(k.created, 'user', 'Kunde angelegt', k.quelle ? 'Quelle: ' + k.quelle : '');
+    if (k.created) dazu(k.created, 'user', istPartner ? 'Partner angelegt' : 'Kunde angelegt', k.quelle ? 'Quelle: ' + k.quelle : '');
+    // Partner (v115): Eingangsrechnungen, Sterne aus den Projekten, Sperre
+    if (istPartner) {
+      for (const b of (window.Finanzen?.liste() || []).filter((b) => b.partnerId === k.id)) { dazu(b.datum || b.created, 'euro', `Rechnung ${b.nr || ''}`.trim(), `${(+b.netto || 0).toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} € netto`); if (b.bezahlt) dazu(b.bezahlt, 'check', `Bezahlt: ${b.nr || 'Rechnung'}`); }
+      try { for (const s of (await window.SubProfil?.bewertung(k))?.liste || []) dazu(s.t, 'check', `Bewertet: ${'★'.repeat(s.n)}`, [s.projekt, s.grund].filter(Boolean).join(' · ')); } catch {}
+    }
+    for (const e of k.sperre?.log || []) dazu(e.t, 'x', { gesperrt: 'Gesperrt', entsperrt: 'Entsperrt', ausnahme: 'Ausnahme trotz Sperre' }[e.was] || e.was, [e.grund, e.text, e.wofuer, e.wer].filter(Boolean).join(' · '));
     for (const w of ws) {
       const n = w.titel || 'Projekt';
       dazu(w.created, 'file', `Angebot angelegt: ${n}`, w.nr || '', 'p:' + w.id);
@@ -757,7 +763,7 @@ window.Buero = (() => {
       for (const [i, m] of (r.mahnungen || []).entries()) dazu(m.datum, 'bell', `${i ? `${i + 1}. Mahnung` : 'Zahlungserinnerung'}: ${r.nr || ''}`, '', 'r:' + r.id);
     }
     const heute = tagIso(new Date()), von = String(+heute.slice(0, 4) - 3) + heute.slice(4), bis = String(+heute.slice(0, 4) + 1) + heute.slice(4);
-    for (const t of (window.Kalender?.eintraege(von, bis, { filter: false }) || []).filter((t) => t.typ === 'termin' && t.kundeId === k.id))
+    for (const t of (window.Kalender?.eintraege(von, bis, { filter: false }) || []).filter((t) => t.typ === 'termin' && (istPartner ? t.partnerId === k.id || (t.partnerIds || []).includes(k.id) : t.kundeId === k.id)))
       dazu(t.datum, 'calendar', `Termin: ${t.titel || 'Termin'}`, [t.von, t.ort].filter(Boolean).join(' · '), 'kal:' + t.datum);
     if (k.pflege?.anruf?.zuletzt) dazu(k.pflege.anruf.zuletzt, 'phone', 'Angerufen (Kontakt halten)');
     if (k.pflege?.essen?.zuletzt) dazu(k.pflege.essen.zuletzt, 'users', 'Getroffen (Kontakt halten)');
@@ -772,7 +778,7 @@ window.Buero = (() => {
         <span class="zl-d">${tag(e.t)}</span><span class="zl-i">${icon(e.ic)}</span>
         <span class="zl-t"><b>${esc(e.titel)}</b>${e.sub ? `<span>${esc(e.sub)}</span>` : ''}</span>
         ${e.eigen ? `<button type="button" class="icon-btn zl-x" data-zlx="${i}" title="Eintrag löschen">${icon('x')}</button>` : ''}</div>`).join('') || '<p class="empty">Noch nichts eingetragen.</p>'}</div>`;
-    const sichern = async () => { await Kunden.speichern(k); window.Backup?.markChange?.(); zeitleiste(el, k); };
+    const sichern = async () => { await (istPartner ? Partner.speichern(k) : Kunden.speichern(k)); window.Backup?.markChange?.(); zeitleiste(el, k, istPartner); };
     $('#zlDazu', el).onclick = async () => {
       const text = $('#zlText', el).value.trim(); if (!text) return $('#zlText', el).focus();
       const d = Kontakt.lesen?.($('#zlTag', el).value) || '';
@@ -791,7 +797,7 @@ window.Buero = (() => {
     $$('[data-zlz]', el).forEach((z) => (z.onclick = () => {
       const [a, id] = z.dataset.zlz.split(/:(.*)/);
       if (a === 'p') Projekt.oeffnen(id);
-      else if (a === 'r') { const r = Rechnung.liste().find((x) => x.id === id); if (r) Rechnung.detail(r, () => Kunden.oeffnen(k.id)); }
+      else if (a === 'r') { const r = Rechnung.liste().find((x) => x.id === id); if (r) Rechnung.detail(r, () => (istPartner ? Partner.oeffnen(k.id) : Kunden.oeffnen(k.id))); }
       else if (a === 'kal') desktopBefehl('kalender');
     }));
   }

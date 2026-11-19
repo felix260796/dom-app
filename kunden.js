@@ -204,6 +204,7 @@ window.Kunden = (() => {
   async function speichern(k, still) {
     norm(k);
     altMerken(k);
+    if (k.angelegtVon === undefined && Date.now() - (+k.created || 0) < 36e5) k.angelegtVon = window.Kalender?.wer() || ''; // „Wer wird erinnert?“
     if (!k.nr) k.nr = naechsteNr();
     if (still) { alle.set(k.id, k); return kvSet(key(k.id), k); }
     delete k.isNew;

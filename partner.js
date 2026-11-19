@@ -43,7 +43,7 @@ window.Partner = (() => {
   const liste = () => [...alle.values()].sort((a, b) => (a.firma || a.inhaber || '~').localeCompare(b.firma || b.inhaber || '~', 'de'));
   const titel = (p) => p.firma.trim() || p.inhaber.trim();
   const initialen = (p) => (titel(p).split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0]).join('') || '?').toUpperCase();
-  async function speichern(p) { delete p.isNew; SubProfil.stempeln(p); p.updated = Date.now(); alle.set(p.id, p); await kvSet(key(p.id), p); }
+  async function speichern(p) { if (p.angelegtVon === undefined && Date.now() - (+p.created || 0) < 36e5) p.angelegtVon = window.Kalender?.wer() || ''; delete p.isNew; SubProfil.stempeln(p); p.updated = Date.now(); alle.set(p.id, p); await kvSet(key(p.id), p); }
   /** Für den Kalender: [{ datum, titel, sub, partnerId }] */
   const geburtstage = () => liste().flatMap((p) => p.geburtstage.filter((g) => g.datum).map((g) => ({ datum: g.datum, wer: g.name || 'ohne Namen', gebArt: g.art, titel: `Geburtstag ${g.name || 'ohne Namen'}`, sub: [g.bez, titel(p)].filter(Boolean).join(' · '), partnerId: p.id })));
 

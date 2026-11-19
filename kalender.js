@@ -70,6 +70,8 @@ window.Kalender = (() => {
     for (const t of alle.values()) if (t.datum >= von && t.datum <= bis && (!w || !t.wer?.length || t.wer.includes(w))) out.push({ ...t, typ: 'termin' });
     const geb = [];
     for (const k of Kunden.liste()) if (k.geburtstag) geb.push({ art: 'gebK', datum: k.geburtstag, wer: Kunden.name(k) || 'Kunde', gebArt: k.gebArt, titel: `Geburtstag ${Kunden.name(k) || 'Kunde'}`, kundeId: k.id });
+    // Personen beim Kunden (Partner, Kinder, Ansprechpartner) mit eigenem Geburtstag
+    for (const k of Kunden.liste()) for (const p of k.personen || []) if (p.geburtstag) { const n = Kunden.personName(p) || p.vorname || 'Person'; geb.push({ art: 'gebK', datum: p.geburtstag, wer: n, gebArt: p.gebArt, titel: `Geburtstag ${n}`, sub: [p.rolle, Kunden.name(k)].filter(Boolean).join(' · '), kundeId: k.id }); }
     for (const g of window.Partner?.geburtstage() || []) geb.push({ art: 'gebP', ...g });
     // Geburtstage: am Tag gratulieren; „Mit Geschenk“ zusätzlich Erinnerungen vorher (Tage in den Einstellungen)
     const j0 = +von.slice(0, 4), j1 = +bis.slice(0, 4) + 1;
