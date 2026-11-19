@@ -141,6 +141,8 @@ const VORGABEN = {
       { k: 'telVorwahl', l: 'Ländervorwahl beim Anrufen', t: 'zeile', d: '+49', h: 'Beim Tippen auf „Anrufen“ wird aus 0711 123456 automatisch +49 711 123456.' },
       { k: 'telArten', l: 'Bezeichnungen für weitere Telefonnummern (eine Zeile je Bezeichnung)', t: 'liste', d: ['Handy', 'Zuhause', 'Geschäftlich'], h: 'Bei Kunde und Partner auf „Telefon“ tippen, um die Bezeichnung zu wählen; das kleine Plus daneben fügt eine weitere Nummer an.' },
       { k: 'mailArten', l: 'Bezeichnungen für weitere E-Mail-Adressen (eine Zeile je Bezeichnung)', t: 'liste', d: ['Privat', 'Geschäftlich'] },
+      { k: 'personRollen', l: 'Rollen für Personen beim Kunden (eine Zeile je Rolle)', t: 'liste', d: ['Ehefrau', 'Ehemann', 'Partnerin', 'Partner', 'Sohn', 'Tochter', 'Mutter', 'Vater', 'Geschäftsführer', 'Buchhaltung', 'Bauleitung', 'Assistenz', 'Verwalterin', 'Verwalter'], h: 'Vorschläge beim Feld „Rolle“ in der Personen-Liste. Eigene Rollen kann man immer eintippen.' },
+      { k: 'objektRollen', l: 'Rollen für Ansprechpartner vor Ort (eine Zeile je Rolle)', t: 'liste', d: ['Eigentümer', 'Mieter', 'Hausmeister', 'Hausverwaltung', 'Person des Kunden', 'Nachbar'] },
       { k: 'kundenQuellen', l: 'Wie kommen Kunden zu uns? (eine Zeile je Quelle)', t: 'liste', d: ['Empfehlung', 'Google / Internet', 'Bauschild', 'Hausverwaltung', 'Stammkunde', 'Flyer / Anzeige', 'Sonstiges'] },
     ]],
     ['Geburtstage', [

@@ -462,7 +462,7 @@ window.Buero = (() => {
     if (!istPc() || !m || $(':scope > .akte', m)) return;
     const act = $(':scope > .kd-actions', m), form = act?.nextElementSibling;
     if (!act || !form?.matches('.kform')) return;
-    const typ = $('#kVorname', form) ? 'k' : $('#pFirma', form) ? 'p' : null;
+    const typ = $('#kArt', form) || $('#kVorname', form) ? 'k' : $('#pFirma', form) ? 'p' : null;
     if (!typ) return;
     const x = typ === 'k' ? state.kunde : state.partner;
     const rest = [...m.children].filter((c) => c !== act && c !== form);
@@ -474,7 +474,7 @@ window.Buero = (() => {
     let akt = gruppen[0][0];
     for (const c of rest) {
       const h = c.matches('.sec-h') ? $('h2', c)?.textContent || '' : '';
-      if (c.matches('#kDel, #pDel, #kAusKontakt, #kInKontakte')) { stamm.push(c); continue; }
+      if (c.matches('#kDel, #pDel, #kAusKontakt, #kInKontakte, .k-pers')) { stamm.push(c); continue; }
       if (c.matches('#kPflege, #pPflege')) { inhalt.pf.push(c); continue; }
       if (c.matches('#kRech')) { c.hidden = true; stamm.push(c); continue; } // ersetzt durch die Karte „Rechnungen“
       if (c.matches('#pBelege')) { inhalt.re.push(c); continue; }

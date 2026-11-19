@@ -13,8 +13,21 @@
 window.Kunden = (() => {
   const alle = new Map();
   const key = (id) => 'kunde:' + id;
-  const ANREDEN = [['', '–'], ['Herr', 'Herr'], ['Frau', 'Frau'], ['Herr und Frau', 'Herr und Frau'], ['Familie', 'Familie'], ['Firma', 'Firma'], ['Hausverwaltung', 'Hausverwaltung']];
+  // Kundenart (seit v112, Runde 13): Privat (Herr, Frau, Herr und Frau, Familie), Firma (Ansprechpartner aus der Personen-Liste,
+  // Rechnungs-Mail, USt-IdNr., § 13b), WEG (Hausverwaltung = Kunde der Art Firma, Ansprechpartnerin aus deren Personen).
+  // k.anrede bleibt dazu passend ('Firma' bzw. 'Hausverwaltung'), damit ältere Stellen weiterlaufen. Regel: Kunde ist, wer bezahlt.
+  const ARTEN = [['privat', 'Privat'], ['firma', 'Firma'], ['weg', 'WEG']];
+  const ANREDEN = [['', '–'], ['Herr', 'Herr'], ['Frau', 'Frau'], ['Herr und Frau', 'Herr und Frau'], ['Familie', 'Familie']];
+  const PANREDEN = [['', '–'], ['Herr', 'Herr'], ['Frau', 'Frau']];
   const istHv = (k) => k?.anrede === 'Hausverwaltung';
+  const PFELDER = ['anrede', 'vorname', 'name', 'rolle', 'telefon', 'telArt', 'email', 'mailArt', 'geburtstag', 'gebArt', 'notiz'];
+  const normPerson = (p) => { for (const f of PFELDER) p[f] = String(p[f] ?? ''); p.id ||= uid(); p.weitere = Kontakt.norm(p.weitere); return p; };
+  /** Name einer Person aus der Personen-Liste: „Frau Anna Schmid“. */
+  const personName = (p) => (p ? [['Herr', 'Frau'].includes(p.anrede) ? p.anrede : '', p.vorname, p.name].map((x) => String(x || '').trim()).filter(Boolean).join(' ') : '');
+  const person = (k, id) => (id && k?.personen?.find((p) => p.id === id)) || null;
+  /** Hausverwaltung einer WEG (ein Kunde der Art Firma) oder null. */
+  const hvVon = (k) => (k?.art === 'weg' && k.hvId ? byId(k.hvId) : null);
+  const anredeFuer = (p) => (p?.anrede === 'Herr' && p.name.trim() ? `Sehr geehrter Herr ${p.name.trim()},` : p?.anrede === 'Frau' && p.name.trim() ? `Sehr geehrte Frau ${p.name.trim()},` : 'Sehr geehrte Damen und Herren,');
 
   // ---------- Daten ----------
   const norm = (k) => {
@@ -22,15 +35,22 @@ window.Kunden = (() => {
     k.weitere = Kontakt.norm(k.weitere);
     k.hv = k.hv && typeof k.hv === 'object' ? k.hv : {};
     for (const f of ['firma', 'ansprech', 'telefon', 'email', 'anschrift']) k.hv[f] = String(k.hv[f] ?? '');
+    k.art = ['privat', 'firma', 'weg'].includes(k.art) ? k.art : k.anrede === 'Firma' ? 'firma' : k.anrede === 'Hausverwaltung' ? 'weg' : 'privat';
+    if (k.art === 'firma') k.anrede = 'Firma'; else if (k.art === 'weg') k.anrede = 'Hausverwaltung'; else if (['Firma', 'Hausverwaltung'].includes(k.anrede)) k.anrede = '';
+    for (const f of ['ansprechId', 'rechnungMail', 'ustid', 'hvId', 'hvPersonId', 'empfohlenVon']) k[f] = String(k[f] ?? '');
+    k.p13b = !!k.p13b;
+    k.personen = (Array.isArray(k.personen) ? k.personen : []).filter((p) => p && typeof p === 'object').map(normPerson);
     k.objekte = Array.isArray(k.objekte) ? k.objekte.filter(Boolean) : [];
     for (const o of k.objekte) {
       o.id ??= uid();
-      for (const f of ['name', 'adresse', 'notiz', 'schluessel']) o[f] = String(o[f] ?? '');
+      // Am Objekt (Runde 13): Schlüssel, Klingel, Etage, Aufzug, Parken
+      for (const f of ['name', 'adresse', 'notiz', 'schluessel', 'klingel', 'etage', 'aufzug', 'parken']) o[f] = String(o[f] ?? '');
       // Ansprechpartner vor Ort: Liste (früher ein Name + Telefon)
       if (!Array.isArray(o.kontakte)) o.kontakte = [];
       if ((o.ansprech || o.ansprechTel) && !o.kontakte.length) o.kontakte.push({ id: 'a-' + o.id, name: String(o.ansprech || ''), telefon: String(o.ansprechTel || ''), email: '' });
       delete o.ansprech; delete o.ansprechTel;
-      for (const x of o.kontakte) { x.id ||= uid(); for (const f of ['name', 'telefon', 'email']) x[f] = String(x[f] ?? ''); }
+      // Ansprechpartner vor Ort mit Rolle (Mieter, Hausmeister, Hausverwaltung oder eine Person des Kunden: personId)
+      for (const x of o.kontakte) { x.id ||= uid(); for (const f of ['name', 'telefon', 'email', 'rolle', 'personId']) x[f] = String(x[f] ?? ''); }
     }
     return k;
   };
@@ -58,6 +78,7 @@ window.Kunden = (() => {
   /** Anzeigename: „Familie Müller“, „Herr Max Müller“, „Müller GmbH“. */
   function name(k) {
     if (!k) return '';
+    if (k.art === 'firma' || k.art === 'weg') return k.name.trim();
     const n = [k.vorname, k.name].map((s) => s.trim()).filter(Boolean).join(' ');
     if (k.anrede === 'Familie') return `Familie ${k.name.trim() || k.vorname.trim()}`.trim();
     if (k.anrede === 'Herr' || k.anrede === 'Frau' || k.anrede === 'Herr und Frau') return n ? `${k.anrede} ${n}` : '';
@@ -66,6 +87,10 @@ window.Kunden = (() => {
   /** Briefanschrift (Zeilen): bei Hausverwaltung „Eigentümer, vertreten durch …“, sonst Name und Privatanschrift; null = keine eigene. */
   function postanschrift(k) {
     if (!k) return null;
+    // WEG: „WEG Hauptstraße 5, vertreten durch …, z. Hd. …“, Anschrift der Hausverwaltung
+    const H = hvVon(k);
+    if (H) { const P = person(H, k.hvPersonId); return [k.name.trim(), 'vertreten durch ' + name(H), P && 'z. Hd. ' + personName(P), ...zeilen(H.privat)].filter(Boolean); }
+    if (k.art === 'firma' && k.privat.trim()) { const P = person(k, k.ansprechId); return [k.name.trim(), P && 'z. Hd. ' + personName(P), ...zeilen(k.privat)].filter(Boolean); }
     if (istHv(k) && (k.hv.firma.trim() || k.hv.anschrift.trim()))
       return [name(k), k.hv.firma.trim() && 'vertreten durch ' + k.hv.firma.trim(), k.hv.ansprech.trim() && 'z. Hd. ' + k.hv.ansprech.trim(), ...zeilen(k.hv.anschrift)].filter(Boolean);
     return k.privat.trim() ? [name(k), ...zeilen(k.privat)] : null;
@@ -73,6 +98,9 @@ window.Kunden = (() => {
   /** Anrede im Brief. */
   function briefAnrede(k) {
     const nn = k?.name.trim();
+    const H = hvVon(k);
+    if (H) return anredeFuer(person(H, k.hvPersonId));
+    if (k?.art === 'firma') return anredeFuer(person(k, k.ansprechId));
     if (istHv(k)) {
       const m = /^(Herr|Frau)\s+(.+)$/.exec(k.hv.ansprech.trim());
       return m ? `Sehr geehrte${m[1] === 'Herr' ? 'r' : ''} ${m[1]} ${m[2].trim().split(/\s+/).pop()},` : 'Sehr geehrte Damen und Herren,';
@@ -177,6 +205,29 @@ window.Kunden = (() => {
     const idx = await projectIndex();
     for (const x of idx.filter((x) => x.kundeId === k.id)) await window.Projekt?.kundeUebernehmen(x.id);
   }, 700);
+
+  /** E-Mail für Rechnungen: Firma eigene Rechnungs-Mail, WEG die der Hausverwaltung, sonst die E-Mail des Kunden. */
+  /** E-Mail für Angebote: WEG die Ansprechpartnerin der Hausverwaltung, Firma der Ansprechpartner, sonst der Kunde. */
+  const angebotMail = (k) => { const H = hvVon(k); if (H) return person(H, k.hvPersonId)?.email || H.email || ''; if (k?.art === 'firma') return person(k, k.ansprechId)?.email || k.email || ''; return k?.email || ''; };
+  const rechnungMail = (k) => { const H = hvVon(k); return (H ? H.rechnungMail || H.email : '') || (k?.art === 'firma' ? k.rechnungMail : '') || k?.email || ''; };
+  // ---------- Empfehlung: „Empfohlen von“ (Kunde oder Partner) und Dank als To-do ----------
+  const empfVon = (k) => {
+    const v = k?.empfohlenVon || '';
+    if (v.startsWith('kunde:')) { const x = byId(v.slice(6)); return x ? { text: name(x), bezug: { kundeId: x.id } } : null; }
+    if (v.startsWith('partner:')) { const x = window.Partner?.byId?.(v.slice(8)); return x ? { text: x.firma || x.inhaber || 'Partner', bezug: { partnerId: x.id } } : null; }
+    return v.trim() ? { text: v.trim(), bezug: {} } : null;
+  };
+  const heuteIso = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
+  /** To-do „Bei X bedanken“ (Anruf, Mail oder kleines Geschenk). Einmal je Kunde. */
+  async function dankTodo(k) {
+    const e = empfVon(k); if (!e || !window.Todos) return;
+    await Todos.anlegen({ text: `Bei ${e.text} für die Empfehlung bedanken (${name(k) || 'neuer Kunde'}): anrufen, Mail oder kleines Geschenk`, art: 'dank', prio: 'mittel', faellig: heuteIso(), bezug: e.bezug, schluessel: 'dank:' + k.id });
+  }
+  /** Zweite Erinnerung, wenn der empfohlene Kunde beauftragt (aus projekt.js bei der Zusage). */
+  async function dankAuftrag(w) {
+    const k = byId(w?.kundeId), e = empfVon(k); if (!e || !window.Todos) return;
+    await Todos.anlegen({ text: `Bei ${e.text} bedanken: ${name(k)} hat den Auftrag erteilt`, art: 'dank', prio: 'mittel', faellig: heuteIso(), bezug: e.bezug, schluessel: 'dank2:' + w.id });
+  }
 
   /** Kommender Geburtstag: Tage bis dahin (0 = heute) oder null. */
   const bisGeburtstag = (k) => Kontakt.bisTag(k.geburtstag);
@@ -458,28 +509,48 @@ window.Kunden = (() => {
       <div class="kd-actions" id="kAct"></div>
       ${window.Geraet?.kann('kontakte') && !name(k).trim() ? `<button type="button" class="link-add" id="kAusKontakt" style="margin:0 0 8px">${icon('user')} Aus iPhone-Kontakten übernehmen</button>` : ''}
       <div class="card kform">
-        <div class="row"><div style="flex:1"><label style="margin-top:0">Anrede</label><select id="kAnrede">${ANREDEN.map(([v, l]) => `<option value="${v}" ${v === k.anrede ? 'selected' : ''}>${l}</option>`).join('')}</select></div>
-          <div style="flex:1"><label style="margin-top:0">Kunden-Nr.</label><div class="k-nr">${esc(k.nr || 'wird vergeben')}</div></div></div>
+        <div class="seg2 full k-art" id="kArt" style="margin-bottom:4px">${ARTEN.map(([v, l]) => `<button type="button" data-kart="${v}" class="${k.art === v ? 'on' : ''}">${l}</button>`).join('')}</div>
+        ${k.art === 'privat' ? `<div class="row"><div style="flex:1"><label>Anrede</label><select id="kAnrede">${ANREDEN.map(([v, l]) => `<option value="${v}" ${v === k.anrede ? 'selected' : ''}>${l}</option>`).join('')}</select></div>
+          <div style="flex:1"><label>Kunden-Nr.</label><div class="k-nr">${esc(k.nr || 'wird vergeben')}</div></div></div>
         <label>Vorname</label><input type="text" id="kVorname" value="${esc(k.vorname)}" autocomplete="off" placeholder="z. B. Max">
-        <label id="kNameL">${istHv(k) ? 'Eigentümer bzw. WEG' : 'Nachname bzw. Firma'}</label><input type="text" id="kName" value="${esc(k.name)}" autocomplete="off" placeholder="${istHv(k) ? 'z. B. WEG Silberburgstraße 66' : 'z. B. Müller'}">
-        <div class="hvbox" id="kHv" ${istHv(k) ? '' : 'hidden'}>
-          <div class="hv-h">${icon('users')}<span>Vertreten durch die Hausverwaltung</span></div>
-          <label>Hausverwaltung</label><input type="text" data-hv="firma" value="${esc(k.hv.firma)}" autocomplete="off" placeholder="z. B. Immobilien Schmid GmbH">
-          <label>Ansprechpartner</label><input type="text" data-hv="ansprech" value="${esc(k.hv.ansprech)}" autocomplete="off" placeholder="z. B. Frau Schmid">
-          <div class="row"><div><label>Telefon</label><input type="tel" data-hv="telefon" value="${esc(k.hv.telefon)}" autocomplete="off" placeholder="0711 …"></div>
-            <div><label>E-Mail</label><input type="email" data-hv="email" value="${esc(k.hv.email)}" autocomplete="off" inputmode="email" placeholder="info@…"></div></div>
-          <label>Anschrift der Hausverwaltung</label><div class="adr"><input type="text" data-hv="anschrift" value="${esc(k.hv.anschrift)}" autocomplete="off" placeholder="Straße Nr., der Ort wird ergänzt"></div>
-        </div>
+        <label>Nachname</label><input type="text" id="kName" value="${esc(k.name)}" autocomplete="off" placeholder="z. B. Müller">` : ''}
+        ${k.art === 'firma' ? `<label>Kunden-Nr.</label><div class="k-nr">${esc(k.nr || 'wird vergeben')}</div>
+        <label>Firmenname</label><input type="text" id="kName" value="${esc(k.name)}" autocomplete="off" placeholder="z. B. Immobilien Schmid GmbH">
+        <label>Ansprechpartner</label><select id="kAnsprech"><option value="">Keiner (Sehr geehrte Damen und Herren)</option>${k.personen.map((p) => `<option value="${p.id}" ${p.id === k.ansprechId ? 'selected' : ''}>${esc(personName(p) || 'Person ohne Namen')}${p.rolle ? ' · ' + esc(p.rolle) : ''}</option>`).join('')}</select>
+        <p class="hint" style="margin:4px 0 0">Ansprechpartner kommen aus der Personen-Liste unten.</p>
+        <label>E-Mail für Rechnungen</label><input type="email" id="kRechMail" value="${esc(k.rechnungMail)}" autocomplete="off" inputmode="email" placeholder="z. B. rechnung@firma.de">
+        <label>USt-IdNr. (optional)</label><input type="text" id="kUstid" value="${esc(k.ustid)}" autocomplete="off" placeholder="DE123456789">
+        <label class="chk"><input type="checkbox" id="k13b" ${k.p13b ? 'checked' : ''}> § 13b: Bauleistung an Bauunternehmer (netto, Steuerschuldnerschaft des Empfängers)</label>` : ''}
+        ${k.art === 'weg' ? `<label>Kunden-Nr.</label><div class="k-nr">${esc(k.nr || 'wird vergeben')}</div>
+        <label>Bezeichnung der WEG</label><input type="text" id="kName" value="${esc(k.name)}" autocomplete="off" placeholder="z. B. WEG Hauptstraße 5">
+        <label>Hausverwaltung</label><button type="button" class="k-wahl" id="kHvWahl">${hvVon(k) ? `${icon('users')}<span>${esc(name(hvVon(k)))}</span>` : `${icon('plus')}<span>Hausverwaltung wählen oder anlegen</span>`}</button>
+        ${hvVon(k) ? `<label>Ansprechpartnerin bei der Hausverwaltung</label><select id="kHvPerson"><option value="">Keine (Sehr geehrte Damen und Herren)</option>${hvVon(k).personen.map((p) => `<option value="${p.id}" ${p.id === k.hvPersonId ? 'selected' : ''}>${esc(personName(p) || 'Person ohne Namen')}${p.rolle ? ' · ' + esc(p.rolle) : ''}</option>`).join('')}</select>
+          <p class="hint" style="margin:4px 0 0">Rechnungsanschrift ist die der Hausverwaltung. Im PDF: „${esc(k.name || 'WEG …')}, vertreten durch ${esc(name(hvVon(k)))}“.</p>` : ''}
+        <div class="hvbox" id="kHv" ${hvVon(k) || !(k.hv.firma.trim() || k.hv.anschrift.trim()) ? 'hidden' : ''}>
+          <div class="hv-h">${icon('users')}<span>Hausverwaltung von früher (von Hand eingetragen)</span></div>
+          <label>Hausverwaltung</label><input type="text" data-hv="firma" value="${esc(k.hv.firma)}" autocomplete="off">
+          <label>Ansprechpartner</label><input type="text" data-hv="ansprech" value="${esc(k.hv.ansprech)}" autocomplete="off">
+          <div class="row"><div><label>Telefon</label><input type="tel" data-hv="telefon" value="${esc(k.hv.telefon)}" autocomplete="off"></div>
+            <div><label>E-Mail</label><input type="email" data-hv="email" value="${esc(k.hv.email)}" autocomplete="off" inputmode="email"></div></div>
+          <label>Anschrift der Hausverwaltung</label><div class="adr"><input type="text" data-hv="anschrift" value="${esc(k.hv.anschrift)}" autocomplete="off"></div>
+        </div>` : ''}
         ${Kontakt.mehrLabel('Telefon', 'tel', k.telArt)}${Kontakt.telInput('kTel', k.telefon)}
         <div id="kTelMehr"></div>
-        <label>Geburtstag${a !== null ? ` <span class="muted" id="kAlter">(${a} Jahre)</span>` : ` <span class="muted" id="kAlter"></span>`}</label>${Kontakt.datumInput('kGeb', k.geburtstag)}
-        <div id="kGebArtBox" ${k.geburtstag ? '' : 'hidden'}><label>Am Geburtstag</label>${Kontakt.gebArtSelect(k.gebArt, 'kGebArt')}</div>
+        <div ${k.art === 'privat' ? '' : 'hidden'}><label>Geburtstag${a !== null ? ` <span class="muted" id="kAlter">(${a} Jahre)</span>` : ` <span class="muted" id="kAlter"></span>`}</label>${Kontakt.datumInput('kGeb', k.geburtstag)}
+        <div id="kGebArtBox" ${k.geburtstag ? '' : 'hidden'}><label>Am Geburtstag</label>${Kontakt.gebArtSelect(k.gebArt, 'kGebArt')}</div></div>
         ${Kontakt.mehrLabel('E-Mail', 'mail', k.mailArt)}<input type="email" id="kMail" value="${esc(k.email)}" autocomplete="off" inputmode="email" placeholder="name@beispiel.de">
         <div id="kMailMehr"></div>
-        <label id="kPrivatL">${privatLabel(k)}</label><div class="adr"><input type="text" id="kPrivat" value="${esc(k.privat)}" autocomplete="off" placeholder="Straße Nr., der Ort wird ergänzt"></div>
+        <div ${hvVon(k) ? 'hidden' : ''}><label id="kPrivatL">${privatLabel(k)}</label><div class="adr"><input type="text" id="kPrivat" value="${esc(k.privat)}" autocomplete="off" placeholder="Straße Nr., der Ort wird ergänzt"></div></div>
         <label>Wie ist der Kunde auf uns gekommen?</label><select id="kQuelle"><option value="">Bitte wählen</option>${[...new Set([...vorgabe('kundenQuellen'), ...(k.quelle ? [k.quelle] : [])])].map((q) => `<option ${q === k.quelle ? 'selected' : ''}>${esc(q)}</option>`).join('')}</select>
+        <div id="kEmpfBox" ${/empfehl/i.test(k.quelle) || k.empfohlenVon ? '' : 'hidden'}><label>Empfohlen von</label>
+          <button type="button" class="k-wahl" id="kEmpf">${empfVon(k) ? `${icon('user')}<span>${esc(empfVon(k).text)}</span>` : `${icon('plus')}<span>Kunde oder Partner wählen</span>`}</button>
+          <p class="hint" style="margin:4px 0 0">DOM legt dann das To-do „Bei … bedanken“ an, und noch einmal, wenn der Kunde beauftragt.</p></div>
         <label>Notiz</label><textarea id="kNotiz" placeholder="z. B. erreichbar ab 17 Uhr, Schlüssel beim Nachbarn">${esc(k.notiz)}</textarea>
       </div>
+      <div class="sec-h k-pers"><h2>Personen</h2><span class="count">${k.personen.length}</span></div>
+      <p class="hint k-pers" style="margin-top:-4px">${k.art === 'privat' ? 'Partner, Kinder, Eltern: mit Rolle, Geburtstag, Nummern und Notiz.' : 'Ansprechpartner, Buchhaltung, Bauleitung: mit Rolle, Nummern und Notiz.'}</p>
+      <div id="kPersonen" class="k-pers"></div>
+      <button type="button" class="link-add k-pers" id="kPAdd">${icon('plus')} Person hinzufügen</button>
       <div id="kPflege"></div>
 
       ${einfach ? `<div class="docs" style="margin-top:12px"><button class="doc" id="oVorOrt"><span class="d-ico brass">${icon('camera')}</span>
@@ -525,22 +596,66 @@ window.Kunden = (() => {
     const persist = debounce(async () => { await speichern(k); weitergeben(k); }, 400);
     const titel = () => { $('#title').textContent = name(k) || 'Neuer Kunde'; const s = $('#subtitle'); s.textContent = untertitel(k); s.hidden = !untertitel(k); };
     Kontakt.telBinden($('#kTel'), (v) => { k.telefon = v; persist(); actions(); });
-    const felder = { kAnrede: 'anrede', kVorname: 'vorname', kName: 'name', kMail: 'email', kPrivat: 'privat', kNotiz: 'notiz', kQuelle: 'quelle', kGebArt: 'gebArt' };
+    const felder = { kAnrede: 'anrede', kVorname: 'vorname', kName: 'name', kMail: 'email', kPrivat: 'privat', kNotiz: 'notiz', kQuelle: 'quelle', kGebArt: 'gebArt', kAnsprech: 'ansprechId', kRechMail: 'rechnungMail', kUstid: 'ustid', kHvPerson: 'hvPersonId' };
     for (const [id, f] of Object.entries(felder)) {
       const el = $('#' + id);
+      if (!el) continue;
       el[el.tagName === 'SELECT' ? 'onchange' : 'oninput'] = (e) => {
+        if (f === 'quelle') $('#kEmpfBox').hidden = !/empfehl/i.test(e.target.value) && !k.empfohlenVon;
         k[f] = e.target.value; persist(); titel(); actions();
         if (f === 'privat' && einfach && k.objekte[0]) k.objekte[0].adresse = k.privat; // ein Objekt = Kundenanschrift
         if (f === 'name' || f === 'vorname' || f === 'anrede') $('#kProj').innerHTML = `${icon('plus')} Neues Angebot für ${esc(name(k) || 'diesen Kunden')}`;
-        if (f === 'anrede') {
-          const hv = istHv(k);
-          $('#kHv').hidden = !hv;
-          $('#kNameL').textContent = hv ? 'Eigentümer bzw. WEG' : 'Nachname bzw. Firma';
-          $('#kName').placeholder = hv ? 'z. B. WEG Silberburgstraße 66' : 'z. B. Müller';
-          $('#kPrivatL').textContent = privatLabel(k);
-        }
       };
     }
+    // Kundenart umschalten: Karte neu aufbauen (andere Felder)
+    $$('[data-kart]').forEach((b) => (b.onclick = async () => {
+      if (b.dataset.kart === k.art) return;
+      k.art = b.dataset.kart; k.anrede = k.art === 'firma' ? 'Firma' : k.art === 'weg' ? 'Hausverwaltung' : '';
+      if (k.art !== 'privat' && k.vorname.trim() && !k.personen.length) { // bisherige Person nicht verlieren
+        const p = normPerson({ vorname: k.vorname, name: k.name });
+        k.personen.push(p); if (k.art === 'firma') k.ansprechId = p.id; k.vorname = '';
+      }
+      if (!k.isNew) await speichern(k); else norm(k);
+      const y = window.scrollY; await detail(k); window.scrollTo(0, y);
+    }));
+    if ($('#k13b')) $('#k13b').onchange = (e) => { k.p13b = e.target.checked; persist(); };
+    // WEG: Hausverwaltung = Kunde der Art Firma (einmal angelegt, überall derselbe Datensatz)
+    if ($('#kHvWahl')) $('#kHvWahl').onclick = async () => {
+      const hvs = liste().filter((x) => x.art === 'firma' && x.id !== k.id);
+      const v = await sheet('Welche Hausverwaltung?', [
+        { label: 'Neue Hausverwaltung anlegen', icon: icon('plus'), value: '__neu' },
+        ...(k.hvId ? [{ label: 'Keine', icon: icon('x'), value: '__keine' }] : []),
+        ...hvs.map((x) => ({ label: name(x), sub: [x.nr && 'Kunden-Nr. ' + x.nr, einzeilig(x.privat)].filter(Boolean).join(' · '), icon: icon('users'), value: x.id, such: name(x) })),
+      ], { suche: '' });
+      if (!v) return;
+      if (v === '__keine') { k.hvId = ''; k.hvPersonId = ''; }
+      else if (v === '__neu') {
+        const nm = prompt('Name der Hausverwaltung (Firma):', k.hv.firma || '');
+        if (!nm?.trim()) return;
+        const H = neu({ art: 'firma', anrede: 'Firma', name: nm.trim(), privat: k.hv.anschrift || '', email: k.hv.email || '', telefon: k.hv.telefon || '', quelle: 'Hausverwaltung' });
+        if (k.hv.ansprech.trim()) { const p = normPerson({ ...ausName(k.hv.ansprech), rolle: 'Verwalterin' }); H.personen.push(p); H.ansprechId = p.id; k.hvPersonId = p.id; }
+        await speichern(H);
+        k.hvId = H.id;
+      } else { k.hvId = v; k.hvPersonId = ''; }
+      if (k.isNew) await speichern(k); else persist();
+      const y = window.scrollY; await detail(k); window.scrollTo(0, y);
+    };
+    if ($('#kEmpf')) $('#kEmpf').onclick = async () => {
+      const ks = liste().filter((x) => x.id !== k.id), ps = window.Partner?.liste?.() || [];
+      const v = await sheet('Empfohlen von', [
+        ...(k.empfohlenVon ? [{ label: 'Niemand', icon: icon('x'), value: '__keine' }] : []),
+        ...ks.map((x) => ({ label: name(x) || 'Ohne Namen', sub: ['Kunde', x.nr].filter(Boolean).join(' '), icon: icon('user'), value: 'kunde:' + x.id, such: name(x) })),
+        ...ps.map((x) => ({ label: x.firma || x.inhaber || 'Partner', sub: 'Partner', icon: icon('wrench'), value: 'partner:' + x.id, such: [x.firma, x.inhaber].join(' ') })),
+      ], { suche: '', text: 'Oder Name eintragen, z. B. Nachbar Herr Kaya' });
+      if (v === null || v === undefined) return;
+      const neuWert = typeof v === 'object' ? String(v.text || '').trim() : v === '__keine' ? '' : v;
+      if (!neuWert && v !== '__keine') return;
+      k.empfohlenVon = neuWert;
+      if (k.isNew) await speichern(k); else await speichern(k);
+      if (k.empfohlenVon) dankTodo(k);
+      const y = window.scrollY; await detail(k); window.scrollTo(0, y);
+    };
+    personenZeichnen(k, persist, () => { const y = window.scrollY; detail(k).then(() => window.scrollTo(0, y)); });
     Kontakt.datumFeld($('#kGeb'), (v) => {
       if (v === k.geburtstag) return;
       k.geburtstag = v; persist(); actions(); $('#kGebArtBox').hidden = !v;
@@ -627,6 +742,51 @@ window.Kunden = (() => {
       ${icon('chevron', 'pc-chev')}</button>`;
 
   // ---------- Ansicht: ein Objekt (Anschrift, Notiz, Bilder, Projekte dort) ----------
+  /** Personen-Liste beim Kunden (Runde 13): Name, Rolle, Geburtstag, Notiz, mehrere Nummern und Mails mit Bezeichnung. */
+  const offenP = new Set(); // aufgeklappte Personen (nur solange die App offen ist)
+  function personenZeichnen(k, persist, neuZeichnen) {
+    const box = $('#kPersonen'); if (!box) return;
+    const rollen = vorgabe('personRollen') || [];
+    box.innerHTML = k.personen.map((p) => `<details class="card kform pers" data-pid="${p.id}" ${offenP.has(p.id) ? 'open' : ''}>
+      <summary><span class="pers-t"><b>${esc(personName(p) || 'Neue Person')}</b><span class="muted">${esc([p.rolle, p.id === k.ansprechId && 'Ansprechpartner', p.telefon, p.geburtstag && 'Geburtstag ' + Kontakt.de(p.geburtstag)].filter(Boolean).join(' · '))}</span></span>${icon('chevron', 'more-chev')}</summary>
+      <div class="row"><div style="flex:1"><label>Anrede</label><select data-pf="anrede">${PANREDEN.map(([v, l]) => `<option value="${v}" ${v === p.anrede ? 'selected' : ''}>${l}</option>`).join('')}</select></div>
+        <div style="flex:2"><label>Rolle</label><input type="text" data-pf="rolle" value="${esc(p.rolle)}" list="pRollen" autocomplete="off" placeholder="z. B. Ehefrau, Sohn, Buchhaltung"></div></div>
+      <div class="row"><div><label>Vorname</label><input type="text" data-pf="vorname" value="${esc(p.vorname)}" autocomplete="off"></div>
+        <div><label>Nachname</label><input type="text" data-pf="name" value="${esc(p.name)}" autocomplete="off"></div></div>
+      ${Kontakt.mehrLabel('Telefon', 'tel', p.telArt)}${Kontakt.telInput('pTel-' + p.id, p.telefon)}<div data-ptmehr></div>
+      ${Kontakt.mehrLabel('E-Mail', 'mail', p.mailArt)}<input type="email" data-pf="email" value="${esc(p.email)}" autocomplete="off" inputmode="email" placeholder="name@beispiel.de"><div data-pmmehr></div>
+      <label>Geburtstag</label>${Kontakt.datumInput('pGeb-' + p.id, p.geburtstag)}
+      <label>Notiz</label><textarea data-pf="notiz" data-frei placeholder="z. B. entscheidet mit, mag Fußball">${esc(p.notiz)}</textarea>
+      <button type="button" class="link-danger" data-pdel>${icon('trash')} Person entfernen</button>
+    </details>`).join('') + `<datalist id="pRollen">${rollen.map((r) => `<option value="${esc(r)}">`).join('')}</datalist>`;
+    $$('[data-pid]', box).forEach((el) => {
+      const p = person(k, el.dataset.pid);
+      el.ontoggle = () => { if (el.open) offenP.add(p.id); else offenP.delete(p.id); };
+      const kopf = () => { $('.pers-t b', el).textContent = personName(p) || 'Neue Person'; };
+      $$('[data-pf]', el).forEach((inp) => (inp[inp.tagName === 'SELECT' ? 'onchange' : 'oninput'] = () => { p[inp.dataset.pf] = inp.value; kopf(); persist(); }));
+      Kontakt.telBinden($('#pTel-' + p.id), (v) => { p.telefon = v; persist(); });
+      Kontakt.datumFeld($('#pGeb-' + p.id), (v) => { if (v !== p.geburtstag) { p.geburtstag = v; persist(); } });
+      const pl = $$('[data-mehr]', el);
+      Kontakt.mehrBinden($('[data-ptmehr]', el), pl[0], p.weitere, 'tel', persist, { haupt: { get: () => p.telArt, set: (v) => (p.telArt = v) }, hauptFeld: $('#pTel-' + p.id) });
+      Kontakt.mehrBinden($('[data-pmmehr]', el), pl[1], p.weitere, 'mail', persist, { haupt: { get: () => p.mailArt, set: (v) => (p.mailArt = v) } });
+      $('[data-pdel]', el).onclick = () => {
+        if ((personName(p) || p.telefon) && !confirm(`${personName(p) || 'Diese Person'} entfernen?`)) return;
+        k.personen = k.personen.filter((x) => x !== p);
+        if (k.ansprechId === p.id) k.ansprechId = '';
+        persist(); neuZeichnen();
+      };
+    });
+    $('#kPAdd').onclick = async () => {
+      const p = normPerson({ name: k.art === 'privat' ? k.name : '' });
+      offenP.add(p.id);
+      k.personen.push(p);
+      if (k.art === 'firma' && !k.ansprechId) k.ansprechId = p.id;
+      if (k.isNew) await speichern(k); else persist();
+      neuZeichnen();
+      setTimeout(() => $(`[data-pid="${p.id}"] [data-pf="vorname"]`)?.focus(), 80);
+    };
+  }
+
   async function objektView(k, o, neuAngelegt = false) {
     if (!o) return detail(k);
     state.kunde = k; state.objekt = o.id; state.wohnung = null; state.project = null;
@@ -647,7 +807,12 @@ window.Kunden = (() => {
         <div id="oKontakte"></div>
         <button type="button" class="link-add" id="oKAdd" style="padding-top:4px">${icon('plus')} Weiteren Ansprechpartner hinzufügen</button>
         ${name(k) && !o.kontakte.some((x) => x.name.trim() === name(k)) ? `<button type="button" class="link-add" id="oEigen" style="padding-top:4px">${icon('user')} Eigentümer als Ansprechpartner übernehmen</button>` : ''}
+        ${k.personen.length ? `<button type="button" class="link-add" id="oPerson" style="padding-top:4px">${icon('users')} Person des Kunden als Ansprechpartner</button>` : ''}
         <label>Schlüssel</label><input type="text" id="oSchl" value="${esc(o.schluessel)}" autocomplete="off" placeholder="z. B. beim Hausmeister, Schlüsselsafe 1234">
+        <div class="row"><div><label>Klingel</label><input type="text" id="oKlingel" value="${esc(o.klingel)}" autocomplete="off" placeholder="z. B. Müller/Kaya"></div>
+          <div><label>Etage</label><input type="text" id="oEtage" value="${esc(o.etage)}" autocomplete="off" placeholder="z. B. 2. OG links"></div></div>
+        <div class="row"><div><label>Aufzug</label><select id="oAufzug">${[['', 'Unbekannt'], ['ja', 'Ja'], ['nein', 'Nein']].map(([v, l]) => `<option value="${v}" ${o.aufzug === v ? 'selected' : ''}>${l}</option>`).join('')}</select></div>
+          <div><label>Parken</label><input type="text" id="oParken" value="${esc(o.parken)}" autocomplete="off" placeholder="z. B. im Hof, Parkausweis nötig"></div></div>
         <label>Notiz</label><textarea id="oNotiz" placeholder="z. B. Parken im Hof, Wasser-Haupthahn im Keller links">${esc(o.notiz)}</textarea>
       </div>
       <div class="kd-actions" id="oAct"></div>
@@ -665,19 +830,21 @@ window.Kunden = (() => {
     };
     aktionen();
     const persist = debounce(async () => { await speichern(k); weitergeben(k); }, 400);
-    for (const [id, f] of [['oName', 'name'], ['oAdr', 'adresse'], ['oNotiz', 'notiz'], ['oSchl', 'schluessel']]) {
-      $('#' + id).oninput = (e) => { o[f] = e.target.value; persist(); $('#title').textContent = objLabel(o); if (f === 'adresse') aktionen(); };
+    for (const [id, f] of [['oName', 'name'], ['oAdr', 'adresse'], ['oNotiz', 'notiz'], ['oSchl', 'schluessel'], ['oKlingel', 'klingel'], ['oEtage', 'etage'], ['oAufzug', 'aufzug'], ['oParken', 'parken']]) {
+      $('#' + id)[$('#' + id).tagName === 'SELECT' ? 'onchange' : 'oninput'] = (e) => { o[f] = e.target.value; persist(); $('#title').textContent = objLabel(o); if (f === 'adresse') aktionen(); };
     }
     // Ansprechpartner: Name über die ganze Breite, darunter Telefon und E-Mail. Ohne Eintrag steht ein leeres Feld da.
     const kontakte = () => {
       const list = o.kontakte.length ? o.kontakte : [{ id: '_neu', name: '', telefon: '', email: '' }];
+      const rollen = vorgabe('objektRollen') || [];
       $('#oKontakte').innerHTML = list.map((x) => `<div class="akon" data-ak="${x.id}">
-        <input type="text" data-akf="name" value="${esc(x.name)}" autocomplete="off" placeholder="Name, z. B. Mieter Herr Kaya">
+        <select data-akf="rolle" aria-label="Rolle">${[...new Set(['', ...rollen, ...(x.rolle ? [x.rolle] : [])])].map((r) => `<option value="${esc(r)}" ${r === x.rolle ? 'selected' : ''}>${esc(r || 'Rolle wählen')}</option>`).join('')}</select>
+        <input type="text" data-akf="name" value="${esc(x.name)}" autocomplete="off" placeholder="Name, z. B. Herr Kaya">
         <input type="tel" data-akf="telefon" value="${esc(x.telefon)}" autocomplete="off" placeholder="Telefon">
         <input type="email" data-akf="email" value="${esc(x.email)}" autocomplete="off" inputmode="email" placeholder="E-Mail">
         ${x.id === '_neu' ? '' : `<button type="button" class="icon-btn" data-akdel aria-label="Entfernen">${icon('x')}</button>`}</div>`).join('');
       $$('[data-ak]').forEach((row) => {
-        $$('[data-akf]', row).forEach((inp) => (inp.oninput = () => {
+        $$('[data-akf]', row).forEach((inp) => (inp[inp.tagName === 'SELECT' ? 'onchange' : 'oninput'] = () => {
           let x = o.kontakte.find((y) => y.id === row.dataset.ak);
           if (!x) { x = { id: uid(), name: '', telefon: '', email: '' }; o.kontakte.push(x); row.dataset.ak = x.id; }
           x[inp.dataset.akf] = inp.value; persist(); aktionen();
@@ -698,6 +865,15 @@ window.Kunden = (() => {
       if (!leer) o.kontakte.unshift(x);
       persist(); kontakte(); aktionen(); $('#oEigen').remove();
       toast('Eigentümer als Ansprechpartner übernommen');
+    };
+    if ($('#oPerson')) $('#oPerson').onclick = async () => {
+      const id = await sheet('Welche Person?', k.personen.map((p) => ({ label: personName(p) || 'Ohne Namen', sub: p.rolle, icon: icon('user'), value: p.id })));
+      const p = person(k, id); if (!p) return;
+      const leer = o.kontakte.find((x) => !x.name.trim() && !x.telefon.trim() && !x.email.trim());
+      const x = leer || { id: uid() };
+      Object.assign(x, { name: personName(p), telefon: p.telefon, email: p.email, rolle: p.rolle || 'Person des Kunden', personId: p.id });
+      if (!leer) o.kontakte.push(x);
+      persist(); kontakte(); aktionen();
     };
     if ($('#oVomKunden')) $('#oVomKunden').onclick = () => {
       if (k.privat.trim()) { o.adresse = k.privat.trim(); $('#oAdr').value = o.adresse; }
@@ -740,5 +916,5 @@ window.Kunden = (() => {
     return byId(id);
   }
 
-  return { adressVorschlaege, sucheAdresse, laden, migrate, nummern, projektNr, byId, liste, name, briefAnrede, postanschrift, istHv, zeilen, einzeilig, objekt, objektText, ort, initialen, ausName, speichern, waehlen, objektWaehlen, projektAnlegen, start, listeView, detail, objektView, objLabel, oeffnen, zu, bisGeburtstag };
+  return { ARTEN, personName, person, hvVon, rechnungMail, angebotMail, dankAuftrag, empfVon, adressVorschlaege, sucheAdresse, laden, migrate, nummern, projektNr, byId, liste, name, briefAnrede, postanschrift, istHv, zeilen, einzeilig, objekt, objektText, ort, initialen, ausName, speichern, waehlen, objektWaehlen, projektAnlegen, start, listeView, detail, objektView, objLabel, oeffnen, zu, bisGeburtstag };
 })();

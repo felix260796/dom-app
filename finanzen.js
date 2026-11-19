@@ -146,6 +146,7 @@ window.Finanzen = (() => {
     const kunden = Kunden.liste().filter((k) => imJahr(k.created));
     const quellen = zaehl(kunden.map((k) => k.quelle).filter(Boolean));
     const quelleZu = (q) => zuL.filter((e) => Kunden.byId(e.x.kundeId)?.quelle === q).length;
+    const quelleW = (q) => wert(zuL.filter((e) => Kunden.byId(e.x.kundeId)?.quelle === q));
     const grund = (e) => e.w.absage?.grund || e.x.absage || '';
     const gruende = zaehl(abL.map(grund).filter(Boolean));
     const tagK = (t) => (t ? new Date(t).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' }) : '');
@@ -190,7 +191,7 @@ window.Finanzen = (() => {
       <div class="phasen zwei" style="margin-top:8px"><div class="fz ${ueberR.length ? 'rot' : ''}"><b>${eur0(sum(offenR))}</b><span>Offen bei Kunden${ueberR.length ? `, davon ${eur0(sum(ueberR))} überfällig` : ''}</span></div><div class="fz"><b>${sollSum ? Math.round((margeSum / sollSum) * 100) + ' %' : '–'}</b><span>Marge Ø (${marge.length} ${marge.length === 1 ? 'Projekt' : 'Projekte'})</span></div></div>
       ${jahr && window.Tabelle?.istBuero() ? `<div class="card aw aw-mon"><b class="aw-h">Monate ${jahr}</b><div id="awMon"></div></div>` : ''}
       ${jahr && umsatz ? `<div class="card aw"><b class="aw-h">Umsatz je Monat ${jahr}</b><div class="aw-m">${monate.map((v, m) => `<div title="${eur0(v)}"><i class="${v ? '' : 'leer'}" style="--h:${Math.round((v / maxM) * 100)}%"></i>${['J', 'F', 'M', 'A', 'M', 'J', 'J', 'A', 'S', 'O', 'N', 'D'][m]}</div>`).join('')}</div><p class="hint" style="margin:6px 0 0">Bester Monat: ${eur0(maxM)}</p></div>` : ''}
-      ${quellen.length ? `<div class="card aw"><b class="aw-h">Woher kommen die Kunden?</b>${balken(quellen, kunden.filter((k) => k.quelle).length, (q) => { const n = quelleZu(q); return n ? ` <small>· ${n} Auftr.</small>` : ''; })}</div>` : ''}
+      ${quellen.length ? `<div class="card aw"><b class="aw-h">Woher kommen die Kunden?</b>${balken(quellen, kunden.filter((k) => k.quelle).length, (q) => { const n = quelleZu(q), w = quelleW(q); return n ? ` <small>· ${n} Auftr.${w ? ', ' + eur0(w) + ' netto' : ''}</small>` : ''; })}</div>` : ''}
       ${ab ? `<div class="card aw"><b class="aw-h">Abgesagte Angebote</b>${gruende.length ? balken(gruende, ab) : ''}<div class="aw-abl">${abListe}</div></div>` : ''}`;
   }
 

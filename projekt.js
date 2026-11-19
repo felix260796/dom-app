@@ -293,6 +293,7 @@ window.Projekt = (() => {
       if (norm(v) !== norm(w.status)) (w.verlauf ??= []).push({ st: v, t: Date.now() });
       w.status = v;
       if (!w.isNew) { await save(w); await AngebotDaten.standVomVorgang(w); }
+      if (zugesagt(v)) Kunden.dankAuftrag(w); // Empfehlung: zweites „Bei … bedanken“, wenn der Kunde beauftragt
       toast(statusName(v));
       const y = window.scrollY; await view(); window.scrollTo(0, y);
     };
@@ -1133,7 +1134,7 @@ window.Projekt = (() => {
     const { ang, files } = r;
     // „Wie verschickt“ wird erst gemerkt, wenn wirklich gesendet wird
     if (navigator.canShare?.({ files })) {
-      try { await navigator.share({ files, title: ang.name.replace(/\.pdf$/i, '').replace(/_/g, ' '), text: A.mailText(ang.syn), an: Kunden.byId(w.kundeId)?.email || '' }); await angebotMerken(w.id, ang.doc, ang.name); await angebotVersendet(w.id); return neuZeichnen(w); }
+      try { await navigator.share({ files, title: ang.name.replace(/\.pdf$/i, '').replace(/_/g, ' '), text: A.mailText(ang.syn), an: Kunden.angebotMail(Kunden.byId(w.kundeId)) }); await angebotMerken(w.id, ang.doc, ang.name); await angebotVersendet(w.id); return neuZeichnen(w); }
       catch (e) { if (e.name === 'AbortError') return neuZeichnen(w); }
     }
     for (const f of files) { const a = document.createElement('a'); a.href = URL.createObjectURL(f); a.download = f.name; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 60000); }

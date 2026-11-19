@@ -180,6 +180,10 @@ Offen für P7: Kopf und Texte liegen noch in `w.angebotKopf`/`w.angebotTexte` am
 
 To-dos: `todos.js` (`Todos`), Speicher `todo:<id>` { text, prio hoch/mittel/niedrig, faellig, wer (Team-ID, '' = beide), bezug { kundeId, partnerId, vorgangId }, art, schluessel, erledigt }. Seite Menü › To-dos (`state.tab = 'todos'`, auch in der Seitenleiste). Andere Bereiche legen To-dos still an: `Todos.anlegen({ text, …, schluessel })` (gleicher Schlüssel wird nie doppelt angelegt). Heute oben unterteilt in Heute / Morgen / Diese Woche (`ab` in `heute.js`), unter Heute zuerst überfällige und heutige To-dos nach Priorität (`Todos.zeitraeume`).
 
+## Neuerungen aus Version 112 (P2 Teil 2: Kundenart, Personen, Objekt, Empfehlung)
+
+Kunde: `k.art` privat/firma/weg (Umschalter `#kArt`, `k.anrede` bleibt passend 'Firma'/'Hausverwaltung'). Firma: `ansprechId` (Person aus der Liste), `rechnungMail`, `ustid`, `p13b`. WEG: `hvId` = Kunde der Art Firma (einmal angelegt), `hvPersonId`; Anschrift „WEG …, vertreten durch …, z. Hd. …“ (`postanschrift`, `briefAnrede`, `hvVon`). Alte Freitext-Hausverwaltung `k.hv` bleibt als Rückfall. Personen-Liste `k.personen [{ id, anrede, vorname, name, rolle, telefon, telArt, email, mailArt, weitere, geburtstag, gebArt, notiz }]` (`personenZeichnen`, Vorgabe `personRollen`). Angebots-Mail `Kunden.angebotMail`, Rechnungs-Mail `Kunden.rechnungMail`. Objekt: `klingel`, `etage`, `aufzug`, `parken`; Ansprechpartner vor Ort mit `rolle` (Vorgabe `objektRollen`) und `personId`. Quelle „Empfohlen von“ (`k.empfohlenVon` = 'kunde:<id>' | 'partner:<id>' | Text) legt To-do „Bei … bedanken“ an, bei Zusage ein zweites (`dankAuftrag`). Auswertung: Umsatz je Quelle.
+
 ## Bereiche
 
 | Bereich | Dateien | Inhalt |
