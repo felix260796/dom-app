@@ -61,16 +61,18 @@ window.Buero = (() => {
   const plOffen = new Set();
   async function plPane(el, tabBox) {
     const A = window.Angebot._intern, PL = await A.preisliste();
-    const partner = (window.Partner?.liste() || []).filter((p) => Object.keys(p.preise || {}).length || (p.eigenePreise || []).length)
+    const partner = (window.Partner?.liste() || []).filter((p) => SubProfil.listen(p).length)
       .sort((a, b) => Partner.titel(a).localeCompare(Partner.titel(b), 'de'));
+    const quellen = partner.flatMap((p) => SubProfil.listen(p).map((l) => ({ p, stufe: l.stufe, wert: `${p.id}|${l.stufe}` })));
     const posVon = (nr) => PL.positionen.find((x) => x.nr === nr);
     const zeilen = () => {
-      const p = partner.find((x) => x.id === plQuelle);
+      const q = quellen.find((x) => x.wert === plQuelle || x.p.id === plQuelle), p = q?.p;
+      if (p) SubProfil.stufeSetzen(p, q.stufe);
       if (!p) return PL.positionen.map((x) => ({ text: x.text, einheit: x.einheit, gruppe: x.gewerk || '', preis: A.ep(x), pos: { text: x.text } }));
       return [...Object.entries(p.preise || {}).map(([nr, preis]) => { const x = posVon(nr); return x && { text: x.text, einheit: x.einheit, gruppe: x.gewerk || '', preis: +preis, pos: { text: x.text, einheit: x.einheit, ep: +preis } }; }).filter(Boolean),
         ...(p.eigenePreise || []).map((x) => ({ text: x.text || 'Eigene Position', einheit: x.einheit || '', gruppe: 'Eigene Positionen', preis: +x.preis || 0, pos: { text: x.text || 'Eigene Position', einheit: x.einheit || '', ep: +x.preis || 0 } }))];
     };
-    el.innerHTML = `<select class="apl-q" aria-label="Preisliste"><option value="">Allgemeine Preisliste</option>${partner.map((p) => `<option value="${esc(p.id)}" ${p.id === plQuelle ? 'selected' : ''}>${esc(Partner.titel(p))}${p.gewerk ? ' · ' + esc(p.gewerk) : ''}</option>`).join('')}</select>
+    el.innerHTML = `<select class="apl-q" aria-label="Preisliste"><option value="">Allgemeine Preisliste</option>${quellen.map((q) => `<option value="${esc(q.wert)}" ${q.wert === plQuelle ? 'selected' : ''}>${esc(Partner.titel(q.p))} · ${esc(q.stufe)}${q.p.gewerk ? ' · ' + esc(q.p.gewerk) : ''}${window.Sperre?.ist(q.p) ? ' (gesperrt)' : ''}</option>`).join('')}</select>
       <label class="search apl-s">${icon('search')}<input type="search" placeholder="Leistung suchen …" value="${esc(plSuche)}" autocomplete="off"></label>
       <p class="hint apl-h">${plQuelle ? 'Partnerpreise ohne Zuschlag.' : 'Preise netto für den Kunden.'} Gruppe anklicken zum Aufklappen, mit + übernehmen oder in die Tabelle ziehen.</p>
       <div class="apl-l"></div>`;
@@ -571,12 +573,13 @@ window.Buero = (() => {
     if (!el || !p) return;
     const A = window.Angebot?._intern; let PL; try { PL = await A.preisliste(); } catch { el.innerHTML = '<p class="empty">Preisliste nicht geladen.</p>'; return; }
     const pos = (nr) => PL.positionen.find((x) => x.nr === nr);
-    const sichern = async () => { p.updated = Date.now(); await kvSet('partner:' + p.id, p); window.Backup?.markChange?.(); await window.Partner?.laden(); };
+    const sichern = async () => { window.SubProfil?.stempeln(p); p.updated = Date.now(); await kvSet('partner:' + p.id, p); window.Backup?.markChange?.(); await window.Partner?.laden(); };
     const zeichnen = () => {
+      const sl = window.SubProfil?.stufeLeiste(p, zeichnen) || { html: '', binden: () => {} };
       const ein = Object.entries(p.preise || {}).filter(([nr]) => pos(nr)).sort((a, b) => a[0].localeCompare(b[0], 'de', { numeric: true }));
       const gew = [...new Set(PL.positionen.map((x) => x.gewerk))];
       const abstand = (unser, preis) => { if (!unser || !preis) return ''; const d = Math.round((1 - preis / unser) * 100); return `<span class="${d < 10 ? 'rot' : ''}">${d} %</span>`; };
-      el.innerHTML = `<div class="ltab-wz pp-wz"><span class="muted">${ein.length + (p.eigenePreise || []).length} Positionen · was diese Firma pro Einheit verlangt (netto). Die Kalkulation rechnet damit.</span>
+      el.innerHTML = `${sl.html}<div class="ltab-wz pp-wz"><span class="muted">${ein.length + (p.eigenePreise || []).length} Positionen · was diese Firma pro Einheit verlangt (netto). Die Kalkulation rechnet damit.</span>
           <button type="button" class="btn secondary small" data-ppx>${icon('download')} Als Excel speichern</button></div>
         <div class="ltab-wrap"><table class="ltab pp-tab"><colgroup><col style="width:90px"><col><col style="width:80px"><col style="width:120px"><col style="width:130px"><col style="width:90px"><col style="width:44px"></colgroup>
           <thead><tr><th>Nr.</th><th>Leistung</th><th>Einheit</th><th class="r">Unser Preis</th><th class="r">Preis der Firma</th><th class="r" title="Wie viel die Firma unter unserem Angebotspreis liegt">Spanne</th><th></th></tr></thead>
@@ -589,13 +592,14 @@ window.Buero = (() => {
               <td><button type="button" class="icon-btn pp-x" data-epdel="${esc(x.id)}" title="Entfernen">${icon('trash')}</button></td></tr>`).join('')}
             <tr class="pp-neu"><td colspan="7"><select data-spneu><option value="">+ Position aus unserer Preisliste …</option>${gew.map((g) => `<optgroup label="${esc(g)}">${PL.positionen.filter((x) => x.gewerk === g && !(p.preise || {})[x.nr]).map((x) => `<option value="${esc(x.nr)}">${esc(x.nr)} ${esc(x.text)}</option>`).join('')}</optgroup>`).join('')}</select>
               <button type="button" class="btn secondary small" data-epneu>${icon('plus')} Eigene Position</button></td></tr></tbody></table></div>`;
+      sl.binden(el);
       $$('[data-sp]', el).forEach((i) => (i.onchange = async () => { p.preise[i.dataset.sp] = zahl(i.value); await sichern(); zeichnen(); }));
       $$('[data-spdel]', el).forEach((b) => (b.onclick = async () => { delete p.preise[b.dataset.spdel]; await sichern(); zeichnen(); }));
       $$('[data-ep]', el).forEach((tr) => { const x = (p.eigenePreise || []).find((y) => y.id === tr.dataset.ep);
         $$('[data-epf]', tr).forEach((i) => (i.onchange = async () => { x[i.dataset.epf] = i.dataset.epf === 'preis' ? zahl(i.value) : i.value.trim(); await sichern(); if (i.dataset.epf === 'preis') i.value = komma(x.preis); })); });
       $$('[data-epdel]', el).forEach((b) => (b.onclick = async () => { p.eigenePreise = (p.eigenePreise || []).filter((y) => y.id !== b.dataset.epdel); await sichern(); zeichnen(); }));
       $('[data-spneu]', el).onchange = async (e) => { const nr = e.target.value; if (!nr) return; (p.preise ??= {})[nr] = 0; await sichern(); zeichnen(); $(`[data-sp="${CSS.escape(nr)}"]`, el)?.select(); };
-      $('[data-epneu]', el).onclick = async () => { (p.eigenePreise ??= []).push({ id: uid(), text: '', einheit: 'Std.', preis: 0 }); await sichern(); zeichnen(); $$('[data-ep] [data-epf="text"]', el).pop()?.focus(); };
+      $('[data-epneu]', el).onclick = async () => { (p.eigenePreise ??= []).push({ id: uid(), text: '', einheit: 'Std.', preis: 0, gewerk: p.gewerke?.[0]?.name || '' }); await sichern(); zeichnen(); $$('[data-ep] [data-epf="text"]', el).pop()?.focus(); };
       $('[data-ppx]', el).onclick = () => excelSpeichern(`Preisliste ${Partner.titel(p) || 'Partner'}`, [['Nr.', 'Leistung', 'Einheit', 'Unser Preis', 'Preis der Firma'],
         ...ein.map(([nr, ep]) => { const it = pos(nr); return [nr, it.text, it.einheit, A.ep(it), +ep]; }), ...(p.eigenePreise || []).map((x) => ['', x.text, x.einheit, '', +x.preis || 0])], 'Preisliste');
       $$('.pp-in', el).forEach((i) => i.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); i.blur(); } }));
@@ -608,7 +612,8 @@ window.Buero = (() => {
     state.partner = null;
     header('Preislisten der Partner', 'wer macht was zu welchem Preis');
     const gewerke = (p) => String(p.gewerk || '').split(/\s*[,/&+;]\s*|\s+und\s+/i).map((s) => s.trim()).filter(Boolean);
-    const anzahl = (p) => Object.keys(p.preise || {}).length + (p.eigenePreise || []).length;
+    const anzahl = (p) => SubProfil.listen(p).reduce((s, x) => s + x.n, 0);
+    const stand = (p) => { const d = p.gewerke.flatMap((g) => g.stufen.map((s) => SubProfil.stand(p, g.name, s))).filter((x) => x.n).map((x) => x.datum); return d.length ? (d.includes('') ? '' : d.sort()[0]) : null; };
     const ps = Partner.liste().filter((p) => p.art !== 'lief');
     const alleG = [...new Set(ps.flatMap(gewerke))].sort((a, b) => a.localeCompare(b, 'de'));
     if (ppGewerk && !alleG.includes(ppGewerk)) ppGewerk = '';
@@ -620,8 +625,9 @@ window.Buero = (() => {
       const such = (p) => `${p.firma} ${p.inhaber} ${p.gewerk} ${(p.eigenePreise || []).map((x) => x.text).join(' ')}`.toLowerCase();
       const l = ps.filter((p) => (!ppGewerk || gewerke(p).includes(ppGewerk)) && w.every((t) => such(p).includes(t)));
       window.Tabelle.liste($('#ppL'), { id: 'ppreise', leer: ps.length ? 'Nichts gefunden.' : 'Noch keine Subunternehmer angelegt.', oeffnen: (id) => partnerPreisSeite(Partner.byId(id)),
-        spalten: [{ k: 'firma', t: 'Firma' }, { k: 'gewerk', t: 'Gewerk' }, { k: 'stufe', t: 'Qualität', b: 170 }, { k: 'n', t: 'Positionen', r: 1, b: 110 }, { k: 'inh', t: 'Ansprechpartner' }, { k: 'tel', t: 'Telefon', b: 170 }],
-        zeilen: l.map((p) => ({ id: p.id, werte: { firma: { text: Partner.titel(p) || 'Ohne Namen', html: `<b>${esc(Partner.titel(p) || 'Ohne Namen')}</b>` }, gewerk: p.gewerk, stufe: (p.stufen || []).join(', '),
+        spalten: [{ k: 'firma', t: 'Firma' }, { k: 'gewerk', t: 'Gewerk' }, { k: 'stufe', t: 'Qualität', b: 170 }, { k: 'n', t: 'Positionen', r: 1, b: 110 }, { k: 'stand', t: 'Preise vom', b: 130 }, { k: 'inh', t: 'Ansprechpartner' }, { k: 'tel', t: 'Telefon', b: 170 }],
+        zeilen: l.map((p) => ({ id: p.id, werte: { firma: { text: Partner.titel(p) || 'Ohne Namen', html: `<b>${esc(Partner.titel(p) || 'Ohne Namen')}</b>` }, gewerk: p.gewerk, stufe: p.gewerke.map((g) => g.stufen.length ? `${g.name}: ${g.stufen.join('/')}` : '').filter(Boolean).join(', ') || (p.stufen || []).join(', '),
+          stand: (() => { const d = stand(p); if (d === null) return ''; return { text: d ? new Date(d + 'T12:00').toLocaleDateString('de-DE') : 'ohne Datum', sort: d || '0', html: `<span class="${SubProfil.zuAlt(d) ? 'sp-altz' : ''}">${d ? new Date(d + 'T12:00').toLocaleDateString('de-DE') : 'ohne Datum'}</span>` }; })(),
           n: { text: anzahl(p) ? String(anzahl(p)) : 'keine', sort: anzahl(p), html: anzahl(p) ? String(anzahl(p)) : '<span class="muted">keine</span>' }, inh: p.inhaber, tel: p.telefon } })) });
     };
     $('#ppQ').oninput = debounce(zeichnen, 120);

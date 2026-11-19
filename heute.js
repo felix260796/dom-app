@@ -76,13 +76,16 @@ window.Heute = (() => {
     // Firmendokumente, die bald ablaufen
     const fdok = (window.Unterlagen?.ablaufend() || []).map((x) => zeile('u:' + x.id, 'file', `Erneuern: ${x.name}`, `${x.gueltig < h ? 'abgelaufen seit ' : 'gültig bis '}${tag(x.gueltig)}`, x.gueltig < h ? '#c0392b' : '#d2691e'));
     block('Firmenordner', fdok);
+    // Nachweise der Subunternehmer (z. B. Freistellungsbescheinigung § 48b), die abgelaufen sind oder bald ablaufen
+    const nachw = (window.SubProfil?.ablaufend() || []).map(({ p, n, abgelaufen }) => zeile('pt:' + p.id, 'file', `Nachweis anfordern: ${Partner.titel(p) || 'Partner'}`, `${n.art} · ${abgelaufen ? 'abgelaufen seit ' : 'gültig bis '}${tag(n.bis)}`, abgelaufen ? '#c0392b' : '#d2691e'));
+    block('Nachweise der Partner', nachw);
     // Excel-Sicherung fällig
     if (window.Backup?.excelFaellig()) block('Datensicherung', [zeile('xl:', 'download', 'Excel-Sicherung machen', 'Alle Daten als Excel, z. B. in den OneDrive-Ordner')]);
     // Laufende Baustellen
     block('Laufende Baustellen', idx.filter((x) => Projekt.norm(x.status) === '').map((x) => zeile('p:' + x.id, 'home', name(x), x.fort ? `${x.fort.fertig} von ${x.fort.n} Schritten${x.fort.naechster ? ' · als Nächstes: ' + x.fort.naechster : ''}` : 'Noch keine Arbeitsschritte')));
 
     // Zahl am App-Symbol: was heute zu tun ist (ohne morgen und ohne laufende Baustellen)
-    window.Push?.badge(termine.filter((t) => t.datum === h && t.typ === 'termin').length + T.heute.length + pf.anzahl + nachf.length + geld.length + bau.length + fdok.length);
+    window.Push?.badge(termine.filter((t) => t.datum === h && t.typ === 'termin').length + T.heute.length + pf.anzahl + nachf.length + geld.length + bau.length + fdok.length + nachw.length);
     main().innerHTML = `<div class="heute-zu"><button type="button" class="icon-btn" id="hZu" aria-label="Heute schließen">${icon('x')}</button></div>${seg}` + (bloecke.join('') || `<div class="empty-state">${icon('check')}<b>Heute ist nichts offen</b><span>Termine, Nachfassen, Rechnungen und Baustellen erscheinen hier, sobald etwas ansteht.</span></div>`);
     $('#hZu').onclick = () => switchTab(window.__vorHeute || 'kunden'); // X: zurück zum Reiter davor (beim Start: Kunden)
     $$('[data-hz]').forEach((b) => (b.onclick = () => oeffnen(b.dataset.hz)));
@@ -106,6 +109,7 @@ window.Heute = (() => {
     if (art === 'p') { switchTab('projekt', { wohnung: null }); return Projekt.oeffnen(id); }
     if (art === 'kal') { Kalender.view(); return; }
     if (art === 'u') return switchTab('unterlagen');
+    if (art === 'pt') return Partner.oeffnen(id);
     if (art === 'xl') { await Backup.excel(); return view(); }
     if (art === 'r') { switchTab('rechnungen'); await Rechnung.laden(); return Rechnung.detail(Rechnung.liste().find((r) => r.id === id), () => switchTab('rechnungen')); }
     if (art === 'b') { switchTab('rechnungen'); await Finanzen.laden(); return Finanzen.erfassen(Finanzen.liste().find((b) => b.id === id), () => switchTab('rechnungen')); }

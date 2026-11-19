@@ -29,6 +29,10 @@ const Angebot = (() => {
         const std = await (await fetch('data/preisliste.json')).json();
         const have = new Set(PL.positionen.map((x) => x.nr));
         for (const x of std.positionen) if (/^(WP|HZ)-/.test(x.nr) && !have.has(x.nr)) PL.positionen.push({ ...x, status: x.status || 'geschätzt' });
+        // v114: Wärmepumpen-Positionen gehören zum Gewerk „Garten und Außen“, WP-02 heißt „Kernlochbohrung“
+        for (const x of PL.positionen) if (/^WP-/.test(x.nr) && x.gewerk === 'Wärmepumpe') x.gewerk = 'Garten und Außen';
+        const wp2 = PL.positionen.find((x) => x.nr === 'WP-02');
+        if (wp2 && wp2.text === 'Kernbohrung Hauswand für Leitungen inkl. Abdichtung') wp2.text = std.positionen.find((x) => x.nr === 'WP-02')?.text || wp2.text;
       } catch {}
     }
     gewaehrNeu(PL.einstellungen);
@@ -148,7 +152,7 @@ const Angebot = (() => {
   const DEFAULT_VORLAGEN = {
     basic: {
       garten: [['AL-01', '1'], ['GA-03', 'boden*0.1', 'Bodenaushub'], ['GA-04', 'boden*0.3', 'Terrasse / Wege'], ['GA-05', 'umfang*0.3'], ['GA-06', 'boden*0.5'], ['WP-01', 'fundament', 'Fundament Wärmepumpe'], ['WP-02', 'wp'], ['WP-03', 'leitung'], ['WP-04', 'wp']],
-      technik: [['AL-01', '1'], ['HZ-01', '1'], ['MA-02', 'wand + decke'], ['MA-03', 'wand + decke'], ['RE-01', 'boden']],
+      technik: [['AL-01', '1'], ['MA-02', 'wand + decke'], ['MA-03', 'wand + decke'], ['RE-01', 'boden']],
       aussen: [['AL-01', '1'], ['GA-08', 'wand + 10', 'Fassadenfläche + Überstand'], ['MA-01', 'umfang*2', 'Abdecken Fenster/Boden'], ['MA-02', 'wand'], ['MA-03', 'wand', 'Fassadenfarbe 2×'], ['RE-01', 'umfang*2']],
       nass: [['AL-01', '1'], ['RB-01', FL_HALB, 'Bestandsfliesen'], ['RB-02', 'boden'], ['EN-03', `aufrunden((${FL_HALB} + boden)/8)`], ['ST-01', '4', 'für Leitungen'],
         ['AB-01', 'boden + duschwand*2', 'Boden + Duschbereich'], ['AB-02', 'umfang + 4'], ['AB-03', '4'], ['FL-01', FL_HALB, 'halbhoch, Dusche raumhoch'], ['FL-02', 'boden'],
@@ -160,7 +164,7 @@ const Angebot = (() => {
     },
     standard: {
       garten: [['AL-01', '1'], ['GA-03', 'boden*0.15', 'Bodenaushub'], ['GA-04', 'boden*0.35', 'Terrasse / Wege'], ['GA-05', 'umfang*0.4'], ['GA-06', 'boden*0.45'], ['GA-07', 'umfang*0.5'], ['WP-01', 'fundament', 'Fundament Wärmepumpe'], ['WP-02', 'wp'], ['WP-03', 'leitung'], ['WP-04', 'wp'], ['WP-05', 'wp']],
-      technik: [['AL-01', '1'], ['HZ-01', '1'], ['EN-02', '1'], ['MA-02', 'wand + decke'], ['MA-05', 'wand + decke'], ['MA-03', 'wand + decke'], ['RE-01', 'boden']],
+      technik: [['AL-01', '1'], ['EN-02', '1'], ['MA-02', 'wand + decke'], ['MA-05', 'wand + decke'], ['MA-03', 'wand + decke'], ['RE-01', 'boden']],
       aussen: [['AL-01', '1'], ['GA-08', 'wand + 10', 'Fassadenfläche + Überstand'], ['MA-01', 'umfang*2', 'Abdecken Fenster/Boden'], ['PE-01', 'wand*0.15', 'Putzausbesserung ca. 15 %'], ['MA-02', 'wand'], ['MA-03', 'wand', 'Silikonharz-Fassadenfarbe 2×'], ['RE-01', 'umfang*2']],
       nass: [['AL-01', '1'], ['AL-03', '1'], ['RB-01', FL_HALB, 'Bestandsfliesen'], ['RB-02', 'boden'], ['EN-03', `aufrunden((${FL_HALB} + boden)/8)`], ['ST-01', '6', 'für Leitungen'], ['ST-03', '6'],
         ['PE-03', 'boden'], ['PE-05', 'dusche'], ['AB-01', 'boden + duschwand*2', 'Boden + Duschbereich'], ['AB-02', 'umfang + 4'], ['AB-03', '4'], ['FL-03', `${FL_HALB} + boden`, 'Großformat 60×120, Nassbereich raumhoch'],
@@ -173,7 +177,7 @@ const Angebot = (() => {
     },
     premium: {
       garten: [['AL-01', '1'], ['GA-01', 'umfang*0.3', 'Leitungen / Drainage'], ['GA-03', 'boden*0.2', 'Bodenaushub'], ['GA-04', 'boden*0.4', 'Terrasse / Wege'], ['GA-05', 'umfang*0.5'], ['GA-06', 'boden*0.4'], ['GA-07', 'umfang*0.6'], ['WP-01', 'fundament', 'Fundament Wärmepumpe'], ['WP-02', 'wp'], ['WP-03', 'leitung'], ['WP-04', 'wp'], ['WP-05', 'wp']],
-      technik: [['AL-01', '1'], ['HZ-01', '1'], ['EN-02', '1'], ['MA-02', 'wand + decke'], ['MA-06', 'wand + decke'], ['MA-03', 'wand + decke'], ['RE-01', 'boden']],
+      technik: [['AL-01', '1'], ['EN-02', '1'], ['MA-02', 'wand + decke'], ['MA-06', 'wand + decke'], ['MA-03', 'wand + decke'], ['RE-01', 'boden']],
       aussen: [['AL-01', '1'], ['GA-08', 'wand + 10', 'Fassadenfläche + Überstand'], ['MA-01', 'umfang*2', 'Abdecken Fenster/Boden'], ['PE-01', 'wand', 'neuer Oberputz'], ['MA-02', 'wand'], ['MA-03', 'wand', 'Silikonharz-Fassadenfarbe 2×'], ['MA-03', 'umfang*0.5', 'Sockel / Faschen farbig abgesetzt'], ['RE-01', 'umfang*2']],
       nass: [['AL-01', '1'], ['AL-03', '1'], ['RB-01', 'wand', 'Bestandsfliesen'], ['RB-02', 'boden'], ['EN-03', 'aufrunden((wand + boden)/8)'], ['ST-01', '8', 'für Leitungen'], ['ST-03', '8'],
         ['TB-03', 'duschwand*hoehe', 'Vorwand Dusche / WC'], ['PE-03', 'boden'], ['PE-05', 'dusche'], ['AB-01', 'boden + duschwand*2', 'Boden + Duschbereich'], ['AB-02', 'umfang + 4'], ['AB-03', '6'],
@@ -246,8 +250,7 @@ const Angebot = (() => {
     { name: 'Bodenbeläge', gewerke: ['Bodenbeläge'], rate: { 'm²': 25, lfm: 40, Stück: 10 }, nr: { 'BO-05': 15, 'BO-06': 20 } },
     { name: 'Türen', gewerke: ['Türen'], rate: { Stück: 3 } },
     { name: 'Endmontage Sanitär & Elektro (Fachbetrieb)', fachbetrieb: 2 },
-    { name: 'Wärmepumpe: Fundament & Leitungsweg', gewerke: ['Wärmepumpe'], rate: { 'm²': 1, Stück: 2, lfm: 12, pauschal: 2 }, trocknung: { 'WP-01': 5 } },
-    { name: 'Außenarbeiten', gewerke: ['Garten und Außen'], rate: { 'm²': 15, lfm: 20, 'm³': 15 } },
+    { name: 'Außenarbeiten', gewerke: ['Garten und Außen', 'Wärmepumpe'], rate: { 'm²': 15, lfm: 20, 'm³': 15, Stück: 2, pauschal: 2 }, nr: { 'WP-01': 1, 'WP-03': 12 }, trocknung: { 'WP-01': 5 } },
     { name: 'Endreinigung & Abnahme', gewerke: ['Reinigung'], rate: { 'm²': 80 }, min: 0.5 },
   ];
   const halbe = (x) => Math.ceil(x * 2 - 1e-9) / 2;
@@ -686,11 +689,13 @@ Gib Länge (längere Seite) und Breite der Grundfläche, Raumhöhe, Anzahl und G
     // Aus dem Angebotsablauf geöffnet: Nummer, Betreff, Anrede, Aufschläge, Speichern und Senden stehen dort im Büro
     const ausPrj = !!(state.angebotAusProjekt && state.wohnung);
     // Preisliste wählbar (Wunsch Felix): die allgemeine oder die eines Partners. Partnerpreise ohne Zuschlag, kalkuliert wird im Angebot.
-    const plPartner = (window.Partner?.liste() || []).filter((x) => x.art !== 'aussen' && ((x.eigenePreise || []).length || Object.keys(x.preise || {}).length));
-    const plP = plPartner.find((x) => x.id === plWahl) || null;
+    const plQuellen = (window.Partner?.liste() || []).filter((x) => x.art !== 'aussen').flatMap((x) => (window.SubProfil ? SubProfil.listen(x) : [{ stufe: '' }]).map((l) => ({ p: x, stufe: l.stufe, wert: `${x.id}|${l.stufe}` })));
+    const plPartner = [...new Set(plQuellen.map((q) => q.p))];
+    const plQ = plQuellen.find((q) => q.wert === plWahl) || null, plP = plQ?.p || null;
+    if (plP) window.SubProfil?.stufeSetzen(plP, plQ.stufe); // Preise der gewählten Stufe
     const plZeilen = plP ? [...(plP.eigenePreise || []).map((x) => ({ key: 'e:' + x.id, text: x.text || '', einheit: x.einheit || 'Stück', ep: +x.preis || 0 })),
       ...Object.entries(plP.preise || {}).map(([nr, preis]) => { const it = pos(nr); return it ? { key: 'p:' + nr, text: it.text, einheit: it.einheit, ep: +preis || 0 } : null; }).filter(Boolean)].filter((z) => z.text.trim()) : [];
-    const plPos = (key) => A.positionen.find((x) => x.sub && x.sub.partnerId === plP?.id && x.sub.key === key);
+    const plPos = (key) => A.positionen.find((x) => x.sub && x.sub.partnerId === plP?.id && x.sub.key === key && (x.sub.stufe || '') === (plQ?.stufe || x.sub.stufe || ''));
     const zeileHtml = (it) => {
       const q = mengeVon(it.nr), x = A.positionen.find((y) => y.nr === it.nr), e = x?.epFix > 0 ? x.epFix : ep(it, A.kalk);
       return `<div class="tb-z ${q ? 'an' : ''}" data-tz="${esc(it.nr)}" data-such="${esc(`${it.nr} ${it.text} ${it.gewerk}`.toLowerCase())}">
@@ -721,7 +726,7 @@ Gib Länge (längere Seite) und Breite der Grundfläche, Raumhöhe, Anzahl und G
         <p class="muted" style="white-space:pre-line;margin:8px 0 0">${esc([p.wishes?.trim(), p.otherNotes?.trim()].filter(Boolean).join('\n'))}</p>
         ${state.settings.apiKey ? `<button class="btn secondary block" id="aWunsch" style="margin-top:10px">${icon('sparkle')} Fehlende Positionen dazu vorschlagen</button>` : ''}</details>` : ''}
 
-      ${plPartner.length ? `<label class="tb-pl"><span>Preisliste</span><select id="tbPL"><option value="">Allgemeine Preisliste</option>${plPartner.map((x) => `<option value="${esc(x.id)}" ${x.id === plP?.id ? 'selected' : ''}>${esc(x.firma || x.inhaber || 'Partner')}</option>`).join('')}</select></label>` : ''}
+      ${plPartner.length ? `<label class="tb-pl"><span>Preisliste</span><select id="tbPL"><option value="">Allgemeine Preisliste</option>${plQuellen.map((q) => `<option value="${esc(q.wert)}" ${q.wert === plQ?.wert ? 'selected' : ''}>${esc(q.p.firma || q.p.inhaber || 'Partner')}${q.stufe ? ' · ' + esc(q.stufe) : ''}${window.SubProfil && SubProfil.zuAlt(SubProfil.stand(q.p, '', q.stufe).datum) ? ' (Preise prüfen)' : ''}</option>`).join('')}</select></label>` : ''}
       <div class="tb-kopf" ${plP ? 'hidden' : ''}>
         <label class="search">${icon('search')}<input type="search" id="tbQ" value="${esc(tabSuche)}" placeholder="Position suchen, z. B. Fliesen" autocomplete="off"></label>
         <button type="button" class="qchip ${nurGewaehlt ? 'on' : ''}" id="tbNur">${icon('check')} Nur gewählte</button>
@@ -783,7 +788,7 @@ Gib Länge (längere Seite) und Breite der Grundfläche, Raumhöhe, Anzahl und G
     };
     summe(); filtern();
     if ($('#tbPL')) $('#tbPL').onchange = async (e) => {
-      const p = window.Partner?.byId(e.target.value);
+      const p = window.Partner?.byId(e.target.value.split('|')[0]);
       if (p && window.Sperre && !(await Sperre.pruefen(p, 'Preisliste im Angebot', (x) => Partner.speichern(x)))) { e.target.value = plWahl; return; }
       plWahl = e.target.value; neu();
     };
@@ -792,7 +797,7 @@ Gib Länge (längere Seite) und Breite der Grundfläche, Raumhöhe, Anzahl und G
       const z = plZeilen.find((y) => y.key === inp.dataset.pq), q = num(inp.value), alt = plPos(z.key);
       if (alt && !(q > 0)) A.positionen = A.positionen.filter((y) => y !== alt);
       else if (alt) alt.menge = q;
-      else if (q > 0) A.positionen.push({ nr: 'FREI-' + uid(), frei: { text: z.text, einheit: z.einheit }, raum: raumName, menge: q, bem: '', epFix: r2(z.ep), sub: { partnerId: plP.id, firma: plP.firma || plP.inhaber || '', ep: r2(z.ep), zuschlag: 0, key: z.key } });
+      else if (q > 0) A.positionen.push({ nr: 'FREI-' + uid(), frei: { text: z.text, einheit: z.einheit }, raum: raumName, menge: q, bem: '', epFix: r2(z.ep), sub: { partnerId: plP.id, firma: plP.firma || plP.inhaber || '', ep: r2(z.ep), zuschlag: 0, key: z.key, stufe: plQ?.stufe || '' } });
       A.geaendert = true; neu();
     }));
     // Menge eintippen: eine Zeile je Position (Raum = dieser Raum, Allgemeines ohne Raum)
@@ -1286,14 +1291,14 @@ Gib Länge (längere Seite) und Breite der Grundfläche, Raumhöhe, Anzahl und G
     if (!partner && !data) {
       const liste = (P?.liste() || []).filter((x) => x.art !== 'aussen');
       const v = await sheet('Von welchem Partner?', [
-        ...liste.map((x) => ({ label: firmaVon(x) || 'Ohne Namen', sub: [x.gewerk, (x.eigenePreise || []).length + Object.keys(x.preise || {}).length ? 'mit Preisliste' : ''].filter(Boolean).join(' · '), icon: icon('wrench'), value: x.id })),
+        ...liste.map((x) => ({ label: firmaVon(x) || 'Ohne Namen', sub: [window.Sperre?.ist(x) && 'gesperrt', x.gewerk, (window.SubProfil ? SubProfil.listen(x).length : (x.eigenePreise || []).length + Object.keys(x.preise || {}).length) ? 'mit Preisliste' : ''].filter(Boolean).join(' · '), icon: icon('wrench'), value: x.id })),
         { label: 'Ohne Partner', sub: 'Nur die Positionen übernehmen', icon: icon('file'), value: '__ohne' }]);
       if (!v) return;
       partner = v === '__ohne' ? null : P.byId(v);
     }
     let quelle = data ? 'datei' : '';
     if (!quelle) {
-      const hatPreise = partner && ((partner.eigenePreise || []).length || Object.keys(partner.preise || {}).length);
+      const hatPreise = partner && (window.SubProfil ? SubProfil.listen(partner).length : (partner.eigenePreise || []).length || Object.keys(partner.preise || {}).length);
       quelle = await sheet('Woher kommen die Positionen?', [
         ...(window.Geraet?.kann('scanner') ? [{ label: 'Dokument scannen', sub: 'Angebot auf Papier: das iPhone erkennt Ränder und mehrere Seiten', icon: icon('file'), value: 'scan' }] : []),
         { label: 'Foto machen', sub: 'Die KI liest Leistungen, Mengen und Preise', icon: icon('camera'), value: 'foto' },
@@ -1304,6 +1309,9 @@ Gib Länge (längere Seite) und Breite der Grundfläche, Raumhöhe, Anzahl und G
     }
     let zeilen = [];
     if (quelle === 'liste') {
+      const ls = window.SubProfil ? SubProfil.listen(partner) : [];
+      if (ls.length > 1) { const s = await sheet('Welche Stufe?', ls.map((l) => ({ label: l.stufe, sub: `${l.n} Preise`, value: l.stufe }))); if (!s) return; SubProfil.stufeSetzen(partner, s); }
+      else if (ls.length === 1) SubProfil.stufeSetzen(partner, ls[0].stufe);
       zeilen = [...(partner.eigenePreise || []).map((x) => ({ text: x.text || '', einheit: x.einheit || 'Stück', menge: 1, ep: +x.preis || 0, an: false })),
         ...Object.entries(partner.preise || {}).map(([nr, preis]) => { const it = pos(nr); return it ? { text: it.text, einheit: it.einheit, menge: 1, ep: +preis || 0, an: false } : null; }).filter(Boolean)];
     } else {

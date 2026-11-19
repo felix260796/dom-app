@@ -43,7 +43,7 @@ window.Finanzen = (() => {
     const out = { netto: 0, gewerke: {}, plan: 0, mitPreis: 0, zeilen: 0 };
     const A = window.Angebot?._intern;
     // B5: günstigster hinterlegter Subunternehmer-Preis je Position = geplante Kosten
-    const subEp = (nr) => { const ps = (window.Partner?.liste() || []).map((p) => p.preise?.[nr]).filter((x) => x > 0); return ps.length ? Math.min(...ps) : 0; };
+    const subEp = (nr) => { const ps = (window.Partner?.liste() || []).flatMap((p) => window.SubProfil ? SubProfil.preiseFuer(p, nr) : [+p.preise?.[nr]]).filter((x) => x > 0); return ps.length ? Math.min(...ps) : 0; };
     if (!A || !w?.rooms?.length) return out;
     try { await A.preisliste(); } catch { return out; }
     for (const id of w.rooms) {
@@ -513,19 +513,21 @@ Datum als JJJJ-MM-TT. faellig = Fälligkeitsdatum, falls angegeben (oder Datum +
     const pos = (nr) => PL.positionen.find((x) => x.nr === nr);
     const eintraege = Object.entries(p.preise || {}).filter(([nr]) => pos(nr));
     const gew = [...new Set(PL.positionen.map((x) => x.gewerk))];
-    box.innerHTML = `${eintraege.map(([nr, ep]) => { const it = pos(nr); return `<div class="prow-sub"><span><b>${esc(it.text)}</b><span class="muted">${esc(nr)} · Angebot ${eur(window.Angebot._intern.ep(it))}/${esc(it.einheit)}</span></span>
+    const sl = window.SubProfil?.stufeLeiste(p, () => preiseRender(box, p)) || { html: '', binden: () => {} }; // Preise je Stufe (Bronze, Silber, Gold)
+    box.innerHTML = `${sl.html}${eintraege.map(([nr, ep]) => { const it = pos(nr); return `<div class="prow-sub"><span><b>${esc(it.text)}</b><span class="muted">${esc(nr)} · Angebot ${eur(window.Angebot._intern.ep(it))}/${esc(it.einheit)}</span></span>
         <input type="text" inputmode="decimal" data-sp="${esc(nr)}" value="${String(ep).replace('.', ',')}"><span class="muted">€/${esc(it.einheit)}</span><button class="icon-btn" data-spdel="${esc(nr)}" aria-label="Entfernen">${icon('trash')}</button></div>`; }).join('')}
       ${(p.eigenePreise || []).map((x) => `<div class="prow-sub eigen" data-ep="${x.id}"><span><input type="text" data-epf="text" value="${esc(x.text)}" placeholder="Eigene Leistung, z. B. Stundenlohn Helfer"><input type="text" data-epf="einheit" value="${esc(x.einheit)}" placeholder="Einheit" style="margin-top:4px"></span>
         <input type="text" inputmode="decimal" data-epf="preis" value="${String(x.preis || '').replace('.', ',')}"><span class="muted">€/${esc(x.einheit || 'Einh.')}</span><button class="icon-btn" data-epdel="${x.id}" aria-label="Entfernen">${icon('trash')}</button></div>`).join('')}
       <select id="spNeu" style="margin-top:${eintraege.length ? 10 : 0}px"><option value="">Position aus unserer Preisliste …</option>${gew.map((g) => `<optgroup label="${esc(g)}">${PL.positionen.filter((x) => x.gewerk === g && !(p.preise || {})[x.nr]).map((x) => `<option value="${esc(x.nr)}">${esc(x.nr)} ${esc(x.text)}</option>`).join('')}</optgroup>`).join('')}</select>
       <button type="button" class="link-add" id="epNeu" style="margin-top:8px">${icon('plus')} Eigene Position (nicht in unserer Preisliste)</button>`;
-    const sichern = async () => { p.updated = Date.now(); await kvSet('partner:' + p.id, p); await window.Partner?.laden(); };
+    const sichern = async () => { window.SubProfil?.stempeln(p); p.updated = Date.now(); await kvSet('partner:' + p.id, p); await window.Partner?.laden(); };
+    sl.binden(box);
     $$('[data-ep]', box).forEach((row) => {
       const x = (p.eigenePreise || []).find((y) => y.id === row.dataset.ep);
       $$('[data-epf]', row).forEach((inp) => (inp.onchange = async () => { x[inp.dataset.epf] = inp.dataset.epf === 'preis' ? r2(num(inp.value)) : inp.value.trim(); await sichern(); toast('Gespeichert'); }));
     });
     $$('[data-epdel]', box).forEach((b) => (b.onclick = async () => { if (!loeschFrage('Eigene Position entfernen?')) return; p.eigenePreise = p.eigenePreise.filter((y) => y.id !== b.dataset.epdel); await sichern(); preiseRender(box, p); }));
-    $('#epNeu', box).onclick = async () => { (p.eigenePreise ??= []).push({ id: uid(), text: '', einheit: 'Std.', preis: 0 }); await sichern(); await preiseRender(box, p); $$('[data-ep] [data-epf="text"]', box).pop()?.focus(); };
+    $('#epNeu', box).onclick = async () => { (p.eigenePreise ??= []).push({ id: uid(), text: '', einheit: 'Std.', preis: 0, gewerk: p.gewerke?.[0]?.name || '' }); await sichern(); await preiseRender(box, p); $$('[data-ep] [data-epf="text"]', box).pop()?.focus(); };
     $$('[data-sp]', box).forEach((x) => (x.onchange = async () => { p.preise[x.dataset.sp] = r2(num(x.value)); await sichern(); toast('Gespeichert'); }));
     $$('[data-spdel]', box).forEach((x) => (x.onclick = async () => { delete p.preise[x.dataset.spdel]; await sichern(); preiseRender(box, p); }));
     $('#spNeu', box).onchange = async (e) => { if (!e.target.value) return; (p.preise ??= {})[e.target.value] = 0; await sichern(); await preiseRender(box, p); $(`[data-sp="${e.target.value}"]`, box)?.focus(); };

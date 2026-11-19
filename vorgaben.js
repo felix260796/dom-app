@@ -154,7 +154,10 @@ const VORGABEN = {
   ],
   partnerEinst: [
     ['Partner (Subunternehmer, Lieferanten, Außendienst)', [
-      { k: 'partnerStufen', l: 'Qualitätseinstufung der Arbeit (eine Zeile je Stufe)', t: 'liste', d: ['Basic', 'Standard', 'Premium'], h: 'Beim Partner kannst du mehrere Stufen ankreuzen, z. B. Standard und Premium.' },
+      { k: 'partnerStufen', l: 'Stufen der Subunternehmer (eine Zeile je Stufe)', t: 'liste', d: ['Bronze', 'Silber', 'Gold'], h: 'Je Gewerk eines Subs ankreuzbar, mit eigener Preisliste je Stufe. Früher Basic, Standard, Premium (wird umbenannt).' },
+      { k: 'preislisteMonate', l: 'Preislisten der Subs gelten als alt nach (Monaten)', t: 'zahl', d: 12, h: 'Ältere Preise werden still markiert („bitte prüfen“).' },
+      { k: 'nachweisArten', l: 'Pflichtnachweise der Subunternehmer (eine Zeile je Art)', t: 'liste', d: ['Freistellungsbescheinigung § 48b', 'Betriebshaftpflicht', 'Gewerbeanmeldung', 'Handwerkskarte', 'Unbedenklichkeitsbescheinigung Berufsgenossenschaft', 'Unbedenklichkeitsbescheinigung Finanzamt', 'Mindestlohnerklärung'] },
+      { k: 'nachweisWarnTage', l: 'Warnung vor Ablauf eines Nachweises (Tage vorher)', t: 'zahl', d: 30 },
       { k: 'gewerkeExtra', l: 'Zusätzliche Gewerke für Eingangsrechnungen (neben denen der Preisliste)', t: 'liste', d: ['Elektro', 'Material', 'Entsorgung', 'Sonstiges'] },
     ]],
   ],
@@ -501,8 +504,8 @@ window.Vorgaben = (() => {
       ['firma', 'Unterschrift', 'Unterschrift Gruß Name Angebot Rechnung zeichnen'],
       ['preisliste', 'Preise einzelner Positionen', 'Lohn Material Einheitspreis Position neu löschen'],
       ['pakete', 'Excel-Angebotstool laden', 'Import Excel Preisliste zurücksetzen'],
-      ['pakete', 'Was gehört in welches Paket?', 'Paket Vorlagen Basic Standard Premium Positionen'],
-      ['moodboards', 'Moodboards Basic, Standard, Premium', 'Bilder Produkte Ausstattung'],
+      ['pakete', 'Was gehört in welches Paket?', 'Paket Vorlagen Einfach Komfort Exklusiv Basic Standard Premium Positionen'],
+      ['moodboards', 'Moodboards Einfach, Komfort, Exklusiv', 'Bilder Produkte Ausstattung'],
       ['team', 'Texte der Terminmails', 'Mail Termin Bestätigung Kunde Subunternehmer Team'],
       ['team', 'Erinnerungen und Bestätigung an den Kunden', 'Erinnerung automatisch Schalter'],
       ['team', 'Team: Personen im Kalender', 'Felix Deniel Mitarbeiter'],

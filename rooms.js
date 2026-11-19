@@ -81,7 +81,10 @@ const ROOM_EN = {
 };
 const roomEn = (id) => ROOM_EN[id] || ROOM_EN.sonstiges;
 
-const PKG_META = { basic: ['Basic', '#7a8795'], standard: ['Standard', '#1e3550'], premium: ['Premium', '#b8862f'] };
+const PKG_META = { basic: ['Einfach', '#7a8795'], standard: ['Komfort', '#1e3550'], premium: ['Exklusiv', '#b8862f'] };
+/** Materialstufen heißen seit v114 Einfach / Komfort / Exklusiv (früher Basic / Standard / Premium). Eigene Namen bleiben. */
+const PKG_ALT = { Basic: 'Einfach', Standard: 'Komfort', Premium: 'Exklusiv' };
+function pkgUmbenennen(list) { for (const p of list || []) if (PKG_ALT[p?.name]) p.name = PKG_ALT[p.name]; return list; }
 
 // Was die KI je Raumtyp unbedingt unverändert lassen soll
 const KEEP_INNEN = 'Raumgeometrie, Grundriss, Deckenhöhe, Lage von Fenstern, Türen und Dachschrägen';

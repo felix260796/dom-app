@@ -272,6 +272,7 @@ window.Projekt = (() => {
     $$('[data-jetzt]').forEach((b) => (b.onclick = () => jetztGehen(w, b.dataset.jetzt)));
     if ($('#wBau')) window.Baustelle?.abschnitt($('#wBau'), w, list, $('#wAbn') ? 'bestellungen' : '');
     if ($('#wAbn')) window.Baustelle?.abschnitt($('#wAbn'), w, list, 'abnahme');
+    if ($('#wSterne')) window.SubProfil?.sterneAbschnitt($('#wSterne'), w, () => save(w)); // Sterne je Sub und Projekt
     if ($('#wTodo')) todoFuellen(w);
     if ($('#dAb')) $('#dAb').onclick = () => abMenue(w, list);
     if ($('#wAnspr')) $('#wAnspr').onclick = async () => {
@@ -565,7 +566,8 @@ window.Projekt = (() => {
         <button class="notice plain" data-bilder>${icon('camera')}<span><b>Fotos und Dokumente</b> · ${nFotos ? `${nFotos} ${nFotos === 1 ? 'Bild' : 'Bilder'}` : 'Baustelle fotografieren'}, gleicher Ordner wie beim Kunden</span>${icon('chevron')}</button>` : ''}
       <div id="wNt"></div>
       <div class="sec-h" style="margin-top:18px"><h2>Abnahme</h2></div>
-      <div id="wAbn"></div>`;
+      <div id="wAbn"></div>
+      <div id="wSterne"></div>`;
     const geld = `<div id="wRech"></div><div id="wKosten"></div>`;
     return `${kopf}
       ${tab === 'uebersicht' ? uebersicht : tab === 'baustelle' ? baustelle : geld}

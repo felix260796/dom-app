@@ -12,7 +12,7 @@ const EINST = [
   ['projektEinst', 'Projekte', 'home', 'grey', 'Bereiche', 'Projektnummer, Gesprächsarten, Nachfassen im Kalender, Baufortschritt'],
   ['preisliste', 'Preisliste', 'euro', 'navy', 'Angebote', 'Jede Position: Lohn, Material, eigener Aufschlag, neue Positionen'],
   ['kalkulation', 'Aufschläge & Angebotstexte', 'euro', 'brass', 'Angebote', 'Aufschläge auf Lohn und Material, Wagnis, MwSt., Gültigkeit, Textfelder vor und nach den Positionen'],
-  ['pakete', 'Pakete & Excel-Import', 'clipboard', 'grey', 'Angebote', 'Was in Basic, Standard, Premium gehört, Excel-Angebotstool laden'],
+  ['pakete', 'Pakete & Excel-Import', 'clipboard', 'grey', 'Angebote', 'Was in Einfach, Komfort, Exklusiv gehört, Excel-Angebotstool laden'],
   ['moodboards', 'Standard-Moodboards', 'palette', 'brass', 'Angebote', 'Bilder und Produkte je Raumtyp und Paket'],
   ['rechnungen', 'Rechnungen & Mahnungen', 'file', 'navy', 'Rechnungen', 'Zahlungsziel, Abschläge (30/40/30), Mahnfrist, alle Rechnungs- und Mahntexte, Begleittexte'],
   ['ablauf', 'Abläufe & Listen', 'check', 'brass', 'Abläufe', 'Nachfassen nach Tagen, Anrufe und Treffen pro Tag, Absagegründe, Kundenquellen, Marge-Ampel, Gewerke, Abnahmetext'],
