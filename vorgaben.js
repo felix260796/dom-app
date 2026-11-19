@@ -60,6 +60,18 @@ const VORGABEN = {
     ]],
   ],
   ablauf: [
+    ['Vor-Ort-Termin', [
+      { k: 'aufnahmeEinverstaendnis', l: 'Vor der Gesprächsaufnahme fragen, ob der Kunde einverstanden ist', t: 'janein', d: 'ja', h: 'Einmal je Vorgang. „Ja“ wird mit Uhrzeit und Namen vermerkt, ohne „Ja“ startet keine Aufnahme.' },
+      { k: 'aufnahmeTeilMin', l: 'Lange Aufnahmen in Stücke teilen, alle so viele Minuten', t: 'zahl', d: 30, h: 'Die Aufnahme läuft ohne Grenze weiter. Jedes Stück wird gleich ausgewertet und hinten ans Gespräch gehängt.' },
+      { k: 'spaeterMinuten', l: '„Ich komme später“: Auswahl in Minuten (eine Zeile je Wert)', t: 'liste', d: ['10', '15', '20', '30'] },
+      { k: 'textSpaeter', l: 'Nachricht „Ich komme später“', t: 'text', d: '{anrede}\nich bin etwas später bei Ihnen, in etwa {minuten} Minuten. Bitte entschuldigen Sie.\nViele Grüße\n{name}', h: '{anrede} = Briefanrede des Kunden, {minuten}, {name} = wer das Gerät hat, {firma}. Geht per SMS, WhatsApp oder Mail, du tippst nur noch „Senden“.' },
+      { k: 'briefingTempo', l: 'Briefing: Sprechtempo (1 = normal, 0,8 langsamer, 1,2 schneller)', t: 'zahl', d: 1 },
+      { k: 'verkaufFelder', l: 'Verkaufsinfos (intern) im Vor-Ort-Termin (eine Zeile je Feld)', t: 'liste', d: ['Wer entscheidet?', 'Budget', 'Zeitrahmen', 'Holt noch andere Angebote ein?', 'Zuschuss oder Förderung möglich?', 'Weitere Wünsche für später'], h: 'Nur für euch, steht nie im Angebot. Das Briefing liest sie mit vor.' },
+      { k: 'angebotFristTage', l: 'Termin abschließen: Angebot kommt in so vielen Werktagen', t: 'zahl', d: 5, h: 'Vorschlag beim Abschließen, änderbar. Daraus wird ein To-do „Angebot an … schicken“.' },
+      { k: 'dankeFragen', l: 'Nach dem Abschließen gleich die Danke-Nachricht anbieten', t: 'janein', d: 'ja' },
+      { k: 'textDanke', l: 'Danke-Nachricht nach dem Termin', t: 'text', d: '{anrede}\nvielen Dank für Ihre Zeit heute und das gute Gespräch. Ihr Angebot bekommen Sie bis {frist}. Bei Fragen melden Sie sich gerne jederzeit.\nViele Grüße\n{name}\n{firma}', h: '{anrede}, {frist} = Datum, bis wann das Angebot kommt, {name}, {firma}.' },
+      { k: 'soArbeitenWir', l: 'Seite „So arbeiten wir“ zum Zeigen beim Kunden', t: 'text', d: 'Ein Ansprechpartner\nSie haben vom ersten Termin bis zur Abnahme einen festen Ansprechpartner bei uns.\n\nFestes Angebot\nSie bekommen ein klares Angebot mit allen Positionen. Was nicht drinsteht, wird nicht ohne Ihr Okay gemacht.\n\nGeprüfte Fachbetriebe\nAlle Gewerke führen ausgewählte Fachbetriebe aus, die wir selbst prüfen.\n\nSaubere Baustelle\nWir schützen Laufwege und Möbel und räumen jeden Tag auf.\n\nKlare Termine\nSie wissen immer, was als Nächstes passiert und wann wir kommen.\n\nAbnahme gemeinsam\nAm Ende gehen wir alles mit Ihnen durch. Danach gilt die Gewährleistung.', h: 'Absätze durch eine Leerzeile trennen, die erste Zeile eines Absatzes ist die Überschrift. Leer = Knopf ausgeblendet.' },
+    ]],
     ['Angebote', [
       { k: 'vorortAuto', l: 'Nach jeder Aufnahme gleich prüfen, was fürs Angebot noch fehlt', t: 'janein', d: 'ja', h: 'Im Projekt unter „Was fehlt noch?“. Von Hand geht es dort immer.' },
       { k: 'vorortFragenMax', l: 'Wie viele Rückfragen höchstens auf einmal?', t: 'zahl', d: 8 },

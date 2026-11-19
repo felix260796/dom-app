@@ -358,6 +358,7 @@ window.Projekt = (() => {
     };
     window.Gespraech?.bind(w, list);
     window.VorOrt?.bind(w, list, () => view());
+    window.Besuch?.bind(w, async () => { const y = window.scrollY; await view(); window.scrollTo(0, y); });
     window.VorOrt?.bueroBind(w, list);
     if ($('#wVis')) $('#wVis').ontoggle = (e) => { e.target.open ? visOffen.add(w.id) : visOffen.delete(w.id); };
     // Angebotsablauf: weitere Knöpfe
@@ -759,6 +760,7 @@ window.Projekt = (() => {
     const zahl = (x) => (+x || 0).toLocaleString('de-DE', { maximumFractionDigits: 2 });
     return `
       ${kundeKarte(w, k)}
+      ${window.Besuch?.leiste(w) || ''}
       ${norm(w.status) === 'besichtigung' ? `<button type="button" class="link-add ab-ohne" data-reiter="buero">${icon('edit')} Nicht vor Ort gewesen? Angebot gleich im Büro anlegen</button>` : ''}
 
       <div class="sec-h"><h2>Gespräch aufnehmen</h2></div>
@@ -780,6 +782,8 @@ window.Projekt = (() => {
 
       ${gesperrt(w) ? '' : window.VorOrt?.karte(w, list) || ''}
       ${k ? `<button id="wBilder" hidden></button>` : ''}
+      ${window.Besuch?.verkaufHtml(w) || ''}
+      ${gesperrt(w) || zugesagt(w.status) ? '' : window.Besuch?.abschlussHtml(w) || ''}
 
       <div class="sec-h" style="margin-top:26px"><h2>Zusatz</h2></div>
       <details class="more card vis-zusatz" id="wVis" ${visOffen.has(w.id) ? 'open' : ''}><summary>${icon('sparkle')}<span>Visualisieren<small>${anyResult ? `${list.filter(hasAnyResult).length} von ${list.length} Räumen fertig` : 'So könnte es aussehen. Hat mit dem Angebot nichts zu tun.'}</small></span>${icon('chevron', 'more-chev')}</summary>

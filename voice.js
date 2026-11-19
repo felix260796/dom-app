@@ -193,7 +193,23 @@ function voiceRefresh(id) {
 }
 
 // ---------- Aufnahme (eine zur Zeit; läuft weiter, während man Räume anlegt und fotografiert) ----------
-const REC_MAX_MIN = 90;
+// Seit v117 ohne Grenze: Nach 'aufnahmeTeilMin' Minuten wird still in ein neues Stück geschnitten (Cloud-Grenze 50 MB je Datei,
+// kürzere Stücke lassen sich sicherer auswerten). Jedes Stück wird der Reihe nach ausgewertet und hinten ans Transkript gehängt.
+const recTeilSek = () => Math.max(5, +vorgabe('aufnahmeTeilMin') || 30) * 60;
+/** Nächstes Stück anfangen: aktuelles Stück beenden (wird ausgewertet), sofort weiter aufnehmen. */
+function recTeilen() {
+  if (!voice.rec || voice.teilt) return;
+  const { recId: id, recLabel: label } = voice, onBlob = voice.onBlob, vorher = (voice.vorher || 0) + Rec.sekunden();
+  voice.teilt = { id, label, onBlob, vorher };
+  Rec.stop();
+}
+async function recWeiterNachTeil() {
+  const t = voice.teilt; if (!t) return;
+  voice.teilt = null;
+  const ok = await Rec.start(t.id, t.label, t.onBlob);
+  if (ok) { voice.vorher = t.vorher; recBar(); }
+  else toast('Das nächste Stück der Aufnahme ging nicht los. Bitte „Aufnahme starten“ tippen.', 7000);
+}
 const Rec = {
   active: () => !!voice.rec,
   async start(id, label, onBlob) {
@@ -222,7 +238,7 @@ const Rec = {
       recBar();
       if (!blob.size) { voice.error = { id, msg: 'Die Aufnahme ist leer angekommen. Bitte App beim Aufnehmen geöffnet lassen und nochmal versuchen.' }; voiceRefresh(id); return; }
       onBlob(blob);
-      voiceRefresh(id);
+      if (voice.teilt) recWeiterNachTeil(); else voiceRefresh(id);
     };
     // iPhone liefert die Daten erst nach "stop", deshalb kurz warten, falls das letzte Stück noch kommt
     rec.onstop = () => setTimeout(finish, 300);
@@ -232,11 +248,12 @@ const Rec = {
     voice.stream.getAudioTracks().forEach((t) => (t.onended = () => rec.state !== 'inactive' && rec.stop()));
     // Kein Zeitraster: das iPhone erzeugt sonst Stücke, die sich später nicht mehr zusammensetzen lassen
     rec.start();
+    voice.onBlob = onBlob; if (!voice.teilt) voice.vorher = 0;
     voice.rec = rec; voice.recId = id; voice.recLabel = label; voice.started = Date.now(); voice.paused = 0; voice.pauseMs = 0;
     voice.timer = setInterval(() => {
       const s = Rec.sekunden();
-      const el = $('#recbar-t'); if (el) el.textContent = `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
-      if (s >= REC_MAX_MIN * 60) { toast(`Nach ${REC_MAX_MIN} Minuten automatisch gestoppt. Für mehr einfach neu starten.`, 5000); Rec.stop(); }
+      const g = s + (voice.vorher || 0), el = $('#recbar-t'); if (el) el.textContent = `${Math.floor(g / 60)}:${String(g % 60).padStart(2, '0')}`;
+      if (s >= recTeilSek() && !voice.paused) recTeilen();
     }, 1000);
     recBar();
     meterStart();
@@ -264,15 +281,16 @@ const Rec = {
         try { toast('Aufnahme wird gespeichert …', 3000); blob = await Geraet.aufnahme.stopp(); }
         catch (e) { voice.error = { id, msg: String(e?.message || e || 'Aufnahme nicht gespeichert.') }; voiceRefresh(id); return; }
         onBlob(blob);
-        voiceRefresh(id);
+        if (voice.teilt) recWeiterNachTeil(); else voiceRefresh(id);
       },
     };
     voice.finish = () => rec.stop();
+    voice.onBlob = onBlob; if (!voice.teilt) voice.vorher = 0;
     voice.rec = rec; voice.recId = id; voice.recLabel = label; voice.started = Date.now(); voice.paused = 0; voice.pauseMs = 0;
     voice.timer = setInterval(() => {
       const s = Rec.sekunden();
-      const el = $('#recbar-t'); if (el) el.textContent = `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
-      if (s >= REC_MAX_MIN * 60) { toast(`Nach ${REC_MAX_MIN} Minuten automatisch gestoppt. Für mehr einfach neu starten.`, 5000); Rec.stop(); }
+      const g = s + (voice.vorher || 0), el = $('#recbar-t'); if (el) el.textContent = `${Math.floor(g / 60)}:${String(g % 60).padStart(2, '0')}`;
+      if (s >= recTeilSek() && !voice.paused) recTeilen();
     }, 1000);
     recBar();
     return true;
@@ -417,6 +435,7 @@ async function auswertenAudio(owner, blob, fromStore) {
     w.gespraech = { ...(w.gespraech || {}), t: Date.now() };
     Transkript.anhaengen(w.gespraech, { art: voice.art || 'Gespräch', dabei: dabei || [], text: t });
     await window.Projekt.save(w);
+    if ((voice.rec && voice.recId === owner.id) || voice.teilt?.id === owner.id) { await audioStore(owner.id, null); return; } // Aufnahme läuft weiter: Rest nach dem letzten Stück
     await zuordnen(w);
     if (vorgabe('gespraechZusammenfassung') !== 'nein') await zusammenfassung(w).catch((e) => console.warn('Zusammenfassung fehlgeschlagen', e));
     // Gleich mitdenken: Was fehlt noch fürs Angebot, solange man beim Kunden ist (vorort.js)
@@ -431,7 +450,16 @@ async function auswertenAudio(owner, blob, fromStore) {
   }
   await audioStore(owner.id, null);
 }
-const startAufnahme = (owner, label) => Rec.start(owner.id, label, (blob) => voiceRun(owner.id, () => auswertenAudio(owner, blob)));
+/** Stücke der Reihe nach auswerten: ein neues Stück wartet, bis das vorige fertig ist. */
+function auswertenReihe(owner, blob) {
+  voice.reihe = (voice.reihe || Promise.resolve()).then(async () => { while (pendingFor(owner.id)) await voice.job?.catch(() => {}); return voiceRun(owner.id, () => auswertenAudio(owner, blob)); }).catch(() => {});
+  return voice.reihe;
+}
+async function startAufnahme(owner, label) {
+  // Einverständnis des Kunden (besuch.js, Vorgabe 'aufnahmeEinverstaendnis'), einmal je Vorgang
+  if (owner.projekt && window.Besuch) { const w = await wohnungVon(owner.id); if (w && !(await Besuch.einverstanden(w))) return false; }
+  return Rec.start(owner.id, label, (blob) => auswertenReihe(owner, blob));
+}
 function importAudio(owner) {
   const inp = document.createElement('input');
   inp.type = 'file'; inp.accept = 'audio/*,.m4a,.mp3,.wav';
@@ -646,6 +674,7 @@ window.Gespraech = {
         <label>Wer ist dabei?</label>
         <div class="chips vdabei">${wahl.map((n, i) => `<button type="button" class="qchip ${dabei.includes(n) ? 'on' : ''}" data-dabei="${i}">${esc(n)}</button>`).join('')}<button type="button" class="qchip" data-dabeineu>${icon('plus')} Weitere</button></div>
         ${recButtons(owner)}
+        ${window.Besuch?.einverstandenText(w) ? `<p class="hint be-einv">${icon('check')} ${esc(Besuch.einverstandenText(w))}</p>` : ''}
         ${z ? `
           <details class="sub vo-zus"><summary>Zusammenfassung</summary>
             ${z.kurz ? `<p>${esc(z.kurz)}</p>` : ''}
