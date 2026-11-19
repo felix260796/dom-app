@@ -62,7 +62,7 @@ window.Rechnung = (() => {
       const r = await AngebotDaten.raum(id, w);
       if (!r?.angebot?.positionen?.length) continue;
       const S = A.summen(r.angebot.positionen, r.angebot.kalk);
-      for (const z of S.zeilen) zeilen.push({ raum: z.raum || r.room || '', text: z.it.text + (z.bem ? ' – ' + z.bem : ''), menge: z.menge, einheit: z.it.einheit, ep: z.ep, gp: z.gp, gewerk: z.it.gewerk });
+      for (const z of S.zeilen) if (z.zaehlt !== false) zeilen.push({ raum: z.raum || r.room || '', text: z.it.text + (z.bem ? ' – ' + z.bem : ''), menge: z.menge, einheit: z.it.einheit, ep: z.ep, gp: z.gp, gewerk: z.it.gewerk });
       lohn += S.zeilen.reduce((s, z) => s + z.lohn, 0);
     }
     const nachtraege = (w.nachtraege || []).map((n) => ({ ...n, gp: r2(n.menge * n.ep) }));

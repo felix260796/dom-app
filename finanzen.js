@@ -54,6 +54,7 @@ window.Finanzen = (() => {
         out.netto += S.netto;
         for (const z of S.zeilen) {
           const g = z.it?.gewerk || 'Sonstiges'; out.gewerke[g] = (out.gewerke[g] || 0) + z.gp;
+          if (z.zaehlt === false || z.art === 'kostenlos') continue; // Bedarf, Alternative, kostenlos: nicht im Plan
           const ep = subEp(z.nr); out.zeilen++; if (ep) { out.mitPreis++; out.plan += z.menge * ep; }
         }
       } catch {}

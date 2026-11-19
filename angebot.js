@@ -219,6 +219,44 @@ const Angebot = (() => {
     return { positionen: out, fehler };
   }
 
+  /** Positionsarten (x.art): '' normal, 'bedarf' (nur bei Bedarf, nicht in der Summe), 'alternativ' (statt einer anderen, nicht in der Summe), 'kostenlos'. */
+  const NICHT_SUMME = ['bedarf', 'alternativ'];
+  const ARTEN_POS = [['', 'Normale Position'], ['bedarf', 'Bedarfsposition'], ['alternativ', 'Alternativposition'], ['kostenlos', 'Kostenlos']];
+  const artText = (x) => ({ bedarf: 'Bedarfsposition, nur bei Bedarf, nicht in der Summe', alternativ: 'Alternativposition, nicht in der Summe', kostenlos: 'kostenlos' })[x?.art] || '';
+  /** Preis weicht stark von der Preisliste ab? Nur Hinweis (Vorgabe 'preisAbweichung' in %). */
+  function preisHinweis(x, k) {
+    const it = !x.frei && pos(x.nr); if (!it || !(x.epFix > 0)) return '';
+    const std = ep(it, k), g = +vorgabe('preisAbweichung') || 0; if (!std || !g) return '';
+    const d = (x.epFix - std) / std * 100;
+    return Math.abs(d) >= g ? `${Math.round(Math.abs(d))} % ${d > 0 ? 'über' : 'unter'} der Preisliste (${fmtEur(std)})` : '';
+  }
+  /** Position bearbeiten: Art, Langtext (steht im PDF unter der Leistung), interne Notiz (nie im PDF). Gibt true zurück, wenn geändert. */
+  function posDetails(x, titel = '') {
+    return new Promise((res) => {
+      const bg = document.createElement('div');
+      bg.className = 'sheet-bg';
+      bg.innerHTML = `<div class="sheet sub-sheet"><div class="sheet-h"><b>${esc(titel || x.frei?.text || pos(x.nr)?.text || 'Position')}</b><button class="icon-btn" data-zu aria-label="Schließen">${icon('x')}</button></div>
+        <label style="margin-top:0">Art der Position</label>
+        <select id="pdArt">${ARTEN_POS.map(([v, n]) => `<option value="${v}" ${(x.art || '') === v ? 'selected' : ''}>${esc(n)}</option>`).join('')}</select>
+        <p class="hint" style="margin:4px 0 0">Bedarfs- und Alternativpositionen stehen mit Preis im Angebot, zählen aber nicht zur Summe.</p>
+        <label>Langtext (steht im Angebot unter der Leistung)</label>
+        <textarea id="pdLang" data-frei rows="4" placeholder="Genaue Beschreibung, z. B. Fabrikat, Ausführung">${esc(x.lang || '')}</textarea>
+        <label>Interne Notiz (nie im Angebot)</label>
+        <textarea id="pdNotiz" data-frei rows="2" placeholder="z. B. Preis mit Kaya abgestimmt">${esc(x.notiz || '')}</textarea>
+        <button class="btn block" data-ok style="margin-top:12px">Übernehmen</button></div>`;
+      $('[data-ok]', bg).onclick = () => {
+        const art = $('#pdArt', bg).value, lang = $('#pdLang', bg).value.trim(), notiz = $('#pdNotiz', bg).value.trim();
+        const neu = art !== (x.art || '') || lang !== (x.lang || '') || notiz !== (x.notiz || '');
+        if (art) x.art = art; else delete x.art;
+        if (lang) x.lang = lang; else delete x.lang;
+        if (notiz) x.notiz = notiz; else delete x.notiz;
+        bg.remove(); res(neu);
+      };
+      bg.onclick = (e) => { if (e.target === bg || e.target.closest('[data-zu]')) { bg.remove(); res(false); } };
+      document.body.appendChild(bg);
+      requestAnimationFrame(() => bg.classList.add('on'));
+    });
+  }
   /** Summen eines Angebots. k = Nachkalkulation; x.epFix = von Hand gesetzter Einzelpreis (Lohnanteil anteilig). */
   function summen(positionen, k) {
     const S = PL.einstellungen;
@@ -227,7 +265,10 @@ const Angebot = (() => {
       const it = pos(x.nr) || (x.frei ? { nr: x.nr, text: x.frei.text || 'Eigene Position', einheit: x.frei.einheit || 'Stück', gewerk: 'Eigene Positionen', lohn: 0, mat: 0, auf: 0 } : null);
       if (!it) return null;
       const std = ep(it, k), e = x.epFix > 0 ? x.epFix : std, l = lohnEp(it, k) * (std ? e / std : 1);
-      return { ...x, i, it, ep: e, fix: x.epFix > 0, gp: r2(x.menge * e), lohn: r2(x.menge * l) };
+      // Positionsart (v120): Bedarfs- und Alternativpositionen stehen mit Preis im Angebot, zählen aber nicht zur Summe;
+      // „kostenlos“ zeigt den Wert und kostet 0 €. gpAnzeige = Betrag, der neben der Position steht.
+      const zaehlt = !NICHT_SUMME.includes(x.art), gpA = r2(x.menge * e);
+      return { ...x, i, it, ep: e, fix: x.epFix > 0, gp: zaehlt && x.art !== 'kostenlos' ? gpA : 0, gpAnzeige: gpA, zaehlt, lohn: zaehlt && x.art !== 'kostenlos' ? r2(x.menge * l) : 0 };
     }).filter(Boolean);
     const netto = r2(zeilen.reduce((s, z) => s + z.gp, 0));
     const mwst = r2(netto * S.mwst), brutto = r2(netto + mwst);
@@ -599,9 +640,10 @@ Gib Länge (längere Seite) und Breite der Grundfläche, Raumhöhe, Anzahl und G
       <div class="card"><h2>Positionen</h2>
         ${raeume.map((rn) => `<h3>${esc(rn || 'Allgemein')}</h3>${S.zeilen.filter((z) => z.raum === rn).map((z) => {
           const i = z.i;
-          return `<div class="posrow"><div class="pt"><b>${esc(z.it.text)}</b><span class="muted">${esc(z.nr)}${z.bem ? ' · ' + esc(z.bem) : ''}</span></div>
+          const ph = preisHinweis(z, A.kalk);
+          return `<div class="posrow ${z.zaehlt ? '' : 'nz'}"><button type="button" class="pt" data-posd="${i}" title="Art, Langtext und Notiz"><b>${esc(z.it.text)}</b><span class="muted">${esc(z.nr)}${z.bem ? ' · ' + esc(z.bem) : ''}${artText(z) ? ' · ' + esc(artText(z)) : ''}${z.lang ? ' · Langtext' : ''}${z.notiz ? ' · Notiz' : ''}</span>${ph ? `<span class="pos-warn">${esc(ph)}</span>` : ''}</button>
             <div class="pm">${numIn(`data-menge="${i}"`, z.menge)}<span class="muted">${esc(z.it.einheit)}</span></div>
-            <button class="pg" data-epfix="${i}" title="Einzelpreis ändern">${fmtEur(z.gp)}<span class="${z.fix ? 'fixp' : 'muted'}">${fmtEur(z.ep)}${z.fix ? ' fest' : ''}</span></button><button class="x" data-delpos="${i}" aria-label="Entfernen">✕</button></div>`;
+            <button class="pg" data-epfix="${i}" title="Einzelpreis ändern">${z.art === 'kostenlos' ? 'kostenlos' : z.zaehlt ? fmtEur(z.gp) : `(${fmtEur(z.gpAnzeige)})`}<span class="${z.fix ? 'fixp' : 'muted'}">${fmtEur(z.ep)}${z.fix ? ' fest' : ''}</span></button><button class="x" data-delpos="${i}" aria-label="Entfernen">✕</button></div>`;
         }).join('')}`).join('') || '<p class="hint">Noch keine Positionen. Unten eine Position wählen oder unter „Maße“ den Raum ausmessen, dann kommen die Positionen aus dem Paket.</p>'}
         <h3>Position hinzufügen</h3>
         <select id="aNeu"><option value="">Position aus Preisliste wählen …</option>${gewerke.map((g) => `<optgroup label="${esc(g)}">${PL.positionen.filter((x) => x.gewerk === g).map((x) => `<option value="${esc(x.nr)}">${esc(x.nr)} ${esc(x.text)} (${esc(x.einheit)})</option>`).join('')}</optgroup>`).join('')}</select>
@@ -642,6 +684,7 @@ Gib Länge (längere Seite) und Breite der Grundfläche, Raumhöhe, Anzahl und G
     const totals = debounce(re, 900);
     $$('[data-menge]').forEach((el) => (el.oninput = () => { A.positionen[+el.dataset.menge].menge = num(el.value); A.geaendert = true; persist(p); totals(); }));
     $$('[data-delpos]').forEach((b) => (b.onclick = () => { A.positionen.splice(+b.dataset.delpos, 1); A.geaendert = true; re(); }));
+    $$('[data-posd]').forEach((b) => (b.onclick = async () => { if (await posDetails(A.positionen[+b.dataset.posd])) { A.geaendert = true; re(); } }));
     $('#aAdd').onclick = () => {
       const nr = $('#aNeu').value, menge = num($('#aNeuMenge').value);
       if (!nr) return toast('Bitte eine Position wählen.');
@@ -1003,12 +1046,17 @@ Gib Länge (längere Seite) und Breite der Grundfläche, Raumhöhe, Anzahl und G
       for (const z of S.zeilen.filter((x) => x.raum === rn)) {
         doc.setFontSize(9);
         const lines = doc.splitTextToSize(z.it.text + (z.bem ? ' – ' + z.bem : ''), C.menge - C.txt - 14);
-        const h = 4.3 * lines.length + 1.6;
+        doc.setFontSize(8);
+        const lang = z.lang ? doc.splitTextToSize(z.lang, C.menge - C.txt - 14) : [], art = artText(z) ? doc.splitTextToSize(artText(z), C.menge - C.txt - 14) : [];
+        doc.setFontSize(9);
+        const h = 4.3 * lines.length + 3.6 * (lang.length + art.length) + 1.6;
         await platz(h, true);
         n++;
         t(String(n), C.pos + 3, y, { align: 'center' }); t(lines, C.txt, y);
         t(fmtNum(z.menge, STUECK.test(z.it.einheit) ? 0 : 1), C.menge, y, { align: 'right' }); t(z.it.einheit, C.einh, y);
-        t(fmtEur(z.ep), C.ep, y, { align: 'right' }); t(fmtEur(z.gp), C.gp, y, { align: 'right' });
+        t(fmtEur(z.ep), C.ep, y, { align: 'right' }); t(z.art === 'kostenlos' ? 'kostenlos' : z.zaehlt === false ? `(${fmtEur(z.gpAnzeige)})` : fmtEur(z.gp), C.gp, y, { align: 'right' });
+        let yy = y + 4.3 * lines.length;
+        if (lang.length || art.length) { doc.setFontSize(8); doc.setTextColor(90); if (lang.length) { t(lang, C.txt, yy); yy += 3.6 * lang.length; } if (art.length) { doc.setFont('helvetica', 'italic'); t(art, C.txt, yy); doc.setFont('helvetica', 'normal'); } doc.setTextColor(30); doc.setFontSize(9); }
         y += h; doc.setDrawColor(230); doc.line(M - 1, y - 3.2, R + 1, y - 3.2);
       }
     }
@@ -1465,6 +1513,6 @@ Gib Länge (längere Seite) und Breite der Grundfläche, Raumhöhe, Anzahl und G
     $('#vReset').onclick = async () => { if (!loeschFrage('Alle Paket-Vorlagen zurücksetzen?')) return; await kvDel('angebotVorlagen'); VORL = null; vorlagenView(pkgId, grp); };
   }
 
-  return { projektKarte, ansicht, einstellungenKarte, _intern: { init, gruppe, materialliste, uebernimmSchaetzung, masse, rechne, erzeuge, summen, bauzeit, ep, lohnEp, preisliste, vorlagen, neuerRaum, baueAngebotPdf, importExcel, naechsteNummer, mailText, bausteine, textEditor, texteAuftrag, texteEinstellungen, subUebernehmen, ansprechpartner, ansprVon, einePerson, texteFuer, anredeDefault, einstellungen: () => PL.einstellungen } };
+  return { projektKarte, ansicht, einstellungenKarte, _intern: { posDetails, preisHinweis, artText, NICHT_SUMME, init, gruppe, materialliste, uebernimmSchaetzung, masse, rechne, erzeuge, summen, bauzeit, ep, lohnEp, preisliste, vorlagen, neuerRaum, baueAngebotPdf, importExcel, naechsteNummer, mailText, bausteine, textEditor, texteAuftrag, texteEinstellungen, subUebernehmen, ansprechpartner, ansprVon, einePerson, texteFuer, anredeDefault, einstellungen: () => PL.einstellungen } };
 })();
 window.Angebot = Angebot;

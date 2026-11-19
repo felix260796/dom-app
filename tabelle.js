@@ -44,7 +44,7 @@ window.Tabelle = (() => {
         gesNetto += S.netto;
         P.forEach((x, i) => {
           const z = S.zeilen.find((y) => y.i === i);
-          zeilen.push({ r, ri, x, i, text: z?.it.text || x.frei?.text || '', einheit: z?.it.einheit || x.frei?.einheit || '', ep: z?.ep || 0, gp: z?.gp || 0, fix: !!z?.fix });
+          zeilen.push({ r, ri, x, i, text: z?.it.text || x.frei?.text || '', einheit: z?.it.einheit || x.frei?.einheit || '', ep: z?.ep || 0, gp: z?.gp || 0, gpA: z?.gpAnzeige || 0, zaehlt: z?.zaehlt !== false, fix: !!z?.fix, ph: A.preisHinweis(x, r.angebot.kalk) });
         });
       });
       const mwst = r2(gesNetto * (A.einstellungen().mwst || 0.19));
@@ -73,13 +73,13 @@ window.Tabelle = (() => {
               <td class="r" data-zs="${r.id}">${zs.length ? zahl(zs.reduce((a, z) => a + z.gp, 0)) : ''}</td></tr>`
               : `<tr class="xt-titel"><td class="xt-nr">${g > 1 && tn ? tn : ''}</td><td colspan="4"><b>${esc(titel(r))}</b></td><td class="r" data-zs="${r.id}">${zs.length ? zahl(zs.reduce((a, z) => a + z.gp, 0)) : ''}</td></tr>`)
             + `
-            ${zs.map((z) => { nrIn[z.ri] = (nrIn[z.ri] || 0) + 1; return `<tr data-r="${z.r.id}" data-i="${z.i}" class="${z.x.frei ? 'frei' : ''}">
-            <td class="xt-nr">${g > 1 ? `${gNr[z.ri]}.` : ''}${nrIn[z.ri]}${marke(z.x)}</td>
+            ${zs.map((z) => { nrIn[z.ri] = (nrIn[z.ri] || 0) + 1; return `<tr data-r="${z.r.id}" data-i="${z.i}" class="${z.x.frei ? 'frei' : ''} ${z.zaehlt ? '' : 'nz'} ${z.x.art === 'kostenlos' ? 'kl' : ''}">
+            <td class="xt-nr">${g > 1 ? `${gNr[z.ri]}.` : ''}${nrIn[z.ri]}${marke(z.x)}${{ bedarf: '<span class="xt-m b" title="Bedarfsposition, nicht in der Summe">B</span>', alternativ: '<span class="xt-m a" title="Alternativposition, nicht in der Summe">A</span>', kostenlos: '<span class="xt-m k" title="Kostenlos">0</span>' }[z.x.art] || ''}<button type="button" class="xt-d ${z.x.lang || z.x.notiz ? 'hat' : ''}" data-xd title="${esc(z.x.notiz ? 'Notiz: ' + z.x.notiz : 'Art, Langtext, interne Notiz')}" aria-label="Details">…</button></td>
             <td><input data-c="text" value="${esc(z.text)}" list="xtPL" title="${esc(z.x.frei ? 'Eigene Position' : `${z.x.nr} aus der Preisliste`)}" autocomplete="off"></td>
             <td><input data-c="menge" class="r" value="${esc(mengeText(z.x.menge))}" autocomplete="off"></td>
             <td><input data-c="einheit" value="${esc(z.einheit)}" list="xtEh" autocomplete="off"></td>
-            <td><input data-c="ep" class="r ${z.fix ? 'fix' : ''}" value="${esc(zahl(z.ep))}" title="${z.fix ? 'Eigener Preis' : 'Preis aus der Preisliste'}" autocomplete="off"></td>
-            <td class="r xt-gp">${zahl(z.gp)}</td></tr>`; }).join('')}
+            <td><input data-c="ep" class="r ${z.fix ? 'fix' : ''} ${z.ph ? 'warn' : ''}" value="${esc(zahl(z.ep))}" title="${esc(z.ph ? 'Hinweis: ' + z.ph : z.fix ? 'Eigener Preis' : 'Preis aus der Preisliste')}" autocomplete="off"></td>
+            <td class="r xt-gp">${z.x.art === 'kostenlos' ? 'kostenlos' : z.zaehlt ? zahl(z.gp) : `(${zahl(z.gpA)})`}</td></tr>`; }).join('')}
             <tr class="xt-neu" data-neu="1" data-nr="${r.id}"><td class="xt-nr">${icon('plus')}</td>
               <td><input data-c="text" list="xtPL" placeholder="Neue Position in „${esc(titel(r))}“: eintippen oder aus der Preisliste wählen" autocomplete="off"></td>
               <td><input data-c="menge" class="r" placeholder="1" autocomplete="off"></td><td><input data-c="einheit" list="xtEh" autocomplete="off"></td><td><input data-c="ep" class="r" autocomplete="off"></td><td></td></tr>`;
@@ -127,7 +127,7 @@ window.Tabelle = (() => {
       list.forEach((r) => {
         const P = r.angebot.positionen || [], S = A.summen(P, r.angebot.kalk); ges += S.netto;
         const zsEl = $(`[data-zs="${r.id}"]`, box); if (zsEl) zsEl.textContent = S.zeilen.length ? zahl(S.netto) : '';
-        S.zeilen.forEach((z) => { const tr = $(`tr[data-r="${r.id}"][data-i="${z.i}"]`, box); if (!tr) return; $('.xt-gp', tr).textContent = zahl(z.gp); const e = $('[data-c="ep"]', tr); if (document.activeElement !== e) { e.value = zahl(z.ep); e.classList.toggle('fix', z.fix); } });
+        S.zeilen.forEach((z) => { const tr = $(`tr[data-r="${r.id}"][data-i="${z.i}"]`, box); if (!tr) return; $('.xt-gp', tr).textContent = z.art === 'kostenlos' ? 'kostenlos' : z.zaehlt === false ? `(${zahl(z.gpAnzeige)})` : zahl(z.gp); const e = $('[data-c="ep"]', tr); if (document.activeElement !== e) { e.value = zahl(z.ep); e.classList.toggle('fix', z.fix); } });
       });
       const mwst = r2(ges * (A.einstellungen().mwst || 0.19)), f = $$('tfoot td.r', box);
       f[0].textContent = zahl(ges); f[1].textContent = zahl(mwst); f[2].textContent = zahl(r2(ges + mwst)) + ' €';
@@ -288,7 +288,11 @@ window.Tabelle = (() => {
         if (e.target.matches('[data-c]')) aendern(e.target).catch((err) => toast('Ging nicht: ' + err.message, 5000));
         else if (e.target.matches('[data-t]')) titelAendern(e.target).catch((err) => toast('Ging nicht: ' + err.message, 5000));
       };
-      box.onclick = (e) => { const b = e.target.closest('[data-t="del"]'); if (b) titelLoeschen(b).catch((err) => toast('Ging nicht: ' + err.message, 5000)); };
+      box.onclick = async (e) => {
+        const b = e.target.closest('[data-t="del"]'); if (b) return titelLoeschen(b).catch((err) => toast('Ging nicht: ' + err.message, 5000));
+        const d = e.target.closest('[data-xd]'); const z = d && zeileVon(d);
+        if (z && (await A.posDetails(z.x))) { z.r.angebot.geaendert = true; await sichern(z.r); letzteZelle = null; zeichnen(); }
+      };
       box.onfocusin = (e) => {
         const tr = e.target.closest('tbody tr'); $$('tbody tr.akt', box).forEach((t) => t !== tr && t.classList.remove('akt')); tr?.classList.add('akt');
         const tid = tr?.dataset.r || tr?.dataset.tr || (tr?.dataset.nr !== '__auto' && tr?.dataset.nr); if (tid) box.dataset.aktTitel = tid; // für „Übernehmen“ aus der Seitenleiste

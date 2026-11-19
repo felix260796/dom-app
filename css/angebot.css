@@ -291,3 +291,13 @@ tr.xt-titel.ed:hover .xt-tdel, .xt-tdel:focus { opacity: 1; }
 .xtab tr.xt-titelneu input { color: var(--navy); font-weight: 600; }
 .xtab tr.xt-titelneu svg.i { width: 14px; height: 14px; color: var(--brass); }
 @media (max-width: 1250px) { .ape { grid-template-columns: minmax(0, 1fr) 260px; } .ape-kopf { grid-template-columns: repeat(2, minmax(0, 1fr)); } .ape-betr { grid-column: auto; } }
+
+/* ---------- Positionsarten, Langtext, Notiz (v120) ---------- */
+.posrow .pt { background: none; border: 0; padding: 0; text-align: left; font: inherit; color: inherit; cursor: pointer; display: flex; flex-direction: column; min-width: 0; }
+.posrow.nz .pg { color: var(--muted); }
+.pos-warn { color: var(--danger); font-size: 12px; }
+.xtab tr.nz td input, .xtab tr.nz .xt-gp { color: var(--muted); font-style: italic; }
+.xt-m.b, .xt-m.a, .xt-m.k { background: var(--soft); color: var(--muted); }
+.xt-d { border: 0; background: none; color: var(--muted); cursor: pointer; padding: 0 2px; font: inherit; line-height: 1; }
+.xt-d.hat { color: var(--brass); font-weight: 700; }
+.xtab input.warn { color: var(--danger); }
