@@ -246,6 +246,8 @@ details.bs .link-add { margin-top: 10px; }
 details.bs .tot span:last-child { color: var(--muted); }
 .rw-l { margin-bottom: 4px; }
 .bs-z input { flex: none; margin-top: 2px; }
+.bs-z.bs-np { opacity: .55; }
+.bs-z small.bs-gilt { display: block; color: var(--brass); }
 
 /* ---------- Büro: Angebot in fünf Schritten ---------- */
 .ab-schritte { display: flex; gap: 2px; margin: 0 0 14px; }

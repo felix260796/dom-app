@@ -748,6 +748,7 @@ window.Projekt = (() => {
         <button type="button" class="btn small" data-pcs="angebot">${zu ? 'Zum Angebot' : 'Weiter zum Angebot'} ${icon('chevron')}</button></div><div class="ape-vo">${vorOrtTab(ctx)}</div>${versteckt}<button id="wDel" hidden></button>`;
     if (zu) return `${kopf}<div class="ape ape-zu"><div class="ape-main">${angeboteTab(ctx)}</div></div>${versteckt}`;
     const A = window.Angebot._intern, texte = texteVon(w), anspr = A.ansprechpartner(), E = A.einstellungen();
+    const KX = A.kontextFuer(w, list), passtV = (b) => A.passt(b, KX);
     const K = kopfVon(w, list), erst = K.erst, a = K.a, mitPos = mitPosVon(list), sq = schnellVon(k);
     const proz = (x) => String(Math.round((+x || 0) * 1000) / 10).replace('.', ',');
     const offen = window.VorOrt?.offenListe(w, list) || [];
@@ -767,11 +768,11 @@ window.Projekt = (() => {
             <div class="ape-f"><label for="bAnrede">Anrede</label><input type="text" id="bAnrede" value="${esc(K.anrede)}" placeholder="${esc(erst ? A.anredeDefault(erst) : 'Sehr geehrte Damen und Herren,')}" autocomplete="off"></div>
             ${sq ? `<p class="ab-schnell ape-voll">${icon('phone')}<span>Am Telefon genannt: <b>ca. ${eurRund(sq.von)} – ${eurRund(sq.bis)}</b>${sq.text ? ` · ${esc(sq.text)}` : ''}</span></p>` : ''}
           </section>
-          ${window.Bausteine.block({ wo: 'vor', titel: 'Anfangstext', leer: 'Kein Text vor den Positionen', liste: texte })}
+          ${window.Bausteine.block({ wo: 'vor', titel: 'Anfangstext', leer: 'Kein Text vor den Positionen', liste: texte, passt: passtV })}
           <div class="ape-h"><h2>Positionen</h2><span class="muted">Titel = Bereich (Bad, Küche, Elektro …). Positionen eintippen oder aus der Preisliste wählen.</span></div>
           <div id="xtAng" class="xt-box"></div>
           ${list.length ? `<div class="xt-raeume"><span>Einzeln bearbeiten (Paket, Partnerangebot übernehmen):</span>${list.map((r) => `<button type="button" class="qchip" data-angraum="${r.id}">${esc(raumTitel(r))}</button>`).join('')}</div>` : ''}
-          ${window.Bausteine.block({ wo: 'nach', titel: 'Schlusstext', leer: 'Kein Text nach den Positionen', liste: texte })}
+          ${window.Bausteine.block({ wo: 'nach', titel: 'Schlusstext', leer: 'Kein Text nach den Positionen', liste: texte, passt: passtV })}
           <p class="hint">Am Schluss stehen „${esc(vorgabeText('textGruss'))}“ mit ${esc(A.einePerson(K.anspr) || anspr[0] || 'Name')}, Unterschrift und Stempel, danach die Auftragserteilung für den Kunden.</p>
         </div>
         <aside class="ape-seite">
@@ -924,6 +925,7 @@ window.Projekt = (() => {
         <button class="btn block" id="wKopie">${icon('edit')} Angebot ändern (Kopie mit neuer Nummer)</button>
         <button class="btn secondary block" data-reiter="angebote" style="margin-top:8px">Zu den Angeboten</button></div>`;
     const A = window.Angebot._intern, mitPos = mitPosVon(list), texte = texteVon(w), anspr = A.ansprechpartner(), E = A.einstellungen();
+    const KX = A.kontextFuer(w, list), passtV = (b) => A.passt(b, KX);
     const K = kopfVon(w, list), erst = K.erst, a = K.a, mehrere = mitPos.length > 1;
     const s = schrittVon(w), i = SCHRITTE.findIndex((x) => x[0] === s);
     const ok = { davor: !!(k && k.privat.trim()), masse: list.length > 0, pos: mitPos.length > 0, danach: mitPos.length > 0, ansicht: !!w.angebotPdf };
@@ -941,7 +943,7 @@ window.Projekt = (() => {
           ${k ? '<p class="hint" style="margin:8px 0 0">Betreff ist der Projektname (oben beim Kunden).</p>' : `<label>Projektname (= Betreff)</label><input type="text" id="wTitel" value="${esc(w.titel || '')}" placeholder="z. B. Badumbau" autocomplete="off">`}
           <label>Anrede</label><input type="text" id="bAnrede" value="${esc(K.anrede)}" placeholder="${esc(erst ? A.anredeDefault(erst) : 'Sehr geehrte Damen und Herren,')}" autocomplete="off">
         </div>
-        ${window.Bausteine.block({ wo: 'vor', titel: 'Anfangstexte', leer: 'Kein Text vor den Positionen', liste: texte })}`,
+        ${window.Bausteine.block({ wo: 'vor', titel: 'Anfangstexte', leer: 'Kein Text vor den Positionen', liste: texte, passt: passtV })}`,
       masse: () => `
         <div class="sec-h"><h2>Was wird angeboten?</h2>${list.length ? `<span class="count">${list.length}</span>` : ''}</div>
         <div class="docs" id="wWas">${list.map((r) => { const m = massVon(r); return `<div class="wl" data-wl="${r.id}"><div class="card bm">
@@ -965,7 +967,7 @@ window.Projekt = (() => {
         </details>` : ''}` : `<div class="card"><p class="hint" style="margin-top:0">Noch nichts angelegt. In Schritt 2 trägst du ein, was angeboten wird.</p><button class="btn block" data-schritt="masse">Zu Schritt 2</button></div>`}`,
       danach: () => `
         <div class="sec-h"><h2>Was steht nach den Positionen?</h2></div>
-        ${window.Bausteine.block({ wo: 'nach', titel: 'Schlusstexte', leer: 'Kein Text nach den Positionen', liste: texte, offen: true })}
+        ${window.Bausteine.block({ wo: 'nach', titel: 'Schlusstexte', leer: 'Kein Text nach den Positionen', liste: texte, offen: true, passt: passtV })}
         <p class="hint">Am Schluss stehen immer „${esc(vorgabeText('textGruss'))}“ mit ${esc(A.einePerson(K.anspr) || anspr[0] || 'Name')}, Unterschrift und Stempel und ganz zuletzt die Auftragserteilung für den Kunden. Abwählen oder Text ändern geht hier.</p>
         ${skontoKarte(w)}`,
       ansicht: () => `

@@ -36,7 +36,25 @@ const Angebot = (() => {
       } catch {}
     }
     gewaehrNeu(PL.einstellungen);
+    firmaAnwenden(PL.einstellungen);
     return PL;
+  }
+  // Firmendaten (P7): eigene Einstellung state.settings.firma, nicht mehr Teil der Preisliste. Beim ersten Start werden die
+  // vorhandenen Werte übernommen. Das Einlesen einer Preisliste überschreibt sie nie mit Musterwerten.
+  const FIRMA_KEYS = ['firma', 'strasse', 'ort', 'telefon', 'email', 'ustid', 'sitz', 'hrb', 'gf', 'bank', 'iban', 'bic'];
+  function firmaAnwenden(E) {
+    const S = state.settings;
+    if (!S.firma || typeof S.firma !== 'object') {
+      S.firma = Object.fromEntries(FIRMA_KEYS.filter((k) => E[k] !== undefined && E[k] !== '').map((k) => [k, E[k]]));
+      saveSettings();
+    }
+    for (const k of FIRMA_KEYS) if (S.firma[k] !== undefined) E[k] = S.firma[k];
+  }
+  /** Firmendaten ändern (Einstellungen › Firmendaten). */
+  async function firmaSetzen(k, v) {
+    await preisliste();
+    (state.settings.firma ??= {})[k] = v; PL.einstellungen[k] = v;
+    await saveSettings(); await kvSet('preisliste', PL);
   }
   // Gewährleistung (Wunsch Felix, Version 100): 2 Jahre ab Abnahme statt 5 Jahre (Arbeiten am Bauwerk).
   // Nur der unveränderte alte Standardtext wird ersetzt, selbst geschriebene Texte bleiben.
@@ -100,7 +118,15 @@ const Angebot = (() => {
       textLeistung: g('Text Leistungsumfang', D.textLeistung), textBauseits: g('Text bauseitige Leistungen', D.textBauseits), textZahlung: g('Text Zahlungsziel', D.textZahlung),
       textGewaehr: g('Text Gewährleistung', D.textGewaehr), textWiderruf: g('Text Widerruf', D.textWiderruf), textAuftrag: g('Text Auftragserteilung', D.textAuftrag),
     };
+    // Firmendaten: Werte aus der Excel-Datei nur übernehmen, wenn in DOM noch nichts oder nur der Musterwert steht (P7)
+    const F = (state.settings.firma ??= {});
+    for (const k of FIRMA_KEYS) {
+      const xl = einstellungen[k];
+      if (xl !== undefined && xl !== '' && xl !== D[k] && (F[k] === undefined || F[k] === '' || F[k] === D[k])) F[k] = xl;
+    }
+    await saveSettings();
     PL = { quelle: file.name, stand: new Date().toLocaleString('de-DE'), einstellungen, positionen };
+    firmaAnwenden(PL.einstellungen);
     await kvSet('preisliste', PL);
     return PL;
   }
@@ -995,7 +1021,7 @@ Gib Länge (längere Seite) und Breite der Grundfläche, Raumhöhe, Anzahl und G
     const W = 210, H = 297, M = 20, R = W - 18;
     const NAVY = [30, 53, 80], BRASS = [184, 134, 47];
     const logo = state.settings.logo, logoFmt = logo ? (mimeOf(logo) === 'image/png' ? 'PNG' : 'JPEG') : null;
-    const heute = new Date(), gueltig = new Date(heute); gueltig.setDate(gueltig.getDate() + (E.gueltig || 30));
+    const heute = new Date(), gueltig = new Date(heute); gueltig.setDate(gueltig.getDate() + (+vorgabe('angebotGueltigTage') || 28)); // P7: 4 Wochen, Einstellung nicht mehr bei der Preisliste
     const bz = bauzeit(A.positionen, startDatum(p), mitInst(p));
     const t = (s, x, y, o) => doc.text(Array.isArray(s) ? s : String(s ?? ''), x, y, o);
 
@@ -1030,12 +1056,15 @@ Gib Länge (längere Seite) und Breite der Grundfläche, Raumhöhe, Anzahl und G
     t(A.anrede || anredeDefault(p), M, y); y += 5;
     // Textfelder (Wunsch Felix): frei festlegbar in den Einstellungen, je Auftrag anpassbar (w.angebotTexte)
     // Abgewählte Bausteine (b.aus, im Büro abgehakt) stehen nicht im PDF
-    const B = texteFuer(WA).filter((b) => !b.aus && (String(b.text || '').trim() || String(b.titel || '').trim()));
+    // P7: DOM nimmt nur Bausteine, die zu Kundenart und Preisart passen (b.gilt); leere Bausteine (z. B. Rechtstext noch nicht eingetragen) fallen weg
+    const KX = { art: kd?.art || (privatArt(kd) ? 'privat' : 'firma'), ep: S.zeilen.some((z) => z.zaehlt !== false && !PAUSCHAL.test(z.it?.einheit || '')) || !S.zeilen.length, psch: S.zeilen.some((z) => z.zaehlt !== false && PAUSCHAL.test(z.it?.einheit || '')) };
+    const B = texteFuer(WA).filter((b) => !b.aus && passt(b, KX) && (b.fest || String(b.text || '').trim()));
     const VOR = ab ? [{ titel: '', text: vorgabe('abEinleitung') }] : B.filter((x) => x.wo === 'vor');
     const SK = skontoVon(WA, S.brutto);
     const skSatz = SK ? `Bei Zahlung innerhalb von ${SK.tage} Tagen gewähren wir ${fmtNum(SK.p, SK.p % 1 ? 1 : 0)} % Skonto (${fmtEur(SK.betrag)}), Zahlbetrag dann ${fmtEur(SK.zahlbetrag)}.` : '';
     const platzh = (s) => String(s || '').replace(/\{(\w+)\}/g, (m, n) => ({ zeitraum: zeitraumText(bz), nr: nrText, gueltig: fmtDate(gueltig), datum: fmtDate(heute), kunde: (kd && Kunden.name(kd)) || p.customer || '',
-      skonto: skSatz, skontoprozent: SK ? fmtNum(SK.p, SK.p % 1 ? 1 : 0) + ' %' : '', skontotage: SK ? String(SK.tage) : '', skontobetrag: SK ? fmtEur(SK.betrag) : '', zahlbetrag: fmtEur(SK ? SK.zahlbetrag : S.brutto), brutto: fmtEur(S.brutto) })[n] ?? m)
+      skonto: skSatz, skontoprozent: SK ? fmtNum(SK.p, SK.p % 1 ? 1 : 0) + ' %' : '', skontotage: SK ? String(SK.tage) : '', skontobetrag: SK ? fmtEur(SK.betrag) : '', zahlbetrag: fmtEur(SK ? SK.zahlbetrag : S.brutto), brutto: fmtEur(S.brutto),
+      zahlungsplan: zahlungsplanText(WA), zahlungsziel: String(+vorgabe('zahlungsziel') || 14), firma: E.firma || '', anschrift: [E.strasse, E.ort].filter(Boolean).join(', '), email: E.email || '', telefon: E.telefon || '' })[n] ?? m)
       .replace(/[ \t]+\n/g, '\n').replace(/\n{3,}/g, '\n\n');
     for (const b of VOR) {
       if (String(b.titel || '').trim()) { doc.setFont('helvetica', 'bold'); doc.setTextColor(...NAVY); t(b.titel, M, y); y += 5; doc.setFont('helvetica', 'normal'); doc.setTextColor(30); }
@@ -1094,7 +1123,7 @@ Gib Länge (längere Seite) und Breite der Grundfläche, Raumhöhe, Anzahl und G
     sumZ(`zzgl. ${Math.round(E.mwst * 100)} % MwSt.`, fmtEur(S.mwst));
     doc.setDrawColor(...NAVY); doc.line(C.txt, y - 3.8, R, y - 3.8);
     doc.setTextColor(...NAVY); sumZ('Gesamtsumme brutto', fmtEur(S.brutto), true); doc.setTextColor(90);
-    doc.setFontSize(8.5); sumZ('Darin enthaltener Lohnanteil brutto (§ 35a EStG)', fmtEur(S.lohnBrutto)); doc.setTextColor(30);
+    if (privatArt(kd)) { doc.setFontSize(8.5); sumZ('Darin enthaltener Lohnanteil brutto (§ 35a EStG)', fmtEur(S.lohnBrutto)); } doc.setTextColor(30); // nur Privat und WEG (Runde 10/12)
     // Skonto (v122): vom Zahlbetrag brutto; Bedarfs- und Alternativpositionen sind darin nicht enthalten
     if (SK && !ab) { doc.setFontSize(9); doc.setTextColor(60); sumZ(`Bei Zahlung innerhalb von ${SK.tage} Tagen ${fmtNum(SK.p, SK.p % 1 ? 1 : 0)} % Skonto`, '- ' + fmtEur(SK.betrag)); doc.setTextColor(...NAVY); sumZ('Zahlbetrag mit Skonto', fmtEur(SK.zahlbetrag), true); doc.setTextColor(30); }
     y += 4;
@@ -1130,6 +1159,9 @@ Gib Länge (längere Seite) und Breite der Grundfläche, Raumhöhe, Anzahl und G
       t(ls, M, y); y += 4.3 * ls.length + 4;
       // Vorzeitiger Beginn (Runde 12/13): eigenes Kästchen zum Ankreuzen über der Unterschrift, nur bei Privatkunden und WEG.
       // Text = Vorgabe textVorzeitig (Rechtstext, bleibt leer, bis Felix ihn geprüft einträgt; leer = kein Kästchen).
+      // Widerrufssätze in der Auftragserteilung (Rechtstext, Vorgabe textAuftragWiderruf, leer = nichts), nur Privat/WEG
+      const awText = String(vorgabe('textAuftragWiderruf') || '').trim();
+      if (awText && privatArt(kd)) { for (const abs of platzh(awText).split(/\n\s*\n/)) { const l2 = doc.splitTextToSize(abs.trim(), R - M); await platz(4.3 * l2.length + 2); t(l2, M, y); y += 4.3 * l2.length + 1.5; } y += 1; }
       const vzText = String(vorgabe('textVorzeitig') || '').trim();
       if (vzText && privatArt(kd)) {
         const vz = doc.splitTextToSize(platzh(vzText), R - M - 7);
@@ -1141,6 +1173,13 @@ Gib Länge (längere Seite) und Breite der Grundfläche, Raumhöhe, Anzahl und G
       y += 14;
     }
 
+    // Anlage Widerrufsbelehrung und Muster-Formular (P7): eigene Seite(n), nur Privat/WEG, Text = Vorgabe textWiderrufAnlage (Rechtstext, leer = keine Anlage)
+    const anl = String(vorgabe('textWiderrufAnlage') || '').trim();
+    if (!ab && anl && privatArt(kd)) {
+      await neueSeite();
+      doc.setFont('helvetica', 'bold'); doc.setFontSize(12); doc.setTextColor(...NAVY); t('Anlage: Widerrufsbelehrung', M, y); y += 7;
+      await abschnitt('', platzh(anl).split(/\n\s*\n/).map((x) => x.trim()));
+    }
     // Visualisierung
     const res = firstResult(p, pk.id);
     if (A.mitBild && res) {
@@ -1242,12 +1281,53 @@ Gib Länge (längere Seite) und Breite der Grundfläche, Raumhöhe, Anzahl und G
   // ---------- Textfelder vor und nach den Positionen (Wunsch Felix) ----------
   // Standard in der Preisliste (PL.einstellungen.bausteine), je Auftrag anpassbar (w.angebotTexte).
   // Ein Textfeld: { id, wo: 'vor'|'nach', titel, text }. Leerer Titel = nur Text. Absätze mit Leerzeile.
+  // Aufbau des Angebots (Runde 12, P7): 1 Briefkopf, 2 Einleitung (+ persönlicher Satz), 3 Positionen und Summen, 4 Nicht enthalten,
+  // 5 Preisbindung, 6 Zahlungsbedingungen, 7 Gewährleistung, 8 Gruß, 9 Auftragserteilung, 10 Anlage Widerruf.
+  // b.gilt = { kunde: ['privat'|'firma'|'weg'] (leer = alle), preis: '' | 'ep' | 'pauschale' }: DOM wählt danach selbst aus.
+  // Rechtstexte (Widerruf) bleiben leer, bis Felix sie geprüft einträgt; leere Bausteine stehen nicht im PDF.
   const BAUSTEIN_STD = (E) => [
     { id: 'einl', wo: 'vor', titel: '', text: 'vielen Dank für das angenehme Gespräch. Gerne bieten wir Ihnen folgende Leistungen an:' },
-    { id: 'leist', wo: 'nach', titel: 'Ausführung und Leistungsumfang', text: ['Ausführungszeitraum: {zeitraum}.', E.textLeistung, E.textBauseits].filter(Boolean).join('\n\n') },
-    { id: 'zahl', wo: 'nach', titel: 'Preis und Zahlung', text: [...(E.hinweise || []).filter((h) => !/freuen uns/i.test(h)), E.textZahlung].filter(Boolean).join('\n\n') },
-    { id: 'gew', wo: 'nach', titel: 'Gewährleistung und Widerruf', text: [E.textGewaehr, E.textWiderruf].filter(Boolean).join('\n\n') },
+    { id: 'nicht', wo: 'nach', titel: 'Nicht enthalten', text: [E.textLeistung, E.textBauseits].filter(Boolean).join('\n\n') },
+    { id: 'ausf', wo: 'nach', titel: 'Ausführung', text: 'Ausführungszeitraum: {zeitraum}.' },
+    { id: 'preisb', wo: 'nach', titel: 'Preisbindung', text: 'An dieses Angebot halten wir uns bis zum {gueltig} gebunden.' },
+    { id: 'abr', wo: 'nach', titel: 'Abrechnung', gilt: { kunde: [], preis: 'ep' }, text: ['Alle Preise verstehen sich als Festpreise je Einheit; abgerechnet wird nach tatsächlichem Aufmaß.', 'Nicht vorhersehbare Mehrarbeiten (z. B. schlechter Untergrund, Schadstoffe) werden nach Absprache gesondert berechnet.'].join('\n\n') },
+    { id: 'abrP', wo: 'nach', titel: 'Pauschalpreise', gilt: { kunde: [], preis: 'pauschale' }, text: 'Pauschalpreise gelten für den beschriebenen Leistungsumfang. Nicht vorhersehbare Mehrarbeiten werden nach Absprache gesondert berechnet.' },
+    { id: 'zahl', wo: 'nach', titel: 'Zahlungsbedingungen', text: '{zahlungsplan}\n\nRechnungen sind innerhalb von {zahlungsziel} Tagen nach Zugang zahlbar. {skonto}' },
+    { id: 'gew', wo: 'nach', titel: 'Gewährleistung', text: E.textGewaehr || 'Es gelten die gesetzlichen Gewährleistungsrechte nach BGB. Die Gewährleistungsfrist beträgt 2 Jahre ab Abnahme.' },
+    { id: 'wid', wo: 'nach', titel: 'Widerrufsrecht', gilt: { kunde: ['privat', 'weg'], preis: '' }, text: '' },
   ];
+  const KUNDEN_ARTEN = [['privat', 'Privat'], ['firma', 'Firma'], ['weg', 'WEG']];
+  const PREIS_ARTEN = [['', 'alle Preisarten'], ['ep', 'nur Einheitspreise'], ['pauschale', 'nur Pauschale']];
+  /** Für welchen Kunden und welche Preisart gilt ein Baustein? Text für die Anzeige, '' = immer. */
+  function giltText(b) {
+    const k = b.gilt?.kunde || [], p = b.gilt?.preis || '';
+    return [k.length && k.length < 3 ? 'nur ' + k.map((x) => KUNDEN_ARTEN.find((a) => a[0] === x)?.[1] || x).join(' und ') : '', p ? PREIS_ARTEN.find((a) => a[0] === p)?.[1] : ''].filter(Boolean).join(', ');
+  }
+  const PAUSCHAL = /^(pauschal|psch|pauschale)\.?$/i;
+  /** Kontext eines Angebots: Kundenart und welche Preisarten vorkommen. */
+  function kontextFuer(w, raeume = []) {
+    const kd = w?.kundeId ? window.Kunden?.byId?.(w.kundeId) : null;
+    const art = kd?.art || (privatArt(kd) ? 'privat' : 'firma');
+    const eh = raeume.flatMap((r) => r?.angebot?.positionen || []).filter((x) => !NICHT_SUMME.includes(x.art)).map((x) => x.frei?.einheit || pos(x.nr)?.einheit || '');
+    return { art, ep: !eh.length || eh.some((e) => !PAUSCHAL.test(e)), psch: eh.some((e) => PAUSCHAL.test(e)) };
+  }
+  /** Passt der Baustein zu diesem Angebot? Feste Bausteine immer. */
+  function passt(b, ctx) {
+    if (b.fest || !ctx) return true;
+    const k = b.gilt?.kunde || [], p = b.gilt?.preis || '';
+    if (k.length && !k.includes(ctx.art)) return false;
+    if (p === 'ep' && !ctx.ep) return false;
+    if (p === 'pauschale' && !ctx.psch) return false;
+    return true;
+  }
+  /** Zahlungsplan als Satz aus dem Abschlagsplan des Vorgangs (sonst Einstellungen). */
+  function zahlungsplanText(w) {
+    const plan = (Array.isArray(w?.abschlagPlan) && w.abschlagPlan.length ? w.abschlagPlan : vorgabe('abschlagPlan')) || [];
+    const n = vorgabe('abschlagNamen') || [];
+    const name = (i) => (plan.length === 1 ? n[n.length - 1] : i === 0 ? n[0] : i === plan.length - 1 ? n[n.length - 1] : n[1]) || '';
+    const teile = plan.map((p, i) => `${fmtNum(+p, +p % 1 ? 1 : 0)} % ${name(i)}`.trim());
+    return teile.length ? `Zahlungsplan: ${teile.join(', ')}.` : '';
+  }
   // Auftragserteilung und Gruß sind seit Version 100 Bausteine (Wunsch Felix): Text änderbar, abwählbar, stehen immer am Schluss.
   // Seit v122 (Runde 13, bewusst geändert): erst der Gruß mit Name des Verfassers, Unterschrift und Stempel, danach die Auftragserteilung,
   // unter der der Kunde unterschreibt. Nicht „zurückreparieren“. Kennzeichen b.fest = 'gruss' | 'auftrag'.
@@ -1270,7 +1350,15 @@ Gib Länge (längere Seite) und Breite der Grundfläche, Raumhöhe, Anzahl und G
     for (const b of liste) { if (b.fest) b.wo = 'nach'; b.text = gewaehrText(b.text); }
     return liste;
   }
-  const bausteine = () => { const E = PL.einstellungen; return mitFest(Array.isArray(E.bausteine) && E.bausteine.length ? E.bausteine : BAUSTEIN_STD(E)); };
+  /** Standard-Textbausteine: eigene Einstellung (state.settings.textbausteine), nicht mehr bei der Preisliste (P7).
+   *  Selbst geänderte Texte aus der Preisliste werden einmal übernommen. */
+  function stdListe() {
+    const S = state.settings, E = PL.einstellungen;
+    if (Array.isArray(S.textbausteine) && S.textbausteine.length) return S.textbausteine;
+    if (Array.isArray(E.bausteine) && E.bausteine.length) { S.textbausteine = E.bausteine; saveSettings(); return S.textbausteine; }
+    return BAUSTEIN_STD(E);
+  }
+  const bausteine = () => mitFest(stdListe());
   /** Texte eines Angebots (w): eigene Fassung oder Kopie des Standards. Wird erst beim Ändern als w.angebotTexte gespeichert. */
   function texteFuer(w) {
     if (Array.isArray(w?.angebotTexte) && w.angebotTexte.length) return mitFest(w.angebotTexte, w.angebotOpt);
@@ -1281,7 +1369,7 @@ Gib Länge (längere Seite) und Breite der Grundfläche, Raumhöhe, Anzahl und G
   const kopieB = (l) => l.map((b) => ({ ...b, id: uid() }));
 
   /** Seite zum Bearbeiten der Textfelder. liste wird direkt verändert, speichern() sichert sie. */
-  function textEditor({ titel, sub, liste, speichern, zurueck, std, vorlagen, hinweis }) {
+  function textEditor({ titel, sub, liste, speichern, zurueck, std, vorlagen, hinweis, gilt }) {
     const sichern = debounce(() => speichern(), 500);
     const rang = (b) => (b.fest === 'gruss' ? 1 : b.fest === 'auftrag' ? 2 : 0); // feste Bausteine (Angebot) immer am Schluss: Gruß, dann Auftragserteilung
     const FEST_HINWEIS = { gruss: 'Steht nach den Schlusstexten. Darunter: Mit freundlichen Grüßen, Name des Verfassers, Unterschrift und Stempel.',
@@ -1297,7 +1385,9 @@ Gib Länge (längere Seite) und Breite der Grundfläche, Raumhöhe, Anzahl und G
           <div class="tx-k">${griffHtml()}<input type="text" data-txf="titel" value="${esc(b.titel || '')}" placeholder="Überschrift, z. B. Gewährleistung" aria-label="Überschrift">
             <button type="button" class="icon-btn" data-txdel="${i}" data-edit-nur aria-label="Entfernen">${icon('trash')}</button></div>
           <textarea data-txf="text" rows="${Math.min(12, Math.max(3, Math.ceil(String(b.text || '').length / 42) + String(b.text || '').split('\n').length - 1))}" placeholder="Text">${esc(b.text || '')}</textarea>
-          <select data-txf="wo" aria-label="Wo im Angebot"><option value="vor" ${b.wo === 'vor' ? 'selected' : ''}>Steht vor den Positionen</option><option value="nach" ${b.wo !== 'vor' ? 'selected' : ''}>Steht nach den Positionen</option></select></div>`;
+          <select data-txf="wo" aria-label="Wo im Angebot"><option value="vor" ${b.wo === 'vor' ? 'selected' : ''}>Steht vor den Positionen</option><option value="nach" ${b.wo !== 'vor' ? 'selected' : ''}>Steht nach den Positionen</option></select>
+          ${gilt ? `<div class="tx-gilt"><span>Gilt für</span>${KUNDEN_ARTEN.map(([k, n]) => `<button type="button" class="qchip ${!(b.gilt?.kunde || []).length || b.gilt.kunde.includes(k) ? 'on' : ''}" data-txgk="${k}">${n}</button>`).join('')}
+            <select data-txgp aria-label="Preisart">${PREIS_ARTEN.map(([v, n]) => `<option value="${v}" ${(b.gilt?.preis || '') === v ? 'selected' : ''}>${n}</option>`).join('')}</select></div>` : ''}</div>`;
       main().innerHTML = `<p class="hint" style="margin-top:0">${esc(hinweis || 'Jedes Textfeld hat eine Überschrift und einen Text. Ohne Überschrift steht nur der Text da. Eine Leerzeile beginnt einen neuen Absatz. Platzhalter: {zeitraum} Ausführungszeitraum, {gueltig} gültig bis, {nr} Angebotsnummer, {kunde} Kunde, {brutto} Gesamtsumme, {skonto} Satz zum Skonto (leer ohne Skonto), {skontobetrag}, {zahlbetrag}.')}</p>
         ${[['vor', 'Vor den Positionen'], ['nach', 'Nach den Positionen']].map(([wo, n]) => `<div class="sec-h"><h2>${n}</h2></div>
           ${liste.map((b, i) => [b, i]).filter(([b]) => (b.wo === 'vor') === (wo === 'vor')).map(([b, i]) => karte(b, i)).join('') || '<p class="hint">Noch kein Textfeld.</p>'}
@@ -1305,6 +1395,15 @@ Gib Länge (längere Seite) und Breite der Grundfläche, Raumhöhe, Anzahl und G
         ${std ? `<button class="btn secondary block" id="txStd" style="margin-top:18px">${icon('refresh')} ${esc(std.label)}</button>` : ''}`;
       $$('[data-tx]').forEach((card) => {
         const b = liste[+card.dataset.tx];
+        $$('[data-txgk]', card).forEach((btn) => (btn.onclick = async () => {
+          const alle = KUNDEN_ARTEN.map((a) => a[0]), k = btn.dataset.txgk;
+          let cur = (b.gilt?.kunde || []).length ? [...b.gilt.kunde] : [...alle];
+          cur = cur.includes(k) ? cur.filter((x) => x !== k) : [...cur, k];
+          if (!cur.length) return toast('Mindestens eine Kundenart muss angehakt sein.');
+          b.gilt = { ...(b.gilt || {}), kunde: cur.length === alle.length ? [] : alle.filter((x) => cur.includes(x)) };
+          await speichern(); const y = window.scrollY; zeichne(); window.scrollTo(0, y);
+        }));
+        const gp = $('[data-txgp]', card); if (gp) gp.onchange = async () => { b.gilt = { ...(b.gilt || { kunde: [] }), preis: gp.value }; await speichern(); };
         $$('[data-txf]', card).forEach((el) => {
           el.oninput = () => { b[el.dataset.txf] = el.value; sichern(); };
           if (el.dataset.txf === 'wo') el.onchange = async () => { b.wo = el.value; await speichern(); zeichne(); };
@@ -1345,7 +1444,7 @@ Gib Länge (längere Seite) und Breite der Grundfläche, Raumhöhe, Anzahl und G
     await preisliste();
     const eigen = Array.isArray(w.angebotTexte) && w.angebotTexte.length;
     const liste = eigen ? texteFuer(w) : kopieB(texteFuer(w));
-    textEditor({ titel: 'Texte im Angebot', sub: w.customer || '', liste, vorlagen: bausteine().filter((b) => !b.fest), zurueck,
+    textEditor({ titel: 'Texte im Angebot', sub: w.customer || '', liste, vorlagen: bausteine().filter((b) => !b.fest), zurueck, gilt: true,
       speichern: async () => { w.angebotTexte = liste; if (!w.isNew) await Projekt.save(w); },
       std: eigen ? { label: 'Wieder die Standardtexte aus den Einstellungen', fn: async () => { if (!confirm('Die angepassten Texte dieses Angebots verwerfen und wieder die Standardtexte nehmen?')) return; delete w.angebotTexte; if (!w.isNew) await Projekt.save(w); texteAuftrag(w, zurueck); } } : null });
   }
@@ -1353,10 +1452,12 @@ Gib Länge (längere Seite) und Breite der Grundfläche, Raumhöhe, Anzahl und G
   async function texteEinstellungen(zurueck) {
     await preisliste();
     const E = PL.einstellungen;
-    const liste = Array.isArray(E.bausteine) && E.bausteine.length ? mitFest(E.bausteine) : kopieB(mitFest(BAUSTEIN_STD(E)));
-    textEditor({ titel: 'Textfelder im Angebot', sub: 'Standard für jedes neue Angebot', liste, zurueck,
-      speichern: async () => { E.bausteine = liste; await kvSet('preisliste', PL); },
-      std: { label: 'Auf die ursprünglichen Texte zurücksetzen', fn: async () => { if (!confirm('Alle Textfelder auf die ursprünglichen Texte zurücksetzen?')) return; delete E.bausteine; await kvSet('preisliste', PL); texteEinstellungen(zurueck); } } });
+    const S = state.settings, eigen = Array.isArray(S.textbausteine) && S.textbausteine.length;
+    const liste = eigen ? mitFest(stdListe()) : mitFest(stdListe().map((b) => ({ ...b })));
+    textEditor({ titel: 'Textbausteine', sub: 'Standard für jedes neue Angebot', liste, zurueck, gilt: true,
+      hinweis: 'Aufbau des Angebots: Einleitung, Positionen, dann die Texte nach den Positionen (z. B. Nicht enthalten, Preisbindung, Zahlungsbedingungen, Gewährleistung), Gruß mit Unterschrift, Auftragserteilung. Bei „Gilt für“ legst du fest, bei welchen Kunden und Preisarten DOM einen Text von selbst nimmt. Platzhalter: {zeitraum}, {gueltig}, {nr}, {kunde}, {brutto}, {zahlungsplan}, {zahlungsziel}, {skonto}, {skontobetrag}, {zahlbetrag}. Rechtstexte (Widerruf) bitte prüfen lassen und erst dann eintragen.',
+      speichern: async () => { S.textbausteine = liste; await saveSettings(); },
+      std: { label: 'Auf die ursprünglichen Texte zurücksetzen', fn: async () => { if (!confirm('Alle Textbausteine auf die ursprünglichen Texte zurücksetzen?')) return; delete S.textbausteine; delete E.bausteine; await saveSettings(); await kvSet('preisliste', PL); texteEinstellungen(zurueck); } } });
   }
 
   // ---------- Positionen aus dem Angebot eines Partners übernehmen (Wunsch Felix) ----------
@@ -1494,7 +1595,7 @@ Gib Länge (längere Seite) und Breite der Grundfläche, Raumhöhe, Anzahl und G
     await preisliste();
     const E = PL.einstellungen, pct = (x) => Math.round(x * 100) + ' %';
     el.innerHTML = `<div class="card"><h2>Preisliste & Angebot</h2>
-      <p class="muted">Du kannst dein <b>Excel-Angebotstool</b> laden. Einzelne Preise, Aufschläge und Texte änderst du danach direkt in der App (Einstellungen › Preisliste und › Aufschläge & Angebotstexte).</p>
+      <p class="muted">Du kannst dein <b>Excel-Angebotstool</b> laden. Einzelne Preise, Aufschläge und Texte änderst du danach direkt in der App (Einstellungen › Preisliste und › Aufschläge bzw. Textbausteine).</p>
       <div class="tot"><span class="muted">Quelle</span><span>${esc(PL.quelle || '')}</span></div>
       <div class="tot"><span class="muted">Stand</span><span>${esc(PL.stand || '')}</span></div>
       <div class="tot"><span class="muted">Positionen</span><span>${PL.positionen.length}${PL.positionen.some((x) => x.status === 'geschätzt') ? ` (${PL.positionen.filter((x) => x.status === 'geschätzt').length} geschätzt)` : ''}</span></div>
@@ -1550,6 +1651,6 @@ Gib Länge (längere Seite) und Breite der Grundfläche, Raumhöhe, Anzahl und G
     $('#vReset').onclick = async () => { if (!loeschFrage('Alle Paket-Vorlagen zurücksetzen?')) return; await kvDel('angebotVorlagen'); VORL = null; vorlagenView(pkgId, grp); };
   }
 
-  return { projektKarte, ansicht, einstellungenKarte, _intern: { privatArt, skontoVon, posDetails, preisHinweis, artText, NICHT_SUMME, init, gruppe, materialliste, uebernimmSchaetzung, masse, rechne, erzeuge, summen, bauzeit, ep, lohnEp, preisliste, vorlagen, neuerRaum, baueAngebotPdf, importExcel, naechsteNummer, mailText, bausteine, textEditor, texteAuftrag, texteEinstellungen, subUebernehmen, ansprechpartner, ansprVon, einePerson, texteFuer, anredeDefault, einstellungen: () => PL.einstellungen } };
+  return { projektKarte, ansicht, einstellungenKarte, _intern: { firmaSetzen, FIRMA_KEYS, kontextFuer, passt, giltText, zahlungsplanText, privatArt, skontoVon, posDetails, preisHinweis, artText, NICHT_SUMME, init, gruppe, materialliste, uebernimmSchaetzung, masse, rechne, erzeuge, summen, bauzeit, ep, lohnEp, preisliste, vorlagen, neuerRaum, baueAngebotPdf, importExcel, naechsteNummer, mailText, bausteine, textEditor, texteAuftrag, texteEinstellungen, subUebernehmen, ansprechpartner, ansprVon, einePerson, texteFuer, anredeDefault, einstellungen: () => PL.einstellungen } };
 })();
 window.Angebot = Angebot;

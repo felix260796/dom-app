@@ -137,6 +137,10 @@ button.pg { border: 0; background: none; text-align: right; font: inherit; color
 .tx-k { display: flex; gap: 4px; align-items: center; margin-bottom: 8px; }
 .tx-k input { flex: 1; min-width: 0; font-weight: 650; }
 .tx-k .icon-btn { width: 38px; flex: 0 0 38px; color: var(--muted); }
+.tx-gilt { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 8px; font-size: 13px; color: var(--muted); }
+.tx-gilt .qchip { opacity: .55; }
+.tx-gilt .qchip.on { opacity: 1; border-color: var(--navy); color: var(--navy); font-weight: 650; }
+.tx-gilt select { width: auto; flex: 1; min-width: 150px; }
 .tx textarea { width: 100%; }
 .tx select { margin-top: 8px; font-size: 14px; color: var(--muted); }
 

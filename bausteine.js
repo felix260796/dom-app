@@ -14,12 +14,14 @@ window.Bausteine = (() => {
   const name = (b) => String(b.titel || '').trim() || kurz(b).slice(0, 40) || 'Leerer Text';
   const teil = (liste, wo) => liste.filter((b) => (b.wo === 'vor') === (wo === 'vor'));
 
-  function block({ wo, titel, liste, fest = [], leer = 'Kein Text', offen = false }) {
-    const l = teil(liste, wo);
-    const sub = [...l.filter((b) => !b.aus).map(name), ...fest.filter((f) => f.an).map((f) => f.label)].join(' · ') || leer;
+  // passt(b): Baustein passt zu Kundenart/Preisart (P7). Passt er nicht, steht er ausgegraut da und nicht im Dokument.
+  function block({ wo, titel, liste, fest = [], leer = 'Kein Text', offen = false, passt = null }) {
+    const ok = (b) => !passt || passt(b);
+    const l = teil(liste, wo).filter((b) => ok(b) || !b.aus);
+    const sub = [...l.filter((b) => !b.aus && ok(b)).map(name), ...fest.filter((f) => f.an).map((f) => f.label)].join(' · ') || leer;
     return `<details class="more card bs" data-bsblock="${wo}" data-bsleer="${esc(leer)}" ${offen ? 'open' : ''}><summary>${icon('edit')}<span>${esc(titel)}<small data-bssub>${esc(sub)}</small></span>${icon('chevron', 'more-chev')}</summary>
       <p class="hint" style="margin:8px 0">Anhaken, was im Dokument stehen soll. Danach wieder zuklappen.</p>
-      ${l.map((b) => `<label class="check wv bs-z"><input type="checkbox" data-bs="${esc(b.id)}" ${b.aus ? '' : 'checked'}><span><b>${esc(name(b))}</b>${String(b.titel || '').trim() && kurz(b) ? `<small>${esc(kurz(b).slice(0, 90))}${kurz(b).length > 90 ? ' …' : ''}</small>` : ''}</span></label>`).join('')}
+      ${l.map((b) => `<label class="check wv bs-z ${ok(b) ? '' : 'bs-np'}"><input type="checkbox" data-bs="${esc(b.id)}" ${b.aus || !ok(b) ? '' : 'checked'} ${ok(b) ? '' : 'disabled'}><span><b>${esc(name(b))}</b>${!ok(b) ? `<small class="bs-gilt">passt nicht zu diesem Angebot (${esc(window.Angebot?._intern?.giltText?.(b) || '')})</small>` : !String(b.text || '').trim() ? '<small class="bs-gilt">noch kein Text eingetragen</small>' : ''}${String(b.titel || '').trim() && kurz(b) ? `<small>${esc(kurz(b).slice(0, 90))}${kurz(b).length > 90 ? ' …' : ''}</small>` : ''}</span></label>`).join('')}
       ${fest.map((f) => `<label class="check wv bs-z"><input type="checkbox" data-bsfest="${esc(f.k)}" ${f.an ? 'checked' : ''}><span><b>${esc(f.label)}</b>${f.sub ? `<small>${esc(f.sub)}</small>` : ''}</span></label>`).join('')}
       <button type="button" class="link-add" data-bsedit="${wo}">${icon('edit')} Texte ändern, Reihenfolge, eigener Text</button></details>`;
   }

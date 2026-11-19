@@ -93,13 +93,17 @@ const VORGABEN = {
       { k: 'raeumeHaus', l: 'Räume zum Anhaken bei „Ganzes Haus“ (eine Zeile je Raum)', t: 'liste', d: ['Badezimmer', 'Gäste-WC', 'Küche', 'Wohnzimmer', 'Schlafzimmer', 'Kinderzimmer', 'Flur / Diele', 'Treppenhaus', 'Keller', 'Dachgeschoss', 'Heizraum', 'Fassade / Außen', 'Garten'] },
       { k: 'kleinName', l: 'So heißt eine Kleinigkeit im Angebot', t: 'zeile', d: 'Leistungen', h: 'Einzelne Arbeiten ohne Raum, z. B. Türgriffe oder Steckdosen.' },
       { k: 'ansprechAngebot', l: 'Verfasser im Angebot (Standard, eine Person)', t: 'zeile', d: 'Felix Brenzinger', h: 'Steht oben im Angebot als Ansprechpartner und unterschreibt beim Gruß. In jedem Angebot änderbar.' },
+      { k: 'angebotGueltigTage', l: 'Angebot gültig (Tage ab Datum)', t: 'zahl', d: 28, h: 'Steht im Angebot oben als „Gültig bis“ und im Baustein „Preisbindung“ ({gueltig}). Standard 4 Wochen.' },
+      { k: 'abschlagNamen', l: 'Zahlungsplan im Angebot: Bezeichnung des ersten, der mittleren und des letzten Abschlags', t: 'liste', d: ['bei Auftrag', 'nach Baufortschritt', 'nach Abnahme'], h: 'Daraus und aus dem Abschlagsplan des Projekts entsteht der Satz {zahlungsplan}, z. B. „30 % bei Auftrag, 40 % nach Baufortschritt, 30 % nach Abnahme“.' },
+      { k: 'textAuftragWiderruf', l: 'Sätze zum Widerruf in der Auftragserteilung (nur Privatkunden und WEG)', t: 'text', d: '', h: 'Rechtstext, bitte vom Anwalt oder Verband prüfen lassen und dann hier eintragen. Leer = nichts.' },
+      { k: 'textWiderrufAnlage', l: 'Anlage zum Angebot: Widerrufsbelehrung und Muster-Widerrufsformular (nur Privatkunden und WEG)', t: 'text', d: '', h: 'Rechtstext, bitte prüfen lassen und dann hier eintragen. Steht als eigene Seite hinter dem Angebot. Platzhalter: {firma}, {anschrift}, {email}, {telefon}. Leer = keine Anlage.' },
       { k: 'skontoProzent', l: 'Skonto im Angebot in % (0 = kein Skonto)', t: 'zahl', d: 0, h: 'Steht unter der Gesamtsumme mit Betrag und Zahlbetrag, berechnet vom Zahlbetrag brutto (ohne Bedarfs- und Alternativpositionen). Je Angebot änderbar. Platzhalter in Texten: {skonto}, {skontobetrag}, {zahlbetrag}.' },
       { k: 'skontoTage', l: 'Skonto bei Zahlung innerhalb von … Tagen', t: 'zahl', d: 10 },
       { k: 'textVorzeitig', l: 'Kästchen „vorzeitiger Beginn“ über der Unterschrift des Kunden (nur Privatkunden und WEG)', t: 'text', d: '', h: 'Rechtstext, bitte vom Anwalt oder Verband prüfen lassen und dann hier eintragen. Leer = kein Kästchen im Angebot.' },
       { k: 'widerrufTage', l: 'Widerrufsfrist in Tagen ab Zusage (für den Hinweis beim Einplanen)', t: 'zahl', d: 14, h: 'Liegt der Baustart in dieser Frist und hat der Kunde den vorzeitigen Beginn nicht angekreuzt, zeigt das Projekt einen Hinweis. Nichts wird gesperrt.' },
       { k: 'ansprechProjekt', l: 'Ansprechpartner im Projekt nach der Zusage (Standard, eine Person)', t: 'zeile', d: 'Deniel Kovacic' },
-      { k: 'angebotGruss', l: 'Angebot hat nach den Schlusstexten den Gruß mit Unterschrift und Stempel', t: 'janein', d: 'ja', h: 'Text und Abwählen: Schlusstexte im Angebot bzw. Einstellungen › Aufschläge & Angebotstexte › Textfelder.' },
-      { k: 'angebotAuftragsfeld', l: 'Angebot hat am Ende ein Feld, in dem der Kunde unterschreibt (Auftragserteilung)', t: 'janein', d: 'ja', h: 'Text und Abwählen: Schlusstexte im Angebot bzw. Einstellungen › Aufschläge & Angebotstexte › Textfelder.' },
+      { k: 'angebotGruss', l: 'Angebot hat nach den Schlusstexten den Gruß mit Unterschrift und Stempel', t: 'janein', d: 'ja', h: 'Text und Abwählen: Schlusstexte im Angebot bzw. Einstellungen › Textbausteine.' },
+      { k: 'angebotAuftragsfeld', l: 'Angebot hat am Ende ein Feld, in dem der Kunde unterschreibt (Auftragserteilung)', t: 'janein', d: 'ja', h: 'Text und Abwählen: Schlusstexte im Angebot bzw. Einstellungen › Textbausteine.' },
       { k: 'abEinleitung', l: 'Auftragsbestätigung: Text vor den Positionen', t: 'text', d: 'vielen Dank für Ihren Auftrag. Hiermit bestätigen wir Ihnen die folgenden Leistungen gemäß unserem Angebot Nr. {nr}:', h: 'Platzhalter: {nr} Angebotsnummer, {kunde} Kunde, {datum} heute.' },
       { k: 'abSchluss', l: 'Auftragsbestätigung: Satz vor dem Gruß', t: 'zeile', d: 'Wir freuen uns auf die Zusammenarbeit.' },
       { k: 'nachfassenTage', l: 'Hinweis „Nachfassen“ nach wie vielen Tagen?', t: 'zahl', d: 7 },
@@ -433,7 +437,7 @@ window.Vorgaben = (() => {
   }
 
   // ---------- Preisliste & Angebot: Aufschläge, Texte, Firmendaten, Positionen ----------
-  const PL_ZAHLEN = [['aufLohn', 'Aufschlag auf Lohn (Subunternehmer) in %', true], ['aufMat', 'Aufschlag auf Material in %', true], ['wagnis', 'Wagnis und Gewinn in %', true], ['mwst', 'Mehrwertsteuer in %', true], ['spanne', 'Spanne der Preisrichtung vor Ort ± %', true], ['gueltig', 'Angebot gültig (Tage)', false]];
+  const PL_ZAHLEN = [['aufLohn', 'Aufschlag auf Lohn (Subunternehmer) in %', true], ['aufMat', 'Aufschlag auf Material in %', true], ['wagnis', 'Wagnis und Gewinn in %', true], ['mwst', 'Mehrwertsteuer in %', true], ['spanne', 'Spanne der Preisrichtung vor Ort ± %', true]];
   // Die Textfelder vor und nach den Positionen haben seit Version 75 eine eigene Seite (Angebot._intern.texteEinstellungen).
   // Seit Version 100 sind auch Schlusssatz (Gruß) und Auftragserteilung Textfelder dort (feste Bausteine am Schluss).
   const PL_TEXTE = [];
@@ -447,13 +451,13 @@ window.Vorgaben = (() => {
       <div class="card kform vg">${PL_ZAHLEN.map(([k, l, pr]) => `<label>${esc(l)}</label><input type="text" inputmode="decimal" data-ple="${k}" data-pr="${pr ? 1 : 0}" value="${esc(String(pr ? Math.round((E[k] || 0) * 1000) / 10 : E[k] ?? '').replace('.', ','))}">`).join('')}
         <p class="hint" style="margin:6px 0 0">Gilt für alle neuen Berechnungen. Im einzelnen Angebot kannst du unter „Nachkalkulation“ abweichen.</p></div>
       <div class="sec-h"><h2>Texte im Angebot</h2></div>
-      <div class="docs" style="margin-bottom:10px"><button class="doc" id="plTexte"><span class="d-ico navy">${icon('edit')}</span><span class="d-t"><b>Textfelder vor und nach den Positionen</b><span>${(window.Angebot._intern.bausteine() || []).length} Textfelder, z. B. ${esc((window.Angebot._intern.bausteine() || []).map((b) => b.titel).filter(Boolean).slice(0, 3).join(', '))}</span></span>${icon('chevron', 'pc-chev')}</button></div>
+      <div class="docs" style="margin-bottom:10px"><button class="doc" id="plTexte"><span class="d-ico navy">${icon('edit')}</span><span class="d-t"><b>Textbausteine (eigene Seite)</b><span>${(window.Angebot._intern.bausteine() || []).length} Textfelder, z. B. ${esc((window.Angebot._intern.bausteine() || []).map((b) => b.titel).filter(Boolean).slice(0, 3).join(', '))}</span></span>${icon('chevron', 'pc-chev')}</button></div>
       `;
     $('#plTexte', box).onclick = () => { const zur = { y: window.scrollY, h: $('#title').textContent }; window.Angebot._intern.texteEinstellungen(() => { einstellungSeite(window.__plSeite || 'kalkulation'); setTimeout(() => window.scrollTo(0, zur.y), 50); }); };
     $$('[data-ple]', box).forEach((el) => (el.onchange = async () => { const v = parseFloat(el.value.replace(',', '.')); if (!Number.isFinite(v)) return toast('Bitte eine Zahl eintragen.'); E[el.dataset.ple] = el.dataset.pr === '1' ? v / 100 : v; await sichern(); }));
     $$('[data-plt]', box).forEach((el) => (el.onchange = async () => { const k = el.dataset.plt; E[k] = k === 'hinweise' ? el.value.split('\n').map((x) => x.trim()).filter(Boolean) : el.value.trim(); await sichern(); }));
   }
-  /** Firmendaten, die auf Angeboten, Rechnungen und Protokollen stehen (Teil der Preisliste). */
+  /** Firmendaten, die auf Angeboten, Rechnungen und Protokollen stehen (seit P7 eigene Einstellung state.settings.firma). */
   async function firmaKarte(box) {
     const PL = await window.Angebot._intern.preisliste();
     const E = PL.einstellungen;
@@ -464,7 +468,7 @@ window.Vorgaben = (() => {
     $$('[data-plf]', box).forEach((el) => (el.onchange = async () => {
       let v = el.value.trim();
       if (el.dataset.plf === 'iban') { v = v.replace(/\s+/g, '').toUpperCase(); if (v && window.QR && !QR.ibanOk(v)) return toast('Die IBAN stimmt nicht (Prüfziffer). Bitte noch einmal prüfen.', 4500); }
-      E[el.dataset.plf] = v; await kvSet('preisliste', PL); toast('Gespeichert');
+      await window.Angebot._intern.firmaSetzen(el.dataset.plf, v); toast('Gespeichert');
     }));
   }
   async function preisliste(filter) {

@@ -11,7 +11,8 @@ const EINST = [
   ['partnerEinst', 'Partner', 'wrench', 'brass', 'Bereiche', 'Qualitätseinstufung, Gewerke für Eingangsrechnungen'],
   ['projektEinst', 'Projekte', 'home', 'grey', 'Bereiche', 'Projektnummer, Gesprächsarten, Nachfassen im Kalender, Baufortschritt'],
   ['preisliste', 'Preisliste', 'euro', 'navy', 'Angebote', 'Jede Position: Lohn, Material, eigener Aufschlag, neue Positionen'],
-  ['kalkulation', 'Aufschläge & Angebotstexte', 'euro', 'brass', 'Angebote', 'Aufschläge auf Lohn und Material, Wagnis, MwSt., Gültigkeit, Textfelder vor und nach den Positionen'],
+  ['textbausteine', 'Textbausteine', 'edit', 'navy', 'Angebote', 'Alle Texte im Angebot: Einleitung, Nicht enthalten, Preisbindung, Zahlung, Gewährleistung, Gruß, Auftragserteilung; gilt für Privat, Firma, WEG'],
+  ['kalkulation', 'Aufschläge', 'euro', 'brass', 'Angebote', 'Aufschläge auf Lohn und Material, Wagnis, MwSt., Preisrichtung'],
   ['pakete', 'Pakete & Excel-Import', 'clipboard', 'grey', 'Angebote', 'Was in Einfach, Komfort, Exklusiv gehört, Excel-Angebotstool laden'],
   ['moodboards', 'Standard-Moodboards', 'palette', 'brass', 'Angebote', 'Bilder und Produkte je Raumtyp und Paket'],
   ['rechnungen', 'Rechnungen & Mahnungen', 'file', 'navy', 'Rechnungen', 'Zahlungsziel, Abschläge (30/40/30), Mahnfrist, alle Rechnungs- und Mahntexte, Begleittexte'],
@@ -121,6 +122,7 @@ async function einstellungSeite(k) {
   if (k === 'einrichten') { viewEinstellungen(); return window.Einrichten?.oeffnen({ alle: true }); }
   if (k === 'moodboards') { state.editPkg = null; return viewPakete(); }
   if (k === 'preisliste') return Vorgaben.preisliste('');
+  if (k === 'textbausteine') return window.Angebot._intern.texteEinstellungen(() => { viewEinstellungen(); window.scrollTo(0, 0); });
   const S = state.settings;
   if (EINST_UNTER[k]) {
     const [t, eltern] = EINST_UNTER[k];
