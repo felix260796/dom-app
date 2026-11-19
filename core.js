@@ -560,14 +560,14 @@ function packagesFor(rt, w = state.wohnung) {
   const own = w?.boards?.[rt];
   const list = Array.isArray(own) && own.length ? own : (state.boards[rt] ??= defaultPackagesFor(rt));
   for (const p of list) { p.images ??= []; p.products ??= []; p.fields ??= {}; }
-  return list;
+  return pkgUmbenennen(list);
 }
 /** Moodboard eines Raums: eigenes Raum-Moodboard, sonst das des Projekts, sonst das allgemeine. */
 function roomPackages(r) {
   const own = r?.boards;
   if (!Array.isArray(own) || !own.length || r.boardsType !== r.roomType) return packagesFor(r.roomType);
   for (const p of own) { p.images ??= []; p.products ??= []; p.fields ??= {}; }
-  return own;
+  return pkgUmbenennen(own);
 }
 /** Alte Bad-Pakete: Feld "licht" hieß dort "Spiegel & Licht" und heißt jetzt "spiegel". */
 function migrateBathPackage(p) {

@@ -10,7 +10,7 @@ window.Partner = (() => {
   const key = (id) => 'partner:' + id;
   const ARTEN = [['sub', 'Subunternehmer'], ['lief', 'Lieferant'], ['aussen', 'Außendienst'], ['sonst', 'Sonstige']];
   // Qualitätseinstufung der Arbeit (Mehrfachauswahl, Stufen in Einstellungen › Partner)
-  const STUFEN = () => vorgabe('partnerStufen') || ['Basic', 'Standard', 'Premium'];
+  const STUFEN = () => SubProfil.STUFEN(); // Bronze, Silber, Gold (früher Basic, Standard, Premium)
   const MAX_MB = 15;
 
   const norm = (p) => {
@@ -21,7 +21,7 @@ window.Partner = (() => {
     p.dokumente = (Array.isArray(p.dokumente) ? p.dokumente : []).filter(Boolean);
     // früher eine Stufe (basic/standard/premium), jetzt mehrere Namen
     if (!Array.isArray(p.stufen)) p.stufen = p.stufe ? [p.stufe.charAt(0).toUpperCase() + p.stufe.slice(1)] : [];
-    return p;
+    return SubProfil.norm(p); // Gewerke mit Stufen, Preise je Stufe, Konditionen, Nachweise (v114)
   };
   async function laden() {
     const d = await db();
@@ -29,6 +29,7 @@ window.Partner = (() => {
       const q = d.transaction('kv').objectStore('kv').getAll(IDBKeyRange.bound('partner:', 'partner:￿'));
       q.onsuccess = () => res(q.result); q.onerror = () => rej(q.error);
     });
+    await SubProfil.init(); // Gewerke unserer Preisliste (Preisdatum je Gewerk)
     const offen = state.partner, tippt = /INPUT|TEXTAREA|SELECT/.test(document.activeElement?.tagName || '');
     alle.clear();
     for (const p of list) if (p?.id) alle.set(p.id, norm(p));
@@ -42,14 +43,16 @@ window.Partner = (() => {
   const liste = () => [...alle.values()].sort((a, b) => (a.firma || a.inhaber || '~').localeCompare(b.firma || b.inhaber || '~', 'de'));
   const titel = (p) => p.firma.trim() || p.inhaber.trim();
   const initialen = (p) => (titel(p).split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0]).join('') || '?').toUpperCase();
-  async function speichern(p) { delete p.isNew; p.updated = Date.now(); alle.set(p.id, p); await kvSet(key(p.id), p); }
+  async function speichern(p) { if (p.angelegtVon === undefined && Date.now() - (+p.created || 0) < 36e5) p.angelegtVon = window.Kalender?.wer() || ''; delete p.isNew; SubProfil.stempeln(p); p.updated = Date.now(); alle.set(p.id, p); await kvSet(key(p.id), p); }
   /** Für den Kalender: [{ datum, titel, sub, partnerId }] */
   const geburtstage = () => liste().flatMap((p) => p.geburtstage.filter((g) => g.datum).map((g) => ({ datum: g.datum, wer: g.name || 'ohne Namen', gebArt: g.art, titel: `Geburtstag ${g.name || 'ohne Namen'}`, sub: [g.bez, titel(p)].filter(Boolean).join(' · '), partnerId: p.id })));
 
   async function waehlen() {
-    const v = await sheet('Welcher Subunternehmer?', liste().map((p) => ({ label: titel(p) || 'Ohne Namen', sub: [p.gewerk, p.inhaber].filter(Boolean).join(' · '), icon: `<span class="av sm">${esc(initialen(p))}</span>`, value: p.id })), { text: 'Neu, z. B. Fliesen Kaya GmbH' });
+    const v = await sheet('Welcher Subunternehmer?', liste().map((p) => ({ label: titel(p) || 'Ohne Namen', sub: [window.Sperre?.ist(p) && `Gesperrt${p.sperre.grund ? ': ' + p.sperre.grund : ''}`, p.gewerk, p.inhaber].filter(Boolean).join(' · '), icon: `<span class="av sm">${esc(initialen(p))}</span>`, value: p.id })), { text: 'Neu, z. B. Fliesen Kaya GmbH' });
     if (!v) return null;
     if (v.text) { const p = norm({ id: uid(), kind: 'partner', created: Date.now(), firma: v.text }); await speichern(p); return p.id; }
+    // Gesperrte Subs nur mit Begründung (einmalige Ausnahme) oder nach dem Entsperren
+    if (window.Sperre && !(await Sperre.pruefen(byId(v), 'Als Subunternehmer gewählt', speichern))) return null;
     return v;
   }
 
@@ -76,12 +79,12 @@ window.Partner = (() => {
         return window.Tabelle.liste(el, { id: 'partner', oeffnen: (id) => { detail(byId(id)); window.scrollTo(0, 0); },
           spalten: [{ k: 'firma', t: 'Firma' }, { k: 'art', t: 'Art', b: 130 }, { k: 'gewerk', t: 'Gewerk' }, { k: 'inh', t: 'Ansprechpartner' }, { k: 'tel', t: 'Telefon', b: 170 }, { k: 'mail', t: 'E-Mail' }, { k: 'pf', t: 'Nächster Kontakt', b: 190 }],
           zeilen: shown.map((p) => { const g = p.geburtstage.map((x) => ({ x, n: Kontakt.bisTag(x.datum) })).filter((y) => y.n !== null && y.n <= 14).sort((a, b) => a.n - b.n)[0];
-            return { id: p.id, werte: { firma: { text: titel(p) || 'Ohne Namen', html: `<b>${esc(titel(p) || 'Ohne Namen')}</b>${g ? ` <span class="geb">${esc(g.x.name || 'Geburtstag')} ${Kontakt.tageText(g.n)}</span>` : ''}` },
+            return { id: p.id, klasse: window.Sperre?.ist(p) ? 'gesperrt' : '', werte: { firma: { text: titel(p) || 'Ohne Namen', html: `<b>${esc(titel(p) || 'Ohne Namen')}</b>${g ? ` <span class="geb">${esc(g.x.name || 'Geburtstag')} ${Kontakt.tageText(g.n)}</span>` : ''}` },
               art: ARTEN.find((a) => a[0] === p.art)[1], gewerk: p.gewerk, inh: p.inhaber, tel: p.telefon, mail: p.email, pf: window.Pflege ? Pflege.zelle(p) : '' } }; }) });
       }
       el.innerHTML = shown.map((p) => {
         const g = p.geburtstage.map((x) => ({ x, n: Kontakt.bisTag(x.datum) })).filter((y) => y.n !== null && y.n <= 14).sort((a, b) => a.n - b.n)[0];
-        return `<button class="pcard kcard" data-p="${p.id}"><span class="av">${esc(initialen(p))}</span>
+        return `<button class="pcard kcard${window.Sperre?.ist(p) ? ' gesperrt' : ''}" data-p="${p.id}"><span class="av">${esc(initialen(p))}</span>
           <span class="pc-t"><b>${esc(titel(p) || 'Ohne Namen')}</b><span class="muted">${esc([p.gewerk, p.inhaber].filter(Boolean).join(' · ') || ARTEN.find((a) => a[0] === p.art)[1])}</span>
             <span class="pc-meta">${esc(ARTEN.find((a) => a[0] === p.art)[1])}${p.stufen.length ? ' · ' + esc(p.stufen.join(', ')) : ''}${p.dokumente.length ? ` · ${p.dokumente.length} ${p.dokumente.length === 1 ? 'Dokument' : 'Dokumente'}` : ''}${g ? ` · <span class="geb">${esc(g.x.name || 'Geburtstag')} ${Kontakt.tageText(g.n)}</span>` : ''}</span></span>
           ${icon('chevron', 'pc-chev')}</button>`;
@@ -100,12 +103,12 @@ window.Partner = (() => {
     state.partner = p;
     const back = () => { state.partner = null; listeView(); window.scrollTo(0, 0); };
     header(titel(p) || 'Neuer Partner', p.gewerk || (p.isNew ? 'Kontaktdaten eintragen' : ''), { label: 'Partner', fn: back });
-    main().innerHTML = `
+    main().innerHTML = `${window.Sperre?.banner(p) || ''}
       <div class="kd-actions" id="pAct"></div>
       <div class="card kform">
         <div class="seg2 full" id="pArt">${ARTEN.map(([id, n]) => `<button type="button" data-art="${id}" class="${p.art === id ? 'on' : ''}">${n}</button>`).join('')}</div>
         <label>Firma</label><input type="text" id="pFirma" value="${esc(p.firma)}" autocomplete="off" placeholder="z. B. Fliesen Kaya GmbH">
-        <label>Gewerk bzw. Sortiment</label><input type="text" id="pGewerk" value="${esc(p.gewerk)}" autocomplete="off" placeholder="z. B. Fliesen, Sanitär, Elektro">
+        ${p.art === 'lief' ? `<label>Sortiment</label><input type="text" id="pGewerk" value="${esc(p.gewerk)}" autocomplete="off" placeholder="z. B. Fliesen, Sanitär, Holz">` : ''}
         <label>Inhaber bzw. Ansprechpartner</label><input type="text" id="pInhaber" value="${esc(p.inhaber)}" autocomplete="off" placeholder="z. B. Mehmet Kaya">
         ${Kontakt.mehrLabel('Telefon', 'tel', p.telArt)}${Kontakt.telInput('pTel', p.telefon)}
         <div id="pTelMehr"></div>
@@ -114,16 +117,19 @@ window.Partner = (() => {
         <label>Anschrift</label><div class="adr"><input type="text" id="pAdr" value="${esc(p.anschrift)}" autocomplete="off" placeholder="Straße Nr., der Ort wird ergänzt"></div>
         <label>Webseite</label><input type="url" id="pWeb" value="${esc(p.web)}" autocomplete="off" inputmode="url" placeholder="www.…">
         <div id="pLiefBox" ${p.art === 'lief' ? '' : 'hidden'}><label>Unsere Kundennummer bei dieser Firma</label><input type="text" id="pKdnr" value="${esc(p.kdnr)}" autocomplete="off" placeholder="z. B. 204711"></div>
-        <label>Qualitätseinstufung der Arbeit <span class="muted">(mehrere möglich)</span></label><div class="chips" id="pStufe">${[...new Set([...STUFEN(), ...p.stufen])].map((n) => `<button type="button" class="qchip ${p.stufen.includes(n) ? 'on' : ''}" data-stufe="${esc(n)}">${icon('check')}${esc(n)}</button>`).join('')}</div>
+        ${p.art === 'lief' ? '' : '<div id="pGewerke"></div>'}
       </div>
       <div id="pPflege"></div>
 
+      <div id="pSterne"></div>
       <div class="sec-h"><h2>Konditionen und Verträge</h2></div>
-      <div class="card kform">
-        <label style="margin-top:0">Verhandelte Konditionen</label><textarea id="pKond" rows="4" placeholder="z. B. 8 % auf Listenpreis, Stundensatz 58 €, Zahlungsziel 14 Tage, 2 % Skonto">${esc(p.konditionen)}</textarea>
+      <div class="card kform" id="pKondBox">
+        ${SubProfil.konditionenHtml(p)}
+        <label>Weitere Konditionen</label><textarea id="pKond" rows="4" placeholder="z. B. 8 % auf Listenpreis, Stundensatz 58 €, Zahlungsziel 14 Tage, 2 % Skonto">${esc(p.konditionen)}</textarea>
         <div class="dlist" id="pDocs"></div>
         <button type="button" class="add-room" id="pDocAdd" style="margin-top:10px">${icon('upload')} Vertrag oder Dokument ablegen</button>
         <p class="hint" style="margin-bottom:0">PDF oder Foto, z. B. Rahmenvertrag, Preisliste, Versicherungsnachweis.</p>
+        ${p.art === 'lief' ? '' : '<div id="pNachweise"></div>'}
       </div>
 
       <div class="sec-h"><h2>Geburtstage und Persönliches</h2></div>
@@ -133,7 +139,9 @@ window.Partner = (() => {
         <label>Notizen</label><textarea id="pNotiz" placeholder="z. B. Sohn Emre spielt Fußball, mag Rotwein, zuverlässig bei Kleinaufträgen">${esc(p.notiz)}</textarea>
       </div>
       ${p.isNew ? '' : '<div id="pBelege"></div>'}
+      ${p.isNew ? '' : '<div id="pSperre"></div>'}
       ${p.isNew ? '' : `<button class="link-danger" id="pDel">${icon('trash')} Löschen</button>`}`;
+    window.Sperre?.abschnitt($('#pSperre'), p, (x) => speichern(x), () => { const y = window.scrollY; detail(p); window.scrollTo(0, y); });
 
     const persist = debounce(() => speichern(p), 400);
     const actions = () => {
@@ -142,13 +150,18 @@ window.Partner = (() => {
     };
     actions();
     const felder = { pFirma: 'firma', pGewerk: 'gewerk', pInhaber: 'inhaber', pMail: 'email', pAdr: 'anschrift', pWeb: 'web', pKond: 'konditionen', pNotiz: 'notiz', pKdnr: 'kdnr' };
-    for (const [id, f] of Object.entries(felder)) $('#' + id).oninput = (e) => {
+    for (const [id, f] of Object.entries(felder)) if ($('#' + id)) $('#' + id).oninput = (e) => {
       p[f] = e.target.value; persist(); actions();
       $('#title').textContent = titel(p) || 'Neuer Subunternehmer';
       const s = $('#subtitle'); s.textContent = p.gewerk; s.hidden = !p.gewerk;
     };
-    $$('#pArt [data-art]').forEach((b) => (b.onclick = () => { p.art = b.dataset.art; persist(); $$('#pArt [data-art]').forEach((x) => x.classList.toggle('on', x === b)); $('#pLiefBox').hidden = p.art !== 'lief'; }));
-    $$('#pStufe [data-stufe]').forEach((b) => (b.onclick = () => { const n = b.dataset.stufe; p.stufen = p.stufen.includes(n) ? p.stufen.filter((x) => x !== n) : [...p.stufen, n]; persist(); b.classList.toggle('on', p.stufen.includes(n)); }));
+    $$('#pArt [data-art]').forEach((b) => (b.onclick = async () => { const war = p.art; p.art = b.dataset.art; if ((war === 'lief') !== (p.art === 'lief')) { if (!p.isNew) await speichern(p); const y = window.scrollY; detail(p); window.scrollTo(0, y); return; } persist(); $$('#pArt [data-art]').forEach((x) => x.classList.toggle('on', x === b)); $('#pLiefBox').hidden = p.art !== 'lief'; }));
+    // Sub-Profil: Gewerke mit Stufen, Konditionen, Nachweise, Sterne (subprofil.js)
+    const gewZeichnen = () => SubProfil.gewerkeAbschnitt($('#pGewerke'), p, () => { persist(); const s = $('#subtitle'); if (s) { s.textContent = p.gewerk; s.hidden = !p.gewerk; } }, gewZeichnen);
+    gewZeichnen();
+    SubProfil.konditionenBinden($('#pKondBox'), p, persist);
+    SubProfil.nachweiseAbschnitt($('#pNachweise'), p, persist);
+    SubProfil.bewertungAbschnitt($('#pSterne'), p);
     Kontakt.telBinden($('#pTel'), (v) => { p.telefon = v; persist(); actions(); });
     if ($('#pRech')) $('#pRech').onclick = () => { const z = $('#pBelege'); if (z) window.scrollTo({ top: z.getBoundingClientRect().top + window.scrollY - 110, behavior: 'smooth' }); };
     Kontakt.mehrBinden($('#pTelMehr'), $('[data-mehr="tel"]'), p.weitere, 'tel', () => { persist(); actions(); }, { haupt: { get: () => p.telArt, set: (v) => (p.telArt = v) }, hauptFeld: $('#pTel') });
@@ -241,7 +254,7 @@ window.Partner = (() => {
   // ---------- Preislisten der Partner (Menü): Übersicht nach Gewerk, je Partner seine Liste ----------
   /** Gewerke eines Partners aus dem Feld „Gewerk“ (z. B. „Fliesen, Sanitär“ = zwei Gewerke). */
   const gewerkeVon = (p) => String(p.gewerk || '').split(/\s*[,/&+;]\s*|\s+und\s+/i).map((s) => s.trim()).filter(Boolean);
-  const anzahlPreise = (p) => Object.keys(p.preise || {}).length + (p.eigenePreise || []).length;
+  const anzahlPreise = (p) => SubProfil.listen(p).reduce((s, x) => s + x.n, 0);
   async function preislistenView() {
     state.partner = null;
     if (!alle.size) await laden();
@@ -270,13 +283,15 @@ window.Partner = (() => {
     const eur = (x) => (+x || 0).toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' €';
     header(titel(p) || 'Partner', `Preisliste · ${p.gewerk || 'ohne Gewerk'}`, { label: 'Preislisten', fn: () => { preislistenView(); window.scrollTo(0, 0); } });
     const zeilen = Object.entries(p.preise || {}).map(([nr, preis]) => ({ nr, it: pos(nr), preis })).filter((z) => z.it).sort((a, b) => a.nr.localeCompare(b.nr));
-    main().innerHTML = `${p.stufen.length ? `<p class="hint" style="margin-top:0">Qualität der Arbeit: <b>${esc(p.stufen.join(', '))}</b></p>` : ''}
+    const sl = SubProfil.stufeLeiste(p, () => preisView(p));
+    main().innerHTML = `${sl.html}
       ${p.konditionen ? `<div class="card"><b>Konditionen</b><p class="muted" style="white-space:pre-line;margin:6px 0 0">${esc(p.konditionen)}</p></div>` : ''}
       <div class="card">${zeilen.length || (p.eigenePreise || []).length ? `
         ${zeilen.map((z) => `<div class="prow-sub"><span><b>${esc(z.it.text)}</b><span class="muted">${esc(z.nr)} · unser Angebotspreis ${eur(A?.ep(z.it))}/${esc(z.it.einheit)}</span></span><b>${eur(z.preis)}</b><span class="muted">/${esc(z.it.einheit)}</span></div>`).join('')}
         ${(p.eigenePreise || []).map((x) => `<div class="prow-sub"><span><b>${esc(x.text || 'Eigene Position')}</b><span class="muted">eigene Position</span></span><b>${eur(x.preis)}</b><span class="muted">/${esc(x.einheit || 'Einh.')}</span></div>`).join('')}`
         : '<p class="hint" style="margin:0">Für diese Firma sind noch keine Preise hinterlegt.</p>'}</div>
       <button class="btn secondary block" id="ppEdit">${icon('edit')} Preise bearbeiten (beim Partner)</button>`;
+    sl.binden(main());
     $('#ppEdit').onclick = async () => { switchTab('partner', { partner: p }); for (let i = 0; i < 30; i++) { const h = $('#pPreisH'); if (h) { window.scrollTo({ top: h.getBoundingClientRect().top + window.scrollY - 110 }); break; } await new Promise((r) => setTimeout(r, 100)); } };
   }
 

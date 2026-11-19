@@ -137,6 +137,10 @@ button.pg { border: 0; background: none; text-align: right; font: inherit; color
 .tx-k { display: flex; gap: 4px; align-items: center; margin-bottom: 8px; }
 .tx-k input { flex: 1; min-width: 0; font-weight: 650; }
 .tx-k .icon-btn { width: 38px; flex: 0 0 38px; color: var(--muted); }
+.tx-gilt { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 8px; font-size: 13px; color: var(--muted); }
+.tx-gilt .qchip { opacity: .55; }
+.tx-gilt .qchip.on { opacity: 1; border-color: var(--navy); color: var(--navy); font-weight: 650; }
+.tx-gilt select { width: auto; flex: 1; min-width: 150px; }
 .tx textarea { width: 100%; }
 .tx select { margin-top: 8px; font-size: 14px; color: var(--muted); }
 
@@ -291,3 +295,19 @@ tr.xt-titel.ed:hover .xt-tdel, .xt-tdel:focus { opacity: 1; }
 .xtab tr.xt-titelneu input { color: var(--navy); font-weight: 600; }
 .xtab tr.xt-titelneu svg.i { width: 14px; height: 14px; color: var(--brass); }
 @media (max-width: 1250px) { .ape { grid-template-columns: minmax(0, 1fr) 260px; } .ape-kopf { grid-template-columns: repeat(2, minmax(0, 1fr)); } .ape-betr { grid-column: auto; } }
+
+/* ---------- Positionsarten, Langtext, Notiz (v120) ---------- */
+.posrow .pt { background: none; border: 0; padding: 0; text-align: left; font: inherit; color: inherit; cursor: pointer; display: flex; flex-direction: column; min-width: 0; }
+.posrow.nz .pg { color: var(--muted); }
+.pos-warn { color: var(--danger); font-size: 12px; }
+.xtab tr.nz td input, .xtab tr.nz .xt-gp { color: var(--muted); font-style: italic; }
+.xt-m.b, .xt-m.a, .xt-m.k { background: var(--soft); color: var(--muted); }
+.xt-d { border: 0; background: none; color: var(--muted); cursor: pointer; padding: 0 2px; font: inherit; line-height: 1; }
+.xt-d.hat { color: var(--brass); font-weight: 700; }
+.xtab input.warn { color: var(--danger); }
+.ape-subs .warn { color: var(--danger); }
+/* ---------- Persönlicher Satz (KI-Vorschlag) in der Einleitung ---------- */
+.ki-satz { border-left: 3px solid var(--brass); }
+.ki-satz .ki-m { display: inline-block; font-size: 11.5px; font-weight: 700; letter-spacing: .03em; text-transform: uppercase; color: var(--brass); }
+.ki-satz .ki-t { margin: 6px 0 10px; font-style: italic; }
+.ki-satz .ki-k { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }

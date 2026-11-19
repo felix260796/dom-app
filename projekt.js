@@ -138,6 +138,7 @@ window.Projekt = (() => {
   async function neuDirekt() {
     const k = await Kunden.waehlen('Projekt für welchen Kunden?');
     if (!k) return;
+    if (window.Sperre && !(await Sperre.pruefen(k, 'Neues Projekt', (x) => Kunden.speichern(x)))) return;
     const oid = await Kunden.objektWaehlen(k, 'Wo wird gebaut?');
     if (oid === null) return;
     const w = neuesProjekt();
@@ -159,7 +160,8 @@ window.Projekt = (() => {
     await save(w);
     return w.id;
   }
-  function neuFuer(k, oid) {
+  async function neuFuer(k, oid) {
+    if (window.Sperre && !(await Sperre.pruefen(k, 'Neues Angebot', (x) => Kunden.speichern(x)))) return;
     const w = neuesProjekt();
     w.isNew = true; w.status = 'besichtigung';
     w.kundeId = k.id; w.objektId = oid || '';
@@ -270,6 +272,7 @@ window.Projekt = (() => {
     $$('[data-jetzt]').forEach((b) => (b.onclick = () => jetztGehen(w, b.dataset.jetzt)));
     if ($('#wBau')) window.Baustelle?.abschnitt($('#wBau'), w, list, $('#wAbn') ? 'bestellungen' : '');
     if ($('#wAbn')) window.Baustelle?.abschnitt($('#wAbn'), w, list, 'abnahme');
+    if ($('#wSterne')) window.SubProfil?.sterneAbschnitt($('#wSterne'), w, () => save(w)); // Sterne je Sub und Projekt
     if ($('#wTodo')) todoFuellen(w);
     if ($('#dAb')) $('#dAb').onclick = () => abMenue(w, list);
     if ($('#wAnspr')) $('#wAnspr').onclick = async () => {
@@ -293,6 +296,7 @@ window.Projekt = (() => {
       if (norm(v) !== norm(w.status)) (w.verlauf ??= []).push({ st: v, t: Date.now() });
       w.status = v;
       if (!w.isNew) { await save(w); await AngebotDaten.standVomVorgang(w); }
+      if (zugesagt(v)) Kunden.dankAuftrag(w); // Empfehlung: zweites „Bei … bedanken“, wenn der Kunde beauftragt
       toast(statusName(v));
       const y = window.scrollY; await view(); window.scrollTo(0, y);
     };
@@ -319,6 +323,11 @@ window.Projekt = (() => {
       w.auftrag = { name: f.name || 'Angebot unterschrieben', typ, t: Date.now() };
       if (!w.isNew) await save(w);
       toast('Unterschriebenes Angebot abgelegt'); const y = window.scrollY; await view(); window.scrollTo(0, y);
+    };
+    if ($('#wVorzeitig')) $('#wVorzeitig').onchange = async (e) => {
+      if (e.target.checked) w.vorzeitig = { t: Date.now(), wer: window.Kalender?.wer?.() || '' }; else delete w.vorzeitig;
+      if (!w.isNew) await save(w);
+      const y = window.scrollY; await view(); window.scrollTo(0, y);
     };
     if ($('#wBaustart')) $('#wBaustart').onchange = async (e) => {
       w.baustart = e.target.value;
@@ -354,6 +363,25 @@ window.Projekt = (() => {
     };
     window.Gespraech?.bind(w, list);
     window.VorOrt?.bind(w, list, () => view());
+    window.Besuch?.bind(w, async () => { const y = window.scrollY; await view(); window.scrollTo(0, y); });
+    $$('[data-pruefen]').forEach((b) => (b.onclick = async () => { if (w.isNew) { delete w.isNew; await save(w); } window.Pruefen?.view(w.id); window.scrollTo(0, 0); }));
+    // Bereichsleiste vor Ort
+    const neuZeichnen = async () => { const y = window.scrollY; await view(); window.scrollTo(0, y); };
+    $$('[data-bereich]').forEach((b) => (b.onclick = () => { bereichWahl.set(w.id, b.dataset.bereich); neuZeichnen(); }));
+    if ($('[data-bereichneu]')) $('[data-bereichneu]').onclick = async () => {
+      const v = await sheet('Neuer Bereich', ROOM_TYPES.filter((r) => r.id !== 'sonstiges').map((r) => ({ label: r.name, icon: roomIcon(r.id), value: r.id })), { text: 'Eigener Name, z. B. Reinigung, Fenster, Garten', suche: '' });
+      if (!v) return;
+      const da = await raeume(w), eigen = typeof v === 'object' ? String(v.text || '').trim() : '';
+      if (typeof v === 'object' && !eigen) return;
+      const rt = eigen ? roomTypeIdFromName(eigen) : v;
+      const r = await raumAnlegen(w, rt, eigen ? { room: titelFrei(da, eigen), ...(rt === 'sonstiges' ? { nurAngebot: true } : {}) } : {});
+      bereichWahl.set(w.id, r.id); neuZeichnen();
+    };
+    if ($('#beMasseGo')) $('#beMasseGo').onclick = async () => {
+      const t = $('#beMasse').value.trim(); if (!t) return $('#beMasse').focus();
+      if (w.isNew) { delete w.isNew; await save(w); }
+      if (await masseEintragen(w, t)) neuZeichnen();
+    };
     window.VorOrt?.bueroBind(w, list);
     if ($('#wVis')) $('#wVis').ontoggle = (e) => { e.target.open ? visOffen.add(w.id) : visOffen.delete(w.id); };
     // Angebotsablauf: weitere Knöpfe
@@ -363,7 +391,8 @@ window.Projekt = (() => {
     if ($('#wFotos')) $('#wFotos').onclick = async () => {
       if (!k) return toast('Bitte zuerst einen Kunden zuordnen.');
       if (w.isNew) { delete w.isNew; await save(w); }
-      const n = await Bilder.fotosMachen({ kundeId: k.id, objektId: w.objektId, projektId: w.id });
+      const br = bereichVon(w, list);
+      const n = await Bilder.fotosMachen({ kundeId: k.id, objektId: w.objektId, projektId: w.id, ...(br ? { ordnerName: vorgabeText('ordnerBereich', { bereich: raumTitel(br), datum: new Date().toLocaleDateString('de-DE') }) || raumTitel(br), bereichId: br.id } : {}) });
       if (n) { const y = window.scrollY; await view(); window.scrollTo(0, y); }
     };
     // Was wird angeboten: nach links wischen zeigt „Löschen“
@@ -562,7 +591,8 @@ window.Projekt = (() => {
         <button class="notice plain" data-bilder>${icon('camera')}<span><b>Fotos und Dokumente</b> · ${nFotos ? `${nFotos} ${nFotos === 1 ? 'Bild' : 'Bilder'}` : 'Baustelle fotografieren'}, gleicher Ordner wie beim Kunden</span>${icon('chevron')}</button>` : ''}
       <div id="wNt"></div>
       <div class="sec-h" style="margin-top:18px"><h2>Abnahme</h2></div>
-      <div id="wAbn"></div>`;
+      <div id="wAbn"></div>
+      <div id="wSterne"></div>`;
     const geld = `<div id="wRech"></div><div id="wKosten"></div>`;
     return `${kopf}
       ${tab === 'uebersicht' ? uebersicht : tab === 'baustelle' ? baustelle : geld}
@@ -629,6 +659,48 @@ window.Projekt = (() => {
   /** Letztes Schnellangebot des Kunden (z. B. am Telefon genannt). */
   const schnellVon = (k) => (Array.isArray(k?.schnell) && k.schnell.length ? k.schnell[k.schnell.length - 1] : null);
   const visOffen = new Set(); // Visualisieren aufgeklappt (je Projekt, solange die App offen ist)
+  // Bereichsleiste vor Ort (v118): gewählter Bereich je Vorgang, solange die App offen ist ('' = Allgemein)
+  const bereichWahl = new Map();
+  const bereichVon = (w, list) => { const id = bereichWahl.get(w.id) || ''; return list.find((r) => r.id === id) || null; };
+  /** Maße per Sprache oder Text: „Bad zwei vierzig mal eins achtzig, Höhe zwei fünfzig“ → [{ name, l, b, h }]. KI, ohne Schlüssel einfache Erkennung. */
+  async function masseLesen(text, list) {
+    const n = (x) => { const v = parseFloat(String(x ?? '').replace(',', '.')); return Number.isFinite(v) && v > 0 ? String(Math.round(v * 100) / 100).replace('.', ',') : ''; };
+    if (state.settings.apiKey && typeof geminiText === 'function') {
+      const p = `${vorgabe('promptMasse')}\nExisting areas: ${list.map(raumTitel).join(', ') || 'none'}\n\nText:\n${text}`;
+      const j = JSON.parse(await geminiText([{ text: p }], true, { responseSchema: { type: 'OBJECT', properties: { bereiche: { type: 'ARRAY', items: { type: 'OBJECT', properties: { name: { type: 'STRING' }, laenge: { type: 'NUMBER' }, breite: { type: 'NUMBER' }, hoehe: { type: 'NUMBER' } }, required: ['name'] } } } } }));
+      return (j.bereiche || []).map((x) => ({ name: String(x.name || '').trim(), l: n(x.laenge), b: n(x.breite), h: n(x.hoehe) })).filter((x) => x.name && (x.l || x.b || x.h));
+    }
+    // Ohne KI: „Bad 2,40 x 1,80 Höhe 2,50; Flur 4 mal 1,2“
+    return String(text).split(/[;\n]+|\.\s+/).map((t) => {
+      const m = t.match(/^\s*([^\d]+?)\s+(\d+(?:[.,]\d+)?)\s*(?:m\s*)?(?:x|×|mal)\s*(\d+(?:[.,]\d+)?)(?:.*?(?:höhe|hoch)\s*(\d+(?:[.,]\d+)?))?/i);
+      return m ? { name: m[1].replace(/[,:]$/, '').trim(), l: n(m[2]), b: n(m[3]), h: n(m[4]) } : null;
+    }).filter(Boolean);
+  }
+  async function masseEintragen(w, text) {
+    let list = await raeume(w);
+    let gefunden;
+    try { gefunden = await masseLesen(text, list); } catch (e) { toast('Konnte die Maße nicht lesen: ' + (e.message || e), 5000); return false; }
+    if (!gefunden.length) { toast('Keine Maße erkannt. Beispiel: „Bad 2,40 mal 1,80, Höhe 2,50“', 5000); return false; }
+    const passt = (x) => list.find((r) => raumTitel(r).toLowerCase() === x.name.toLowerCase()) || list.find((r) => { const a = raumTitel(r).toLowerCase(), b = x.name.toLowerCase(); return a.includes(b) || b.includes(a); }) || null;
+    const zeilen = gefunden.map((x) => ({ ...x, r: passt(x) }));
+    const v = await sheet('Maße übernehmen?', [
+      ...zeilen.map((x, i) => ({ label: `${x.r ? raumTitel(x.r) : x.name}: ${[x.l, x.b].filter(Boolean).join(' × ')} m${x.h ? `, Höhe ${x.h} m` : ''}`, sub: x.r ? 'in den vorhandenen Bereich' : 'neuer Bereich', icon: icon('ruler'), value: 'z' + i })),
+      { label: 'Übernehmen', icon: icon('check'), value: 'ok' },
+    ]);
+    if (v !== 'ok') return false;
+    const A = window.Angebot._intern;
+    for (const x of zeilen) {
+      let r = x.r;
+      if (!r) { list = await raeume(w); const rt = roomTypeIdFromName(x.name); r = await raumAnlegen(w, rt, { room: titelFrei(list, x.name.charAt(0).toUpperCase() + x.name.slice(1)) }); }
+      A.init(r);
+      const q = r.aufmass.raeume[0]; q.teile ??= [{ l: '', b: '' }]; q.teile[0] ??= { l: '', b: '' };
+      if (x.l) q.teile[0].l = x.l; if (x.b) q.teile[0].b = x.b; if (x.h) q.h = x.h;
+      r.masse = { l: q.teile[0].l, b: q.teile[0].b, h: q.h, von: 'sprache' };
+      await saveProject(r);
+    }
+    toast(`Maße für ${zeilen.length} ${zeilen.length === 1 ? 'Bereich' : 'Bereiche'} eingetragen`);
+    return true;
+  }
   const raumTitel = (r) => r.room || roomType(r.roomType).name;
   const mitPosVon = (list) => list.filter((r) => r.angebot?.positionen?.length);
   /** Nummer des Angebots, an dem gerade gearbeitet wird (ein Raum: dessen Nummer, mehrere: die des Gesamtangebots). */
@@ -672,9 +744,11 @@ window.Projekt = (() => {
     const versteckt = `<button id="dMappe" hidden></button><button id="dBau" hidden></button><button id="dAngebot" hidden></button>`;
     // Roter Faden am PC: Aufnahme ansehen → „Weiter zum Angebot“ (Rückmeldung Felix 15.11.)
     if (seite === 'vorort') return `${kopf}<div class="ape-weiter"><span>${nVo ? 'Das wurde vor Ort aufgenommen. Daraus entsteht das Angebot.' : 'Noch nichts vor Ort aufgenommen. Das Angebot geht auch ohne.'}</span>
+        <button type="button" class="btn secondary small" data-pruefen>${icon('check')} Aufnahme prüfen${w.pruefung?.geprueft ? ' (geprüft)' : ''}</button>
         <button type="button" class="btn small" data-pcs="angebot">${zu ? 'Zum Angebot' : 'Weiter zum Angebot'} ${icon('chevron')}</button></div><div class="ape-vo">${vorOrtTab(ctx)}</div>${versteckt}<button id="wDel" hidden></button>`;
     if (zu) return `${kopf}<div class="ape ape-zu"><div class="ape-main">${angeboteTab(ctx)}</div></div>${versteckt}`;
     const A = window.Angebot._intern, texte = texteVon(w), anspr = A.ansprechpartner(), E = A.einstellungen();
+    const KX = A.kontextFuer(w, list), passtV = (b) => A.passt(b, KX);
     const K = kopfVon(w, list), erst = K.erst, a = K.a, mitPos = mitPosVon(list), sq = schnellVon(k);
     const proz = (x) => String(Math.round((+x || 0) * 1000) / 10).replace('.', ',');
     const offen = window.VorOrt?.offenListe(w, list) || [];
@@ -690,16 +764,17 @@ window.Projekt = (() => {
               <option value="__neu">Andere Anschrift …</option></select></div>` : ''}
             <div class="ape-f ape-betr"><label for="wTitel">Betreff (Projektname)</label><input type="text" id="wTitel" value="${esc(w.titel || '')}" placeholder="z. B. Badsanierung, Türgriffe tauschen" autocomplete="off"></div>
             <div class="ape-f"><label for="bNr">Angebotsnummer</label><input type="text" id="bNr" value="${esc(K.nr)}" placeholder="kommt beim Speichern" autocomplete="off"${angNr(w) ? ' readonly title="Wird beim Anlegen vergeben: Kunde, Vorgang, Angebot"' : ''}></div>
-            <div class="ape-f"><label for="bAnspr">Ansprechpartner</label><select id="bAnspr">${anspr.map((x) => `<option ${x === (A.einePerson(K.anspr) || anspr[0]) ? 'selected' : ''}>${esc(x)}</option>`).join('')}</select></div>
+            <div class="ape-f"><label for="bAnspr" title="Steht im Angebot als Ansprechpartner und unterschreibt">Verfasser</label><select id="bAnspr">${anspr.map((x) => `<option ${x === (A.einePerson(K.anspr) || anspr[0]) ? 'selected' : ''}>${esc(x)}</option>`).join('')}</select></div>
             <div class="ape-f"><label for="bAnrede">Anrede</label><input type="text" id="bAnrede" value="${esc(K.anrede)}" placeholder="${esc(erst ? A.anredeDefault(erst) : 'Sehr geehrte Damen und Herren,')}" autocomplete="off"></div>
             ${sq ? `<p class="ab-schnell ape-voll">${icon('phone')}<span>Am Telefon genannt: <b>ca. ${eurRund(sq.von)} – ${eurRund(sq.bis)}</b>${sq.text ? ` · ${esc(sq.text)}` : ''}</span></p>` : ''}
           </section>
-          ${window.Bausteine.block({ wo: 'vor', titel: 'Anfangstext', leer: 'Kein Text vor den Positionen', liste: texte })}
+          ${window.Bausteine.block({ wo: 'vor', titel: 'Anfangstext', leer: 'Kein Text vor den Positionen', liste: texte, passt: passtV })}
+          ${kiSatzHtml(w)}
           <div class="ape-h"><h2>Positionen</h2><span class="muted">Titel = Bereich (Bad, Küche, Elektro …). Positionen eintippen oder aus der Preisliste wählen.</span></div>
           <div id="xtAng" class="xt-box"></div>
           ${list.length ? `<div class="xt-raeume"><span>Einzeln bearbeiten (Paket, Partnerangebot übernehmen):</span>${list.map((r) => `<button type="button" class="qchip" data-angraum="${r.id}">${esc(raumTitel(r))}</button>`).join('')}</div>` : ''}
-          ${window.Bausteine.block({ wo: 'nach', titel: 'Schlusstext', leer: 'Kein Text nach den Positionen', liste: texte })}
-          <p class="hint">Ganz am Schluss stehen die Auftragserteilung und „${esc(vorgabeText('textGruss'))}“ mit ${esc(A.einePerson(K.anspr) || anspr[0] || 'Name')}, Unterschrift und Stempel.</p>
+          ${window.Bausteine.block({ wo: 'nach', titel: 'Schlusstext', leer: 'Kein Text nach den Positionen', liste: texte, passt: passtV })}
+          <p class="hint">Am Schluss stehen „${esc(vorgabeText('textGruss'))}“ mit ${esc(A.einePerson(K.anspr) || anspr[0] || 'Name')}, Unterschrift und Stempel, danach die Auftragserteilung für den Kunden.</p>
         </div>
         <aside class="ape-seite">
           <div class="ape-tabs">${[['akt', 'Angebot'], ['bild', 'Bilder'], ['pl', 'Preislisten']].map(([id, n]) => `<button type="button" data-apt="${id}">${n}</button>`).join('')}</div>
@@ -713,11 +788,14 @@ window.Projekt = (() => {
             <p class="hint">${mitPos.length ? '„Ansehen“ speichert das PDF beim Projekt. Nach dem Senden ist das Angebot fest, Ändern geht dann über eine Kopie mit neuer Nummer.' : 'Sobald die erste Position steht, kannst du ansehen und senden.'}</p>
           </div>
           ${offen.length ? `<div class="card wf-offen"><b>Noch offen (${offen.length})</b><ul class="wf-o">${offen.map((o) => `<li>${esc(o.text)}</li>`).join('')}</ul></div>` : ''}
+          ${(w.subAnfragen || []).length ? `<div class="card ape-subs"><b>Bei Subunternehmern angefragt</b><ul class="wf-o">${w.subAnfragen.map((q) => { const p = window.Partner?.byId(q.partnerId); const ueber = q.frist && q.frist < new Date().toISOString().slice(0, 10); return `<li>${esc(p ? Partner.titel(p) : 'Partner')} · ${q.art === 'angebot' ? `Angebot bis ${esc(new Date(q.frist + 'T12:00').toLocaleDateString('de-DE'))}${ueber ? ' <b class="warn">überfällig</b>' : ''}` : 'nur Info'}</li>`; }).join('')}</ul>
+            <p class="hint" style="margin:6px 0 0">Preise dieser Gewerke sind vorläufig, bis das Angebot da ist. Übernehmen über „Partnerangebot übernehmen“ im Bereich.</p></div>` : ''}
           <details class="more card ape-ki" ${list.length ? '' : 'open'}><summary>${icon('sparkle')}<span>Positionen vorschlagen lassen<small>Die KI schlägt aus Notizen, Gespräch und Fotos Positionen vor</small></span>${icon('chevron', 'more-chev')}</summary>
             ${window.VorOrt?.bueroKarte(w, list) || ''}</details>
           ${erst ? `<details class="more card bs"><summary>${icon('sliders')}<span>Aufschläge<small>Nur für dieses Angebot, leer = Standard</small></span>${icon('chevron', 'more-chev')}</summary>
             <div class="row">${[['aufLohn', 'Lohn %'], ['aufMat', 'Material %'], ['wagnis', 'Wagnis %']].map(([n, l]) => `<div><label>${l}</label><input type="text" inputmode="decimal" data-bnk="${n}" value="${a.kalk?.[n] !== undefined && a.kalk?.[n] !== null && a.kalk?.[n] !== '' ? proz(a.kalk[n]) : ''}" placeholder="${proz(E[n])}"></div>`).join('')}</div>
           </details>` : ''}
+          ${skontoKarte(w)}
           ${dokListe(w)}
           <div class="ape-links">
             <button class="link-add" id="wAngUpload">${icon('upload')} Fertiges PDF hochladen (z. B. aus Excel)</button>
@@ -754,6 +832,13 @@ window.Projekt = (() => {
     const zahl = (x) => (+x || 0).toLocaleString('de-DE', { maximumFractionDigits: 2 });
     return `
       ${kundeKarte(w, k)}
+      ${window.Besuch?.leiste(w) || ''}
+      ${k && !gesperrt(w) ? `<div class="sec-h"><h2>Bereiche</h2>${list.length ? `<span class="count">${list.length}</span>` : ''}</div>
+      <div class="chips be-bereiche">${[{ id: '', t: 'Allgemein' }, ...list.map((r) => ({ id: r.id, t: raumTitel(r) }))].map((x) => `<button type="button" class="qchip ${(bereichVon(w, list)?.id || '') === x.id ? 'on' : ''}" data-bereich="${x.id}">${esc(x.t)}</button>`).join('')}<button type="button" class="qchip" data-bereichneu>${icon('plus')} Bereich</button></div>
+      <p class="hint" style="margin:6px 0 0">${bereichVon(w, list) ? `Fotos landen jetzt bei „${esc(raumTitel(bereichVon(w, list)))}“.` : 'Bereich antippen, dann landen die Fotos dort. Ein Bereich kann ein Raum oder ein Thema sein (z. B. Reinigung).'}</p>
+      <details class="more card be-masse"><summary>${icon('ruler')}<span>Maße sagen<small>z. B. „Bad 2,40 mal 1,80, Höhe 2,50“, mit dem Mikrofon der Tastatur</small></span>${icon('chevron', 'more-chev')}</summary>
+        <textarea id="beMasse" rows="2" data-frei placeholder="Bad 2,40 mal 1,80, Höhe 2,50. Flur 4 mal 1,20."></textarea>
+        <button type="button" class="btn small" id="beMasseGo">${icon('check')} Eintragen</button></details>` : ''}
       ${norm(w.status) === 'besichtigung' ? `<button type="button" class="link-add ab-ohne" data-reiter="buero">${icon('edit')} Nicht vor Ort gewesen? Angebot gleich im Büro anlegen</button>` : ''}
 
       <div class="sec-h"><h2>Gespräch aufnehmen</h2></div>
@@ -775,6 +860,9 @@ window.Projekt = (() => {
 
       ${gesperrt(w) ? '' : window.VorOrt?.karte(w, list) || ''}
       ${k ? `<button id="wBilder" hidden></button>` : ''}
+      ${window.Besuch?.verkaufHtml(w) || ''}
+      ${window.Pruefen && !window.Tabelle?.istBuero() && (w.gespraech?.transcript || list.length) ? `<div class="docs" style="margin-top:12px">${punkt('data-pruefen', 'check', w.pruefung?.geprueft ? 'navy' : 'grey', 'Aufnahme prüfen', w.pruefung?.geprueft ? 'Geprüft. Punkte, Maße und Fotos je Bereich, Offenes, An Sub schicken' : 'Punkte je Bereich übernehmen oder verwerfen, Maße, Offenes, An Sub schicken')}</div>` : ''}
+      ${gesperrt(w) || zugesagt(w.status) ? '' : window.Besuch?.abschlussHtml(w) || ''}
 
       <div class="sec-h" style="margin-top:26px"><h2>Zusatz</h2></div>
       <details class="more card vis-zusatz" id="wVis" ${visOffen.has(w.id) ? 'open' : ''}><summary>${icon('sparkle')}<span>Visualisieren<small>${anyResult ? `${list.filter(hasAnyResult).length} von ${list.length} Räumen fertig` : 'So könnte es aussehen. Hat mit dem Angebot nichts zu tun.'}</small></span>${icon('chevron', 'more-chev')}</summary>
@@ -838,6 +926,7 @@ window.Projekt = (() => {
         <button class="btn block" id="wKopie">${icon('edit')} Angebot ändern (Kopie mit neuer Nummer)</button>
         <button class="btn secondary block" data-reiter="angebote" style="margin-top:8px">Zu den Angeboten</button></div>`;
     const A = window.Angebot._intern, mitPos = mitPosVon(list), texte = texteVon(w), anspr = A.ansprechpartner(), E = A.einstellungen();
+    const KX = A.kontextFuer(w, list), passtV = (b) => A.passt(b, KX);
     const K = kopfVon(w, list), erst = K.erst, a = K.a, mehrere = mitPos.length > 1;
     const s = schrittVon(w), i = SCHRITTE.findIndex((x) => x[0] === s);
     const ok = { davor: !!(k && k.privat.trim()), masse: list.length > 0, pos: mitPos.length > 0, danach: mitPos.length > 0, ansicht: !!w.angebotPdf };
@@ -851,11 +940,12 @@ window.Projekt = (() => {
         <div class="sec-h"><h2>So steht es oben im Angebot</h2></div>
         <div class="card kform">
           <div class="row"><div><label style="margin-top:0">Angebotsnummer</label><input type="text" id="bNr" value="${esc(K.nr)}" placeholder="kommt beim Speichern" autocomplete="off"${angNr(w) ? ' readonly title="Wird beim Anlegen vergeben: Kunde, Vorgang, Angebot"' : ''}></div>
-            <div><label style="margin-top:0">Ansprechpartner</label><select id="bAnspr">${anspr.map((x) => `<option ${x === (A.einePerson(K.anspr) || anspr[0]) ? 'selected' : ''}>${esc(x)}</option>`).join('')}</select></div></div>
+            <div><label style="margin-top:0">Verfasser</label><select id="bAnspr">${anspr.map((x) => `<option ${x === (A.einePerson(K.anspr) || anspr[0]) ? 'selected' : ''}>${esc(x)}</option>`).join('')}</select></div></div>
           ${k ? '<p class="hint" style="margin:8px 0 0">Betreff ist der Projektname (oben beim Kunden).</p>' : `<label>Projektname (= Betreff)</label><input type="text" id="wTitel" value="${esc(w.titel || '')}" placeholder="z. B. Badumbau" autocomplete="off">`}
           <label>Anrede</label><input type="text" id="bAnrede" value="${esc(K.anrede)}" placeholder="${esc(erst ? A.anredeDefault(erst) : 'Sehr geehrte Damen und Herren,')}" autocomplete="off">
         </div>
-        ${window.Bausteine.block({ wo: 'vor', titel: 'Anfangstexte', leer: 'Kein Text vor den Positionen', liste: texte })}`,
+        ${window.Bausteine.block({ wo: 'vor', titel: 'Anfangstexte', leer: 'Kein Text vor den Positionen', liste: texte, passt: passtV })}
+        ${kiSatzHtml(w)}`,
       masse: () => `
         <div class="sec-h"><h2>Was wird angeboten?</h2>${list.length ? `<span class="count">${list.length}</span>` : ''}</div>
         <div class="docs" id="wWas">${list.map((r) => { const m = massVon(r); return `<div class="wl" data-wl="${r.id}"><div class="card bm">
@@ -879,8 +969,9 @@ window.Projekt = (() => {
         </details>` : ''}` : `<div class="card"><p class="hint" style="margin-top:0">Noch nichts angelegt. In Schritt 2 trägst du ein, was angeboten wird.</p><button class="btn block" data-schritt="masse">Zu Schritt 2</button></div>`}`,
       danach: () => `
         <div class="sec-h"><h2>Was steht nach den Positionen?</h2></div>
-        ${window.Bausteine.block({ wo: 'nach', titel: 'Schlusstexte', leer: 'Kein Text nach den Positionen', liste: texte, offen: true })}
-        <p class="hint">Am Schluss stehen immer die Auftragserteilung und ganz zuletzt „${esc(vorgabeText('textGruss'))}“ mit ${esc(A.einePerson(K.anspr) || anspr[0] || 'Name')}, Unterschrift und Stempel. Abwählen oder Text ändern geht hier.</p>`,
+        ${window.Bausteine.block({ wo: 'nach', titel: 'Schlusstexte', leer: 'Kein Text nach den Positionen', liste: texte, offen: true, passt: passtV })}
+        <p class="hint">Am Schluss stehen immer „${esc(vorgabeText('textGruss'))}“ mit ${esc(A.einePerson(K.anspr) || anspr[0] || 'Name')}, Unterschrift und Stempel und ganz zuletzt die Auftragserteilung für den Kunden. Abwählen oder Text ändern geht hier.</p>
+        ${skontoKarte(w)}`,
       ansicht: () => `
         <div class="sec-h"><h2>Alles beisammen?</h2></div>
         <div class="card bs-ueb">
@@ -888,7 +979,7 @@ window.Projekt = (() => {
             ['davor', 'Rechnungsanschrift', k?.privat.trim() ? Kunden.einzeilig(k.privat) : 'fehlt noch', !!k?.privat.trim()],
             ['davor', 'Objekt', w.address || 'fehlt noch', !!w.address],
             ['davor', 'Betreff (Projektname)', w.titel || 'fehlt noch, wird sonst vorgeschlagen', !!w.titel],
-            ['davor', 'Ansprechpartner', A.einePerson(K.anspr) || anspr[0] || '', true],
+            ['davor', 'Verfasser', A.einePerson(K.anspr) || anspr[0] || '', true],
             ['masse', 'Angeboten wird', list.length ? list.map(raumTitel).join(', ') : 'noch nichts angelegt', list.length > 0],
             ['pos', 'Positionen', nPos ? `${nPos} ${nPos === 1 ? 'Position' : 'Positionen'} · ${eur2(summe)} brutto` : 'noch keine', nPos > 0],
             ['danach', 'Schlusstexte', window.Bausteine.teil(texte, 'nach').filter((b) => !b.aus).map((b) => b.titel || 'Text').join(', ') || 'keine', true],
@@ -939,7 +1030,68 @@ window.Projekt = (() => {
         <button class="link-danger" id="wDel">${icon('trash')} Angebot löschen</button></div>`;
   }
 
-  /** Büro: Nummer, Betreff, Anrede, Ansprechpartner, Aufschläge und Texte gelten für das ganze Angebot (alle Räume). */
+  // ---------- Persönlicher Satz in der Einleitung (P7, Runde 12) ----------
+  // Ein KI-Aufruf beim Anlegen des Angebots: ein Satz aus den Wünschen des Kunden. Steht als „KI-Vorschlag“ unter dem Anfangstext,
+  // „Übernehmen“ hängt ihn an die Einleitung (danach normaler Text, wird nie wieder überschrieben), „Löschen“ verwirft ihn.
+  // w.kiSatz = { status: 'vorschlag' | 'uebernommen' | 'geloescht', text, t }. Vorgaben kiSatzAuto, promptKiSatz.
+  const kiSatzLaeuft = new Set();
+  function kiSatzStoff(w, list) {
+    const z = [];
+    for (const r of list) for (const l of String(r.wishes || '').split('\n')) { const t = l.replace(/^[-•*]\s*/, '').trim(); if (t) z.push(`${raumTitel(r)}: ${t}`); }
+    for (const x of w.gespraech?.allgemein?.bild || []) z.push(String(x));
+    if (String(w.vorOrt?.notiz || '').trim()) z.push(String(w.vorOrt.notiz).trim());
+    return z.slice(0, 30);
+  }
+  function kiSatzHtml(w) {
+    const s = w.kiSatz;
+    if (s?.status === 'uebernommen' || s?.status === 'geloescht') return '';
+    if (kiSatzLaeuft.has(w.id)) return `<div class="card ki-satz" id="kiSatz"><span class="ki-m">KI-Vorschlag</span><p class="hint" style="margin:6px 0 0">Persönlicher Satz für die Einleitung wird vorgeschlagen …</p></div>`;
+    if (s?.status === 'vorschlag' && s.text) return `<div class="card ki-satz" id="kiSatz"><span class="ki-m">KI-Vorschlag</span><p class="ki-t">${esc(s.text)}</p>
+      <div class="ki-k"><button type="button" class="btn small" data-kisatz="ja">${icon('check')} Übernehmen</button><button type="button" class="btn secondary small" data-kisatz="neu">${icon('refresh')} Neu vorschlagen</button><button type="button" class="link-danger" data-kisatz="weg">${icon('trash')} Löschen</button></div></div>`;
+    if (!state.settings.apiKey) return '';
+    return `<button type="button" class="link-add" id="kiSatz" data-kisatz="neu">${icon('sparkle')} Persönlichen Satz für die Einleitung vorschlagen lassen</button>`;
+  }
+  async function kiSatzHolen(w, list) {
+    if (kiSatzLaeuft.has(w.id) || typeof geminiText !== 'function' || !state.settings.apiKey) return;
+    const stoff = kiSatzStoff(w, list);
+    if (!stoff.length) return toast('Noch keine Wünsche des Kunden aufgenommen. Der Satz entsteht aus der Vor-Ort-Aufnahme.');
+    kiSatzLaeuft.add(w.id);
+    const ersetzen = () => { const el = $('#kiSatz'); if (el) el.outerHTML = kiSatzHtml(w); kiSatzBind(w, list); };
+    ersetzen();
+    try {
+      const k = w.kundeId ? Kunden.byId(w.kundeId) : null;
+      const txt = await geminiText([{ text: vorgabeText('promptKiSatz') + `\n\nPROJECT: ${w.titel || ''}\nCUSTOMER: ${(k && Kunden.name(k)) || w.customer || ''}\nWISHES (confirmed on site):\n- ${stoff.join('\n- ')}` }]);
+      const satz = String(txt || '').replace(/^["„“\s]+|["“”\s]+$/g, '').split('\n')[0].trim();
+      if (satz) { w.kiSatz = { status: 'vorschlag', text: satz, t: Date.now() }; delete w.isNew; await save(w); }
+      else toast('Die KI hat keinen Satz geliefert.');
+    } catch (e) { toast('Vorschlag ging nicht: ' + (e.message || e), 4500); }
+    kiSatzLaeuft.delete(w.id);
+    ersetzen();
+  }
+  function kiSatzBind(w, list) {
+    $$('[data-kisatz]').forEach((b) => (b.onclick = async () => {
+      const was = b.dataset.kisatz;
+      if (was === 'neu') return kiSatzHolen(w, list);
+      if (was === 'weg') { w.kiSatz = { ...(w.kiSatz || {}), status: 'geloescht' }; await save(w); const el = $('#kiSatz'); if (el) el.remove(); return; }
+      // Übernehmen: als eigener Absatz hinter die Einleitung, danach normaler Text
+      const satz = w.kiSatz?.text; if (!satz) return;
+      const l = Array.isArray(w.angebotTexte) && w.angebotTexte.length ? w.angebotTexte : texteVon(w).map((x) => ({ ...x }));
+      const e = l.find((x) => x.id === 'einl' && x.wo === 'vor') || l.find((x) => x.wo === 'vor' && !x.fest);
+      if (e) { e.text = [String(e.text || '').trim(), satz].filter(Boolean).join('\n\n'); delete e.aus; } else l.unshift({ id: uid(), wo: 'vor', titel: '', text: satz });
+      w.angebotTexte = l; w.kiSatz = { ...w.kiSatz, status: 'uebernommen', uebernommen: Date.now() };
+      await save(w); toast('Satz steht jetzt in der Einleitung.');
+      const y = window.scrollY; await view(); window.scrollTo(0, y);
+    }));
+  }
+  /** Skonto für dieses Angebot (v122): leer = Standard aus den Einstellungen, 0 = kein Skonto. Betrag vom Zahlbetrag brutto. */
+  function skontoKarte(w) {
+    const o = w.skonto || {}, wert = (v) => (v === undefined || v === null || v === '' ? '' : String(v).replace('.', ','));
+    return `<details class="more card bs"><summary>${icon('euro')}<span>Skonto<small>Nur für dieses Angebot, leer = Standard${+vorgabe('skontoProzent') > 0 ? ` (${wert(vorgabe('skontoProzent'))} % in ${vorgabe('skontoTage')} Tagen)` : ' (aus)'}</small></span>${icon('chevron', 'more-chev')}</summary>
+      <div class="row"><div><label>Skonto %</label><input type="text" inputmode="decimal" data-sko="p" value="${esc(wert(o.p))}" placeholder="${esc(wert(vorgabe('skontoProzent')))}"></div>
+        <div><label>innerhalb von Tagen</label><input type="text" inputmode="numeric" data-sko="tage" value="${esc(wert(o.tage))}" placeholder="${esc(wert(vorgabe('skontoTage')))}"></div></div>
+      <p class="hint" style="margin:6px 0 0">Im Angebot steht unter der Gesamtsumme der Skonto-Betrag und der Zahlbetrag. Bedarfs- und Alternativpositionen zählen nicht mit. 0 = kein Skonto.</p></details>`;
+  }
+  /** Büro: Nummer, Betreff, Anrede, Verfasser, Aufschläge und Texte gelten für das ganze Angebot (alle Räume). */
   function bueroFelder(w, list) {
     if (!$('.ab-schritte, .ape')) return;
     const A = window.Angebot._intern, mitPos = mitPosVon(list), mehrere = mitPos.length > 1;
@@ -968,6 +1120,16 @@ window.Projekt = (() => {
       for (const r of alle) { r.angebot.kalk ??= {}; if (v === '') delete r.angebot.kalk[el.dataset.bnk]; else r.angebot.kalk[el.dataset.bnk] = n / 100; await saveProject(r); }
       toast(v === '' ? 'Wieder der Standard aus den Einstellungen' : 'Aufschlag gilt für dieses Angebot');
       if ($('#xtAng')) { const y = window.scrollY; await view(); window.scrollTo(0, y); } // Preise in der Tabelle neu
+    }));
+    kiSatzBind(w, list);
+    if (!w.kiSatz && !w.isNew && $('#kiSatz') && vorgabe('kiSatzAuto') !== 'nein' && state.settings.apiKey && !gesperrt(w) && kiSatzStoff(w, list).length) kiSatzHolen(w, list);
+    $$('[data-sko]').forEach((el) => (el.onchange = async () => {
+      const v = el.value.trim().replace(',', '.'), n = parseFloat(v);
+      if (v !== '' && !(Number.isFinite(n) && n >= 0)) return toast('Bitte eine Zahl eintragen.');
+      w.skonto ??= {}; if (v === '') delete w.skonto[el.dataset.sko]; else w.skonto[el.dataset.sko] = n;
+      if (!Object.keys(w.skonto).length) delete w.skonto;
+      delete w.isNew; await save(w);
+      toast(v === '' ? 'Wieder der Standard aus den Einstellungen' : n === 0 && el.dataset.sko === 'p' ? 'Kein Skonto in diesem Angebot' : 'Skonto gilt für dieses Angebot');
     }));
     // Texte: anhaken, was im Angebot steht. Erst beim ersten Ändern bekommt das Angebot eine eigene Fassung.
     const texte = texteVon(w);
@@ -1133,7 +1295,7 @@ window.Projekt = (() => {
     const { ang, files } = r;
     // „Wie verschickt“ wird erst gemerkt, wenn wirklich gesendet wird
     if (navigator.canShare?.({ files })) {
-      try { await navigator.share({ files, title: ang.name.replace(/\.pdf$/i, '').replace(/_/g, ' '), text: A.mailText(ang.syn), an: Kunden.byId(w.kundeId)?.email || '' }); await angebotMerken(w.id, ang.doc, ang.name); await angebotVersendet(w.id); return neuZeichnen(w); }
+      try { await navigator.share({ files, title: ang.name.replace(/\.pdf$/i, '').replace(/_/g, ' '), text: A.mailText(ang.syn), an: Kunden.angebotMail(Kunden.byId(w.kundeId)) }); await angebotMerken(w.id, ang.doc, ang.name); await angebotVersendet(w.id); return neuZeichnen(w); }
       catch (e) { if (e.name === 'AbortError') return neuZeichnen(w); }
     }
     for (const f of files) { const a = document.createElement('a'); a.href = URL.createObjectURL(f); a.download = f.name; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 60000); }
@@ -1170,6 +1332,21 @@ window.Projekt = (() => {
     } catch (e) { console.warn('Angebot-PDF nicht gespeichert', e); }
   }
   /** Baustart als ganztägiger Baustellen-Termin im Kalender (ein Termin je Projekt, wird angepasst oder entfernt). */
+  /** Vorzeitiger Beginn (Runde 12/13): Hat der Privatkunde das Kästchen angekreuzt? w.vorzeitig = { t, wer }.
+   *  Stiller Hinweis, wenn der Baustart in der Widerrufsfrist liegt und kein Kreuz gemerkt ist. Keine Sperre. */
+  function widerrufBis(w) {
+    const z = [...(w.verlauf || [])].reverse().find((v) => norm(v.st) === 'geplant')?.t || w.auftragsbestaetigung?.t;
+    if (!z) return '';
+    const d = new Date(z); d.setDate(d.getDate() + (+vorgabe('widerrufTage') || 14));
+    return d.toISOString().slice(0, 10);
+  }
+  function vorzeitigHtml(w) {
+    const k = window.Kunden?.byId?.(w.kundeId);
+    if (!window.Angebot._intern.privatArt(k)) return '';
+    const bis = widerrufBis(w), frueh = w.baustart && bis && w.baustart <= bis && !w.vorzeitig;
+    return `<label class="stk-vz"><input type="checkbox" id="wVorzeitig" ${w.vorzeitig ? 'checked' : ''}><span>Kunde hat den vorzeitigen Beginn angekreuzt${w.vorzeitig?.t ? ` <small>(${esc(new Date(w.vorzeitig.t).toLocaleDateString('de-DE'))})</small>` : ''}</span></label>
+      ${frueh ? `<p class="hint warn" style="margin:0 0 6px">Der Baustart liegt in der Widerrufsfrist (bis ${esc(datumText(bis))}). Ohne Kreuz beim vorzeitigen Beginn erst danach anfangen.</p>` : ''}`;
+  }
   async function baustartTermin(w) {
     const id = 'bau-' + w.id;
     if (!w.baustart) { await kvDel('termin:' + id); return; }
@@ -1197,7 +1374,8 @@ window.Projekt = (() => {
       <div class="stk-top"><span class="stk-dot"></span><span class="stk-t"><small>Status</small><b>${esc(st === 'geplant' && w.baustart ? `Eingeplant · Baustart ${datumText(w.baustart)}` : statusName(st))}</b></span><button class="stk-alle" id="stAlle">Ändern</button></div>
       <div class="stk-pfad" aria-hidden="true">${PFAD.map((id, j) => `<i class="${st === 'abgesagt' ? (j <= 2 ? 'ab' : '') : j < i ? 'ok' : j === i ? 'jetzt' : ''}" style="--c:${farbe(id)}"></i>`).join('')}</div>
       ${st === 'geplant' ? `<label class="stk-feld">${icon('calendar')}<span>Baustart</span><input type="date" id="wBaustart" value="${esc(w.baustart || '')}"></label>
-        <p class="hint" style="margin:0 0 6px">${w.baustart ? 'Am Tag des Baustarts springt der Status von selbst auf „Baustelle läuft“.' : 'Noch kein Baustart. Trag ihn ein, dann steht er im Kalender und das Projekt ist eingeplant.'}</p>` : ''}
+        <p class="hint" style="margin:0 0 6px">${w.baustart ? 'Am Tag des Baustarts springt der Status von selbst auf „Baustelle läuft“.' : 'Noch kein Baustart. Trag ihn ein, dann steht er im Kalender und das Projekt ist eingeplant.'}</p>
+        ${vorzeitigHtml(w)}` : ''}
       ${st === 'angebot' && tage >= nachfassen() ? `<p class="stk-tipp warn">${icon('phone')} Seit ${tage} Tagen beim Kunden. Zeit zum Nachfassen.</p>` : ''}
       ${st === 'angebot' && w.versendetAm && tage < nachfassen() ? `<p class="hint" style="margin:0 0 10px">Versendet am ${esc(datumText(w.versendetAm))}</p>` : ''}
       ${st === 'abgesagt' && w.absage?.grund ? `<p class="hint" style="margin:0 0 10px">Grund: ${esc(w.absage.grund)} · ${esc(new Date(w.absage.t).toLocaleDateString('de-DE'))}</p>` : ''}

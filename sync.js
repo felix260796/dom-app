@@ -140,7 +140,7 @@ window.Sync = (() => {
     return [...byId.values()].sort((a, b) => (b.created || 0) - (a.created || 0));
   }
   // Gelöschte Räume (project:) und Projekte (wohnung:) werden über die Liste „projectDeleted“ auf allen Geräten entfernt
-  const delId = (k) => (/^(project|wohnung|angebot|kunde|bild|termin|partner|pdok|beleg|bdatei|auftrag|rechnung|firmadok|fdatei):/.test(k) ? k.slice(k.indexOf(':') + 1) : '');
+  const delId = (k) => (/^(project|wohnung|angebot|todo|kunde|bild|termin|partner|pdok|beleg|bdatei|auftrag|rechnung|firmadok|fdatei):/.test(k) ? k.slice(k.indexOf(':') + 1) : '');
   const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
   const isObj = (x) => x !== null && typeof x === 'object' && !Array.isArray(x);
   const hasIds = (a) => Array.isArray(a) && a.length > 0 && a.every((x) => isObj(x) && x.id != null);
@@ -227,7 +227,7 @@ window.Sync = (() => {
       }
     }
     // Auf anderem Gerät gelöschte Projekte auch hier entfernen
-    for (const id of tomb) for (const pre of ['project:', 'wohnung:', 'angebot:', 'kunde:', 'bild:', 'termin:', 'partner:', 'pdok:']) if ((await kvGet(pre + id)) !== undefined) { await rawDel(pre + id); changed.add(pre + id); }
+    for (const id of tomb) for (const pre of ['project:', 'wohnung:', 'angebot:', 'todo:', 'kunde:', 'bild:', 'termin:', 'partner:', 'pdok:']) if ((await kvGet(pre + id)) !== undefined) { await rawDel(pre + id); changed.add(pre + id); }
     saveMeta();
     // 2) Hochladen, was lokal geändert wurde
     const uploaded = [];
@@ -297,6 +297,7 @@ window.Sync = (() => {
     if (changed.has('projectIndex') || [...changed].some((k) => k.startsWith('kunde:'))) await window.Kunden?.nummern();
     for (const k of changed) if (k.startsWith('project:') && state.project?.id !== k.slice(8)) window.Projekt?.forget(k.slice(8));
     for (const k of changed) if (k.startsWith('angebot:')) await window.AngebotDaten?.neuGelesen(k.slice(8));
+    if ([...changed].some((k) => k.startsWith('todo:'))) { await window.Todos?.laden(); if (!/INPUT|TEXTAREA|SELECT/.test(document.activeElement?.tagName || '') && state.tab === 'todos') window.Todos.view(); }
     const typing = /INPUT|TEXTAREA|SELECT/.test(document.activeElement?.tagName || '');
     if (!typing && document.getElementById('new') && state.tab === 'projekt') viewProjektListe();
     if (!typing && document.getElementById('kNew') && state.tab === 'kunden') window.Kunden?.listeView();

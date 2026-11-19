@@ -10,8 +10,13 @@ window.Heute = (() => {
   const tag = (s) => new Date(s + 'T12:00').toLocaleDateString('de-DE', { weekday: 'short', day: '2-digit', month: '2-digit' });
   const eur = (x) => x.toLocaleString('de-DE', { maximumFractionDigits: 0 }) + ' €';
 
+  // Oben unterteilt in Heute / Morgen / Diese Woche (seit v111, Runde 13). Unter Heute zuerst Überfälliges, dann Heutiges, nach Priorität.
+  let ab = 'heute';
+  const wochenEnde = () => { const d = new Date(); d.setDate(d.getDate() + ((7 - d.getDay()) % 7)); return iso(d); };
   async function view() {
     const h = plus(0), morgen = plus(1), vor = plus(+vorgabe('heuteVorlauf') || 3);
+    await window.Todos?.laden();
+    const T = window.Todos?.zeitraeume() || { heute: [], morgen: [], woche: [] };
     header('Heute', new Date().toLocaleDateString('de-DE', { weekday: 'long', day: 'numeric', month: 'long' }));
     const idx = await projectIndex();
     const name = (x) => [x.titel || x.room || 'Projekt', Kunden.name(Kunden.byId(x.kundeId)) || x.customer].filter(Boolean).join(' · ');
@@ -22,9 +27,27 @@ window.Heute = (() => {
     const zeile = (ziel, ic, titel, sub, farbe = '') => `<button class="pcard hz" data-hz="${esc(ziel)}"><span class="pc-ph" ${farbe ? `style="color:${farbe}"` : ''}>${icon(ic)}</span><span class="pc-t"><b>${esc(titel)}</b><span class="muted">${esc(sub)}</span></span>${icon('chevron', 'pc-chev')}</button>`;
     const block = (titel, zeilen) => { if (zeilen.length) bloecke.push(`<div class="sec-h"><h2>${esc(titel)}</h2><span class="count">${zeilen.length}</span></div><div class="plist">${zeilen.join('')}</div>`); };
 
+    const seg = `<div class="seg2 full heute-seg">${[['heute', 'Heute', T.heute.length], ['morgen', 'Morgen', T.morgen.length], ['woche', 'Diese Woche', T.woche.length]].map(([id, l, n]) => `<button data-hab="${id}" class="${ab === id ? 'on' : ''}">${l}${n ? ` (${n})` : ''}</button>`).join('')}</div>`;
+    const terminZeile = (t) => zeile(`kal:${t.datum}`, t.art?.startsWith('geb') ? 'cake' : 'calendar', t.titel || 'Termin', `${t.datum === h ? 'Heute' : t.datum === morgen ? 'Morgen' : tag(t.datum)}${t.ganztag || !t.von ? '' : `, ${t.von} Uhr`}${t.ort ? ' · ' + t.ort : ''}`);
+    const nurTermine = (von, bis) => (window.Kalender?.eintraege(von, bis) || []).filter((t) => t.typ === 'termin' || t.art?.startsWith('geb')).sort((a, b) => (a.datum + (a.von || '')).localeCompare(b.datum + (b.von || '')));
+    const todoBlock = (titel, xs) => { if (xs.length) bloecke.push(`<div class="sec-h"><h2>${esc(titel)}</h2><span class="count">${xs.length}</span></div><div class="card td-liste">${xs.map(Todos.zeile).join('')}</div>`); };
+    if (ab !== 'heute') {
+      // Morgen bzw. Rest der Woche: Termine und To-dos
+      const bis = ab === 'morgen' ? morgen : (wochenEnde() < morgen ? morgen : wochenEnde());
+      todoBlock('To-dos', ab === 'morgen' ? T.morgen : T.woche);
+      block('Termine', nurTermine(morgen, bis).map(terminZeile));
+      main().innerHTML = `<div class="heute-zu"><button type="button" class="icon-btn" id="hZu" aria-label="Heute schließen">${icon('x')}</button></div>${seg}` + (bloecke.join('') || `<div class="empty-state">${icon('check')}<b>${ab === 'morgen' ? 'Morgen' : 'Diese Woche'} steht noch nichts an</b><span>Termine und To-dos mit Datum erscheinen hier.</span></div>`);
+      $('#hZu').onclick = () => switchTab(window.__vorHeute || 'kunden');
+      $$('[data-hab]').forEach((b) => (b.onclick = () => { ab = b.dataset.hab; view(); }));
+      $$('[data-hz]').forEach((b) => (b.onclick = () => oeffnen(b.dataset.hz)));
+      Todos.binden(main(), () => { if (state.tab === 'heute') view(); });
+      return;
+    }
+    // To-dos: Überfälliges und Heutiges, nach Priorität (todos.js)
+    todoBlock('To-dos', T.heute);
     // Termine
-    const termine = (window.Kalender?.eintraege(h, morgen) || []).filter((t) => t.typ === 'termin' || t.art?.startsWith('geb')).sort((a, b) => (a.datum + (a.von || '')).localeCompare(b.datum + (b.von || '')));
-    block('Termine heute und morgen', termine.map((t) => zeile(`kal:${t.datum}`, t.art?.startsWith('geb') ? 'cake' : 'calendar', t.titel || 'Termin', `${t.datum === h ? 'Heute' : 'Morgen'}${t.ganztag || !t.von ? '' : `, ${t.von} Uhr`}${t.ort ? ' · ' + t.ort : ''}`)));
+    const termine = nurTermine(h, h);
+    block('Termine heute', termine.map(terminZeile));
     // Route für heute: noch anstehende Termine mit Ort in zeitlicher Reihenfolge (Vorgabe 'routeKarte')
     const jetzt = new Date().toTimeString().slice(0, 5);
     const stopps = termine.filter((t) => t.typ === 'termin' && t.datum === h && String(t.ort || '').trim() && (t.ganztag || !t.von || (t.bis || t.von) >= jetzt));
@@ -53,16 +76,21 @@ window.Heute = (() => {
     // Firmendokumente, die bald ablaufen
     const fdok = (window.Unterlagen?.ablaufend() || []).map((x) => zeile('u:' + x.id, 'file', `Erneuern: ${x.name}`, `${x.gueltig < h ? 'abgelaufen seit ' : 'gültig bis '}${tag(x.gueltig)}`, x.gueltig < h ? '#c0392b' : '#d2691e'));
     block('Firmenordner', fdok);
+    // Nachweise der Subunternehmer (z. B. Freistellungsbescheinigung § 48b), die abgelaufen sind oder bald ablaufen
+    const nachw = (window.SubProfil?.ablaufend() || []).map(({ p, n, abgelaufen }) => zeile('pt:' + p.id, 'file', `Nachweis anfordern: ${Partner.titel(p) || 'Partner'}`, `${n.art} · ${abgelaufen ? 'abgelaufen seit ' : 'gültig bis '}${tag(n.bis)}`, abgelaufen ? '#c0392b' : '#d2691e'));
+    block('Nachweise der Partner', nachw);
     // Excel-Sicherung fällig
     if (window.Backup?.excelFaellig()) block('Datensicherung', [zeile('xl:', 'download', 'Excel-Sicherung machen', 'Alle Daten als Excel, z. B. in den OneDrive-Ordner')]);
     // Laufende Baustellen
     block('Laufende Baustellen', idx.filter((x) => Projekt.norm(x.status) === '').map((x) => zeile('p:' + x.id, 'home', name(x), x.fort ? `${x.fort.fertig} von ${x.fort.n} Schritten${x.fort.naechster ? ' · als Nächstes: ' + x.fort.naechster : ''}` : 'Noch keine Arbeitsschritte')));
 
     // Zahl am App-Symbol: was heute zu tun ist (ohne morgen und ohne laufende Baustellen)
-    window.Push?.badge(termine.filter((t) => t.datum === h && t.typ === 'termin').length + pf.anzahl + nachf.length + geld.length + bau.length + fdok.length);
-    main().innerHTML = `<div class="heute-zu"><button type="button" class="icon-btn" id="hZu" aria-label="Heute schließen">${icon('x')}</button></div>` + (bloecke.join('') || `<div class="empty-state">${icon('check')}<b>Heute ist nichts offen</b><span>Termine, Nachfassen, Rechnungen und Baustellen erscheinen hier, sobald etwas ansteht.</span></div>`);
+    window.Push?.badge(termine.filter((t) => t.datum === h && t.typ === 'termin').length + T.heute.length + pf.anzahl + nachf.length + geld.length + bau.length + fdok.length + nachw.length);
+    main().innerHTML = `<div class="heute-zu"><button type="button" class="icon-btn" id="hZu" aria-label="Heute schließen">${icon('x')}</button></div>${seg}` + (bloecke.join('') || `<div class="empty-state">${icon('check')}<b>Heute ist nichts offen</b><span>Termine, Nachfassen, Rechnungen und Baustellen erscheinen hier, sobald etwas ansteht.</span></div>`);
     $('#hZu').onclick = () => switchTab(window.__vorHeute || 'kunden'); // X: zurück zum Reiter davor (beim Start: Kunden)
     $$('[data-hz]').forEach((b) => (b.onclick = () => oeffnen(b.dataset.hz)));
+    $$('[data-hab]').forEach((b) => (b.onclick = () => { ab = b.dataset.hab; view(); }));
+    Todos.binden(main(), () => { if (state.tab === 'heute') view(); });
     pf.binden(main(), () => { if (state.tab === 'heute') view(); });
     if ($('#hRoute')) $('#hRoute').onclick = () => route(stopps.map((t) => String(t.ort).split(/\s*\n\s*/).join(', ').trim()));
   }
@@ -81,6 +109,7 @@ window.Heute = (() => {
     if (art === 'p') { switchTab('projekt', { wohnung: null }); return Projekt.oeffnen(id); }
     if (art === 'kal') { Kalender.view(); return; }
     if (art === 'u') return switchTab('unterlagen');
+    if (art === 'pt') return Partner.oeffnen(id);
     if (art === 'xl') { await Backup.excel(); return view(); }
     if (art === 'r') { switchTab('rechnungen'); await Rechnung.laden(); return Rechnung.detail(Rechnung.liste().find((r) => r.id === id), () => switchTab('rechnungen')); }
     if (art === 'b') { switchTab('rechnungen'); await Finanzen.laden(); return Finanzen.erfassen(Finanzen.liste().find((b) => b.id === id), () => switchTab('rechnungen')); }

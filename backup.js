@@ -109,7 +109,7 @@ window.Backup = (() => {
       Objekte: kunden.flatMap((k) => (k.objekte || []).map((o) => ({ 'Kunden-Nr.': k.nr, Kunde: kname(k.id), Bezeichnung: o.name, Anschrift: o.adresse, Schlüssel: o.schluessel, Notiz: o.notiz,
         'Ansprechpartner vor Ort': (o.kontakte || []).map((x) => [x.name, x.telefon, x.email].filter(Boolean).join(' ')).join('; ') }))),
       Partner: partner.map((p) => ({ Art: { sub: 'Subunternehmer', lief: 'Lieferant', aussen: 'Außendienst', sonst: 'Sonstige' }[p.art] || p.art, Firma: p.firma, Gewerk: p.gewerk, Ansprechpartner: p.inhaber, Telefon: p.telefon, 'E-Mail': p.email,
-        Anschrift: p.anschrift, Webseite: p.web, 'Unsere Kunden-Nr.': p.kdnr, Qualität: (p.stufen || []).join(', '), Konditionen: p.konditionen, Notiz: p.notiz })),
+        Anschrift: p.anschrift, Webseite: p.web, 'Unsere Kunden-Nr.': p.kdnr, Gewerke: (p.gewerke || []).map((g) => `${g.name}${g.stufen.length ? ' (' + g.stufen.join('/') + ')' : ''}${g.material === 'sub' ? ', Material vom Sub' : g.material === 'wir' ? ', Material von uns' : ''}`).join('; '), Qualität: (p.stufen || []).join(', '), Zahlungsziel: p.zahlungsziel, Skonto: p.skonto ? `${p.skonto} % in ${p.skontoTage || '?'} Tagen` : '', Nachweise: (p.nachweise || []).map((n) => `${n.art}${n.bis ? ' bis ' + n.bis : ''}`).join('; '), Konditionen: p.konditionen, Notiz: p.notiz })),
       'Preise Partner': [],
       Aufträge: projekte.map((w) => ({ 'Projekt-Nr.': w.nr, Kunde: kname(w.kundeId) || w.customer, Titel: w.titel, Anschrift: w.address, Status: window.Projekt?.statusName(w.status) || w.status, 'Versendet am': dt(w.versendetAm), Baustart: dt(w.baustart),
         'Absagegrund': w.absage?.grund || '', Räume: (w.rooms || []).map((id) => raeume.get(id)?.room).filter(Boolean).join(', '), 'Angelegt am': dt(w.created && new Date(w.created).toISOString()) })),
@@ -132,9 +132,11 @@ window.Backup = (() => {
     };
     let PL = null; try { PL = await A?.preisliste(); } catch {}
     const posText = (nr) => PL?.positionen?.find((x) => x.nr === nr)?.text || '';
-    blaetter['Preise Partner'] = partner.flatMap((p) => [
-      ...Object.entries(p.preise || {}).map(([nr, preis]) => ({ Firma: p.firma, Gewerk: p.gewerk, Position: nr, Leistung: posText(nr), 'Preis netto': preis })),
-      ...(p.eigenePreise || []).map((x) => ({ Firma: p.firma, Gewerk: p.gewerk, Position: 'eigen', Leistung: x.text, Einheit: x.einheit, 'Preis netto': x.preis }))]);
+    // Preise je Stufe (seit v114 in p.stufenPreise, ältere Sicherungen in p.preise)
+    const stufenVon = (p) => (p.stufenPreise && Object.keys(p.stufenPreise).length ? Object.entries(p.stufenPreise) : [['', { preise: p.preise, eigene: p.eigenePreise }]]);
+    blaetter['Preise Partner'] = partner.flatMap((p) => stufenVon(p).flatMap(([stufe, l]) => [
+      ...Object.entries(l.preise || {}).map(([nr, preis]) => ({ Firma: p.firma, Gewerk: p.gewerk, Stufe: stufe, Position: nr, Leistung: posText(nr), 'Preis netto': preis, Stand: l.datum?.[nr] || '' })),
+      ...(l.eigene || []).map((x) => ({ Firma: p.firma, Gewerk: x.gewerk || p.gewerk, Stufe: stufe, Position: 'eigen', Leistung: x.text, Einheit: x.einheit, 'Preis netto': x.preis, Stand: l.datum?.['e:' + x.id] || '' }))]));
     const wb = X.utils.book_new();
     for (const [name, zeilen] of Object.entries(blaetter)) X.utils.book_append_sheet(wb, X.utils.json_to_sheet(zeilen.length ? zeilen : [{ Hinweis: 'noch keine Einträge' }]), name.slice(0, 31));
     const out = X.write(wb, { bookType: 'xlsx', type: 'array' });

@@ -57,6 +57,8 @@ window.Pflege = (() => {
     ...(window.Partner?.liste() || []).map((p) => ({ x: p, typ: 'partner', name: [p.firma.trim(), p.inhaber.trim()].filter(Boolean).join(' · ') || 'Partner ohne Namen' })),
   ];
   const gilt = (o, wer) => !!o?.r && (!o.wer || !wer || o.wer === wer);
+  /** Wer erinnert wird (je Kontakt, v115): x.pflegeWer ('' = beide), sonst wer den Kontakt angelegt hat, sonst wem das Gerät gehört. */
+  const werVon = (x) => (x?.pflegeWer !== undefined ? x.pflegeWer : x?.angelegtVon !== undefined ? x.angelegtVon : window.Kalender?.wer() || '');
   const sortieren = (a, b) => a.o.faellig.localeCompare(b.o.faellig) || a.name.localeCompare(b.name, 'de');
 
   /** Was ist heute dran? [{ x, typ, name, art, o }] höchstens so viele wie eingestellt, die ältesten zuerst. */
@@ -158,6 +160,7 @@ window.Pflege = (() => {
       { label: c.typ === 'kunde' ? 'Kunde öffnen' : 'Partner öffnen', icon: icon('user'), value: 'oeffnen' },
     ], { suche: '' });
     if (v === 'ok' || v === 'termin') await erledigt(c);
+    if (v === 'ok') await window.Notiz?.fragen(c); // still: „Was gab's Neues?“ (leer lassen = nichts)
     if (v === 'spaeter') await spaeter(c);
     if (v === 'morgen') await morgen(c);
     if (v === 'termin') return window.Kalender?.bearbeiten({ titel: `Treffen ${c.name}`, art: 'buero', [c.typ === 'kunde' ? 'kundeId' : 'partnerId']: c.x.id }, () => switchTab('heute'));
@@ -214,9 +217,11 @@ window.Pflege = (() => {
           <label ${a === 'anruf' ? 'style="margin-top:0"' : ''}>${esc(A.label)}</label>
           <select data-pfr="${a}">${RHYTHMEN.map(([v, n]) => `<option value="${v}" ${v === o.r ? 'selected' : ''}>${esc(n)}</option>`).join('')}</select>
           <div class="pf-tag" ${o.r ? '' : 'hidden'}><span>Nächstes Mal am</span>${Kontakt.datumInput('pf-' + a, o.faellig)}</div>
-          <p class="hint pf-info" ${o.r && (o.zuletzt || wer(o)) ? '' : 'hidden'}>${esc([o.zuletzt && `Zuletzt erledigt am ${Kontakt.de(o.zuletzt)}`, wer(o) && `Erinnert wird ${wer(o)}`].filter(Boolean).join(' · '))}</p>`; }).join('')}
+          <p class="hint pf-info" ${o.r && o.zuletzt ? '' : 'hidden'}>${esc(o.zuletzt ? `Zuletzt erledigt am ${Kontakt.de(o.zuletzt)}` : '')}</p>`; }).join('')}
+        ${team.length > 1 ? `<label>Wer wird erinnert?</label><select data-pfwer><option value="">Beide</option>${team.map((t) => `<option value="${esc(t.id)}" ${t.id === werVon(x) ? 'selected' : ''}>${esc(t.name.split(' ')[0])}</option>`).join('')}</select>` : ''}
       </div></details>`;
     $('details', el).ontoggle = (e) => { el.dataset.offen = e.target.open ? '1' : ''; };
+    if ($('[data-pfwer]', el)) $('[data-pfwer]', el).onchange = (e) => { x.pflegeWer = e.target.value; if (x.pflege) for (const a of Object.keys(ARTEN)) if (x.pflege[a]) x.pflege[a].wer = x.pflegeWer; persist(); };
     const bestaetigt = () => { if (!x.pflege || typeof x.pflege !== 'object') x.pflege = {}; norm(x); };
     $$('[data-pfr]', el).forEach((s) => (s.onchange = () => {
       bestaetigt();
@@ -226,7 +231,7 @@ window.Pflege = (() => {
         // Neuer Kontakt (heute angelegt): erst im nächsten Rhythmus. Bestehender: ab heute, die Tagesgrenze verteilt.
         const neuHeute = !x.created || iso(new Date(x.created)) === heute();
         o.faellig = werktag(neuHeute ? plusRhythmus(heute(), o.r) : heute());
-        o.wer = window.Kalender?.wer() || '';
+        o.wer = werVon(x);
       }
       if (!o.r) { o.faellig = ''; o.spaeter = 0; }
       persist();
@@ -256,5 +261,5 @@ window.Pflege = (() => {
     if (!n) return { text: '', sort: '9999', html: '<span class="muted">nicht geplant</span>' };
     return { text: `${Kontakt.de(n.datum)} ${n.titel}`, sort: n.datum, html: `<span class="${n.ueber ? 'rot' : ''}">${esc(Kontakt.de(n.datum))}</span> <span class="muted">${esc(n.titel)}</span>` };
   }
-  return { naechster, zelle, ARTEN, RHYTHMEN, norm, heuteListe, eintraege, heute: heute_, abschnitt, nachfrage, anrufen, anrufenEintrag, erledigt, spaeter, morgen, prefs, plusRhythmus, _intern: { werktag, frei, kontakte } };
+  return { werVon, naechster, zelle, ARTEN, RHYTHMEN, norm, heuteListe, eintraege, heute: heute_, abschnitt, nachfrage, anrufen, anrufenEintrag, erledigt, spaeter, morgen, prefs, plusRhythmus, _intern: { werktag, frei, kontakte } };
 })();

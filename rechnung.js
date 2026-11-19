@@ -62,7 +62,7 @@ window.Rechnung = (() => {
       const r = await AngebotDaten.raum(id, w);
       if (!r?.angebot?.positionen?.length) continue;
       const S = A.summen(r.angebot.positionen, r.angebot.kalk);
-      for (const z of S.zeilen) zeilen.push({ raum: z.raum || r.room || '', text: z.it.text + (z.bem ? ' – ' + z.bem : ''), menge: z.menge, einheit: z.it.einheit, ep: z.ep, gp: z.gp, gewerk: z.it.gewerk });
+      for (const z of S.zeilen) if (z.zaehlt !== false) zeilen.push({ raum: z.raum || r.room || '', text: z.it.text + (z.bem ? ' – ' + z.bem : ''), menge: z.menge, einheit: z.it.einheit, ep: z.ep, gp: z.gp, gewerk: z.it.gewerk });
       lohn += S.zeilen.reduce((s, z) => s + z.lohn, 0);
     }
     const nachtraege = (w.nachtraege || []).map((n) => ({ ...n, gp: r2(n.menge * n.ep) }));
@@ -583,7 +583,7 @@ window.Rechnung = (() => {
     const vorher = state.wohnung, fremd = w && vorher?.id !== w.id;
     if (fremd) state.wohnung = w;
     try {
-      if (navigator.canShare?.({ files: [file] })) { try { await navigator.share({ files: [file], title: name, text }); return true; } catch (e) { if (e.name === 'AbortError') return false; } }
+      if (navigator.canShare?.({ files: [file] })) { try { await navigator.share({ files: [file], title: name, text, an: window.Kunden?.rechnungMail(Kunden.byId(w?.kundeId)) || '' }); return true; } catch (e) { if (e.name === 'AbortError') return false; } }
     } finally { if (fremd) state.wohnung = vorher; }
     const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name; a.click();
     setTimeout(() => URL.revokeObjectURL(a.href), 60000);

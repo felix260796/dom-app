@@ -61,16 +61,18 @@ window.Buero = (() => {
   const plOffen = new Set();
   async function plPane(el, tabBox) {
     const A = window.Angebot._intern, PL = await A.preisliste();
-    const partner = (window.Partner?.liste() || []).filter((p) => Object.keys(p.preise || {}).length || (p.eigenePreise || []).length)
+    const partner = (window.Partner?.liste() || []).filter((p) => SubProfil.listen(p).length)
       .sort((a, b) => Partner.titel(a).localeCompare(Partner.titel(b), 'de'));
+    const quellen = partner.flatMap((p) => SubProfil.listen(p).map((l) => ({ p, stufe: l.stufe, wert: `${p.id}|${l.stufe}` })));
     const posVon = (nr) => PL.positionen.find((x) => x.nr === nr);
     const zeilen = () => {
-      const p = partner.find((x) => x.id === plQuelle);
+      const q = quellen.find((x) => x.wert === plQuelle || x.p.id === plQuelle), p = q?.p;
+      if (p) SubProfil.stufeSetzen(p, q.stufe);
       if (!p) return PL.positionen.map((x) => ({ text: x.text, einheit: x.einheit, gruppe: x.gewerk || '', preis: A.ep(x), pos: { text: x.text } }));
       return [...Object.entries(p.preise || {}).map(([nr, preis]) => { const x = posVon(nr); return x && { text: x.text, einheit: x.einheit, gruppe: x.gewerk || '', preis: +preis, pos: { text: x.text, einheit: x.einheit, ep: +preis } }; }).filter(Boolean),
         ...(p.eigenePreise || []).map((x) => ({ text: x.text || 'Eigene Position', einheit: x.einheit || '', gruppe: 'Eigene Positionen', preis: +x.preis || 0, pos: { text: x.text || 'Eigene Position', einheit: x.einheit || '', ep: +x.preis || 0 } }))];
     };
-    el.innerHTML = `<select class="apl-q" aria-label="Preisliste"><option value="">Allgemeine Preisliste</option>${partner.map((p) => `<option value="${esc(p.id)}" ${p.id === plQuelle ? 'selected' : ''}>${esc(Partner.titel(p))}${p.gewerk ? ' · ' + esc(p.gewerk) : ''}</option>`).join('')}</select>
+    el.innerHTML = `<select class="apl-q" aria-label="Preisliste"><option value="">Allgemeine Preisliste</option>${quellen.map((q) => `<option value="${esc(q.wert)}" ${q.wert === plQuelle ? 'selected' : ''}>${esc(Partner.titel(q.p))} · ${esc(q.stufe)}${q.p.gewerk ? ' · ' + esc(q.p.gewerk) : ''}${window.Sperre?.ist(q.p) ? ' (gesperrt)' : ''}</option>`).join('')}</select>
       <label class="search apl-s">${icon('search')}<input type="search" placeholder="Leistung suchen …" value="${esc(plSuche)}" autocomplete="off"></label>
       <p class="hint apl-h">${plQuelle ? 'Partnerpreise ohne Zuschlag.' : 'Preise netto für den Kunden.'} Gruppe anklicken zum Aufklappen, mit + übernehmen oder in die Tabelle ziehen.</p>
       <div class="apl-l"></div>`;
@@ -462,19 +464,20 @@ window.Buero = (() => {
     if (!istPc() || !m || $(':scope > .akte', m)) return;
     const act = $(':scope > .kd-actions', m), form = act?.nextElementSibling;
     if (!act || !form?.matches('.kform')) return;
-    const typ = $('#kVorname', form) ? 'k' : $('#pFirma', form) ? 'p' : null;
+    const typ = $('#kArt', form) || $('#kVorname', form) ? 'k' : $('#pFirma', form) ? 'p' : null;
     if (!typ) return;
     const x = typ === 'k' ? state.kunde : state.partner;
     const rest = [...m.children].filter((c) => c !== act && c !== form);
     const gruppen = typ === 'k'
       ? [['ap', 'Angebote und Projekte'], ['zeit', 'Zeitleiste'], ['re', 'Rechnungen'], ['pf', 'Kontakt halten']]
-      : [['kond', 'Konditionen und Verträge'], ['preis', 'Preisliste'], ['pers', 'Persönliches'], ['re', 'Rechnungen'], ['pf', 'Kontakt halten']];
+      : [['kond', 'Konditionen und Verträge'], ['preis', 'Preisliste'], ['zeit', 'Zeitleiste'], ['pers', 'Persönliches'], ['re', 'Rechnungen'], ['pf', 'Kontakt halten']];
     const inhalt = Object.fromEntries([...gruppen.map(([id]) => [id, []]), ['obj', []]]);
-    const stamm = [];
+    const stamm = [], kopf = [];
     let akt = gruppen[0][0];
     for (const c of rest) {
       const h = c.matches('.sec-h') ? $('h2', c)?.textContent || '' : '';
-      if (c.matches('#kDel, #pDel, #kAusKontakt, #kInKontakte')) { stamm.push(c); continue; }
+      if (c.matches('.sperre-banner')) { kopf.push(c); continue; }
+      if (c.matches('#kDel, #pDel, #kAusKontakt, #kInKontakte, .k-pers, #kSperre, #pSperre')) { stamm.push(c); continue; }
       if (c.matches('#kPflege, #pPflege')) { inhalt.pf.push(c); continue; }
       if (c.matches('#kRech')) { c.hidden = true; stamm.push(c); continue; } // ersetzt durch die Karte „Rechnungen“
       if (c.matches('#pBelege')) { inhalt.re.push(c); continue; }
@@ -491,7 +494,7 @@ window.Buero = (() => {
     box.innerHTML = `<div class="akte-kopf"></div>${typ === 'k' ? `<section class="akte-obj"><div class="akte-h"><b>${$('#oVorOrt', m) ? 'Objekt' : 'Objekte'}</b>${objN > 1 ? `<span class="muted">${objN}</span>` : ''}</div><div class="akte-objl"></div></section>` : ''}<div class="akte-leib"><section class="akte-stamm"><div class="akte-h"><b>Stammdaten</b></div></section>
       <section class="akte-reg"><div class="akte-tabs">${gruppen.map(([id, n]) => `<button type="button" data-areg="${id}">${esc(n)}</button>`).join('')}</div>${gruppen.map(([id]) => `<div class="akte-pane" data-apane="${id}" hidden></div>`).join('')}</section></div>`;
     m.prepend(box);
-    $('.akte-kopf', box).append(act);
+    $('.akte-kopf', box).append(...kopf, act);
     $('.akte-stamm', box).append(form, ...stamm);
     for (const [id] of gruppen) $(`[data-apane="${id}"]`, box).append(...inhalt[id]);
     if (typ === 'k') {
@@ -511,7 +514,7 @@ window.Buero = (() => {
       regWahl[typ] = id;
       $$('[data-areg]', box).forEach((b) => b.classList.toggle('on', b.dataset.areg === id));
       $$('[data-apane]', box).forEach((p) => (p.hidden = p.dataset.apane !== id));
-      if (typ === 'k' && id === 'zeit') zeitleiste($('[data-apane="zeit"]', box), x).catch((e) => console.warn(e));
+      if (id === 'zeit') zeitleiste($('[data-apane="zeit"]', box), x, typ === 'p').catch((e) => console.warn(e));
       if (typ === 'k' && id === 're') kundenRechnungen($('[data-apane="re"]', box), x).catch((e) => console.warn(e));
     };
     $$('[data-areg]', box).forEach((b) => (b.onclick = () => zeig(b.dataset.areg)));
@@ -546,6 +549,7 @@ window.Buero = (() => {
       const t = Math.max(g.t || 0, ...scans.map((sc) => sc.t || 0), vo.t || 0) || w.created || 0;
       const st = Projekt.norm(w.status);
       const stand = st === 'besichtigung' ? ['Noch kein Angebot', 'gelb'] : st === 'entwurf' ? ['Angebot in Arbeit', ''] : st === 'angebot' ? ['Angebot verschickt', ''] : st === 'abgesagt' ? ['Abgesagt', 'muted'] : ['Zugesagt', 'gruen'];
+      if (w.pruefung?.geprueft) was.push('geprüft');
       return { x, w, t, was, stand, neu: ['besichtigung', 'entwurf'].includes(st) };
     }));
     return l.filter(Boolean).sort((a, b) => b.t - a.t);
@@ -557,8 +561,8 @@ window.Buero = (() => {
       zeilen: l.map((a) => ({ id: a.x.id, werte: { tag: { text: tag(a.t), sort: a.t }, kunde: { text: Kunden.name(Kunden.byId(a.w.kundeId)) || a.w.customer || '', html: `<b>${esc(Kunden.name(Kunden.byId(a.w.kundeId)) || a.w.customer || '')}</b>` },
         prj: { text: a.w.titel || 'Projekt', html: mitKunde ? esc(a.w.titel || 'Projekt') : `<b>${esc(a.w.titel || 'Projekt')}</b>` }, was: a.was.join(', '),
         stand: { text: a.stand[0], html: `<span class="vo-st ${a.stand[1]}">${esc(a.stand[0])}</span>` },
-        los: { text: '', html: `<span class="vo-los"><button type="button" class="btn secondary small" data-vo="${esc(a.x.id)}">Aufnahme</button><button type="button" class="btn small" data-voa="${esc(a.x.id)}">${a.stand[0] === 'Noch kein Angebot' ? 'Angebot erstellen' : 'Zum Angebot'}</button></span>` } } })) });
-    $$('[data-vo]', el).forEach((b) => (b.onclick = (e) => { e.stopPropagation(); Projekt.oeffnen(b.dataset.vo, { pc: 'vorort' }); }));
+        los: { text: '', html: `<span class="vo-los"><button type="button" class="btn secondary small" data-vo="${esc(a.x.id)}">${a.w.pruefung?.geprueft ? 'Aufnahme' : 'Prüfen'}</button><button type="button" class="btn small" data-voa="${esc(a.x.id)}">${a.stand[0] === 'Noch kein Angebot' ? 'Angebot erstellen' : 'Zum Angebot'}</button></span>` } } })) });
+    $$('[data-vo]', el).forEach((b) => (b.onclick = (e) => { e.stopPropagation(); window.Pruefen ? Pruefen.view(b.dataset.vo) : Projekt.oeffnen(b.dataset.vo, { pc: 'vorort' }); }));
     $$('[data-voa]', el).forEach((b) => (b.onclick = (e) => { e.stopPropagation(); Projekt.oeffnen(b.dataset.voa, { pc: 'angebot' }); }));
   }
 
@@ -570,12 +574,13 @@ window.Buero = (() => {
     if (!el || !p) return;
     const A = window.Angebot?._intern; let PL; try { PL = await A.preisliste(); } catch { el.innerHTML = '<p class="empty">Preisliste nicht geladen.</p>'; return; }
     const pos = (nr) => PL.positionen.find((x) => x.nr === nr);
-    const sichern = async () => { p.updated = Date.now(); await kvSet('partner:' + p.id, p); window.Backup?.markChange?.(); await window.Partner?.laden(); };
+    const sichern = async () => { window.SubProfil?.stempeln(p); p.updated = Date.now(); await kvSet('partner:' + p.id, p); window.Backup?.markChange?.(); await window.Partner?.laden(); };
     const zeichnen = () => {
+      const sl = window.SubProfil?.stufeLeiste(p, zeichnen) || { html: '', binden: () => {} };
       const ein = Object.entries(p.preise || {}).filter(([nr]) => pos(nr)).sort((a, b) => a[0].localeCompare(b[0], 'de', { numeric: true }));
       const gew = [...new Set(PL.positionen.map((x) => x.gewerk))];
       const abstand = (unser, preis) => { if (!unser || !preis) return ''; const d = Math.round((1 - preis / unser) * 100); return `<span class="${d < 10 ? 'rot' : ''}">${d} %</span>`; };
-      el.innerHTML = `<div class="ltab-wz pp-wz"><span class="muted">${ein.length + (p.eigenePreise || []).length} Positionen · was diese Firma pro Einheit verlangt (netto). Die Kalkulation rechnet damit.</span>
+      el.innerHTML = `${sl.html}<div class="ltab-wz pp-wz"><span class="muted">${ein.length + (p.eigenePreise || []).length} Positionen · was diese Firma pro Einheit verlangt (netto). Die Kalkulation rechnet damit.</span>
           <button type="button" class="btn secondary small" data-ppx>${icon('download')} Als Excel speichern</button></div>
         <div class="ltab-wrap"><table class="ltab pp-tab"><colgroup><col style="width:90px"><col><col style="width:80px"><col style="width:120px"><col style="width:130px"><col style="width:90px"><col style="width:44px"></colgroup>
           <thead><tr><th>Nr.</th><th>Leistung</th><th>Einheit</th><th class="r">Unser Preis</th><th class="r">Preis der Firma</th><th class="r" title="Wie viel die Firma unter unserem Angebotspreis liegt">Spanne</th><th></th></tr></thead>
@@ -588,13 +593,14 @@ window.Buero = (() => {
               <td><button type="button" class="icon-btn pp-x" data-epdel="${esc(x.id)}" title="Entfernen">${icon('trash')}</button></td></tr>`).join('')}
             <tr class="pp-neu"><td colspan="7"><select data-spneu><option value="">+ Position aus unserer Preisliste …</option>${gew.map((g) => `<optgroup label="${esc(g)}">${PL.positionen.filter((x) => x.gewerk === g && !(p.preise || {})[x.nr]).map((x) => `<option value="${esc(x.nr)}">${esc(x.nr)} ${esc(x.text)}</option>`).join('')}</optgroup>`).join('')}</select>
               <button type="button" class="btn secondary small" data-epneu>${icon('plus')} Eigene Position</button></td></tr></tbody></table></div>`;
+      sl.binden(el);
       $$('[data-sp]', el).forEach((i) => (i.onchange = async () => { p.preise[i.dataset.sp] = zahl(i.value); await sichern(); zeichnen(); }));
       $$('[data-spdel]', el).forEach((b) => (b.onclick = async () => { delete p.preise[b.dataset.spdel]; await sichern(); zeichnen(); }));
       $$('[data-ep]', el).forEach((tr) => { const x = (p.eigenePreise || []).find((y) => y.id === tr.dataset.ep);
         $$('[data-epf]', tr).forEach((i) => (i.onchange = async () => { x[i.dataset.epf] = i.dataset.epf === 'preis' ? zahl(i.value) : i.value.trim(); await sichern(); if (i.dataset.epf === 'preis') i.value = komma(x.preis); })); });
       $$('[data-epdel]', el).forEach((b) => (b.onclick = async () => { p.eigenePreise = (p.eigenePreise || []).filter((y) => y.id !== b.dataset.epdel); await sichern(); zeichnen(); }));
       $('[data-spneu]', el).onchange = async (e) => { const nr = e.target.value; if (!nr) return; (p.preise ??= {})[nr] = 0; await sichern(); zeichnen(); $(`[data-sp="${CSS.escape(nr)}"]`, el)?.select(); };
-      $('[data-epneu]', el).onclick = async () => { (p.eigenePreise ??= []).push({ id: uid(), text: '', einheit: 'Std.', preis: 0 }); await sichern(); zeichnen(); $$('[data-ep] [data-epf="text"]', el).pop()?.focus(); };
+      $('[data-epneu]', el).onclick = async () => { (p.eigenePreise ??= []).push({ id: uid(), text: '', einheit: 'Std.', preis: 0, gewerk: p.gewerke?.[0]?.name || '' }); await sichern(); zeichnen(); $$('[data-ep] [data-epf="text"]', el).pop()?.focus(); };
       $('[data-ppx]', el).onclick = () => excelSpeichern(`Preisliste ${Partner.titel(p) || 'Partner'}`, [['Nr.', 'Leistung', 'Einheit', 'Unser Preis', 'Preis der Firma'],
         ...ein.map(([nr, ep]) => { const it = pos(nr); return [nr, it.text, it.einheit, A.ep(it), +ep]; }), ...(p.eigenePreise || []).map((x) => ['', x.text, x.einheit, '', +x.preis || 0])], 'Preisliste');
       $$('.pp-in', el).forEach((i) => i.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); i.blur(); } }));
@@ -607,7 +613,8 @@ window.Buero = (() => {
     state.partner = null;
     header('Preislisten der Partner', 'wer macht was zu welchem Preis');
     const gewerke = (p) => String(p.gewerk || '').split(/\s*[,/&+;]\s*|\s+und\s+/i).map((s) => s.trim()).filter(Boolean);
-    const anzahl = (p) => Object.keys(p.preise || {}).length + (p.eigenePreise || []).length;
+    const anzahl = (p) => SubProfil.listen(p).reduce((s, x) => s + x.n, 0);
+    const stand = (p) => { const d = p.gewerke.flatMap((g) => g.stufen.map((s) => SubProfil.stand(p, g.name, s))).filter((x) => x.n).map((x) => x.datum); return d.length ? (d.includes('') ? '' : d.sort()[0]) : null; };
     const ps = Partner.liste().filter((p) => p.art !== 'lief');
     const alleG = [...new Set(ps.flatMap(gewerke))].sort((a, b) => a.localeCompare(b, 'de'));
     if (ppGewerk && !alleG.includes(ppGewerk)) ppGewerk = '';
@@ -619,8 +626,9 @@ window.Buero = (() => {
       const such = (p) => `${p.firma} ${p.inhaber} ${p.gewerk} ${(p.eigenePreise || []).map((x) => x.text).join(' ')}`.toLowerCase();
       const l = ps.filter((p) => (!ppGewerk || gewerke(p).includes(ppGewerk)) && w.every((t) => such(p).includes(t)));
       window.Tabelle.liste($('#ppL'), { id: 'ppreise', leer: ps.length ? 'Nichts gefunden.' : 'Noch keine Subunternehmer angelegt.', oeffnen: (id) => partnerPreisSeite(Partner.byId(id)),
-        spalten: [{ k: 'firma', t: 'Firma' }, { k: 'gewerk', t: 'Gewerk' }, { k: 'stufe', t: 'Qualität', b: 170 }, { k: 'n', t: 'Positionen', r: 1, b: 110 }, { k: 'inh', t: 'Ansprechpartner' }, { k: 'tel', t: 'Telefon', b: 170 }],
-        zeilen: l.map((p) => ({ id: p.id, werte: { firma: { text: Partner.titel(p) || 'Ohne Namen', html: `<b>${esc(Partner.titel(p) || 'Ohne Namen')}</b>` }, gewerk: p.gewerk, stufe: (p.stufen || []).join(', '),
+        spalten: [{ k: 'firma', t: 'Firma' }, { k: 'gewerk', t: 'Gewerk' }, { k: 'stufe', t: 'Qualität', b: 170 }, { k: 'n', t: 'Positionen', r: 1, b: 110 }, { k: 'stand', t: 'Preise vom', b: 130 }, { k: 'inh', t: 'Ansprechpartner' }, { k: 'tel', t: 'Telefon', b: 170 }],
+        zeilen: l.map((p) => ({ id: p.id, werte: { firma: { text: Partner.titel(p) || 'Ohne Namen', html: `<b>${esc(Partner.titel(p) || 'Ohne Namen')}</b>` }, gewerk: p.gewerk, stufe: p.gewerke.map((g) => g.stufen.length ? `${g.name}: ${g.stufen.join('/')}` : '').filter(Boolean).join(', ') || (p.stufen || []).join(', '),
+          stand: (() => { const d = stand(p); if (d === null) return ''; return { text: d ? new Date(d + 'T12:00').toLocaleDateString('de-DE') : 'ohne Datum', sort: d || '0', html: `<span class="${SubProfil.zuAlt(d) ? 'sp-altz' : ''}">${d ? new Date(d + 'T12:00').toLocaleDateString('de-DE') : 'ohne Datum'}</span>` }; })(),
           n: { text: anzahl(p) ? String(anzahl(p)) : 'keine', sort: anzahl(p), html: anzahl(p) ? String(anzahl(p)) : '<span class="muted">keine</span>' }, inh: p.inhaber, tel: p.telefon } })) });
     };
     $('#ppQ').oninput = debounce(zeichnen, 120);
@@ -726,13 +734,19 @@ window.Buero = (() => {
   // Alles nach Datum: eigene Notizen, Anrufe, Mails, Treffen (k.zeitleiste) und was DOM ohnehin weiß
   // (Angebote, Statuswechsel, Rechnungen, Zahlungen, Termine, Kontakt halten). Nichts doppelt gespeichert.
   const ZL_ARTEN = [['notiz', 'Notiz', 'edit'], ['anruf', 'Anruf', 'phone'], ['mail', 'E-Mail', 'mail'], ['treffen', 'Treffen', 'users']];
-  async function zeitleiste(el, k) {
-    const idx = (await projectIndex()).filter((x) => x.kundeId === k.id);
+  async function zeitleiste(el, k, istPartner = false) {
+    const idx = istPartner ? [] : (await projectIndex()).filter((x) => x.kundeId === k.id);
     const ws = (await Promise.all(idx.map((x) => kvGet('wohnung:' + x.id)))).filter(Boolean);
     try { await window.Rechnung?.laden(); } catch {}
     const ein = [];
     const dazu = (t, ic, titel, sub = '', ziel = '', eigen = null) => { const ms = typeof t === 'number' ? t : t ? new Date(String(t).slice(0, 10) + 'T12:00').getTime() : 0; if (ms) ein.push({ t: ms, ic, titel, sub, ziel, eigen }); };
-    if (k.created) dazu(k.created, 'user', 'Kunde angelegt', k.quelle ? 'Quelle: ' + k.quelle : '');
+    if (k.created) dazu(k.created, 'user', istPartner ? 'Partner angelegt' : 'Kunde angelegt', k.quelle ? 'Quelle: ' + k.quelle : '');
+    // Partner (v115): Eingangsrechnungen, Sterne aus den Projekten, Sperre
+    if (istPartner) {
+      for (const b of (window.Finanzen?.liste() || []).filter((b) => b.partnerId === k.id)) { dazu(b.datum || b.created, 'euro', `Rechnung ${b.nr || ''}`.trim(), `${(+b.netto || 0).toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} € netto`); if (b.bezahlt) dazu(b.bezahlt, 'check', `Bezahlt: ${b.nr || 'Rechnung'}`); }
+      try { for (const s of (await window.SubProfil?.bewertung(k))?.liste || []) dazu(s.t, 'check', `Bewertet: ${'★'.repeat(s.n)}`, [s.projekt, s.grund].filter(Boolean).join(' · ')); } catch {}
+    }
+    for (const e of k.sperre?.log || []) dazu(e.t, 'x', { gesperrt: 'Gesperrt', entsperrt: 'Entsperrt', ausnahme: 'Ausnahme trotz Sperre' }[e.was] || e.was, [e.grund, e.text, e.wofuer, e.wer].filter(Boolean).join(' · '));
     for (const w of ws) {
       const n = w.titel || 'Projekt';
       dazu(w.created, 'file', `Angebot angelegt: ${n}`, w.nr || '', 'p:' + w.id);
@@ -750,7 +764,7 @@ window.Buero = (() => {
       for (const [i, m] of (r.mahnungen || []).entries()) dazu(m.datum, 'bell', `${i ? `${i + 1}. Mahnung` : 'Zahlungserinnerung'}: ${r.nr || ''}`, '', 'r:' + r.id);
     }
     const heute = tagIso(new Date()), von = String(+heute.slice(0, 4) - 3) + heute.slice(4), bis = String(+heute.slice(0, 4) + 1) + heute.slice(4);
-    for (const t of (window.Kalender?.eintraege(von, bis, { filter: false }) || []).filter((t) => t.typ === 'termin' && t.kundeId === k.id))
+    for (const t of (window.Kalender?.eintraege(von, bis, { filter: false }) || []).filter((t) => t.typ === 'termin' && (istPartner ? t.partnerId === k.id || (t.partnerIds || []).includes(k.id) : t.kundeId === k.id)))
       dazu(t.datum, 'calendar', `Termin: ${t.titel || 'Termin'}`, [t.von, t.ort].filter(Boolean).join(' · '), 'kal:' + t.datum);
     if (k.pflege?.anruf?.zuletzt) dazu(k.pflege.anruf.zuletzt, 'phone', 'Angerufen (Kontakt halten)');
     if (k.pflege?.essen?.zuletzt) dazu(k.pflege.essen.zuletzt, 'users', 'Getroffen (Kontakt halten)');
@@ -765,7 +779,7 @@ window.Buero = (() => {
         <span class="zl-d">${tag(e.t)}</span><span class="zl-i">${icon(e.ic)}</span>
         <span class="zl-t"><b>${esc(e.titel)}</b>${e.sub ? `<span>${esc(e.sub)}</span>` : ''}</span>
         ${e.eigen ? `<button type="button" class="icon-btn zl-x" data-zlx="${i}" title="Eintrag löschen">${icon('x')}</button>` : ''}</div>`).join('') || '<p class="empty">Noch nichts eingetragen.</p>'}</div>`;
-    const sichern = async () => { await Kunden.speichern(k); window.Backup?.markChange?.(); zeitleiste(el, k); };
+    const sichern = async () => { await (istPartner ? Partner.speichern(k) : Kunden.speichern(k)); window.Backup?.markChange?.(); zeitleiste(el, k, istPartner); };
     $('#zlDazu', el).onclick = async () => {
       const text = $('#zlText', el).value.trim(); if (!text) return $('#zlText', el).focus();
       const d = Kontakt.lesen?.($('#zlTag', el).value) || '';
@@ -784,7 +798,7 @@ window.Buero = (() => {
     $$('[data-zlz]', el).forEach((z) => (z.onclick = () => {
       const [a, id] = z.dataset.zlz.split(/:(.*)/);
       if (a === 'p') Projekt.oeffnen(id);
-      else if (a === 'r') { const r = Rechnung.liste().find((x) => x.id === id); if (r) Rechnung.detail(r, () => Kunden.oeffnen(k.id)); }
+      else if (a === 'r') { const r = Rechnung.liste().find((x) => x.id === id); if (r) Rechnung.detail(r, () => (istPartner ? Partner.oeffnen(k.id) : Kunden.oeffnen(k.id))); }
       else if (a === 'kal') desktopBefehl('kalender');
     }));
   }

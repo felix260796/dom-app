@@ -115,6 +115,9 @@
 .stk-feld { display: flex; align-items: center; gap: 8px; margin: 0 0 6px; font-weight: 650; color: var(--navy); }
 .stk-feld svg.i { width: 19px; height: 19px; color: var(--brass); }
 .stk-feld span { flex: 1; }
+.stk-vz { display: flex; align-items: flex-start; gap: 8px; margin: 2px 0 6px; font-size: 14px; }
+.stk-vz input { margin-top: 2px; width: auto; flex: none; }
+.stk-vz small { color: var(--muted); }
 .stk-feld input { width: auto; flex: none; }
 .stk-tipp { display: flex; align-items: center; gap: 6px; margin: 0 0 10px; font-weight: 650; color: #237a4b; }
 .stk-tipp svg.i { width: 18px; height: 18px; }
@@ -132,3 +135,67 @@
 .hi-b { font-size: 13px; font-weight: 600; white-space: nowrap; }
 .hi-pdf { flex: none; }
 .aw-abl { margin-top: 10px; }
+
+/* ---------- Kundenart, Personen, Auswahl-Knöpfe (seit v112) ---------- */
+.k-art { margin-top: 0; }
+.k-wahl { width: 100%; display: flex; align-items: center; gap: 10px; min-height: 46px; padding: 0 14px; border: 1px solid var(--line); border-radius: var(--r-sm); background: var(--soft); color: var(--text); font: inherit; text-align: left; }
+.k-wahl svg { width: 18px; height: 18px; color: var(--muted); flex: none; }
+.kform .chk { margin: 14px 0 0; align-items: flex-start; font-weight: 400; }
+details.pers { margin-top: 8px; padding-top: 6px; padding-bottom: 10px; }
+details.pers > summary { list-style: none; display: flex; align-items: center; gap: 8px; cursor: pointer; padding: 6px 0; }
+details.pers > summary::-webkit-details-marker { display: none; }
+details.pers .pers-t { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+details.pers .pers-t .muted { font-size: 13px; }
+details.pers .more-chev { transition: transform .2s; color: var(--muted); width: 18px; height: 18px; }
+details.pers[open] .more-chev { transform: rotate(90deg); }
+.akon select[data-akf="rolle"] { margin-bottom: 6px; }
+
+/* ---------- Sperre und Dubletten (v113) ---------- */
+.sperre-banner { display: flex; gap: 10px; align-items: flex-start; background: var(--danger); color: #fff; border-radius: 12px; padding: 12px 14px; margin: 0 0 12px; }
+.sperre-banner svg.i { flex: none; width: 20px; height: 20px; margin-top: 1px; }
+.sperre-banner small { display: block; opacity: .85; margin-top: 2px; }
+.pcard.gesperrt, tr.gesperrt, .k-dubl-z.gesperrt { opacity: .5; }
+.pcard.gesperrt b::after { content: ' · gesperrt'; color: var(--danger); font-weight: 600; }
+details.sperre-box { margin-top: 18px; border: 1px solid var(--line, #e5e5e5); border-radius: 12px; padding: 10px 12px; }
+details.sperre-box summary { display: flex; align-items: center; gap: 8px; cursor: pointer; list-style: none; color: var(--danger); font-weight: 600; }
+details.sperre-box summary::-webkit-details-marker { display: none; }
+details.sperre-box summary svg.i { width: 16px; height: 16px; }
+details.sperre-box summary small { margin-left: auto; font-weight: 400; }
+details.sperre-box .btn { margin-top: 8px; }
+.sperre-log { margin-top: 10px; font-size: 13px; display: flex; flex-direction: column; gap: 4px; color: var(--muted); }
+.k-dubl { display: flex; gap: 10px; background: var(--danger-soft); border-radius: 10px; padding: 10px 12px; margin-bottom: 10px; }
+.k-dubl > svg.i { flex: none; width: 20px; height: 20px; color: var(--danger); }
+.k-dubl > div { flex: 1; min-width: 0; }
+.k-dubl-z { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 6px; margin-top: 6px; font-size: 14px; }
+.k-dubl .rot { color: var(--danger); }
+
+/* ---------- Sub-Profil: Gewerke, Stufen, Nachweise, Sterne (v114) ---------- */
+.sp-gewl { display: flex; flex-direction: column; gap: 10px; margin-top: 4px; }
+.sp-gew { border: 1px solid var(--line, #e5e5e5); border-radius: 10px; padding: 8px 10px; }
+.sp-gew-k { display: flex; gap: 6px; align-items: center; }
+.sp-gew-k input { flex: 1; }
+.sp-chips { margin-top: 6px; }
+.sp-mat { display: flex; align-items: center; gap: 6px; margin-top: 6px; font-size: 13px; }
+.sp-mat .muted { margin-right: 4px; }
+.sp-stand { display: flex; flex-direction: column; gap: 2px; margin-top: 6px; font-size: 13px; color: var(--muted); }
+.sp-stand .alt, .sp-altz { color: #d2691e; }
+.sp-best { margin-top: 8px; }
+.sp-stufe { margin-bottom: 10px; }
+.sp-stufe small { opacity: .7; margin-left: 4px; }
+.sp-nw { display: grid; grid-template-columns: 1fr auto; gap: 6px; align-items: center; margin-top: 8px; padding-bottom: 8px; border-bottom: 1px solid var(--line, #eee); }
+.sp-nw input[type="date"], .sp-nw select[data-nwf="dokId"] { grid-column: 1; }
+.sp-nw [data-nwdel] { grid-column: 2; grid-row: 1; }
+.sp-nw small { grid-column: 1 / -1; }
+.sp-nw.bald small { color: #d2691e; }
+.sp-nw.abgelaufen small { color: var(--danger); font-weight: 600; }
+.sp-sterne { display: inline-flex; gap: 1px; color: #c9ced6; font-style: normal; }
+.sp-sterne i { font-style: normal; }
+.sp-sterne i.an { color: #e0a526; }
+.sp-sterne.gross i { font-size: 24px; cursor: pointer; padding: 0 2px; }
+.sp-bz { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; padding: 8px 0; border-bottom: 1px solid var(--line, #eee); }
+.sp-bn { flex: 1; min-width: 140px; display: flex; flex-direction: column; }
+.sp-bz input { flex-basis: 100%; }
+.sp-bewp { margin: 12px 0; }
+.sp-bk { display: flex; align-items: center; gap: 8px; }
+.sp-bje { display: flex; align-items: center; gap: 8px; margin-top: 6px; font-size: 14px; }
+.sp-bje > span:first-child { flex: 1; }

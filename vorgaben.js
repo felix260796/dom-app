@@ -60,6 +60,28 @@ const VORGABEN = {
     ]],
   ],
   ablauf: [
+    ['Vor-Ort-Termin', [
+      { k: 'aufnahmeEinverstaendnis', l: 'Vor der Gesprächsaufnahme fragen, ob der Kunde einverstanden ist', t: 'janein', d: 'ja', h: 'Einmal je Vorgang. „Ja“ wird mit Uhrzeit und Namen vermerkt, ohne „Ja“ startet keine Aufnahme.' },
+      { k: 'aufnahmeTeilMin', l: 'Lange Aufnahmen in Stücke teilen, alle so viele Minuten', t: 'zahl', d: 30, h: 'Die Aufnahme läuft ohne Grenze weiter. Jedes Stück wird gleich ausgewertet und hinten ans Gespräch gehängt.' },
+      { k: 'spaeterMinuten', l: '„Ich komme später“: Auswahl in Minuten (eine Zeile je Wert)', t: 'liste', d: ['10', '15', '20', '30'] },
+      { k: 'textSpaeter', l: 'Nachricht „Ich komme später“', t: 'text', d: '{anrede}\nich bin etwas später bei Ihnen, in etwa {minuten} Minuten. Bitte entschuldigen Sie.\nViele Grüße\n{name}', h: '{anrede} = Briefanrede des Kunden, {minuten}, {name} = wer das Gerät hat, {firma}. Geht per SMS, WhatsApp oder Mail, du tippst nur noch „Senden“.' },
+      { k: 'ordnerBereich', l: 'Bilder-Ordner, wenn vor Ort ein Bereich gewählt ist', t: 'zeile', d: '{bereich}', h: '{bereich} = Name des Bereichs (z. B. Bad), {datum} = heute. Ohne gewählten Bereich gilt der Ordner für „Fotos machen“.' },
+      { k: 'briefingTempo', l: 'Briefing: Sprechtempo (1 = normal, 0,8 langsamer, 1,2 schneller)', t: 'zahl', d: 1 },
+      { k: 'verkaufFelder', l: 'Verkaufsinfos (intern) im Vor-Ort-Termin (eine Zeile je Feld)', t: 'liste', d: ['Wer entscheidet?', 'Budget', 'Zeitrahmen', 'Holt noch andere Angebote ein?', 'Zuschuss oder Förderung möglich?', 'Weitere Wünsche für später'], h: 'Nur für euch, steht nie im Angebot. Das Briefing liest sie mit vor.' },
+      { k: 'angebotZusammenstellung', l: 'Angebot mit mehreren Titeln: Zusammenstellung (Summe je Titel) vor der Gesamtsumme', t: 'janein', d: 'ja' },
+      { k: 'preisAbweichung', l: 'Angebot: Hinweis, wenn ein eigener Preis so viel % von der Preisliste abweicht (0 = aus)', t: 'zahl', d: 30, h: 'Nur ein Hinweis an der Position, nichts wird geändert.' },
+      { k: 'anrufArt', l: 'Bezeichnung für notierte Anrufe im Gespräch', t: 'zeile', d: 'Telefonat' },
+      { k: 'subFristTage', l: 'An Sub schicken: Angebot erbitten in so vielen Werktagen', t: 'zahl', d: 7 },
+      { k: 'subFotosMax', l: 'An Sub schicken: höchstens so viele Fotos je Bereich', t: 'zahl', d: 6 },
+      { k: 'subAnfrageText', l: 'An Sub schicken: Bitte um Angebot (im Blatt)', t: 'text', d: 'Wir bitten um Ihr Angebot für die beschriebenen Arbeiten bis {frist}.', h: '{frist} = Datum.' },
+      { k: 'subLohnMaterial', l: 'An Sub schicken: fester Satz zu Lohn und Material', t: 'zeile', d: 'Bitte Lohn und Material getrennt ausweisen.' },
+      { k: 'textSubAnfrage', l: 'Mail an den Sub mit Bitte um Angebot', t: 'text', d: '{anrede}\nanbei die Unterlagen zum Projekt {projekt}. Wir bitten um Ihr Angebot bis {frist}. Bitte Lohn und Material getrennt ausweisen.\nViele Grüße\n{name}', h: '{anrede}, {projekt}, {frist}, {name}' },
+      { k: 'textSubInfo', l: 'Mail an den Sub nur zur Info', t: 'text', d: '{anrede}\nanbei zur Info die Unterlagen zum Projekt {projekt}.\nViele Grüße\n{name}', h: '{anrede}, {projekt}, {name}' },
+      { k: 'angebotFristTage', l: 'Termin abschließen: Angebot kommt in so vielen Werktagen', t: 'zahl', d: 5, h: 'Vorschlag beim Abschließen, änderbar. Daraus wird ein To-do „Angebot an … schicken“.' },
+      { k: 'dankeFragen', l: 'Nach dem Abschließen gleich die Danke-Nachricht anbieten', t: 'janein', d: 'ja' },
+      { k: 'textDanke', l: 'Danke-Nachricht nach dem Termin', t: 'text', d: '{anrede}\nvielen Dank für Ihre Zeit heute und das gute Gespräch. Ihr Angebot bekommen Sie bis {frist}. Bei Fragen melden Sie sich gerne jederzeit.\nViele Grüße\n{name}\n{firma}', h: '{anrede}, {frist} = Datum, bis wann das Angebot kommt, {name}, {firma}.' },
+      { k: 'soArbeitenWir', l: 'Seite „So arbeiten wir“ zum Zeigen beim Kunden', t: 'text', d: 'Ein Ansprechpartner\nSie haben vom ersten Termin bis zur Abnahme einen festen Ansprechpartner bei uns.\n\nFestes Angebot\nSie bekommen ein klares Angebot mit allen Positionen. Was nicht drinsteht, wird nicht ohne Ihr Okay gemacht.\n\nGeprüfte Fachbetriebe\nAlle Gewerke führen ausgewählte Fachbetriebe aus, die wir selbst prüfen.\n\nSaubere Baustelle\nWir schützen Laufwege und Möbel und räumen jeden Tag auf.\n\nKlare Termine\nSie wissen immer, was als Nächstes passiert und wann wir kommen.\n\nAbnahme gemeinsam\nAm Ende gehen wir alles mit Ihnen durch. Danach gilt die Gewährleistung.', h: 'Absätze durch eine Leerzeile trennen, die erste Zeile eines Absatzes ist die Überschrift. Leer = Knopf ausgeblendet.' },
+    ]],
     ['Angebote', [
       { k: 'vorortAuto', l: 'Nach jeder Aufnahme gleich prüfen, was fürs Angebot noch fehlt', t: 'janein', d: 'ja', h: 'Im Projekt unter „Was fehlt noch?“. Von Hand geht es dort immer.' },
       { k: 'vorortFragenMax', l: 'Wie viele Rückfragen höchstens auf einmal?', t: 'zahl', d: 8 },
@@ -70,10 +92,19 @@ const VORGABEN = {
       { k: 'raeumeWohnung', l: 'Räume zum Anhaken bei „Ganze Wohnung“ (eine Zeile je Raum)', t: 'liste', d: ['Badezimmer', 'Gäste-WC', 'Küche', 'Wohnzimmer', 'Schlafzimmer', 'Kinderzimmer', 'Flur / Diele'] },
       { k: 'raeumeHaus', l: 'Räume zum Anhaken bei „Ganzes Haus“ (eine Zeile je Raum)', t: 'liste', d: ['Badezimmer', 'Gäste-WC', 'Küche', 'Wohnzimmer', 'Schlafzimmer', 'Kinderzimmer', 'Flur / Diele', 'Treppenhaus', 'Keller', 'Dachgeschoss', 'Heizraum', 'Fassade / Außen', 'Garten'] },
       { k: 'kleinName', l: 'So heißt eine Kleinigkeit im Angebot', t: 'zeile', d: 'Leistungen', h: 'Einzelne Arbeiten ohne Raum, z. B. Türgriffe oder Steckdosen.' },
-      { k: 'ansprechAngebot', l: 'Ansprechpartner im Angebot (Standard, eine Person)', t: 'zeile', d: 'Felix Brenzinger', h: 'Steht oben im Angebot und unterschreibt am Schluss. In jedem Angebot in Schritt 1 änderbar.' },
+      { k: 'ansprechAngebot', l: 'Verfasser im Angebot (Standard, eine Person)', t: 'zeile', d: 'Felix Brenzinger', h: 'Steht oben im Angebot als Ansprechpartner und unterschreibt beim Gruß. In jedem Angebot änderbar.' },
+      { k: 'angebotGueltigTage', l: 'Angebot gültig (Tage ab Datum)', t: 'zahl', d: 28, h: 'Steht im Angebot oben als „Gültig bis“ und im Baustein „Preisbindung“ ({gueltig}). Standard 4 Wochen.' },
+      { k: 'abschlagNamen', l: 'Zahlungsplan im Angebot: Bezeichnung des ersten, der mittleren und des letzten Abschlags', t: 'liste', d: ['bei Auftrag', 'nach Baufortschritt', 'nach Abnahme'], h: 'Daraus und aus dem Abschlagsplan des Projekts entsteht der Satz {zahlungsplan}, z. B. „30 % bei Auftrag, 40 % nach Baufortschritt, 30 % nach Abnahme“.' },
+      { k: 'textAuftragWiderruf', l: 'Sätze zum Widerruf in der Auftragserteilung (nur Privatkunden und WEG)', t: 'text', d: '', h: 'Rechtstext, bitte vom Anwalt oder Verband prüfen lassen und dann hier eintragen. Leer = nichts.' },
+      { k: 'textWiderrufAnlage', l: 'Anlage zum Angebot: Widerrufsbelehrung und Muster-Widerrufsformular (nur Privatkunden und WEG)', t: 'text', d: '', h: 'Rechtstext, bitte prüfen lassen und dann hier eintragen. Steht als eigene Seite hinter dem Angebot. Platzhalter: {firma}, {anschrift}, {email}, {telefon}. Leer = keine Anlage.' },
+      { k: 'kiSatzAuto', l: 'Angebot: persönlichen Satz für die Einleitung von selbst vorschlagen (KI, einmal je Angebot)', t: 'janein', d: 'ja', h: 'Steht als „KI-Vorschlag“ unter dem Anfangstext, erst „Übernehmen“ schreibt ihn ins Angebot.' },
+      { k: 'skontoProzent', l: 'Skonto im Angebot in % (0 = kein Skonto)', t: 'zahl', d: 0, h: 'Steht unter der Gesamtsumme mit Betrag und Zahlbetrag, berechnet vom Zahlbetrag brutto (ohne Bedarfs- und Alternativpositionen). Je Angebot änderbar. Platzhalter in Texten: {skonto}, {skontobetrag}, {zahlbetrag}.' },
+      { k: 'skontoTage', l: 'Skonto bei Zahlung innerhalb von … Tagen', t: 'zahl', d: 10 },
+      { k: 'textVorzeitig', l: 'Kästchen „vorzeitiger Beginn“ über der Unterschrift des Kunden (nur Privatkunden und WEG)', t: 'text', d: '', h: 'Rechtstext, bitte vom Anwalt oder Verband prüfen lassen und dann hier eintragen. Leer = kein Kästchen im Angebot.' },
+      { k: 'widerrufTage', l: 'Widerrufsfrist in Tagen ab Zusage (für den Hinweis beim Einplanen)', t: 'zahl', d: 14, h: 'Liegt der Baustart in dieser Frist und hat der Kunde den vorzeitigen Beginn nicht angekreuzt, zeigt das Projekt einen Hinweis. Nichts wird gesperrt.' },
       { k: 'ansprechProjekt', l: 'Ansprechpartner im Projekt nach der Zusage (Standard, eine Person)', t: 'zeile', d: 'Deniel Kovacic' },
-      { k: 'angebotGruss', l: 'Angebot endet mit Gruß, Unterschrift und Stempel', t: 'janein', d: 'ja', h: 'Text und Abwählen: Schlusstexte im Angebot bzw. Einstellungen › Aufschläge & Angebotstexte › Textfelder.' },
-      { k: 'angebotAuftragsfeld', l: 'Angebot hat am Ende ein Feld, in dem der Kunde unterschreibt (Auftragserteilung)', t: 'janein', d: 'ja', h: 'Text und Abwählen: Schlusstexte im Angebot bzw. Einstellungen › Aufschläge & Angebotstexte › Textfelder.' },
+      { k: 'angebotGruss', l: 'Angebot hat nach den Schlusstexten den Gruß mit Unterschrift und Stempel', t: 'janein', d: 'ja', h: 'Text und Abwählen: Schlusstexte im Angebot bzw. Einstellungen › Textbausteine.' },
+      { k: 'angebotAuftragsfeld', l: 'Angebot hat am Ende ein Feld, in dem der Kunde unterschreibt (Auftragserteilung)', t: 'janein', d: 'ja', h: 'Text und Abwählen: Schlusstexte im Angebot bzw. Einstellungen › Textbausteine.' },
       { k: 'abEinleitung', l: 'Auftragsbestätigung: Text vor den Positionen', t: 'text', d: 'vielen Dank für Ihren Auftrag. Hiermit bestätigen wir Ihnen die folgenden Leistungen gemäß unserem Angebot Nr. {nr}:', h: 'Platzhalter: {nr} Angebotsnummer, {kunde} Kunde, {datum} heute.' },
       { k: 'abSchluss', l: 'Auftragsbestätigung: Satz vor dem Gruß', t: 'zeile', d: 'Wir freuen uns auf die Zusammenarbeit.' },
       { k: 'nachfassenTage', l: 'Hinweis „Nachfassen“ nach wie vielen Tagen?', t: 'zahl', d: 7 },
@@ -141,6 +172,9 @@ const VORGABEN = {
       { k: 'telVorwahl', l: 'Ländervorwahl beim Anrufen', t: 'zeile', d: '+49', h: 'Beim Tippen auf „Anrufen“ wird aus 0711 123456 automatisch +49 711 123456.' },
       { k: 'telArten', l: 'Bezeichnungen für weitere Telefonnummern (eine Zeile je Bezeichnung)', t: 'liste', d: ['Handy', 'Zuhause', 'Geschäftlich'], h: 'Bei Kunde und Partner auf „Telefon“ tippen, um die Bezeichnung zu wählen; das kleine Plus daneben fügt eine weitere Nummer an.' },
       { k: 'mailArten', l: 'Bezeichnungen für weitere E-Mail-Adressen (eine Zeile je Bezeichnung)', t: 'liste', d: ['Privat', 'Geschäftlich'] },
+      { k: 'sperrGruende', l: 'Gründe für eine Sperre (Kunden und Subunternehmer)', t: 'liste', d: ['Zahlt nicht oder sehr spät', 'Unzuverlässig', 'Schlechte Qualität', 'Unangenehmer Umgang', 'Rechtsstreit', 'Sonstiges'], h: 'Auswahl beim Sperren. Eigener Grund geht immer. Gesperrt ist nur intern sichtbar.' },
+      { k: 'personRollen', l: 'Rollen für Personen beim Kunden (eine Zeile je Rolle)', t: 'liste', d: ['Ehefrau', 'Ehemann', 'Partnerin', 'Partner', 'Sohn', 'Tochter', 'Mutter', 'Vater', 'Geschäftsführer', 'Buchhaltung', 'Bauleitung', 'Assistenz', 'Verwalterin', 'Verwalter'], h: 'Vorschläge beim Feld „Rolle“ in der Personen-Liste. Eigene Rollen kann man immer eintippen.' },
+      { k: 'objektRollen', l: 'Rollen für Ansprechpartner vor Ort (eine Zeile je Rolle)', t: 'liste', d: ['Eigentümer', 'Mieter', 'Hausmeister', 'Hausverwaltung', 'Person des Kunden', 'Nachbar'] },
       { k: 'kundenQuellen', l: 'Wie kommen Kunden zu uns? (eine Zeile je Quelle)', t: 'liste', d: ['Empfehlung', 'Google / Internet', 'Bauschild', 'Hausverwaltung', 'Stammkunde', 'Flyer / Anzeige', 'Sonstiges'] },
     ]],
     ['Geburtstage', [
@@ -151,7 +185,10 @@ const VORGABEN = {
   ],
   partnerEinst: [
     ['Partner (Subunternehmer, Lieferanten, Außendienst)', [
-      { k: 'partnerStufen', l: 'Qualitätseinstufung der Arbeit (eine Zeile je Stufe)', t: 'liste', d: ['Basic', 'Standard', 'Premium'], h: 'Beim Partner kannst du mehrere Stufen ankreuzen, z. B. Standard und Premium.' },
+      { k: 'partnerStufen', l: 'Stufen der Subunternehmer (eine Zeile je Stufe)', t: 'liste', d: ['Bronze', 'Silber', 'Gold'], h: 'Je Gewerk eines Subs ankreuzbar, mit eigener Preisliste je Stufe. Früher Basic, Standard, Premium (wird umbenannt).' },
+      { k: 'preislisteMonate', l: 'Preislisten der Subs gelten als alt nach (Monaten)', t: 'zahl', d: 12, h: 'Ältere Preise werden still markiert („bitte prüfen“).' },
+      { k: 'nachweisArten', l: 'Pflichtnachweise der Subunternehmer (eine Zeile je Art)', t: 'liste', d: ['Freistellungsbescheinigung § 48b', 'Betriebshaftpflicht', 'Gewerbeanmeldung', 'Handwerkskarte', 'Unbedenklichkeitsbescheinigung Berufsgenossenschaft', 'Unbedenklichkeitsbescheinigung Finanzamt', 'Mindestlohnerklärung'] },
+      { k: 'nachweisWarnTage', l: 'Warnung vor Ablauf eines Nachweises (Tage vorher)', t: 'zahl', d: 30 },
       { k: 'gewerkeExtra', l: 'Zusätzliche Gewerke für Eingangsrechnungen (neben denen der Preisliste)', t: 'liste', d: ['Elektro', 'Material', 'Entsorgung', 'Sonstiges'] },
     ]],
   ],
@@ -180,6 +217,9 @@ const VORGABEN = {
   // KI-Anweisungen (Prompts). Englisch, weil die Bild-KI Englisch am genauesten umsetzt. Deutsche Erklärung jeweils darunter.
   prompts: [
     ['Mitdenken vor Ort und Positionen vorschlagen (die KI antwortet auf Deutsch)', [
+      { k: 'promptNotiz', l: 'Kurz notieren: Kontakt, Info und Erinnerung erkennen', t: 'text', d: 'You read a short internal note (typed or dictated in German) by a renovation company owner about one of his customers or subcontractors. Find which contact from the list it is about (use the id exactly as given, empty string if unclear). Extract the information worth keeping in the contact history as one short German sentence (info), and, only if the note asks to do something later, a reminder (erinnerung) with a short German imperative text and a date (YYYY-MM-DD; resolve words like "next week", "Friday", "in May" from today, empty if no date). Answer only JSON: {"kontakt": "", "info": "", "erinnerung": {"text": "", "datum": ""} or null}.' },
+      { k: 'promptKiSatz', l: 'Angebot: persönlicher Satz für die Einleitung', t: 'text', d: 'You write ONE short, warm, personal sentence in German (formal "Sie") for the introduction of a renovation offer from a German company to a private or business customer. It refers concretely to one or two of the customer\'s confirmed wishes listed below (e.g. "Besonders freut uns, dass wir Ihr neues Bad mit bodengleicher Dusche in warmer Holzoptik planen dürfen."). No prices, no dates, no promises or guarantees, no greeting, no exclamation marks, at most 30 words. Answer with the sentence only.' },
+      { k: 'promptMasse', l: 'Vor Ort: Maße aus Sprache lesen', t: 'text', d: 'You read a short German dictation from a renovation site visit with room measurements, e.g. "Bad zwei vierzig mal eins achtzig, Höhe zwei fünfzig". Return every area (room or topic) with its length, width and height in metres as numbers (2,40 = 2.4; "zwei vierzig" = 2.4; centimetres convert to metres). Use the German area name as spoken; if it clearly matches one of the existing areas, use that exact name. Leave out numbers that were not said (0). Answer only JSON: {"bereiche": [{"name": "", "laenge": 0, "breite": 0, "hoehe": 0}]}.' },
       { k: 'promptVorOrt', l: 'Vor Ort: Was fehlt noch?', t: 'text', h: 'Platzhalter: {max} Anzahl Fragen, {pruefliste} deine Prüfliste aus „Abläufe“.', d: 'You are the experienced site manager of a German renovation company (small jobs, single rooms, whole flats, whole houses; ANY trade: tiles, plumbing, electrics, painting, floors, doors, windows, roller shutters, fittings, repairs). Your colleague is still on site with the customer, sometimes together with a subcontractor. Below is everything recorded so far. Think along like a professional estimator: for every piece of work that was discussed, what must be known to write a binding offer? Typical gaps: dimensions (length, width, ceiling height, wall thickness), quantities (how many door handles, sockets, shutters), make and model (ask for a photo of the type plate or the part), material and quality the customer wants, condition of the existing substrate, access (floor, lift, parking), who supplies material, which subcontractor gives a price, dates. Ask ONLY for what is really missing and really needed for the offer. Do not ask for anything already contained in the material or already answered. Most important first. At most {max} questions. Each question short, in German, informal (du), so that it can be answered in a few words or with one photo. bereich = room or area the question belongs to (German). art = "mass" (take a measurement), "foto" (take a photo), "kunde" (ask the customer), "info" (anything else). If nothing is missing, return an empty list.\n\nThe company always wants to remember:\n{pruefliste}' },
       { k: 'promptEntwurf', l: 'Im Büro: Positionen vorschlagen', t: 'text', h: 'Platzhalter: {hinweise} deine Hinweise aus „Abläufe“, {raumtypen} die Raumtypen der App.', d: 'You are the estimator of a German renovation company. From the site material below (conversation, notes, answers given on site, photos, measurements) write the draft of the offer. The job can be anything: a small repair (door handles, sockets, silicone joints), one room, a whole flat or a whole house. Do not limit yourself to bathrooms; use your trade knowledge to conclude which work steps are needed for what was discussed, but do not invent work the customer did not ask for.\n\nStructure: bereiche = the rooms or areas. Use the names of the areas that already exist exactly as written. A small job without a room gets ONE area called "Leistungen". Work that concerns the whole job (site setup, protection, disposal, cleaning, travel) goes into an area called "Allgemein". raumtyp = one of: {raumtypen}.\n\nPositions: take a position from the PRICE LIST whenever one fits (set nr exactly as in the list, text may stay empty). Only if nothing fits, write your own position: nr empty, text = short complete German description of the work, einheit = unit (Stück, m², lfm, Std., psch). Never state prices.\n\nQuantities: if the quantity equals a measurement of the area, set mengeAus to one of boden, decke, wand, umfang, sockel, tueren, fenster and the app will take the measured value. Otherwise set menge to the number that was said or that you can count or estimate from the photos. If you cannot know the quantity, set menge to 0. Never guess dimensions that nobody measured.\n\npartner = true if this work is done by a subcontractor who was on site or who was named, so that the price comes from his offer. grund = a few German words: which wish or finding this position comes from.\n\noffen = short German list of what is still missing for a binding offer (missing measurements, decisions of the customer, prices of subcontractors, things to check on site).\n\nRules of the company:\n{hinweise}' },
     ]],
@@ -399,7 +439,7 @@ window.Vorgaben = (() => {
   }
 
   // ---------- Preisliste & Angebot: Aufschläge, Texte, Firmendaten, Positionen ----------
-  const PL_ZAHLEN = [['aufLohn', 'Aufschlag auf Lohn (Subunternehmer) in %', true], ['aufMat', 'Aufschlag auf Material in %', true], ['wagnis', 'Wagnis und Gewinn in %', true], ['mwst', 'Mehrwertsteuer in %', true], ['spanne', 'Spanne der Preisrichtung vor Ort ± %', true], ['gueltig', 'Angebot gültig (Tage)', false]];
+  const PL_ZAHLEN = [['aufLohn', 'Aufschlag auf Lohn (Subunternehmer) in %', true], ['aufMat', 'Aufschlag auf Material in %', true], ['wagnis', 'Wagnis und Gewinn in %', true], ['mwst', 'Mehrwertsteuer in %', true], ['spanne', 'Spanne der Preisrichtung vor Ort ± %', true]];
   // Die Textfelder vor und nach den Positionen haben seit Version 75 eine eigene Seite (Angebot._intern.texteEinstellungen).
   // Seit Version 100 sind auch Schlusssatz (Gruß) und Auftragserteilung Textfelder dort (feste Bausteine am Schluss).
   const PL_TEXTE = [];
@@ -413,13 +453,13 @@ window.Vorgaben = (() => {
       <div class="card kform vg">${PL_ZAHLEN.map(([k, l, pr]) => `<label>${esc(l)}</label><input type="text" inputmode="decimal" data-ple="${k}" data-pr="${pr ? 1 : 0}" value="${esc(String(pr ? Math.round((E[k] || 0) * 1000) / 10 : E[k] ?? '').replace('.', ','))}">`).join('')}
         <p class="hint" style="margin:6px 0 0">Gilt für alle neuen Berechnungen. Im einzelnen Angebot kannst du unter „Nachkalkulation“ abweichen.</p></div>
       <div class="sec-h"><h2>Texte im Angebot</h2></div>
-      <div class="docs" style="margin-bottom:10px"><button class="doc" id="plTexte"><span class="d-ico navy">${icon('edit')}</span><span class="d-t"><b>Textfelder vor und nach den Positionen</b><span>${(window.Angebot._intern.bausteine() || []).length} Textfelder, z. B. ${esc((window.Angebot._intern.bausteine() || []).map((b) => b.titel).filter(Boolean).slice(0, 3).join(', '))}</span></span>${icon('chevron', 'pc-chev')}</button></div>
+      <div class="docs" style="margin-bottom:10px"><button class="doc" id="plTexte"><span class="d-ico navy">${icon('edit')}</span><span class="d-t"><b>Textbausteine (eigene Seite)</b><span>${(window.Angebot._intern.bausteine() || []).length} Textfelder, z. B. ${esc((window.Angebot._intern.bausteine() || []).map((b) => b.titel).filter(Boolean).slice(0, 3).join(', '))}</span></span>${icon('chevron', 'pc-chev')}</button></div>
       `;
     $('#plTexte', box).onclick = () => { const zur = { y: window.scrollY, h: $('#title').textContent }; window.Angebot._intern.texteEinstellungen(() => { einstellungSeite(window.__plSeite || 'kalkulation'); setTimeout(() => window.scrollTo(0, zur.y), 50); }); };
     $$('[data-ple]', box).forEach((el) => (el.onchange = async () => { const v = parseFloat(el.value.replace(',', '.')); if (!Number.isFinite(v)) return toast('Bitte eine Zahl eintragen.'); E[el.dataset.ple] = el.dataset.pr === '1' ? v / 100 : v; await sichern(); }));
     $$('[data-plt]', box).forEach((el) => (el.onchange = async () => { const k = el.dataset.plt; E[k] = k === 'hinweise' ? el.value.split('\n').map((x) => x.trim()).filter(Boolean) : el.value.trim(); await sichern(); }));
   }
-  /** Firmendaten, die auf Angeboten, Rechnungen und Protokollen stehen (Teil der Preisliste). */
+  /** Firmendaten, die auf Angeboten, Rechnungen und Protokollen stehen (seit P7 eigene Einstellung state.settings.firma). */
   async function firmaKarte(box) {
     const PL = await window.Angebot._intern.preisliste();
     const E = PL.einstellungen;
@@ -430,7 +470,7 @@ window.Vorgaben = (() => {
     $$('[data-plf]', box).forEach((el) => (el.onchange = async () => {
       let v = el.value.trim();
       if (el.dataset.plf === 'iban') { v = v.replace(/\s+/g, '').toUpperCase(); if (v && window.QR && !QR.ibanOk(v)) return toast('Die IBAN stimmt nicht (Prüfziffer). Bitte noch einmal prüfen.', 4500); }
-      E[el.dataset.plf] = v; await kvSet('preisliste', PL); toast('Gespeichert');
+      await window.Angebot._intern.firmaSetzen(el.dataset.plf, v); toast('Gespeichert');
     }));
   }
   async function preisliste(filter) {
@@ -498,8 +538,8 @@ window.Vorgaben = (() => {
       ['firma', 'Unterschrift', 'Unterschrift Gruß Name Angebot Rechnung zeichnen'],
       ['preisliste', 'Preise einzelner Positionen', 'Lohn Material Einheitspreis Position neu löschen'],
       ['pakete', 'Excel-Angebotstool laden', 'Import Excel Preisliste zurücksetzen'],
-      ['pakete', 'Was gehört in welches Paket?', 'Paket Vorlagen Basic Standard Premium Positionen'],
-      ['moodboards', 'Moodboards Basic, Standard, Premium', 'Bilder Produkte Ausstattung'],
+      ['pakete', 'Was gehört in welches Paket?', 'Paket Vorlagen Einfach Komfort Exklusiv Basic Standard Premium Positionen'],
+      ['moodboards', 'Moodboards Einfach, Komfort, Exklusiv', 'Bilder Produkte Ausstattung'],
       ['team', 'Texte der Terminmails', 'Mail Termin Bestätigung Kunde Subunternehmer Team'],
       ['team', 'Erinnerungen und Bestätigung an den Kunden', 'Erinnerung automatisch Schalter'],
       ['team', 'Team: Personen im Kalender', 'Felix Deniel Mitarbeiter'],

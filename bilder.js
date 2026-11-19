@@ -290,7 +290,7 @@ window.Bilder = (() => {
   /** Kamera öffnen und beliebig viele Fotos nacheinander machen (Kamera.serie). Jedes Foto wird sofort gespeichert:
    * in den Ordner ordnerId, sonst in den Ordner ordnerName (Standard: Vorgabe „ordnerFotos“, wird bei Bedarf angelegt).
    * { kundeId, objektId, projektId?, ordnerId?, ordnerName? } → Anzahl der Fotos. Auch für andere Bereiche (z. B. „Vor Ort“). */
-  async function fotosMachen({ kundeId, objektId = '', projektId = '', ordnerId = '', ordnerName = '' }) {
+  async function fotosMachen({ kundeId, objektId = '', projektId = '', ordnerId = '', ordnerName = '', bereichId = '' }) {
     const nm = ordnerName || fotoOrdner();
     let wo = '';
     const n = await Kamera.serie({ titel: 'Fotos', onFoto: async (roh) => {
@@ -300,7 +300,7 @@ window.Bilder = (() => {
       if (!o) { o = { id: uid(), name: nm, projektId }; dd.ordner.push(o); }
       const id = uid();
       await kvSet('bild:' + id, data);
-      dd.bilder.push({ id, t: Date.now(), ordner: o.id, projektId, text: '', thumb: await resize(data, 320, 'image/jpeg', 0.7) });
+      dd.bilder.push({ id, t: Date.now(), ordner: o.id, projektId, ...(bereichId ? { bereichId } : {}), text: '', thumb: await resize(data, 320, 'image/jpeg', 0.7) });
       await speichern(kundeId, objektId, dd);
       wo = o.name;
     } });
@@ -420,5 +420,5 @@ window.Bilder = (() => {
     await speichern(kid, oid, dd);
     return o;
   }
-  return { view, anzahl, ablegen, fotosMachen, alleView, laden };
+  return { view, anzahl, ablegen, fotosMachen, alleView, laden, speichern };
 })();

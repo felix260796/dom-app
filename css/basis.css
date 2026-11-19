@@ -343,6 +343,20 @@ textarea.sz-auf, .sz-auf input:not([readonly]), .sz-auf textarea { border-color:
 .pf-klein { border: 0; background: none; color: var(--muted); font: inherit; font-size: 14px; display: inline-flex; align-items: center; gap: 6px; padding: 10px 4px; margin-top: 4px; }
 .pf-klein svg.i { width: 16px; height: 16px; }
 
+/* ---------- To-dos (todos.js) und Heute/Morgen/Diese Woche (heute.js) ---------- */
+.td-liste { padding: 4px 0; }
+.td-z { display: flex; align-items: center; gap: 10px; padding: 8px 12px; border-bottom: 1px solid var(--line); }
+.td-z:last-child { border-bottom: 0; }
+.td-haken { flex: none; width: 26px; height: 26px; border-radius: 50%; border: 2px solid var(--line); background: #fff; display: grid; place-items: center; padding: 0; color: #fff; }
+.td-haken svg { width: 16px; height: 16px; }
+.td-z.erl .td-haken { background: var(--ok); border-color: var(--ok); }
+.td-z.erl .td-t b { text-decoration: line-through; color: var(--muted); }
+.td-t { flex: 1; min-width: 0; text-align: left; background: none; border: 0; padding: 2px 0; display: flex; flex-direction: column; gap: 2px; color: var(--text); font: inherit; }
+.td-t b { font-weight: 600; }
+.td-t .muted { font-size: 13px; display: flex; align-items: center; gap: 6px; }
+.td-prio { flex: none; width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+.heute-seg { margin: 0 0 6px; }
+
 /* ---------- Großer Bildschirm (iPad quer, großes iPad, Computer) ---------- */
 /* Ab 900 px Breite wird die Leiste unten zur Seitenleiste links, darunter die Punkte aus dem Menü (app.js, seitenleiste).
    Darunter (iPhone, kleines iPad hochkant) bleibt alles wie gehabt: fünf Reiter unten. */
@@ -411,3 +425,9 @@ textarea.sz-auf, .sz-auf input:not([readonly]), .sz-auf textarea { border-color:
 
 /* Windows-Programm: neue Fassung bereit (Seitenleiste unten) */
 .seite-upd { color: #f2c46d; font-weight: 650; }
+
+/* ---------- Kurz notieren (v115) ---------- */
+.nz-karte { display: flex; flex-direction: column; gap: 6px; }
+.nz-karte .muted { font-size: 13px; }
+.nz-karte textarea { min-height: 60px; }
+.nz-karte .btn { align-self: flex-start; }

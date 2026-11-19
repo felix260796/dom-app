@@ -991,7 +991,7 @@
   },
   {
    "nr": "WP-01",
-   "gewerk": "Wärmepumpe",
+   "gewerk": "Garten und Außen",
    "text": "Fundament Wärmepumpe herstellen (Aushub frostfrei, Frostschutzschotter, Schalung, Beton C25/30 bewehrt)",
    "einheit": "m²",
    "lohn": 220.0,
@@ -1002,8 +1002,8 @@
   },
   {
    "nr": "WP-02",
-   "gewerk": "Wärmepumpe",
-   "text": "Kernbohrung Hauswand für Leitungen inkl. Abdichtung",
+   "gewerk": "Garten und Außen",
+   "text": "Kernlochbohrung Hauswand für Leitungen",
    "einheit": "Stück",
    "lohn": 150.0,
    "mat": 40.0,
@@ -1013,7 +1013,7 @@
   },
   {
    "nr": "WP-03",
-   "gewerk": "Wärmepumpe",
+   "gewerk": "Garten und Außen",
    "text": "Leitungsgraben Wärmepumpe bis Haus inkl. Schutzrohr, wieder verfüllen",
    "einheit": "lfm",
    "lohn": 45.0,
@@ -1024,7 +1024,7 @@
   },
   {
    "nr": "WP-04",
-   "gewerk": "Wärmepumpe",
+   "gewerk": "Garten und Außen",
    "text": "Kiesbett / Kondensatversickerung am Fundament",
    "einheit": "pauschal",
    "lohn": 120.0,
@@ -1035,7 +1035,7 @@
   },
   {
    "nr": "WP-05",
-   "gewerk": "Wärmepumpe",
+   "gewerk": "Garten und Außen",
    "text": "Sicht- und Schallschutz-Lamellenverkleidung Wärmepumpe",
    "einheit": "Stück",
    "lohn": 250.0,

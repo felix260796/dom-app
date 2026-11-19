@@ -13,7 +13,9 @@ window.Tabelle = (() => {
   const SPALTEN = ['text', 'menge', 'einheit', 'ep'];
 
   /** Am Computer? (Windows-Programm, oder breiter Bildschirm mit Maus; nicht am iPad mit Finger oder Stift) */
-  const istBuero = () => document.documentElement.classList.contains('desktop') || matchMedia('(min-width: 1100px) and (pointer: fine)').matches;
+  // iPad nie Büro-Ansicht, auch nicht mit Tastatur und Trackpad (Runde 13: drei Ansichten iPhone, iPad, PC)
+  const istIpad = () => /iPad/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1) || !!window.Capacitor?.isNativePlatform?.();
+  const istBuero = () => document.documentElement.classList.contains('desktop') || (!istIpad() && matchMedia('(min-width: 1100px) and (pointer: fine)').matches);
   // Klasse buero an <html>: dichte Büro-Optik (css, html.buero) nur im Windows-Programm bzw. breit mit Maus; iPhone und iPad nie.
   const bueroKlasse = () => document.documentElement.classList.toggle('buero', istBuero());
   bueroKlasse(); try { matchMedia('(min-width: 1100px) and (pointer: fine)').addEventListener('change', bueroKlasse); } catch {}
@@ -44,7 +46,7 @@ window.Tabelle = (() => {
         gesNetto += S.netto;
         P.forEach((x, i) => {
           const z = S.zeilen.find((y) => y.i === i);
-          zeilen.push({ r, ri, x, i, text: z?.it.text || x.frei?.text || '', einheit: z?.it.einheit || x.frei?.einheit || '', ep: z?.ep || 0, gp: z?.gp || 0, fix: !!z?.fix });
+          zeilen.push({ r, ri, x, i, text: z?.it.text || x.frei?.text || '', einheit: z?.it.einheit || x.frei?.einheit || '', ep: z?.ep || 0, gp: z?.gp || 0, gpA: z?.gpAnzeige || 0, zaehlt: z?.zaehlt !== false, fix: !!z?.fix, ph: A.preisHinweis(x, r.angebot.kalk) });
         });
       });
       const mwst = r2(gesNetto * (A.einstellungen().mwst || 0.19));
@@ -73,13 +75,13 @@ window.Tabelle = (() => {
               <td class="r" data-zs="${r.id}">${zs.length ? zahl(zs.reduce((a, z) => a + z.gp, 0)) : ''}</td></tr>`
               : `<tr class="xt-titel"><td class="xt-nr">${g > 1 && tn ? tn : ''}</td><td colspan="4"><b>${esc(titel(r))}</b></td><td class="r" data-zs="${r.id}">${zs.length ? zahl(zs.reduce((a, z) => a + z.gp, 0)) : ''}</td></tr>`)
             + `
-            ${zs.map((z) => { nrIn[z.ri] = (nrIn[z.ri] || 0) + 1; return `<tr data-r="${z.r.id}" data-i="${z.i}" class="${z.x.frei ? 'frei' : ''}">
-            <td class="xt-nr">${g > 1 ? `${gNr[z.ri]}.` : ''}${nrIn[z.ri]}${marke(z.x)}</td>
+            ${zs.map((z) => { nrIn[z.ri] = (nrIn[z.ri] || 0) + 1; return `<tr data-r="${z.r.id}" data-i="${z.i}" class="${z.x.frei ? 'frei' : ''} ${z.zaehlt ? '' : 'nz'} ${z.x.art === 'kostenlos' ? 'kl' : ''}">
+            <td class="xt-nr">${g > 1 ? `${gNr[z.ri]}.` : ''}${nrIn[z.ri]}${marke(z.x)}${{ bedarf: '<span class="xt-m b" title="Bedarfsposition, nicht in der Summe">B</span>', alternativ: '<span class="xt-m a" title="Alternativposition, nicht in der Summe">A</span>', kostenlos: '<span class="xt-m k" title="Kostenlos">0</span>' }[z.x.art] || ''}<button type="button" class="xt-d ${z.x.lang || z.x.notiz ? 'hat' : ''}" data-xd title="${esc(z.x.notiz ? 'Notiz: ' + z.x.notiz : 'Art, Langtext, interne Notiz')}" aria-label="Details">…</button></td>
             <td><input data-c="text" value="${esc(z.text)}" list="xtPL" title="${esc(z.x.frei ? 'Eigene Position' : `${z.x.nr} aus der Preisliste`)}" autocomplete="off"></td>
             <td><input data-c="menge" class="r" value="${esc(mengeText(z.x.menge))}" autocomplete="off"></td>
             <td><input data-c="einheit" value="${esc(z.einheit)}" list="xtEh" autocomplete="off"></td>
-            <td><input data-c="ep" class="r ${z.fix ? 'fix' : ''}" value="${esc(zahl(z.ep))}" title="${z.fix ? 'Eigener Preis' : 'Preis aus der Preisliste'}" autocomplete="off"></td>
-            <td class="r xt-gp">${zahl(z.gp)}</td></tr>`; }).join('')}
+            <td><input data-c="ep" class="r ${z.fix ? 'fix' : ''} ${z.ph ? 'warn' : ''}" value="${esc(zahl(z.ep))}" title="${esc(z.ph ? 'Hinweis: ' + z.ph : z.fix ? 'Eigener Preis' : 'Preis aus der Preisliste')}" autocomplete="off"></td>
+            <td class="r xt-gp">${z.x.art === 'kostenlos' ? 'kostenlos' : z.zaehlt ? zahl(z.gp) : `(${zahl(z.gpA)})`}</td></tr>`; }).join('')}
             <tr class="xt-neu" data-neu="1" data-nr="${r.id}"><td class="xt-nr">${icon('plus')}</td>
               <td><input data-c="text" list="xtPL" placeholder="Neue Position in „${esc(titel(r))}“: eintippen oder aus der Preisliste wählen" autocomplete="off"></td>
               <td><input data-c="menge" class="r" placeholder="1" autocomplete="off"></td><td><input data-c="einheit" list="xtEh" autocomplete="off"></td><td><input data-c="ep" class="r" autocomplete="off"></td><td></td></tr>`;
@@ -127,7 +129,7 @@ window.Tabelle = (() => {
       list.forEach((r) => {
         const P = r.angebot.positionen || [], S = A.summen(P, r.angebot.kalk); ges += S.netto;
         const zsEl = $(`[data-zs="${r.id}"]`, box); if (zsEl) zsEl.textContent = S.zeilen.length ? zahl(S.netto) : '';
-        S.zeilen.forEach((z) => { const tr = $(`tr[data-r="${r.id}"][data-i="${z.i}"]`, box); if (!tr) return; $('.xt-gp', tr).textContent = zahl(z.gp); const e = $('[data-c="ep"]', tr); if (document.activeElement !== e) { e.value = zahl(z.ep); e.classList.toggle('fix', z.fix); } });
+        S.zeilen.forEach((z) => { const tr = $(`tr[data-r="${r.id}"][data-i="${z.i}"]`, box); if (!tr) return; $('.xt-gp', tr).textContent = z.art === 'kostenlos' ? 'kostenlos' : z.zaehlt === false ? `(${zahl(z.gpAnzeige)})` : zahl(z.gp); const e = $('[data-c="ep"]', tr); if (document.activeElement !== e) { e.value = zahl(z.ep); e.classList.toggle('fix', z.fix); } });
       });
       const mwst = r2(ges * (A.einstellungen().mwst || 0.19)), f = $$('tfoot td.r', box);
       f[0].textContent = zahl(ges); f[1].textContent = zahl(mwst); f[2].textContent = zahl(r2(ges + mwst)) + ' €';
@@ -288,7 +290,11 @@ window.Tabelle = (() => {
         if (e.target.matches('[data-c]')) aendern(e.target).catch((err) => toast('Ging nicht: ' + err.message, 5000));
         else if (e.target.matches('[data-t]')) titelAendern(e.target).catch((err) => toast('Ging nicht: ' + err.message, 5000));
       };
-      box.onclick = (e) => { const b = e.target.closest('[data-t="del"]'); if (b) titelLoeschen(b).catch((err) => toast('Ging nicht: ' + err.message, 5000)); };
+      box.onclick = async (e) => {
+        const b = e.target.closest('[data-t="del"]'); if (b) return titelLoeschen(b).catch((err) => toast('Ging nicht: ' + err.message, 5000));
+        const d = e.target.closest('[data-xd]'); const z = d && zeileVon(d);
+        if (z && (await A.posDetails(z.x))) { z.r.angebot.geaendert = true; await sichern(z.r); letzteZelle = null; zeichnen(); }
+      };
       box.onfocusin = (e) => {
         const tr = e.target.closest('tbody tr'); $$('tbody tr.akt', box).forEach((t) => t !== tr && t.classList.remove('akt')); tr?.classList.add('akt');
         const tid = tr?.dataset.r || tr?.dataset.tr || (tr?.dataset.nr !== '__auto' && tr?.dataset.nr); if (tid) box.dataset.aktTitel = tid; // für „Übernehmen“ aus der Seitenleiste
@@ -361,7 +367,7 @@ window.Tabelle = (() => {
     }) : zeilen;
     box.innerHTML = zeilen.length ? `<div class="ltab-wrap"><table class="ltab"><colgroup>${spalten.map((c) => `<col${c.b ? ` style="width:${c.b}px"` : ''}>`).join('')}</colgroup>
       <thead><tr>${spalten.map((c) => `<th class="${c.r ? 'r' : ''}" data-sk="${c.k}" title="Sortieren">${esc(c.t)}${s?.k === c.k ? `<i class="ltab-s">${s.ab ? '▼' : '▲'}</i>` : ''}</th>`).join('')}</tr></thead>
-      <tbody>${reihe.map((z) => `<tr data-lz="${esc(z.id)}" tabindex="0">${spalten.map((c) => { const v = wert(z, c.k); return `<td class="${c.r ? 'r' : ''}">${v.html ?? esc(v.text)}</td>`; }).join('')}</tr>`).join('')}</tbody></table></div>`
+      <tbody>${reihe.map((z) => `<tr data-lz="${esc(z.id)}" tabindex="0"${z.klasse ? ` class="${esc(z.klasse)}"` : ''}>${spalten.map((c) => { const v = wert(z, c.k); return `<td class="${c.r ? 'r' : ''}">${v.html ?? esc(v.text)}</td>`; }).join('')}</tr>`).join('')}</tbody></table></div>`
       : `<p class="empty">${esc(leer)}</p>`;
     $$('[data-sk]', box).forEach((th) => (th.onclick = () => { const alt = sortWahl[id]; sortWahl[id] = { k: th.dataset.sk, ab: alt?.k === th.dataset.sk ? !alt.ab : false }; liste(box, { id, spalten, zeilen, leer, oeffnen }); }));
     $$('[data-lz]', box).forEach((tr) => {

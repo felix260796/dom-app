@@ -154,8 +154,9 @@ termin.anlegen nur true, wenn ein Termin genannt wird. projekt.anlegen true, wen
   /** Bekannte Kunden mit gleichem Nachnamen (und, falls gesagt, Vornamen). */
   function treffer(kd) {
     const n = klein(kd.name), v = klein(kd.vorname);
-    if (!n) return [];
-    return Kunden.liste().filter((k) => klein(k.name) === n && (!v || !klein(k.vorname) || klein(k.vorname) === v));
+    const nm = n ? Kunden.liste().filter((k) => klein(k.name) === n && (!v || !klein(k.vorname) || klein(k.vorname) === v)) : [];
+    const du = Kunden.dubletten({ id: '', ...kd, weitere: [], personen: [] }).map((x) => x.k); // gleiche Nummer oder E-Mail
+    return [...new Set([...nm, ...du])];
   }
   function objektZu(k, adresse) {
     if (!k || !adresse) return k?.objekte.length === 1 && !adresse ? k.objekte[0].id : '';
@@ -265,6 +266,7 @@ termin.anlegen nur true, wenn ein Termin genannt wird. projekt.anlegen true, wen
       let k = Kunden.byId(kundeId);
       if (!k && !kd.name) { toast('Bitte einen Namen eintragen.'); return; }
       if (te.anlegen && !te.datum) { toast('Bitte ein Datum für den Termin eintragen.'); return; }
+      if (k && (te.anlegen || pr.anlegen) && window.Sperre && !(await Sperre.pruefen(k, te.anlegen ? 'Termin (per Sprache)' : 'Neues Angebot (per Sprache)', (x) => Kunden.speichern(x)))) return;
       $('#spOk').disabled = true;
       if (!k) {
         k = { id: uid(), kind: 'kunde', created: Date.now(), anrede: kd.anrede, vorname: kd.vorname, name: kd.name, telefon: kd.telefon, email: kd.email, notiz: d.notiz || '', objekte: [] };
