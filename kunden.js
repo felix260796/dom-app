@@ -524,6 +524,7 @@ window.Kunden = (() => {
         <span class="cta-t"><b>Neuer Kunde</b></span>
         ${icon('chevron', 'cta-chev')}
       </button>
+      <button class="notice plain" id="kAnfrage" style="margin-top:8px">${icon('mail')}<span><b>Aus Anfrage</b> · Mail, WhatsApp oder Screenshot, DOM füllt den Kunden vor</span>${icon('chevron')}</button>
       ${state.settings.apiKey || (window.Sync?.fest() && !window.Sync.active()) ? '' : `<button class="notice" id="toSet">${icon('gear')}<span><b>KI noch nicht eingerichtet.</b> Einmalig den Google-Schlüssel in den Einstellungen eintragen.</span>${icon('chevron')}</button>`}
       <div id="backupHint"></div>
       ${all.length ? `<div class="sec-h"><h2>Deine Kunden</h2><span class="count" id="kCount">${all.length}</span></div><div class="plist" id="klist"></div>`
@@ -557,6 +558,7 @@ window.Kunden = (() => {
     };
     render();
     $('#kq').oninput = (e) => { filter = e.target.value; render(); };
+    $('#kAnfrage').onclick = () => window.Kamera?.anfrageStart();
     $('#kNew').onclick = () => { filter = ''; detail(neu({ isNew: true })); window.scrollTo(0, 0); };
     if ($('#toSet')) $('#toSet').onclick = () => { switchTab('einstellungen'); einstellungSeite('ki'); };
     window.Backup?.hinweis($('#backupHint'));
@@ -700,7 +702,8 @@ window.Kunden = (() => {
       ${Array.isArray(k.schnell) && k.schnell.length ? `<div class="sec-h"><h2>Am Telefon genannt</h2><span class="count">${k.schnell.length}</span></div>
       <div class="card">${k.schnell.slice().reverse().map((s) => `<div class="tot"><span>${esc(new Date(s.t).toLocaleDateString('de-DE'))}${s.text ? ` · ${esc(s.text)}` : ''}</span><b>ca. ${Math.round(s.von).toLocaleString('de-DE')} – ${Math.round(s.bis).toLocaleString('de-DE')} €</b></div>`).join('')}</div>` : ''}
       <div id="kHist">${angebotePrj(idx, einfach ? () => '' : (x) => objLabel(objekt(k, x.objektId)) || 'Ohne Objekt')}</div>
-      <button class="btn big block" id="kProj" style="margin-top:12px">${icon('plus')} Neues Angebot für ${esc(name(k) || 'diesen Kunden')}</button>
+      <button class="btn big block" id="kTermin" style="margin-top:12px">${icon('calendar')} Termin anlegen</button>
+      <button class="btn secondary block" id="kProj" style="margin-top:8px">${icon('plus')} Neues Angebot für ${esc(name(k) || 'diesen Kunden')}</button>
       ${!k.isNew && window.Geraet?.kann('kontakte') ? `<button type="button" class="link-add" id="kInKontakte" style="margin-top:10px">${icon('user')} In iPhone-Kontakten speichern</button>` : ''}
       ${k.isNew ? '' : `<button class="notice plain" id="kRech" style="margin-top:12px">${icon('euro')}<span><b>Rechnungen dieses Kunden</b> · zu den Rechnungen springen</span>${icon('chevron')}</button>`}
       ${k.isNew ? '' : '<div id="kSperre"></div>'}
@@ -837,6 +840,14 @@ window.Kunden = (() => {
       const r = await Geraet.kontaktSpeichern({ vorname: firma ? '' : k.vorname, name: firma ? '' : k.name || name(k), firma: firma ? k.name : '',
         telefon: k.telefon, email: k.email, adresse: einzeilig(k.privat || k.objekte[0]?.adresse || ''), notiz: k.nr ? `DOM-Kunde ${k.nr}` : '' }).catch((e) => { toast('' + e.message, 5000); return null; });
       if (r?.gespeichert) toast('In den Kontakten gespeichert');
+    };
+    // Termin anlegen (Runde 13 P3): Kunde und Objekt vorbelegt, Sperre prüft der Termin beim Speichern
+    if ($('#kTermin')) $('#kTermin').onclick = async () => {
+      if (k.isNew) { if (!name(k).trim()) return toast('Bitte zuerst einen Namen eintragen.'); await speichern(k); }
+      const oid = k.objekte.length > 1 ? await objektWaehlen(k, 'Termin an welchem Objekt?') : k.objekte[0]?.id || '';
+      if (oid === null) return;
+      Kalender.bearbeiten({ kundeId: k.id, objektId: oid, art: 'kunde', titel: `Besichtigung ${name(k) || ''}`.trim() }, () => detail(k));
+      window.scrollTo(0, 0);
     };
     if ($('#kRech')) $('#kRech').onclick = async () => {
       switchTab('rechnungen');

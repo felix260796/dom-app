@@ -198,6 +198,11 @@ Materialstufen (Pakete, Moodboards) heißen Einfach/Komfort/Exklusiv (`PKG_META`
 
 `notiz.js` (`Notiz`): Karte „Kurz notieren“ oben auf der Seite To-dos (`Notiz.karte`), KI erkennt Kontakt (`k:<id>`/`p:<id>`), Info und Erinnerung (Vorgabe `promptNotiz`), Prüfzeile als Auswahlfenster, „Übernehmen“ schreibt `x.zeitleiste` (auch beim Partner) und legt ein To-do an. Ohne KI-Schlüssel: Kontakt wählen, Text als Notiz. Nach „Kontakt halten → Ja, erledigt“ `Notiz.fragen(c)` („Was gab's Neues?“). „Wer wird erinnert?“ je Kontakt `x.pflegeWer` ('' = beide), Standard `x.angelegtVon` (`Pflege.werVon`). Zeitleiste am PC auch beim Partner (`Buero.zeitleiste(el, x, istPartner)`: Eingangsrechnungen, Bewertungen, Sperre). Geburtstage der Personen beim Kunden (`k.personen[].geburtstag`, z. B. Kinder) im Kalender.
 
+## Neuerungen aus Version 116 (P3: Vorgang starten)
+
+Anfrage → Kunde: `kamera.js` erkennt `art: 'anfrage'` (Screenshot Mail/WhatsApp/Kontaktformular, `ANFRAGE_FELDER`, `ANFRAGE_SCHEMA`), `Kamera.anfrage(a, data)` prüft Dubletten („Schon angelegt: …“), legt an oder ergänzt (Objekt aus der Anschrift, Anliegen in die Notiz, Bild in „Dokumente“) und öffnet die Kundenkarte; `Kamera.anfrageText(text)` für eingefügten Text, Knopf „Aus Anfrage“ im Reiter Kunden (`anfrageStart`). Geteilte und hineingezogene Bilder laufen über `verarbeiten` und landen ebenso dort. Kundenkarte: „Termin anlegen“ (`#kTermin`, Kunde und Objekt vorbelegt).
+Termin: mehrere Subunternehmer `t.partnerIds` (`t.partnerId` = erster, für ältere Leser), jeder eigene Mail (`beteiligte`), `kontext.partner` mit allen. Ansprechpartner vor Ort am Objekt mit E-Mail sind ankreuzbar (`t.mailVorOrt`, anfangs aus), sie bekommen die Kunden-Mail (Rolle `kunde`). Die Supabase-Funktion `termin-mail` braucht dafür keine Änderung.
+
 ## Bereiche
 
 | Bereich | Dateien | Inhalt |

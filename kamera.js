@@ -17,14 +17,69 @@ window.Kamera = (() => {
     x.drawImage(img, 0, 0);
     return c.toDataURL('image/jpeg', 0.85);
   }
+  // Anfrage eines Kunden (Mail, WhatsApp, Kontaktformular): Kunde vorbefüllen, danach „Termin anlegen“ (v116, Runde 13 P3)
+  const ANFRAGE_FELDER = 'anrede ("Herr", "Frau", "Familie" oder leer), vorname, name (Nachname oder Firmenname), firma (true, wenn eine Firma oder Hausverwaltung anfragt), telefon, email, adresse (Anschrift der Baustelle bzw. des Objekts, Straße Hausnummer, PLZ Ort), anliegen (worum es geht, ein bis zwei kurze deutsche Sätze), quelle (z. B. "Google / Internet", "Empfehlung", falls erwähnt). Nur übernehmen, was dasteht, nichts erfinden.';
+  const ANFRAGE_SCHEMA = { type: 'OBJECT', properties: { anrede: { type: 'STRING' }, vorname: { type: 'STRING' }, name: { type: 'STRING' }, firma: { type: 'BOOLEAN' }, telefon: { type: 'STRING' }, email: { type: 'STRING' }, adresse: { type: 'STRING' }, anliegen: { type: 'STRING' }, quelle: { type: 'STRING' } } };
+  /** Anfrage als Text (eingefügte Mail oder Nachricht). */
+  async function anfrageText(text) {
+    if (!String(text || '').trim()) return;
+    if (!state.settings.apiKey) return toast('Für das Erkennen braucht DOM den KI-Schlüssel (Einstellungen).', 5000);
+    toast('Anfrage wird gelesen …', 15000);
+    try {
+      const txt = await geminiText([{ text: `Das ist eine Anfrage an eine Sanierungsfirma (E-Mail, WhatsApp oder Kontaktformular). Lies heraus: ${ANFRAGE_FELDER}\n\n${text}` }], true, { responseSchema: ANFRAGE_SCHEMA });
+      $('#toast').hidden = true;
+      return anfrage(JSON.parse(txt), null, text);
+    } catch (e) { toast('Konnte die Anfrage nicht lesen: ' + e.message, 5000); }
+  }
+  /** Kunde aus der Anfrage: Dubletten prüfen, anlegen oder ergänzen, Objekt mit Anschrift, Anliegen in die Notiz, Bild ablegen. */
+  async function anfrage(a, data, text = '') {
+    const t = (x) => String(x || '').trim();
+    const ent = { id: '', art: a.firma ? 'firma' : 'privat', anrede: a.firma ? 'Firma' : ['Herr', 'Frau', 'Familie'].includes(t(a.anrede)) ? t(a.anrede) : '', vorname: a.firma ? '' : t(a.vorname), name: t(a.name), telefon: t(a.telefon), email: t(a.email), weitere: [], personen: [] };
+    if (!ent.name && !ent.telefon && !ent.email) return toast('In der Anfrage war kein Name, keine Nummer und keine E-Mail zu finden.', 5000);
+    let k = null;
+    const d = Kunden.dubletten(ent);
+    if (d.length) {
+      const v = await sheet(`Schon angelegt: ${Kunden.name(d[0].k)}?`, [
+        ...d.map(({ k: x, grund }) => ({ label: Kunden.name(x) || 'Ohne Namen', sub: [x.nr && 'Nr. ' + x.nr, grund, window.Sperre?.ist(x) && 'gesperrt'].filter(Boolean).join(' · '), icon: icon('user'), value: x.id })),
+        { label: `Neu anlegen: ${[ent.vorname, ent.name].filter(Boolean).join(' ') || ent.email || ent.telefon}`, icon: icon('plus'), value: '__neu' },
+      ], { suche: '' });
+      if (!v) return;
+      if (v !== '__neu') k = Kunden.byId(v);
+    }
+    const notiz = [`Anfrage vom ${new Date().toLocaleDateString('de-DE')}: ${t(a.anliegen) || t(text).slice(0, 300)}`].filter(Boolean).join('\n');
+    if (!k) {
+      k = { id: uid(), kind: 'kunde', created: Date.now(), ...ent, id: uid(), quelle: (vorgabe('kundenQuellen') || []).includes(t(a.quelle)) ? t(a.quelle) : '', notiz, objekte: [] };
+      delete k.weitere; delete k.personen;
+    } else {
+      if (ent.telefon && !k.telefon) k.telefon = ent.telefon;
+      if (ent.email && !k.email) k.email = ent.email;
+      k.notiz = [k.notiz, notiz].filter((x) => String(x).trim()).join('\n');
+    }
+    if (t(a.adresse) && !(k.objekte || []).some((o) => String(o.adresse).toLowerCase().includes(t(a.adresse).split(',')[0].toLowerCase()))) (k.objekte ??= []).push({ id: uid(), name: '', adresse: t(a.adresse), kontakte: [] });
+    if (!k.privat && t(a.adresse) && (k.objekte || []).length === 1) k.privat = t(a.adresse);
+    await Kunden.speichern(k);
+    if (data) try { await Bilder.ablegen(k.id, k.objekte?.[0]?.id || '', data, 'Dokumente'); } catch (e) { console.warn('Anfrage nicht abgelegt', e); }
+    Kunden.oeffnen(k.id);
+    toast('Kunde aus der Anfrage vorbefüllt. Bitte prüfen, dann „Termin anlegen“.', 5000);
+  }
+  /** Knopf „Aus Anfrage“ (Kunden): Screenshot/Foto oder Text einfügen. */
+  async function anfrageStart() {
+    const w = await sheet('Kunde aus einer Anfrage', [
+      { label: 'Screenshot oder Foto wählen', sub: 'E-Mail, WhatsApp, Kontaktformular', icon: icon('image'), value: 'bild' },
+      { label: 'Text einfügen', sub: 'Mail oder Nachricht kopieren und hier einfügen', icon: icon('edit'), value: 'text' },
+    ]);
+    if (w === 'bild') { const [f] = await pickFiles({ accept: 'image/*' }); if (f) return verarbeiten(await resize(await fileToDataUrl(f), 2000, 'image/jpeg', 0.85)); }
+    if (w === 'text') { const v = await sheet('Anfrage einfügen', [], { text: 'Text der Mail oder Nachricht', suche: '' }); if (v?.text) return anfrageText(v.text); }
+  }
+
   /** KI: Was ist auf dem Bild? { art: 'rechnung'|'angebot'|'visitenkarte'|'dokument'|'foto', titel, firma, kunde, adresse,
    *  bei Visitenkarten zusätzlich karte: { firma, name, telefon, mobil, email, anschrift, web, gewerk, lieferant } } */
   async function erkennen(data) {
     if (!state.settings.apiKey) return { art: '' };
     try {
-      const txt = await geminiText([{ text: 'Was zeigt dieses Foto? Es stammt von einer Sanierungsfirma. art: "rechnung" (Rechnung oder Lieferschein mit Betrag), "angebot" (Angebot oder Kostenvoranschlag eines Handwerkers, Subunternehmers oder Lieferanten mit Leistungen und Preisen), "visitenkarte" (Visitenkarte, auch Briefkopf oder Stempel nur mit Kontaktdaten einer Firma oder Person), "dokument" (anderes Schriftstück, Formular, Vertrag, Plan, Notiz) oder "foto" (Raum, Baustelle, Gegenstand). titel: kurzer deutscher Titel, z. B. „Rechnung Fliesen Kaya“, „Angebot Elektro Meier“ oder „Grundriss EG“. firma: Absender, falls erkennbar. kunde: Name des Kunden, Bauherrn oder Empfängers, falls erkennbar. adresse: Anschrift der Baustelle oder des Bauvorhabens, falls erkennbar. Nur bei art "visitenkarte" zusätzlich karte: firma (Firmenname mit Rechtsform), name (Vor- und Nachname der Person), telefon (Festnetz), mobil, email, anschrift (Straße Hausnummer, PLZ Ort in einer Zeile), web, gewerk (kurz auf Deutsch, z. B. „Fliesen“, „Sanitär, Heizung“, „Elektro“, „Baustoffhandel“), lieferant (true, wenn es ein Händler oder Lieferant ist, kein Handwerker). Nur übernehmen, was auf der Karte steht, nichts erfinden.' }, { inline_data: { mime_type: 'image/jpeg', data: data.split(',')[1] } }], true, {
+      const txt = await geminiText([{ text: 'Was zeigt dieses Foto? Es stammt von einer Sanierungsfirma. art: "rechnung" (Rechnung oder Lieferschein mit Betrag), "angebot" (Angebot oder Kostenvoranschlag eines Handwerkers, Subunternehmers oder Lieferanten mit Leistungen und Preisen), "visitenkarte" (Visitenkarte, auch Briefkopf oder Stempel nur mit Kontaktdaten einer Firma oder Person), "anfrage" (Screenshot einer E-Mail, WhatsApp- oder SMS-Nachricht oder eines Kontaktformulars, in dem jemand eine Leistung anfragt, z. B. Bad sanieren, Angebot gewünscht), "dokument" (anderes Schriftstück, Formular, Vertrag, Plan, Notiz) oder "foto" (Raum, Baustelle, Gegenstand). titel: kurzer deutscher Titel, z. B. „Rechnung Fliesen Kaya“, „Angebot Elektro Meier“ oder „Grundriss EG“. firma: Absender, falls erkennbar. kunde: Name des Kunden, Bauherrn oder Empfängers, falls erkennbar. adresse: Anschrift der Baustelle oder des Bauvorhabens, falls erkennbar. Nur bei art "visitenkarte" zusätzlich karte: firma (Firmenname mit Rechtsform), name (Vor- und Nachname der Person), telefon (Festnetz), mobil, email, anschrift (Straße Hausnummer, PLZ Ort in einer Zeile), web, gewerk (kurz auf Deutsch, z. B. „Fliesen“, „Sanitär, Heizung“, „Elektro“, „Baustoffhandel“), lieferant (true, wenn es ein Händler oder Lieferant ist, kein Handwerker). Nur übernehmen, was auf der Karte steht, nichts erfinden. Nur bei art "anfrage" zusätzlich anfrage: ' + ANFRAGE_FELDER }, { inline_data: { mime_type: 'image/jpeg', data: data.split(',')[1] } }], true, {
         responseSchema: { type: 'OBJECT', properties: { art: { type: 'STRING' }, titel: { type: 'STRING' }, firma: { type: 'STRING' }, kunde: { type: 'STRING' }, adresse: { type: 'STRING' },
-          karte: { type: 'OBJECT', properties: { firma: { type: 'STRING' }, name: { type: 'STRING' }, telefon: { type: 'STRING' }, mobil: { type: 'STRING' }, email: { type: 'STRING' }, anschrift: { type: 'STRING' }, web: { type: 'STRING' }, gewerk: { type: 'STRING' }, lieferant: { type: 'BOOLEAN' } } } }, required: ['art'] } });
+          karte: { type: 'OBJECT', properties: { firma: { type: 'STRING' }, name: { type: 'STRING' }, telefon: { type: 'STRING' }, mobil: { type: 'STRING' }, email: { type: 'STRING' }, anschrift: { type: 'STRING' }, web: { type: 'STRING' }, gewerk: { type: 'STRING' }, lieferant: { type: 'BOOLEAN' } } }, anfrage: ANFRAGE_SCHEMA }, required: ['art'] } });
       return JSON.parse(txt);
     } catch (e) { console.warn('Bild nicht erkannt', e); return { art: '' }; }
   }
@@ -181,6 +236,7 @@ window.Kamera = (() => {
     $('#toast').hidden = true;
     if (gescannt && !['rechnung', 'angebot', 'visitenkarte'].includes(e.art)) e.art = 'dokument';
     if (e.art === 'visitenkarte' && e.karte) return visitenkarte(e.karte, data);
+    if (e.art === 'anfrage' && e.anfrage) return anfrage(e.anfrage, data);
     const doc = ['rechnung', 'dokument', 'angebot'].includes(e.art);
     if (doc && !gescannt) data = await scan(data);
     const vorschlag = kundeZu(e.kunde);
@@ -273,5 +329,5 @@ window.Kamera = (() => {
       };
     });
   }
-  return { start, scan, ausDatei, serie };
+  return { start, scan, ausDatei, serie, anfrage, anfrageText, anfrageStart };
 })();
