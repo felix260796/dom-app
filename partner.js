@@ -47,9 +47,11 @@ window.Partner = (() => {
   const geburtstage = () => liste().flatMap((p) => p.geburtstage.filter((g) => g.datum).map((g) => ({ datum: g.datum, wer: g.name || 'ohne Namen', gebArt: g.art, titel: `Geburtstag ${g.name || 'ohne Namen'}`, sub: [g.bez, titel(p)].filter(Boolean).join(' · '), partnerId: p.id })));
 
   async function waehlen() {
-    const v = await sheet('Welcher Subunternehmer?', liste().map((p) => ({ label: titel(p) || 'Ohne Namen', sub: [p.gewerk, p.inhaber].filter(Boolean).join(' · '), icon: `<span class="av sm">${esc(initialen(p))}</span>`, value: p.id })), { text: 'Neu, z. B. Fliesen Kaya GmbH' });
+    const v = await sheet('Welcher Subunternehmer?', liste().map((p) => ({ label: titel(p) || 'Ohne Namen', sub: [window.Sperre?.ist(p) && `Gesperrt${p.sperre.grund ? ': ' + p.sperre.grund : ''}`, p.gewerk, p.inhaber].filter(Boolean).join(' · '), icon: `<span class="av sm">${esc(initialen(p))}</span>`, value: p.id })), { text: 'Neu, z. B. Fliesen Kaya GmbH' });
     if (!v) return null;
     if (v.text) { const p = norm({ id: uid(), kind: 'partner', created: Date.now(), firma: v.text }); await speichern(p); return p.id; }
+    // Gesperrte Subs nur mit Begründung (einmalige Ausnahme) oder nach dem Entsperren
+    if (window.Sperre && !(await Sperre.pruefen(byId(v), 'Als Subunternehmer gewählt', speichern))) return null;
     return v;
   }
 
@@ -76,12 +78,12 @@ window.Partner = (() => {
         return window.Tabelle.liste(el, { id: 'partner', oeffnen: (id) => { detail(byId(id)); window.scrollTo(0, 0); },
           spalten: [{ k: 'firma', t: 'Firma' }, { k: 'art', t: 'Art', b: 130 }, { k: 'gewerk', t: 'Gewerk' }, { k: 'inh', t: 'Ansprechpartner' }, { k: 'tel', t: 'Telefon', b: 170 }, { k: 'mail', t: 'E-Mail' }, { k: 'pf', t: 'Nächster Kontakt', b: 190 }],
           zeilen: shown.map((p) => { const g = p.geburtstage.map((x) => ({ x, n: Kontakt.bisTag(x.datum) })).filter((y) => y.n !== null && y.n <= 14).sort((a, b) => a.n - b.n)[0];
-            return { id: p.id, werte: { firma: { text: titel(p) || 'Ohne Namen', html: `<b>${esc(titel(p) || 'Ohne Namen')}</b>${g ? ` <span class="geb">${esc(g.x.name || 'Geburtstag')} ${Kontakt.tageText(g.n)}</span>` : ''}` },
+            return { id: p.id, klasse: window.Sperre?.ist(p) ? 'gesperrt' : '', werte: { firma: { text: titel(p) || 'Ohne Namen', html: `<b>${esc(titel(p) || 'Ohne Namen')}</b>${g ? ` <span class="geb">${esc(g.x.name || 'Geburtstag')} ${Kontakt.tageText(g.n)}</span>` : ''}` },
               art: ARTEN.find((a) => a[0] === p.art)[1], gewerk: p.gewerk, inh: p.inhaber, tel: p.telefon, mail: p.email, pf: window.Pflege ? Pflege.zelle(p) : '' } }; }) });
       }
       el.innerHTML = shown.map((p) => {
         const g = p.geburtstage.map((x) => ({ x, n: Kontakt.bisTag(x.datum) })).filter((y) => y.n !== null && y.n <= 14).sort((a, b) => a.n - b.n)[0];
-        return `<button class="pcard kcard" data-p="${p.id}"><span class="av">${esc(initialen(p))}</span>
+        return `<button class="pcard kcard${window.Sperre?.ist(p) ? ' gesperrt' : ''}" data-p="${p.id}"><span class="av">${esc(initialen(p))}</span>
           <span class="pc-t"><b>${esc(titel(p) || 'Ohne Namen')}</b><span class="muted">${esc([p.gewerk, p.inhaber].filter(Boolean).join(' · ') || ARTEN.find((a) => a[0] === p.art)[1])}</span>
             <span class="pc-meta">${esc(ARTEN.find((a) => a[0] === p.art)[1])}${p.stufen.length ? ' · ' + esc(p.stufen.join(', ')) : ''}${p.dokumente.length ? ` · ${p.dokumente.length} ${p.dokumente.length === 1 ? 'Dokument' : 'Dokumente'}` : ''}${g ? ` · <span class="geb">${esc(g.x.name || 'Geburtstag')} ${Kontakt.tageText(g.n)}</span>` : ''}</span></span>
           ${icon('chevron', 'pc-chev')}</button>`;
@@ -100,7 +102,7 @@ window.Partner = (() => {
     state.partner = p;
     const back = () => { state.partner = null; listeView(); window.scrollTo(0, 0); };
     header(titel(p) || 'Neuer Partner', p.gewerk || (p.isNew ? 'Kontaktdaten eintragen' : ''), { label: 'Partner', fn: back });
-    main().innerHTML = `
+    main().innerHTML = `${window.Sperre?.banner(p) || ''}
       <div class="kd-actions" id="pAct"></div>
       <div class="card kform">
         <div class="seg2 full" id="pArt">${ARTEN.map(([id, n]) => `<button type="button" data-art="${id}" class="${p.art === id ? 'on' : ''}">${n}</button>`).join('')}</div>
@@ -133,7 +135,9 @@ window.Partner = (() => {
         <label>Notizen</label><textarea id="pNotiz" placeholder="z. B. Sohn Emre spielt Fußball, mag Rotwein, zuverlässig bei Kleinaufträgen">${esc(p.notiz)}</textarea>
       </div>
       ${p.isNew ? '' : '<div id="pBelege"></div>'}
+      ${p.isNew ? '' : '<div id="pSperre"></div>'}
       ${p.isNew ? '' : `<button class="link-danger" id="pDel">${icon('trash')} Löschen</button>`}`;
+    window.Sperre?.abschnitt($('#pSperre'), p, (x) => speichern(x), () => { const y = window.scrollY; detail(p); window.scrollTo(0, y); });
 
     const persist = debounce(() => speichern(p), 400);
     const actions = () => {

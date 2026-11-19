@@ -82,7 +82,7 @@ window.Kamera = (() => {
       namen.map(nm).some((x) => x && x.length > 3 && (x === firma || x === person));
     const w = (x, art) => (x.weitere || []).filter((y) => y.art === art).map((y) => y.wert);
     const partner = (window.Partner?.liste() || []).find((p) => trifft([p.telefon, ...w(p, 'tel')], [p.email, ...w(p, 'mail')], [p.firma, p.inhaber])) || null;
-    const kunde = Kunden.liste().find((k) => trifft([k.telefon, ...w(k, 'tel'), k.hv?.telefon], [k.email, ...w(k, 'mail'), k.hv?.email], [k.name, `${k.vorname || ""} ${k.name || ""}`])) || null;
+    const kunde = Kunden.liste().find((k) => trifft([k.telefon, ...w(k, 'tel'), k.hv?.telefon, ...(k.alt?.tel || [])], [k.email, ...w(k, 'mail'), k.hv?.email, ...(k.alt?.mail || [])], [k.name, `${k.vorname || ""} ${k.name || ""}`])) || null;
     return { partner, kunde };
   }
   /** Foto der Visitenkarte bei den Dokumenten des Partners ablegen. */

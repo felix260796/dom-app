@@ -228,6 +228,7 @@ window.Kalender = (() => {
     t.erinnerung ??= state.settings.erinnerungAuto === false ? 0 : state.settings.erinnerungTage ?? 1;
     if (isNeu && t.mailKunde === undefined) t.mailKunde = state.settings.mailKundeAuto !== false;
     const alt = isNeu ? null : JSON.stringify([t.datum, t.von, t.bis, t.ganztag, t.ort, t.titel]);
+    const sperrOk = new Set(); // gesperrte Kunden/Subs, für die in diesem Termin schon eine Ausnahme gilt
     let mailen = null; // null = automatisch (neu: ja, geändert: ja, wenn schon eine Bestätigung rausging)
     if (isNeu && t.kundeId && !t.objektId) { const k = Kunden.byId(t.kundeId); if (k?.objekte.length === 1) t.objektId = k.objekte[0].id; }
     if (isNeu && t.kundeId && !t.ort) { const k = Kunden.byId(t.kundeId), o = k && Kunden.objekt(k, t.objektId); t.ort = o ? Kunden.einzeilig(o.adresse) : ''; }
@@ -291,6 +292,8 @@ window.Kalender = (() => {
       $('#tKunde').onclick = async (e) => {
         if (e.target.closest('[data-kx]')) { t.kundeId = ''; t.objektId = ''; return render(); }
         const nk = await Kunden.waehlen('Termin mit welchem Kunden?'); if (!nk) return;
+        if (window.Sperre && !(await Sperre.pruefen(nk, 'Termin', (x) => Kunden.speichern(x)))) return;
+        sperrOk.add(nk.id);
         t.kundeId = nk.id; t.objektId = nk.objekte.length === 1 ? nk.objekte[0].id : '';
         if (t.art !== 'buero') ortVorschlag(true);
         render();
@@ -298,7 +301,7 @@ window.Kalender = (() => {
       if ($('#tObjekt')) $('#tObjekt').onchange = (e) => { t.objektId = e.target.value; const o = Kunden.objekt(Kunden.byId(t.kundeId), t.objektId); if (o) { t.ort = Kunden.einzeilig(o.adresse); $('#tOrt').value = t.ort; } };
       if ($('#tPartner')) $('#tPartner').onclick = async (e) => {
         if (e.target.closest('[data-px]')) { t.partnerId = ''; return render(); }
-        const pid = await window.Partner.waehlen(); if (pid) { t.partnerId = pid; render(); }
+        const pid = await window.Partner.waehlen(); if (pid) { sperrOk.add(pid); t.partnerId = pid; render(); }
       };
       Kunden.adressVorschlaege($('#tOrt'));
       // ---- E-Mail an die Beteiligten ----
@@ -337,6 +340,10 @@ window.Kalender = (() => {
       mailBox();
       $$('[data-tw]').forEach((b) => b.addEventListener('click', mailBox));
       $('#tSave').onclick = async () => {
+        // Neuer Termin mit gesperrtem Kunden oder Sub (z. B. aus der Akte vorbelegt): nur mit Begründung
+        if (isNeu && window.Sperre) for (const [x, sp] of [[Kunden.byId(t.kundeId), (y) => Kunden.speichern(y)], [window.Partner?.byId(t.partnerId), (y) => Partner.speichern(y)]]) {
+          if (x && Sperre.ist(x) && !sperrOk.has(x.id)) { if (!(await Sperre.pruefen(x, 'Termin', sp))) return; sperrOk.add(x.id); }
+        }
         if (!t.titel.trim()) t.titel = zuKunde(t) ? `${art(t.art)[1].replace('termine', 'termin')} ${Kunden.name(Kunden.byId(t.kundeId)) || ''}`.trim() : art(t.art)[1].replace('termine', 'termin');
         t.updated = Date.now();
         const bereit = state.settings.mailAktiv && window.Sync?.active();

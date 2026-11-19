@@ -138,6 +138,7 @@ window.Projekt = (() => {
   async function neuDirekt() {
     const k = await Kunden.waehlen('Projekt für welchen Kunden?');
     if (!k) return;
+    if (window.Sperre && !(await Sperre.pruefen(k, 'Neues Projekt', (x) => Kunden.speichern(x)))) return;
     const oid = await Kunden.objektWaehlen(k, 'Wo wird gebaut?');
     if (oid === null) return;
     const w = neuesProjekt();
@@ -159,7 +160,8 @@ window.Projekt = (() => {
     await save(w);
     return w.id;
   }
-  function neuFuer(k, oid) {
+  async function neuFuer(k, oid) {
+    if (window.Sperre && !(await Sperre.pruefen(k, 'Neues Angebot', (x) => Kunden.speichern(x)))) return;
     const w = neuesProjekt();
     w.isNew = true; w.status = 'besichtigung';
     w.kundeId = k.id; w.objektId = oid || '';

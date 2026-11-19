@@ -361,7 +361,7 @@ window.Tabelle = (() => {
     }) : zeilen;
     box.innerHTML = zeilen.length ? `<div class="ltab-wrap"><table class="ltab"><colgroup>${spalten.map((c) => `<col${c.b ? ` style="width:${c.b}px"` : ''}>`).join('')}</colgroup>
       <thead><tr>${spalten.map((c) => `<th class="${c.r ? 'r' : ''}" data-sk="${c.k}" title="Sortieren">${esc(c.t)}${s?.k === c.k ? `<i class="ltab-s">${s.ab ? '▼' : '▲'}</i>` : ''}</th>`).join('')}</tr></thead>
-      <tbody>${reihe.map((z) => `<tr data-lz="${esc(z.id)}" tabindex="0">${spalten.map((c) => { const v = wert(z, c.k); return `<td class="${c.r ? 'r' : ''}">${v.html ?? esc(v.text)}</td>`; }).join('')}</tr>`).join('')}</tbody></table></div>`
+      <tbody>${reihe.map((z) => `<tr data-lz="${esc(z.id)}" tabindex="0"${z.klasse ? ` class="${esc(z.klasse)}"` : ''}>${spalten.map((c) => { const v = wert(z, c.k); return `<td class="${c.r ? 'r' : ''}">${v.html ?? esc(v.text)}</td>`; }).join('')}</tr>`).join('')}</tbody></table></div>`
       : `<p class="empty">${esc(leer)}</p>`;
     $$('[data-sk]', box).forEach((th) => (th.onclick = () => { const alt = sortWahl[id]; sortWahl[id] = { k: th.dataset.sk, ab: alt?.k === th.dataset.sk ? !alt.ab : false }; liste(box, { id, spalten, zeilen, leer, oeffnen }); }));
     $$('[data-lz]', box).forEach((tr) => {

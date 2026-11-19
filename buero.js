@@ -470,11 +470,12 @@ window.Buero = (() => {
       ? [['ap', 'Angebote und Projekte'], ['zeit', 'Zeitleiste'], ['re', 'Rechnungen'], ['pf', 'Kontakt halten']]
       : [['kond', 'Konditionen und Verträge'], ['preis', 'Preisliste'], ['pers', 'Persönliches'], ['re', 'Rechnungen'], ['pf', 'Kontakt halten']];
     const inhalt = Object.fromEntries([...gruppen.map(([id]) => [id, []]), ['obj', []]]);
-    const stamm = [];
+    const stamm = [], kopf = [];
     let akt = gruppen[0][0];
     for (const c of rest) {
       const h = c.matches('.sec-h') ? $('h2', c)?.textContent || '' : '';
-      if (c.matches('#kDel, #pDel, #kAusKontakt, #kInKontakte, .k-pers')) { stamm.push(c); continue; }
+      if (c.matches('.sperre-banner')) { kopf.push(c); continue; }
+      if (c.matches('#kDel, #pDel, #kAusKontakt, #kInKontakte, .k-pers, #kSperre, #pSperre')) { stamm.push(c); continue; }
       if (c.matches('#kPflege, #pPflege')) { inhalt.pf.push(c); continue; }
       if (c.matches('#kRech')) { c.hidden = true; stamm.push(c); continue; } // ersetzt durch die Karte „Rechnungen“
       if (c.matches('#pBelege')) { inhalt.re.push(c); continue; }
@@ -491,7 +492,7 @@ window.Buero = (() => {
     box.innerHTML = `<div class="akte-kopf"></div>${typ === 'k' ? `<section class="akte-obj"><div class="akte-h"><b>${$('#oVorOrt', m) ? 'Objekt' : 'Objekte'}</b>${objN > 1 ? `<span class="muted">${objN}</span>` : ''}</div><div class="akte-objl"></div></section>` : ''}<div class="akte-leib"><section class="akte-stamm"><div class="akte-h"><b>Stammdaten</b></div></section>
       <section class="akte-reg"><div class="akte-tabs">${gruppen.map(([id, n]) => `<button type="button" data-areg="${id}">${esc(n)}</button>`).join('')}</div>${gruppen.map(([id]) => `<div class="akte-pane" data-apane="${id}" hidden></div>`).join('')}</section></div>`;
     m.prepend(box);
-    $('.akte-kopf', box).append(act);
+    $('.akte-kopf', box).append(...kopf, act);
     $('.akte-stamm', box).append(form, ...stamm);
     for (const [id] of gruppen) $(`[data-apane="${id}"]`, box).append(...inhalt[id]);
     if (typ === 'k') {

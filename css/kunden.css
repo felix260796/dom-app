@@ -146,3 +146,22 @@ details.pers .pers-t .muted { font-size: 13px; }
 details.pers .more-chev { transition: transform .2s; color: var(--muted); width: 18px; height: 18px; }
 details.pers[open] .more-chev { transform: rotate(90deg); }
 .akon select[data-akf="rolle"] { margin-bottom: 6px; }
+
+/* ---------- Sperre und Dubletten (v113) ---------- */
+.sperre-banner { display: flex; gap: 10px; align-items: flex-start; background: var(--danger); color: #fff; border-radius: 12px; padding: 12px 14px; margin: 0 0 12px; }
+.sperre-banner svg.i { flex: none; width: 20px; height: 20px; margin-top: 1px; }
+.sperre-banner small { display: block; opacity: .85; margin-top: 2px; }
+.pcard.gesperrt, tr.gesperrt, .k-dubl-z.gesperrt { opacity: .5; }
+.pcard.gesperrt b::after { content: ' · gesperrt'; color: var(--danger); font-weight: 600; }
+details.sperre-box { margin-top: 18px; border: 1px solid var(--line, #e5e5e5); border-radius: 12px; padding: 10px 12px; }
+details.sperre-box summary { display: flex; align-items: center; gap: 8px; cursor: pointer; list-style: none; color: var(--danger); font-weight: 600; }
+details.sperre-box summary::-webkit-details-marker { display: none; }
+details.sperre-box summary svg.i { width: 16px; height: 16px; }
+details.sperre-box summary small { margin-left: auto; font-weight: 400; }
+details.sperre-box .btn { margin-top: 8px; }
+.sperre-log { margin-top: 10px; font-size: 13px; display: flex; flex-direction: column; gap: 4px; color: var(--muted); }
+.k-dubl { display: flex; gap: 10px; background: var(--danger-soft); border-radius: 10px; padding: 10px 12px; margin-bottom: 10px; }
+.k-dubl > svg.i { flex: none; width: 20px; height: 20px; color: var(--danger); }
+.k-dubl > div { flex: 1; min-width: 0; }
+.k-dubl-z { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 6px; margin-top: 6px; font-size: 14px; }
+.k-dubl .rot { color: var(--danger); }

@@ -63,7 +63,7 @@ window.Kunden = (() => {
     });
     const offen = state.kunde, tippt = /INPUT|TEXTAREA|SELECT/.test(document.activeElement?.tagName || '');
     alle.clear();
-    for (const k of list) if (k?.id) alle.set(k.id, norm(k));
+    for (const k of list) if (k?.id) { alle.set(k.id, norm(k)); if (!(tippt && offen?.id === k.id)) stand.set(k.id, { telefon: k.telefon, email: k.email }); }
     // Offene Kundenkarte: während getippt wird, bleibt das bearbeitete Objekt maßgeblich
     if (offen && !offen.isNew) {
       if (!alle.has(offen.id)) state.kunde = null;
@@ -191,8 +191,19 @@ window.Kunden = (() => {
     if (changed) await kvSet('projectIndex', idx);
   }
 
+  // Alte Telefonnummern und E-Mails merken (k.alt = { tel: [], mail: [] }), damit die Dublettenprüfung sie weiter findet
+  const stand = new Map();
+  function altMerken(k) {
+    const v = stand.get(k.id);
+    if (v) for (const [f, a] of [['telefon', 'tel'], ['email', 'mail']]) {
+      const alt = String(v[f] || '').trim();
+      if (alt && alt !== String(k[f] || '').trim()) { k.alt ??= {}; k.alt[a] = [...new Set([...(k.alt[a] || []), alt])].slice(-10); }
+    }
+    stand.set(k.id, { telefon: k.telefon, email: k.email });
+  }
   async function speichern(k, still) {
     norm(k);
+    altMerken(k);
     if (!k.nr) k.nr = naechsteNr();
     if (still) { alle.set(k.id, k); return kvSet(key(k.id), k); }
     delete k.isNew;
@@ -205,6 +216,106 @@ window.Kunden = (() => {
     const idx = await projectIndex();
     for (const x of idx.filter((x) => x.kundeId === k.id)) await window.Projekt?.kundeUebernehmen(x.id);
   }, 700);
+
+  // ---------- Dubletten (v113): gleiche Telefonnummer, E-Mail (auch weitere und alte) oder gleicher Name ----------
+  const nrNorm = (x) => { const z = String(x || '').replace(/\D/g, '').replace(/^(00)?49/, '').replace(/^0+/, ''); return z.length >= 6 ? z : ''; };
+  const mlNorm = (x) => String(x || '').trim().toLowerCase();
+  const nmNorm = (x) => String(x || '').toLowerCase().replace(/\b(gmbh|ug|ag|kg|ohg|gbr|mbh|co|e\.?\s?k\.?|inh\.?|haftungsbeschränkt|herr|frau|familie|firma|weg)\b/g, ' ').replace(/[^a-z0-9äöüß]+/g, ' ').trim();
+  const telsVon = (k) => [k.telefon, ...(k.weitere || []).filter((y) => y.art === 'tel').map((y) => y.wert), ...(k.alt?.tel || [])].map(nrNorm).filter(Boolean);
+  const mailsVon = (k) => [k.email, k.rechnungMail, ...(k.weitere || []).filter((y) => y.art === 'mail').map((y) => y.wert), ...(k.alt?.mail || [])].map(mlNorm).filter(Boolean);
+  const namenVon = (k) => [`${k.vorname || ''} ${k.name || ''}`, k.art && k.art !== 'privat' ? k.name : ''].map(nmNorm).filter((x) => x.length > 3);
+  /** Andere Kunden, die zu k passen: [{ k, grund }]. k kann auch ein halber Datensatz sein (Sprache, Visitenkarte). */
+  function dubletten(k) {
+    const t = telsVon(k), m = mailsVon(k), n = namenVon(k);
+    if (!t.length && !m.length && !n.length) return [];
+    return liste().filter((x) => x.id !== k.id).map((x) => {
+      const g = telsVon(x).some((y) => t.includes(y)) ? 'gleiche Telefonnummer' : mailsVon(x).some((y) => m.includes(y)) ? 'gleiche E-Mail' : namenVon(x).some((y) => n.includes(y)) ? 'gleicher Name' : '';
+      return g ? { k: x, grund: g } : null;
+    }).filter(Boolean);
+  }
+  /** Hinweis in der Kundenkarte: „Gibt es schon?“ mit Öffnen und Zusammenführen. */
+  function dublHinweis(el, k) {
+    if (!el) return;
+    const l = dubletten(k);
+    el.innerHTML = l.length ? `<div class="k-dubl">${icon('users')}<div><b>${l.length === 1 ? 'Gibt es diesen Kunden schon?' : `Gibt es diesen Kunden schon? (${l.length} ähnliche)`}</b>
+      ${l.map(({ k: x, grund }) => `<div class="k-dubl-z${window.Sperre?.ist(x) ? ' gesperrt' : ''}"><span>${esc(name(x) || 'Ohne Namen')}${x.nr ? ` · Nr. ${esc(x.nr)}` : ''} · ${esc(grund)}${window.Sperre?.ist(x) ? ` · <b class="rot">gesperrt${x.sperre.grund ? ': ' + esc(x.sperre.grund) : ''}</b>` : ''}</span>
+        <span><button type="button" class="btn secondary small" data-dk="${x.id}">Öffnen</button>${k.isNew ? '' : ` <button type="button" class="btn secondary small" data-dz="${x.id}">Zusammenführen</button>`}</span></div>`).join('')}</div></div>` : '';
+    $$('[data-dk]', el).forEach((b) => (b.onclick = () => { detail(byId(b.dataset.dk)); window.scrollTo(0, 0); }));
+    $$('[data-dz]', el).forEach((b) => (b.onclick = () => zusammenFragen(k, byId(b.dataset.dz))));
+  }
+  async function zusammenFragen(a, b) {
+    if (!a || !b) return;
+    const v = await sheet('Welcher Kunde bleibt?', [
+      { label: `${name(a) || 'Ohne Namen'}${a.nr ? ' · Nr. ' + a.nr : ''}`, sub: 'Der andere wird hier hineingeführt und danach gelöscht', icon: icon('user'), value: 'a' },
+      { label: `${name(b) || 'Ohne Namen'}${b.nr ? ' · Nr. ' + b.nr : ''}`, sub: 'Der andere wird hier hineingeführt und danach gelöscht', icon: icon('user'), value: 'b' },
+    ], { suche: '' });
+    if (!v) return;
+    const [ziel, quelle] = v === 'a' ? [a, b] : [b, a];
+    if (!confirm(`„${name(quelle) || 'Ohne Namen'}“ (Nr. ${quelle.nr}) in „${name(ziel) || 'Ohne Namen'}“ (Nr. ${ziel.nr}) zusammenführen?\n\nObjekte, Personen, Angebote, Projekte, Rechnungen, Termine, Bilder und To-dos wandern mit. Schon verschickte Nummern bleiben und werden mit „aus Kunde ${quelle.nr} übernommen“ gekennzeichnet.`)) return;
+    await zusammenfuehren(ziel, quelle);
+    toast('Zusammengeführt');
+    detail(ziel); window.scrollTo(0, 0);
+  }
+  /** Alle Einträge mit Präfix aus dem Speicher: [[schlüssel, wert]]. */
+  async function alleMit(pre) {
+    const d = await db();
+    return new Promise((res) => {
+      const out = [], q = d.transaction('kv').objectStore('kv').openCursor(IDBKeyRange.bound(pre, pre + '\uffff'));
+      q.onsuccess = () => { const c = q.result; if (!c) return res(out); out.push([c.key, c.value]); c.continue(); };
+      q.onerror = () => res(out);
+    });
+  }
+  /** Quelle in Ziel zusammenführen. Nummern bleiben, alles mit Bezug auf die Quelle zeigt danach auf das Ziel. */
+  async function zusammenfuehren(ziel, quelle) {
+    const zid = ziel.id, qid = quelle.id, von = `aus Kunde ${quelle.nr} übernommen`;
+    // Stammdaten: Leeres im Ziel füllen, Listen anhängen, abweichende Nummern und Mails als weitere
+    for (const f of ['anrede', 'vorname', 'telefon', 'email', 'geburtstag', 'gebArt', 'privat', 'quelle', 'empfohlenVon', 'rechnungMail', 'ustid', 'hvId', 'hvPersonId', 'ansprechId'])
+      if (!String(ziel[f] || '').trim() && String(quelle[f] || '').trim()) ziel[f] = quelle[f];
+    const tz = telsVon(ziel), mz = mailsVon(ziel);
+    if (nrNorm(quelle.telefon) && !tz.includes(nrNorm(quelle.telefon))) ziel.weitere.push({ id: uid(), art: 'tel', label: quelle.telArt || 'Telefon', wert: quelle.telefon });
+    if (mlNorm(quelle.email) && !mz.includes(mlNorm(quelle.email))) ziel.weitere.push({ id: uid(), art: 'mail', label: quelle.mailArt || 'E-Mail', wert: quelle.email });
+    ziel.weitere.push(...quelle.weitere.filter((y) => !(y.art === 'tel' ? tz.includes(nrNorm(y.wert)) : mz.includes(mlNorm(y.wert)))));
+    ziel.alt = { tel: [...new Set([...(ziel.alt?.tel || []), ...(quelle.alt?.tel || [])])], mail: [...new Set([...(ziel.alt?.mail || []), ...(quelle.alt?.mail || [])])] };
+    ziel.personen.push(...quelle.personen);
+    ziel.objekte.push(...quelle.objekte.filter((o) => !ziel.objekte.some((z) => z.id === o.id)));
+    if (quelle.notiz.trim()) ziel.notiz = [ziel.notiz, `${von}: ${quelle.notiz}`].filter((x) => x.trim()).join('\n');
+    for (const f of ['zeitleiste', 'schnell']) if (Array.isArray(quelle[f])) ziel[f] = [...(ziel[f] || []), ...quelle[f]];
+    if (!ziel.pflege && quelle.pflege) ziel.pflege = quelle.pflege;
+    if (window.Sperre?.ist(quelle) && !window.Sperre.ist(ziel)) ziel.sperre = quelle.sperre;
+    ziel.alteNr = [...new Set([...(ziel.alteNr || []), quelle.nr, ...(quelle.alteNr || [])].filter(Boolean))];
+    (ziel.zeitleiste ??= []).push({ id: uid(), t: Date.now(), art: 'notiz', text: `Kunde ${quelle.nr} (${name(quelle) || 'ohne Namen'}) hier zusammengeführt`, wer: window.Kalender?.wer() || '' });
+    await speichern(ziel);
+    // Vorgänge, Räume, Angebote, Termine, Rechnungen, Belege, To-dos
+    for (const pre of ['wohnung:', 'project:', 'angebot:', 'termin:', 'rechnung:', 'beleg:', 'todo:']) {
+      for (const [key, v] of await alleMit(pre)) {
+        if (!v || typeof v !== 'object') continue;
+        let neu = false;
+        if (v.kundeId === qid) { v.kundeId = zid; neu = true; if (pre === 'wohnung:' || pre === 'rechnung:') v.ausKunde = quelle.nr; }
+        if (v.bezug?.kundeId === qid) { v.bezug.kundeId = zid; neu = true; }
+        if (neu) await kvSet(key, v);
+      }
+    }
+    const idx = await projectIndex();
+    if (idx.some((x) => x.kundeId === qid)) { idx.forEach((x) => { if (x.kundeId === qid) { x.kundeId = zid; x.ausKunde = quelle.nr; } }); await kvSet('projectIndex', idx); }
+    // Bilder: Listen je Objekt umhängen (die alte Liste wird geleert, nicht gelöscht, damit der Abgleich sie nicht zurückholt)
+    for (const [key, v] of await alleMit(`bilder:${qid}:`)) {
+      const nk = `bilder:${zid}:${key.split(':').slice(2).join(':')}`;
+      const da = await kvGet(nk);
+      const l = (x) => (Array.isArray(x) ? { bilder: x } : x || {});
+      const a = l(da), b = l(v);
+      await kvSet(nk, { ordner: [...(a.ordner || []), ...(b.ordner || []).filter((o) => !(a.ordner || []).some((y) => y.id === o.id))], bilder: [...(a.bilder || []), ...(b.bilder || []).map((x) => ({ ...x, kundeId: zid }))] });
+      await kvSet(key, { ordner: [], bilder: [] });
+    }
+    // Verweise anderer Kunden (Hausverwaltung, Empfehlung)
+    for (const x of liste()) {
+      let neu = false;
+      if (x.hvId === qid) { x.hvId = zid; neu = true; }
+      if (x.empfohlenVon === 'kunde:' + qid) { x.empfohlenVon = 'kunde:' + zid; neu = true; }
+      if (neu && x.id !== qid) await speichern(x, true);
+    }
+    alle.delete(qid); stand.delete(qid); await kvDel(key(qid));
+    await window.Kalender?.laden?.(); await window.Todos?.laden?.();
+  }
 
   /** E-Mail für Rechnungen: Firma eigene Rechnungs-Mail, WEG die der Hausverwaltung, sonst die E-Mail des Kunden. */
   /** E-Mail für Angebote: WEG die Ansprechpartnerin der Hausverwaltung, Firma der Ansprechpartner, sonst der Kunde. */
@@ -339,11 +450,23 @@ window.Kunden = (() => {
   // ---------- Auswahl (Kunde / Objekt) ----------
   /** Kunde wählen oder neu anlegen → Kunde | null. */
   async function waehlen(title = 'Für welchen Kunden?') {
-    const items = liste().map((k) => ({ label: name(k) || 'Ohne Namen', sub: ort(k), such: `${k.nr || ''} ${k.telefon || ''} ${k.email || ''} ${k.privat || ''} ${k.objekte.map((o) => `${o.name} ${o.adresse}`).join(' ')}`, icon: `<span class="av sm">${esc(initialen(k))}</span>`, value: k.id }));
+    const items = liste().map((k) => ({ label: name(k) || 'Ohne Namen', sub: window.Sperre?.ist(k) ? `Gesperrt${k.sperre.grund ? ': ' + k.sperre.grund : ''}${ort(k) ? ' · ' + ort(k) : ''}` : ort(k), such: `${k.nr || ''} ${k.telefon || ''} ${k.email || ''} ${k.privat || ''} ${k.objekte.map((o) => `${o.name} ${o.adresse}`).join(' ')}`, icon: `<span class="av sm">${esc(initialen(k))}</span>`, value: k.id }));
     // Suchfeld immer (auch bei wenigen Kunden), darunter das Feld für einen neuen Kunden
     const v = await sheet(title, items, { suche: items.length ? 'Kunde suchen: Name, Ort oder Nummer' : '', text: 'Neuer Kunde, z. B. Familie Müller' });
     if (!v) return null;
-    if (v.text) { const k = neu(ausName(v.text)); await speichern(k); return k; }
+    if (v.text) {
+      const k = neu(ausName(v.text));
+      const d = dubletten(k);
+      if (d.length) {
+        const w = await sheet(`Schon angelegt: ${name(d[0].k)}?`, [
+          ...d.map(({ k: x, grund }) => ({ label: name(x) || 'Ohne Namen', sub: [x.nr && 'Nr. ' + x.nr, grund, window.Sperre?.ist(x) && 'gesperrt'].filter(Boolean).join(' · '), icon: icon('user'), value: x.id })),
+          { label: `Trotzdem neu anlegen: ${v.text}`, icon: icon('plus'), value: '__neu' },
+        ], { suche: '' });
+        if (!w) return null;
+        if (w !== '__neu') return byId(w);
+      }
+      await speichern(k); return k;
+    }
     return byId(v);
   }
   /** Objekt des Kunden wählen oder neue Anschrift eingeben → Objekt-ID | '' (ohne) | null (abgebrochen). */
@@ -412,7 +535,7 @@ window.Kunden = (() => {
       if (window.Tabelle?.istBuero()) { // Am Computer: Tabelle mit Spalten
         return window.Tabelle.liste(el, { id: 'kunden', leer: 'Kein Kunde gefunden.', oeffnen: (id) => { filter = ''; detail(byId(id)); window.scrollTo(0, 0); },
           spalten: [{ k: 'nr', t: 'Nr.', b: 80 }, { k: 'name', t: 'Name' }, { k: 'ort', t: 'Ort' }, { k: 'tel', t: 'Telefon', b: 170 }, { k: 'mail', t: 'E-Mail' }, { k: 'pf', t: 'Nächster Kontakt', b: 190 }, { k: 'proj', t: 'Projekte', b: 230 }],
-          zeilen: shown.map((k) => { const pk = idx.filter((x) => x.kundeId === k.id), g = bisGeburtstag(k); return { id: k.id, werte: {
+          zeilen: shown.map((k) => { const pk = idx.filter((x) => x.kundeId === k.id), g = bisGeburtstag(k); return { id: k.id, klasse: window.Sperre?.ist(k) ? 'gesperrt' : '', werte: {
             nr: { text: k.nr || '', sort: +k.nr || 0 }, name: { text: name(k) || 'Ohne Namen', html: `<b>${esc(name(k) || 'Ohne Namen')}</b>${g !== null && g <= 14 ? ` <span class="geb">${gebText(g)}</span>` : ''}` },
             ort: ort(k) || '', tel: k.telefon || '', mail: k.email || '', pf: window.Pflege ? Pflege.zelle(k) : '', proj: { text: String(pk.length), sort: pk.length, html: pk.length ? pills(pk) : '<span class="muted">noch keins</span>' } } }; }) });
       }
@@ -420,7 +543,7 @@ window.Kunden = (() => {
         const pk = idx.filter((x) => x.kundeId === k.id), n = pk.length, g = bisGeburtstag(k);
         // Suche nach Straße: passende Objekte mit ihren Projekten zeigen („da war ich schon mal“)
         const objTreffer = q ? k.objekte.filter((o) => q.split(/\s+/).filter(Boolean).every((w) => `${o.name} ${o.adresse}`.toLowerCase().includes(w))) : [];
-        return `<button class="pcard kcard" data-k="${k.id}">
+        return `<button class="pcard kcard${window.Sperre?.ist(k) ? ' gesperrt' : ''}" data-k="${k.id}">
           <span class="av">${esc(initialen(k))}</span>
           <span class="pc-t"><b>${esc(name(k) || 'Ohne Namen')}</b>
             ${ort(k) ? `<span class="muted">${esc(ort(k))}</span>` : ''}
@@ -505,10 +628,11 @@ window.Kunden = (() => {
     if (einfach && k.objekte[0] && !k.privat.trim() && k.objekte[0].adresse.trim()) k.privat = k.objekte[0].adresse;
     const nBilder = Object.fromEntries(await Promise.all(k.objekte.map(async (o) => [o.id, await Bilder.anzahl(k.id, o.id)])));
     if (state.kunde !== k) return;
-    main().innerHTML = `
+    main().innerHTML = `${window.Sperre?.banner(k) || ''}
       <div class="kd-actions" id="kAct"></div>
       ${window.Geraet?.kann('kontakte') && !name(k).trim() ? `<button type="button" class="link-add" id="kAusKontakt" style="margin:0 0 8px">${icon('user')} Aus iPhone-Kontakten übernehmen</button>` : ''}
       <div class="card kform">
+        <div id="kDubl"></div>
         <div class="seg2 full k-art" id="kArt" style="margin-bottom:4px">${ARTEN.map(([v, l]) => `<button type="button" data-kart="${v}" class="${k.art === v ? 'on' : ''}">${l}</button>`).join('')}</div>
         ${k.art === 'privat' ? `<div class="row"><div style="flex:1"><label>Anrede</label><select id="kAnrede">${ANREDEN.map(([v, l]) => `<option value="${v}" ${v === k.anrede ? 'selected' : ''}>${l}</option>`).join('')}</select></div>
           <div style="flex:1"><label>Kunden-Nr.</label><div class="k-nr">${esc(k.nr || 'wird vergeben')}</div></div></div>
@@ -578,6 +702,7 @@ window.Kunden = (() => {
       <button class="btn big block" id="kProj" style="margin-top:12px">${icon('plus')} Neues Angebot für ${esc(name(k) || 'diesen Kunden')}</button>
       ${!k.isNew && window.Geraet?.kann('kontakte') ? `<button type="button" class="link-add" id="kInKontakte" style="margin-top:10px">${icon('user')} In iPhone-Kontakten speichern</button>` : ''}
       ${k.isNew ? '' : `<button class="notice plain" id="kRech" style="margin-top:12px">${icon('euro')}<span><b>Rechnungen dieses Kunden</b> · zu den Rechnungen springen</span>${icon('chevron')}</button>`}
+      ${k.isNew ? '' : '<div id="kSperre"></div>'}
       ${k.isNew ? '' : `<button class="link-danger" id="kDel">${icon('trash')} Kunde löschen</button>`}`;
 
     const actions = () => {
@@ -666,6 +791,11 @@ window.Kunden = (() => {
     Kontakt.mehrBinden($('#kMailMehr'), $('[data-mehr="mail"]'), k.weitere, 'mail', () => { persist(); actions(); }, { haupt: { get: () => k.mailArt, set: (v) => (k.mailArt = v) } });
     historie(k, idx);
     window.Pflege?.abschnitt($('#kPflege'), k, persist, { klein: true }); // Kontakt halten: regelmäßig anrufen, treffen
+    // Dublettenprüfung: sofort und beim Tippen von Name, Telefon, E-Mail
+    dublHinweis($('#kDubl'), k);
+    const dublNeu = debounce(() => dublHinweis($('#kDubl'), k), 500);
+    for (const id of ['kVorname', 'kName', 'kTel', 'kMail']) $('#' + id)?.addEventListener('input', dublNeu);
+    window.Sperre?.abschnitt($('#kSperre'), k, (x) => speichern(x), async () => { const y = window.scrollY; await detail(k); window.scrollTo(0, y); });
     if (k.isNew) setTimeout(() => $('#kName')?.focus(), 50);
     $$('.adr input').forEach(adressVorschlaege);
     $$('[data-obj]').forEach((b) => (b.onclick = () => { objektView(k, objekt(k, b.dataset.obj)); window.scrollTo(0, 0); }));
@@ -737,7 +867,7 @@ window.Kunden = (() => {
   const pcard = (x, wo = '') => `<button class="pcard" data-open="${x.id}">
       ${x.thumb ? `<img src="${x.thumb}" alt="">` : `<span class="pc-ph">${icon('home')}</span>`}
       <span class="pc-t"><b>${esc(x.titel || x.room || 'Projekt')}</b>
-        <span class="muted">${esc([x.nr, wo, x.titel && x.room].filter(Boolean).join(' · '))}</span>
+        <span class="muted">${esc([x.nr, x.ausKunde && `aus Kunde ${x.ausKunde} übernommen`, wo, x.titel && x.room].filter(Boolean).join(' · '))}</span>
         <span class="muted">${esc(monatJahr(x.created || x.updated))}</span>${x.absage ? `<span class="muted">Grund: ${esc(x.absage)}</span>` : ''}</span>
       ${icon('chevron', 'pc-chev')}</button>`;
 
@@ -916,5 +1046,5 @@ window.Kunden = (() => {
     return byId(id);
   }
 
-  return { ARTEN, personName, person, hvVon, rechnungMail, angebotMail, dankAuftrag, empfVon, adressVorschlaege, sucheAdresse, laden, migrate, nummern, projektNr, byId, liste, name, briefAnrede, postanschrift, istHv, zeilen, einzeilig, objekt, objektText, ort, initialen, ausName, speichern, waehlen, objektWaehlen, projektAnlegen, start, listeView, detail, objektView, objLabel, oeffnen, zu, bisGeburtstag };
+  return { ARTEN, dubletten, zusammenfuehren, personName, person, hvVon, rechnungMail, angebotMail, dankAuftrag, empfVon, adressVorschlaege, sucheAdresse, laden, migrate, nummern, projektNr, byId, liste, name, briefAnrede, postanschrift, istHv, zeilen, einzeilig, objekt, objektText, ort, initialen, ausName, speichern, waehlen, objektWaehlen, projektAnlegen, start, listeView, detail, objektView, objLabel, oeffnen, zu, bisGeburtstag };
 })();

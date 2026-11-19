@@ -782,7 +782,11 @@ Gib Länge (längere Seite) und Breite der Grundfläche, Raumhöhe, Anzahl und G
       $$('.tb-g', body).forEach((d) => { const sicht = $$('.tb-z', d).some((z) => !z.hidden); d.hidden = !sicht; if ((w.length || nurGewaehlt) && sicht) d.open = true; });
     };
     summe(); filtern();
-    if ($('#tbPL')) $('#tbPL').onchange = (e) => { plWahl = e.target.value; neu(); };
+    if ($('#tbPL')) $('#tbPL').onchange = async (e) => {
+      const p = window.Partner?.byId(e.target.value);
+      if (p && window.Sperre && !(await Sperre.pruefen(p, 'Preisliste im Angebot', (x) => Partner.speichern(x)))) { e.target.value = plWahl; return; }
+      plWahl = e.target.value; neu();
+    };
     // Menge aus der Preisliste eines Partners: wird eine eigene Position zum Einkaufspreis, ohne Zuschlag
     $$('[data-pq]', body).forEach((inp) => (inp.onchange = () => {
       const z = plZeilen.find((y) => y.key === inp.dataset.pq), q = num(inp.value), alt = plPos(z.key);
