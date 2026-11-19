@@ -6,7 +6,7 @@
  * Kern-Funktionen (Speicher, KI, Bilder) stehen in core.js. */
 
 // ---------- Symbole (einfache Linien-Icons) ----------
-const APP_VERSION = '109';
+const APP_VERSION = '110';
 const ICONS = {
   plus: '<path d="M12 5v14M5 12h14"/>',
   camera: '<path d="M3 8.5A2 2 0 0 1 5 6.5h2l1.6-2h6.8l1.6 2h2a2 2 0 0 1 2 2V18a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><circle cx="12" cy="13" r="3.6"/>',
@@ -220,7 +220,7 @@ async function viewProjektListe() {
   $$('[data-open]').forEach((el) => (el.onclick = async () => {
     if (el.dataset.kind === 'wohnung') return Projekt.oeffnen(el.dataset.open);
     // Altes Einzelprojekt (wird beim Start normalerweise umgestellt)
-    const p = normalizeProject(await kvGet('project:' + el.dataset.open));
+    const p = await AngebotDaten.raum(el.dataset.open);
     if (p) { state.wohnung = null; state.project = p; viewProjekt(); }
   }));
   window.Backup?.hinweis($('#backupHint'));

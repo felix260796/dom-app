@@ -21,7 +21,7 @@ window.Angebote = (() => {
     const A = window.Angebot._intern;
     let s = 0;
     for (const id of w.rooms) {
-      const r = await kvGet('project:' + id);
+      const r = await AngebotDaten.raum(id, w);
       if (r?.angebot?.positionen?.length) { try { s += A.summen(r.angebot.positionen, r.angebot.kalk).brutto; } catch {} }
     }
     return s;

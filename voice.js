@@ -413,14 +413,16 @@ async function auswertenAudio(owner, blob, fromStore) {
   if (owner.projekt) {
     const w = await wohnungVon(owner.id);
     if (!w) throw new Error('Projekt nicht gefunden.');
-    w.gespraech = { ...(w.gespraech || {}), transcript: join(w.gespraech?.transcript), t: Date.now() };
+    // Seit v110 als Zeilenliste (Transkript in angebotdaten.js), der Text daneben bleibt gleich aufgebaut
+    w.gespraech = { ...(w.gespraech || {}), t: Date.now() };
+    Transkript.anhaengen(w.gespraech, { art: voice.art || 'Gespräch', dabei: dabei || [], text: t });
     await window.Projekt.save(w);
     await zuordnen(w);
     if (vorgabe('gespraechZusammenfassung') !== 'nein') await zusammenfassung(w).catch((e) => console.warn('Zusammenfassung fehlgeschlagen', e));
     // Gleich mitdenken: Was fehlt noch fürs Angebot, solange man beim Kunden ist (vorort.js)
     window.VorOrt?.nachAufnahme(w).catch((e) => console.warn('Was fehlt noch?', e));
   } else {
-    const p = state.project?.id === owner.id ? state.project : normalizeProject(await kvGet('project:' + owner.id));
+    const p = state.project?.id === owner.id ? state.project : await AngebotDaten.raum(owner.id);
     voiceApply(p, { transcript: join(p.transcript) });
     await saveProject(p);
     voiceStatus('Wünsche werden abgeleitet …');
@@ -737,7 +739,7 @@ window.Gespraech = {
     const zu = () => voiceRun(w.id, () => zuordnen(w), 'Wünsche den Räumen zugeordnet.');
     if ($('#vzu')) $('#vzu').onclick = zu;
     if ($('#vzu2')) $('#vzu2').onclick = zu;
-    if ($('#wTranscript')) $('#wTranscript').oninput = debounce((e) => { g.transcript = e.target.value; window.Projekt.save(w); }, 500);
+    if ($('#wTranscript')) $('#wTranscript').oninput = debounce((e) => { Transkript.ausText(g, e.target.value); window.Projekt.save(w); }, 500);
     const fehlend = (g.fehlend || []).filter((f) => !list.some((r) => (r.room || '').toLowerCase() === String(f.name).toLowerCase()));
     $$('[data-miss]').forEach((b) => (b.onclick = () => {
       const f = fehlend[+b.dataset.miss];

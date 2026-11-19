@@ -47,7 +47,7 @@ window.Finanzen = (() => {
     if (!A || !w?.rooms?.length) return out;
     try { await A.preisliste(); } catch { return out; }
     for (const id of w.rooms) {
-      const r = await kvGet('project:' + id);
+      const r = await AngebotDaten.raum(id, w);
       if (!r?.angebot?.positionen?.length) continue;
       try {
         const S = A.summen(r.angebot.positionen, r.angebot.kalk);

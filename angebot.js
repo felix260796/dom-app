@@ -612,7 +612,7 @@ Gib Länge (längere Seite) und Breite der Grundfläche, Raumhöhe, Anzahl und G
       </div>
       <details class="more card"><summary>${icon('sliders')}<span>Weitere Einstellungen<small>Nummer, Betreff, Anrede, Aufschläge, Preisrichtung, Excel</small></span>${icon('chevron', 'more-chev')}</summary>
         <div class="kform">
-        <div class="row"><div><label>Angebotsnummer</label><input type="text" id="aNr" value="${esc(A.nr)}" placeholder="wird beim PDF vergeben"></div>
+        <div class="row"><div><label>Angebotsnummer</label><input type="text" id="aNr" value="${esc(A.nr)}" placeholder="wird beim PDF vergeben"${p[window.AngebotDaten?.REF] && A.nr ? ' readonly title="Die Nummer wird beim Anlegen vergeben (Kunde, Vorgang, Angebot)."' : ''}></div>
           <div><label>Ansprechpartner</label><select id="aAnspr">${ansprechpartner().map((x) => `<option ${x === ansprVon(A) ? 'selected' : ''}>${esc(x)}</option>`).join('')}</select></div></div>
         <label>Betreff (= Projektname)</label><input type="text" id="aTitel" value="${esc(betreffWert(p))}" placeholder="${esc(titelDefault(p, pk))}">
         <label>Anrede</label><input type="text" id="aAnrede" value="${esc(A.anrede)}" placeholder="${esc(anredeDefault(p))}">
@@ -756,7 +756,7 @@ Gib Länge (längere Seite) und Breite der Grundfläche, Raumhöhe, Anzahl und G
       </div>`}
       <details class="more card"><summary>${icon('sliders')}<span>${ausPrj ? 'Mehr<small>Alle Mengen auf 0, Excel</small>' : 'Weitere Einstellungen<small>Nummer, Betreff, Anrede, Aufschläge, Excel</small>'}</span>${icon('chevron', 'more-chev')}</summary>
         ${ausPrj ? '' : `<div class="kform">
-        <div class="row"><div><label>Angebotsnummer</label><input type="text" id="aNr" value="${esc(A.nr)}" placeholder="wird beim PDF vergeben"></div>
+        <div class="row"><div><label>Angebotsnummer</label><input type="text" id="aNr" value="${esc(A.nr)}" placeholder="wird beim PDF vergeben"${p[window.AngebotDaten?.REF] && A.nr ? ' readonly title="Die Nummer wird beim Anlegen vergeben (Kunde, Vorgang, Angebot)."' : ''}></div>
           <div><label>Ansprechpartner</label><select id="aAnspr">${ansprechpartner().map((x) => `<option ${x === ansprVon(A) ? 'selected' : ''}>${esc(x)}</option>`).join('')}</select></div></div>
         <label>Betreff (= Projektname)</label><input type="text" id="aTitel" value="${esc(betreffWert(p))}" placeholder="${esc(titelDefault(p, pk))}">
         <label>Anrede</label><input type="text" id="aAnrede" value="${esc(A.anrede)}" placeholder="${esc(anredeDefault(p))}">
@@ -918,12 +918,15 @@ Gib Länge (längere Seite) und Breite der Grundfläche, Raumhöhe, Anzahl und G
     const ab = opt.art === 'ab';
     const A = p.angebot, E = PL.einstellungen, S = summen(A.positionen, A.kalk);
     const pk = pakete(p).find((x) => x.id === A.paket) || pakete(p)[0];
+    // Seit v110 hat das Angebot am Vorgang seine Nummer (1001-01-01A) ab dem Anlegen; ohne Kunde gilt die alte Jahresnummer
+    const ent = p[window.AngebotDaten?.REF] || null;
+    const entwurf = !!ent && !ab && !opt.final && ent.status === 'entwurf';
     if (!A.nr) { A.nr = await naechsteNummer(); if (!p._gesamt) await saveProject(p); }
     // Versionen (B8): jede geänderte Fassung bekommt „Änderung n“, damit man sieht, was der Kunde bekommen hat
     const sig = JSON.stringify(A.positionen.map((x) => [x.nr, x.raum, x.menge]));
     A.versionen ??= [];
     if (!ab && A.versionen[A.versionen.length - 1]?.sig !== sig) { A.versionen.push({ t: Date.now(), brutto: S.brutto, sig }); if (!p._gesamt) await saveProject(p); }
-    const nrText = A.nr + (A.versionen.length > 1 ? ` (Änderung ${A.versionen.length - 1})` : '');
+    const nrText = ent ? A.nr : A.nr + (A.versionen.length > 1 ? ` (Änderung ${A.versionen.length - 1})` : '');
     const { jsPDF } = window.jspdf;
     const doc = new jsPDF({ unit: 'mm', format: 'a4' });
     const W = 210, H = 297, M = 20, R = W - 18;
@@ -1068,6 +1071,15 @@ Gib Länge (längere Seite) und Breite der Grundfläche, Raumhöhe, Anzahl und G
       t([`Sitz: ${E.sitz}`, E.hrb, `Geschäftsführer: ${E.gf}`, `USt-IdNr. ${E.ustid}`].join(' · '), M, H - 12.8);
       t(E.bank, M, H - 9.6);
       t(`Seite ${i} von ${pages}`, R, H - 9.6, { align: 'right' });
+      // Bis zum Versand trägt jede Seite das Wasserzeichen „Entwurf“ (seit v110)
+      if (entwurf) {
+        try {
+          doc.saveGraphicsState(); doc.setGState(new doc.GState({ opacity: 0.13 }));
+          doc.setFont('helvetica', 'bold'); doc.setFontSize(96); doc.setTextColor(...NAVY);
+          doc.text('ENTWURF', W / 2, H / 2 + 20, { align: 'center', angle: 40 });
+          doc.restoreGraphicsState(); doc.setFont('helvetica', 'normal');
+        } catch (e) { console.warn('Wasserzeichen', e); }
+      }
     }
     return doc;
   }

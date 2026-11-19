@@ -168,6 +168,14 @@ Nur am PC. Dashboard ist ein eigener Punkt in der Seitenleiste (`state.tab = 'da
 Roter Faden Vor Ort → Angebot: `Buero.aufnahmen(idx)` findet Projekte mit Gespräch, Scan, Notiz, Fragen oder Fotos; Tabelle mit „Aufnahme“ (`Projekt.oeffnen(id, { pc: 'vorort' })`) und „Angebot erstellen/Zum Angebot“ (`{ pc: 'angebot' }`) beim Kunden und im Dashboard. Am Angebot heißt der Umschalter „Vor-Ort-Aufnahme“, dort oben „Weiter zum Angebot“ (`.ape-weiter`).
 Kunden-Akte: Objekte (und Vor-Ort-Aufnahmen) als Streifen über die ganze Breite (`.akte-obj`), keine Registerkarte Objekte mehr. Partner-Akte: Registerkarte „Preisliste“ (`Buero.partnerPreise`, Tabelle zum Bearbeiten), Qualität Basic/Standard/Premium als klare Umschalter. „Preislisten der Partner“ als Tabelle mit Gewerk-Filter (`Buero.partnerPreislisten`). Preislisten im Angebot rechts: Gruppen zugeklappt, Klick klappt auf (`plOffen`), Suche öffnet alles.
 
+## Neuerungen aus Version 110 (Umbau Runde 13, P1 Datenmodell)
+
+Kunde → Objekt → Vorgang (`wohnung:<id>`) → Angebote (`angebot:<id>`, eigener Eintrag, `angebotdaten.js` `AngebotDaten`) → Fassungen. Bereiche (Räume `project:<id>`) gehören zum Vorgang und werden von allen Angeboten geteilt; die Positionen je Bereich liegen im Angebot (`a.inhalt.bereiche[raumId]`). Vorgang: `w.angebote`, `w.angebotAktiv`, `w.angebotZaehler`.
+Jeder geladene Raum bekommt `r.angebot` als nicht aufzählbaren Verweis auf seinen Teil im aktiven Angebot (`AngebotDaten.anhaengen`, über `Projekt.raum/raeume` und `AngebotDaten.raum(id, w)`); `kvSet('project:…')` speichert das Angebot mit (`merken`). Räume nie roh mit `kvGet('project:')` lesen, wenn das Angebot gebraucht wird. Alte Räume mit eigenem `angebot` werden beim ersten Laden umgestellt. Rechnung, Kalkulation, Angebotssumme und Excel lesen nur noch das aktive (bzw. zugesagte) Angebot.
+Nummern: Kunde 1001 → Vorgang 1001-01 (`Kunden.projektNr`, Vorgabe `projektNrFormat` mit `{kunde}`, Zähler je Kunde `settings.vorgangNrBis`; alte P2026-001 werden ersetzt) → Angebot 1001-01-01A (`AngebotDaten.nr`, `r.angebot.nr` liefert sie, Nummernfelder sind gesperrt). Bis zum Versand Wasserzeichen „ENTWURF“ (`baueAngebotPdf(p, { final })`, Senden und „Als versendet markieren“ bauen final). Stand am Angebot: entwurf/versendet/zugesagt/abgesagt/nichtGewaehlt (`versendet`, `zusagen`, `absagen`, `standVomVorgang`). Verschicktes ändern = neue Fassung, gleicher Stamm, nächster Buchstabe (`neueFassung`, 01A → 01B), Alternative = neue laufende Nummer (`alternative`).
+Transkript als Zeilenliste: `w.gespraech.zeilen [{ id, aufnahmeId, sprecher, text, bereichId }]`, `w.gespraech.aufnahmen [{ id, art, t, dabei }]` (`Transkript` in `angebotdaten.js`); `w.gespraech.transcript` wird daraus gebaut und bleibt für alle Leser.
+Offen für P7: Kopf und Texte liegen noch in `w.angebotKopf`/`w.angebotTexte` am Vorgang, nicht je Angebot.
+
 ## Bereiche
 
 | Bereich | Dateien | Inhalt |

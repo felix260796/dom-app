@@ -62,11 +62,18 @@ window.Projekt = (() => {
   const key = (id) => 'wohnung:' + id;
   const pkgOf = (r, id) => roomPackages(r).find((x) => x.id === id);
   const done = (r, id) => !!firstResult(r, id);
-  async function raum(id) {
+  async function raum(id, w) {
     if (!rooms.has(id)) { const r = normalizeProject(await kvGet('project:' + id)); if (r) rooms.set(id, r); }
-    return rooms.get(id);
+    const r = rooms.get(id);
+    if (r?.wohnungId) await AngebotDaten.anhaengen(r, w?.id === r.wohnungId ? w : null); // r.angebot = Teil des aktiven Angebots am Vorgang
+    return r;
   }
-  const raeume = async (w) => (await Promise.all(w.rooms.map(raum))).filter(Boolean);
+  async function raeume(w) {
+    if (w.rooms?.length && !w.isNew) await AngebotDaten.aktiv(w);
+    const out = [];
+    for (const id of w.rooms || []) { const r = await raum(id, w); if (r) out.push(r); }
+    return out;
+  }
   const summary = (list) => (list.length === 1 ? list[0].room || roomType(list[0].roomType).name
     : list.length <= 3 ? list.map((r) => r.room || roomType(r.roomType).name).join(', ') : `${list.length} Räume`);
 
@@ -223,7 +230,7 @@ window.Projekt = (() => {
     window.Raumscan?.masseIn(r, scan);
     rooms.set(r.id, r); w.rooms.push(r.id); delete w.isNew;
     await kvSet('project:' + r.id, r); await save(w);
-    return normalizeProject(r);
+    return AngebotDaten.anhaengen(normalizeProject(r), w);
   }
   async function pickRoomType(w) {
     const rt = await sheet('Welcher Raum?', ROOM_TYPES.map((r) => ({ label: r.name, icon: roomIcon(r.id), value: r.id })));
@@ -285,7 +292,7 @@ window.Projekt = (() => {
       if (v === 'angebot' && norm(w.status) !== 'angebot') w.versendetAm = heuteIso();
       if (norm(v) !== norm(w.status)) (w.verlauf ??= []).push({ st: v, t: Date.now() });
       w.status = v;
-      if (!w.isNew) await save(w);
+      if (!w.isNew) { await save(w); await AngebotDaten.standVomVorgang(w); }
       toast(statusName(v));
       const y = window.scrollY; await view(); window.scrollTo(0, y);
     };
@@ -402,6 +409,8 @@ window.Projekt = (() => {
     $$('[data-dok]').forEach((b) => (b.onclick = async () => { const d = (w.dokumente || []).find((x) => x.key === b.dataset.dok); if (d) dateiZeigen(await kvGet(d.key), { name: d.name, typ: d.typ || 'application/pdf' }); }));
     $$('[data-doksend]').forEach((b) => (b.onclick = async () => {
       const d = (w.dokumente || []).find((x) => x.key === b.dataset.doksend); if (d?.art === 'auftragsbestaetigung') return abSenden(w);
+      // Abgelegter Entwurf des aktuellen Angebots: frisch ohne Wasserzeichen bauen und senden
+      if (d && /^Angebot_/.test(d.name) && AngebotDaten.aktivSync(w)?.status === 'entwurf' && angNr(w) && d.name.includes(angNr(w))) return sendenMitMappe(w, list);
       const data = d && (await kvGet(d.key));
       if (!data) return toast('Die Datei ist auf diesem Gerät noch nicht da. Bitte kurz warten (Cloud-Abgleich).', 4000);
       const f = new File([await (await fetch(data)).blob()], d.name, { type: 'application/pdf' });
@@ -451,6 +460,7 @@ window.Projekt = (() => {
       $('#wDel').onclick = async () => {
         if (!(await loeschenFragen(w, list))) return;
         for (const id of w.rooms) { await kvDel('project:' + id); rooms.delete(id); }
+        for (const id of w.angebote || []) await kvDel('angebot:' + id);
         await kvDel(key(w.id));
         await kvSet('projectIndex', (await projectIndex()).filter((x) => x.id !== w.id));
         state.wohnung = null; viewProjekt(); window.scrollTo(0, 0);
@@ -622,7 +632,9 @@ window.Projekt = (() => {
   const raumTitel = (r) => r.room || roomType(r.roomType).name;
   const mitPosVon = (list) => list.filter((r) => r.angebot?.positionen?.length);
   /** Nummer des Angebots, an dem gerade gearbeitet wird (ein Raum: dessen Nummer, mehrere: die des Gesamtangebots). */
-  const aktNr = (w, list) => { const m = mitPosVon(list); return (m.length > 1 ? w.gesamtAngebot?.nr : m[0]?.angebot?.nr) || ''; };
+  /** Nummer des Angebots, an dem gerade gearbeitet wird (1001-01-01A, seit v110 am Angebot im Vorgang). */
+  const angNr = (w) => AngebotDaten.nr(AngebotDaten.aktivSync(w), w);
+  const aktNr = (w, list) => { const m = mitPosVon(list); return angNr(w) || (m.length > 1 ? w.gesamtAngebot?.nr : m[0]?.angebot?.nr) || ''; };
   /** Texte dieses Angebots: eigene Fassung oder der Standard aus den Einstellungen (als Kopie, wird erst beim Ändern gespeichert). */
   // Auftragserteilung und Gruß mit Unterschrift sind seit Version 100 Bausteine am Schluss (b.fest, angebot.js texteFuer).
   const texteVon = (w) => window.Angebot._intern.texteFuer(w);
@@ -677,7 +689,7 @@ window.Projekt = (() => {
               ${k.objekte.map((o) => `<option value="${o.id}" ${o.id === w.objektId ? 'selected' : ''}>${esc(Kunden.objektText(o) || 'Objekt ohne Anschrift')}</option>`).join('')}
               <option value="__neu">Andere Anschrift …</option></select></div>` : ''}
             <div class="ape-f ape-betr"><label for="wTitel">Betreff (Projektname)</label><input type="text" id="wTitel" value="${esc(w.titel || '')}" placeholder="z. B. Badsanierung, Türgriffe tauschen" autocomplete="off"></div>
-            <div class="ape-f"><label for="bNr">Angebotsnummer</label><input type="text" id="bNr" value="${esc(K.nr)}" placeholder="kommt beim Speichern" autocomplete="off"></div>
+            <div class="ape-f"><label for="bNr">Angebotsnummer</label><input type="text" id="bNr" value="${esc(K.nr)}" placeholder="kommt beim Speichern" autocomplete="off"${angNr(w) ? ' readonly title="Wird beim Anlegen vergeben: Kunde, Vorgang, Angebot"' : ''}></div>
             <div class="ape-f"><label for="bAnspr">Ansprechpartner</label><select id="bAnspr">${anspr.map((x) => `<option ${x === (A.einePerson(K.anspr) || anspr[0]) ? 'selected' : ''}>${esc(x)}</option>`).join('')}</select></div>
             <div class="ape-f"><label for="bAnrede">Anrede</label><input type="text" id="bAnrede" value="${esc(K.anrede)}" placeholder="${esc(erst ? A.anredeDefault(erst) : 'Sehr geehrte Damen und Herren,')}" autocomplete="off"></div>
             ${sq ? `<p class="ab-schnell ape-voll">${icon('phone')}<span>Am Telefon genannt: <b>ca. ${eurRund(sq.von)} – ${eurRund(sq.bis)}</b>${sq.text ? ` · ${esc(sq.text)}` : ''}</span></p>` : ''}
@@ -838,7 +850,7 @@ window.Projekt = (() => {
         ${kundeKarte(w, k)}
         <div class="sec-h"><h2>So steht es oben im Angebot</h2></div>
         <div class="card kform">
-          <div class="row"><div><label style="margin-top:0">Angebotsnummer</label><input type="text" id="bNr" value="${esc(K.nr)}" placeholder="kommt beim Speichern" autocomplete="off"></div>
+          <div class="row"><div><label style="margin-top:0">Angebotsnummer</label><input type="text" id="bNr" value="${esc(K.nr)}" placeholder="kommt beim Speichern" autocomplete="off"${angNr(w) ? ' readonly title="Wird beim Anlegen vergeben: Kunde, Vorgang, Angebot"' : ''}></div>
             <div><label style="margin-top:0">Ansprechpartner</label><select id="bAnspr">${anspr.map((x) => `<option ${x === (A.einePerson(K.anspr) || anspr[0]) ? 'selected' : ''}>${esc(x)}</option>`).join('')}</select></div></div>
           ${k ? '<p class="hint" style="margin:8px 0 0">Betreff ist der Projektname (oben beim Kunden).</p>' : `<label>Projektname (= Betreff)</label><input type="text" id="wTitel" value="${esc(w.titel || '')}" placeholder="z. B. Badumbau" autocomplete="off">`}
           <label>Anrede</label><input type="text" id="bAnrede" value="${esc(K.anrede)}" placeholder="${esc(erst ? A.anredeDefault(erst) : 'Sehr geehrte Damen und Herren,')}" autocomplete="off">
@@ -969,7 +981,7 @@ window.Projekt = (() => {
     const r = { id: uid(), created: Date.now(), wohnungId: w.id, kundeId: w.kundeId || '', customer: w.customer, address: w.address, roomType: rt, room: titel(list, rt), note: '', photos: [], thumb: '', results: {}, selected: packagesFor(rt).map((x) => x.id), pdfProducts: true, pdfPrices: false, ...extra };
     rooms.set(r.id, r); w.rooms.push(r.id); delete w.isNew;
     await kvSet('project:' + r.id, r); await save(w);
-    return normalizeProject(r);
+    return AngebotDaten.anhaengen(normalizeProject(r), w);
   }
   /** Mehrere Räume anhaken (ganze Wohnung, ganzes Haus). Gibt die Namen zurück oder null. */
   function raeumeWaehlen(ueberschrift, namen) {
@@ -1116,7 +1128,7 @@ window.Projekt = (() => {
   async function sendenMitMappe(w, list) {
     if (gesperrt(w)) return gesperrtFrage(w);
     const A = window.Angebot._intern;
-    const r = await angebotDateien(w, list);
+    const r = await angebotDateien(w, list, { final: true }); // ohne Wasserzeichen „Entwurf“
     if (!r) return;
     const { ang, files } = r;
     // „Wie verschickt“ wird erst gemerkt, wenn wirklich gesendet wird
@@ -1202,6 +1214,7 @@ window.Projekt = (() => {
     // Ab jetzt gesperrt (Wunsch Felix): Ändern geht nur noch über eine Kopie mit neuer Nummer
     w.angebotGesperrt = { t: Date.now(), nr: nrAusPdf(w) }; delete w.angebotFrei;
     await save(w);
+    await AngebotDaten.versendet(w, { datum: w.versendetAm, name: w.angebotPdf?.name || '' });
     if (state.wohnung?.id === w.id) Object.assign(state.wohnung, { status: w.status, versendetAm: w.versendetAm, verlauf: w.verlauf, angebotGesperrt: w.angebotGesperrt, angebotFrei: undefined });
     toast(datum ? `Als versendet markiert (${datumText(w.versendetAm)}). Es ist jetzt gesperrt, das Nachfassen läuft.` : 'Angebot versendet. Es ist jetzt gesperrt, Änderungen gehen über eine Kopie.', 4500);
   }
@@ -1228,7 +1241,7 @@ window.Projekt = (() => {
     const datum = await datumFrage('Als versendet markieren', 'Wann hat der Kunde das Angebot bekommen, z. B. ausgedruckt oder persönlich übergeben? Danach ist es gesperrt, und das Nachfassen läuft ab diesem Tag.');
     if (!datum) return;
     if (w.isNew) { delete w.isNew; await save(w); }
-    const r = await angebotDateien(w, list);
+    const r = await angebotDateien(w, list, { final: true });
     if (!r) return;
     state.wohnung = w;
     await dokMerken([r.files[0]]);
@@ -1291,48 +1304,53 @@ window.Projekt = (() => {
   // Ein gespeichertes und verschicktes Angebot bleibt unverändert. Zum Ändern wird es kopiert und bekommt eine neue Nummer.
   // Ältere Aufträge (vor Version 75): gesperrt, wenn das verschickte PDF da ist und der Auftrag verschickt oder zugesagt ist.
   const nrAusPdf = (w) => (String(w.angebotPdf?.name || '').match(/^Angebot_([^_]+)/) || [])[1] || w.gesamtAngebot?.nr || '';
-  const gesperrt = (w) => !!w && (!!w.angebotGesperrt || (!w.angebotFrei && !!w.angebotPdf && !w.angebotPdf.extern && (norm(w.status) === 'angebot' || zugesagt(w.status))));
-  const sperrInfo = (w) => w.angebotGesperrt || { nr: nrAusPdf(w), t: w.angebotPdf?.t || 0 };
+  const gesperrt = (w) => { const a = w && AngebotDaten.aktivSync(w); return a ? a.status !== 'entwurf' : gesperrtAlt(w); };
+  const gesperrtAlt = (w) => !!w && (!!w.angebotGesperrt || (!w.angebotFrei && !!w.angebotPdf && !w.angebotPdf.extern && (norm(w.status) === 'angebot' || zugesagt(w.status))));
+  const sperrInfo = (w) => { const a = AngebotDaten.aktivSync(w), f = a?.fassungen.at(-1); return a ? { nr: angNr(w) || nrAusPdf(w), t: f?.t || w.angebotPdf?.t || 0 } : w.angebotGesperrt || { nr: nrAusPdf(w), t: w.angebotPdf?.t || 0 }; };
   async function gesperrtFrage(w) {
     const g = sperrInfo(w);
     const v = await sheet(`Angebot${g.nr ? ' Nr. ' + g.nr : ''} ist verschickt`, [
       { label: 'Verschicktes Angebot ansehen', sub: 'So, wie es der Kunde bekommen hat', icon: icon('eye'), value: 'zeigen' },
-      { label: 'Ändern: als neues Angebot kopieren', sub: 'Bekommt eine neue Nummer. Das verschickte bleibt unverändert gespeichert.', icon: icon('edit'), value: 'kopie' },
+      { label: 'Ändern: neue Fassung anlegen', sub: 'Gleiche Nummer mit dem nächsten Buchstaben (z. B. 01A wird 01B). Das verschickte bleibt unverändert gespeichert.', icon: icon('edit'), value: 'kopie' },
     ]);
     if (v === 'zeigen') return dateiZeigen(await kvGet('angpdf:' + w.id), w.angebotPdf || { name: 'Angebot.pdf', typ: 'application/pdf' });
     if (v === 'kopie') return angebotKopieren(w);
   }
+  /** Verschicktes Angebot ändern: neue Fassung mit gleicher Nummer und nächstem Buchstaben (seit v110, vorher Kopie mit neuer Nummer). */
   async function angebotKopieren(w) {
     const alt = sperrInfo(w);
-    if (!confirm(`Neues Angebot als Kopie von Nr. ${alt.nr || '?'} anlegen?\n\nDie Kopie bekommt eine neue Nummer und lässt sich bearbeiten. Das bisherige Angebot bleibt unverändert gespeichert und steht bei den Angeboten unter „Frühere Fassungen“.`)) return;
+    const a0 = await AngebotDaten.aktiv(w);
+    const naechster = String.fromCharCode((a0?.buchstabe || 'A').charCodeAt(0) + 1);
+    const neuNr = alt.nr ? alt.nr.replace(/[A-Z]$/, '') + naechster : '';
+    if (!confirm(`Neue Fassung von Angebot ${alt.nr || ''} anlegen?\n\nSie bekommt die Nummer ${neuNr || 'mit dem nächsten Buchstaben'} und lässt sich bearbeiten. Die verschickte Fassung bleibt unverändert gespeichert und steht bei den Angeboten unter „Frühere Fassungen“.`)) return;
     await pdfInDokumente(w);
     (w.angebotArchiv ??= []).push({ nr: alt.nr, t: alt.t || Date.now(), name: w.angebotPdf?.name || '' });
-    const A = window.Angebot._intern;
-    const list = await raeume(w), mitPos = list.filter((r) => r.angebot?.positionen?.length);
-    const nr = await A.naechsteNummer();
-    for (const r of list) if (r.angebot) { r.angebot.nr = mitPos.length === 1 && r === mitPos[0] ? nr : ''; r.angebot.versionen = []; await saveProject(r); }
-    w.gesamtAngebot = { ...(w.gesamtAngebot || {}), nr: mitPos.length > 1 ? nr : '', versionen: [] };
+    await AngebotDaten.neueFassung(w);
+    const list = await raeume(w);
+    for (const r of list) if (r.angebot?.versionen) { r.angebot.versionen = []; await saveProject(r); }
+    w.gesamtAngebot = { ...(w.gesamtAngebot || {}), versionen: [] };
     delete w.angebotGesperrt; w.angebotFrei = true; w.angebotKopieVon = alt.nr;
     if (['angebot', 'abgesagt'].includes(norm(w.status))) { w.status = 'entwurf'; (w.verlauf ??= []).push({ st: 'entwurf', t: Date.now() }); }
     reiterWahl.delete(w.id); schrittWahl.delete(w.id);
     await save(w);
-    toast(`Neues Angebot Nr. ${nr} angelegt. Jetzt ändern, speichern und senden.`, 5000);
+    const nr = angNr(w);
+    toast(`Neue Fassung ${nr} angelegt. Jetzt ändern, ansehen und senden.`, 5000);
     if (state.wohnung?.id === w.id) { state.wohnung = w; state.project = null; view(); window.scrollTo(0, 0); }
   }
   /** Angebot als PDF bauen (ein Raum oder alle Räume), dazu die Kundenmappe, falls visualisiert: { ang, files }. */
-  async function angebotDateien(w, list) {
+  async function angebotDateien(w, list, opt = {}) {
     const A = window.Angebot._intern;
     await A.preisliste();
     const mitPos = list.filter((r) => r.angebot?.positionen?.length);
     if (!mitPos.length) { toast('Bitte zuerst das Angebot ausarbeiten.'); return null; }
     toast('Angebot wird erstellt …', 15000);
     let ang;
-    if (mitPos.length > 1) ang = await gesamtDoc(w, mitPos);
+    if (mitPos.length > 1) ang = await gesamtDoc(w, mitPos, { final: opt.final });
     else {
       const r = mitPos[0];
       Object.assign(r, { customer: w.customer, address: w.address, kundeId: w.kundeId, projektNr: w.nr || '' });
       A.init(r);
-      const doc = await A.baueAngebotPdf(r);
+      const doc = await A.baueAngebotPdf(r, { final: opt.final });
       await saveProject(r);
       ang = { doc, syn: r, name: `Angebot_${r.angebot.nr}_${(w.customer || 'Kunde').replace(/[^\wäöüÄÖÜß-]+/g, '_')}.pdf` };
     }
@@ -1362,7 +1380,7 @@ window.Projekt = (() => {
   async function gesamtAngebot(w, raeume) {
     if (gesperrt(w)) return gesperrtFrage(w);
     toast('Gesamtangebot wird erstellt …', 8000);
-    const { doc, name, syn } = await gesamtDoc(w, raeume);
+    const { doc, name, syn } = await gesamtDoc(w, raeume, { final: true });
     const A = window.Angebot._intern;
     const blob = doc.output('blob'), file = new File([blob], name, { type: 'application/pdf' });
     $('#toast').hidden = true;
@@ -1386,11 +1404,13 @@ window.Projekt = (() => {
       pos.push({ ...x, raum: mehrere ? `${r.room || 'Raum'}: ${x.raum}` : x.raum });
     }
     w.gesamtAngebot ??= {};
-    if (!w.gesamtAngebot.nr) w.gesamtAngebot.nr = await A.naechsteNummer();
+    w.gesamtAngebot.nr = angNr(w) || w.gesamtAngebot.nr || await A.naechsteNummer();
     const g = w.gesamtAngebot;
     const syn = { ...erst, _gesamt: true, id: 'gesamt-' + w.id, wohnungId: w.id, customer: w.customer, address: w.address, kundeId: w.kundeId, projektNr: w.nr || '',
       photos: [], results: {}, aufmass: { ...(erst.aufmass || {}), raeume: raeume.flatMap((r) => (r.aufmass?.raeume || []).map((a) => ({ ...a, name: mehrere ? `${r.room || 'Raum'}: ${a.name}` : a.name }))) },
       angebot: { ...erst.angebot, nr: g.nr, versionen: g.versionen || [], titel: g.titel || `Sanierung ${w.titel || raeume.map((r) => r.room).join(', ')}`, positionen: [...allg.values(), ...pos], mitBild: false } };
+    const ent = AngebotDaten.aktivSync(w);
+    if (ent) Object.defineProperty(syn, AngebotDaten.REF, { value: ent, enumerable: false });
     const doc = await A.baueAngebotPdf(syn, opt);
     g.versionen = syn.angebot.versionen; await save(w);
     const name = `Angebot_${g.nr}_${(w.customer || 'Kunde').replace(/[^\wäöüÄÖÜß-]+/g, '_')}.pdf`;

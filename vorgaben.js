@@ -157,7 +157,7 @@ const VORGABEN = {
   ],
   projektEinst: [
     ['Projektnummer', [
-      { k: 'projektNrFormat', l: 'Aufbau der Projektnummer', t: 'zeile', d: 'P{jahr}-{nr}', h: '{jahr} = Jahr der Zusage (z. B. 2026), {nr} = laufende Nummer dreistellig (001, 002 …). Die Nummer wird bei der Zusage einmal vergeben und ändert sich danach nicht mehr.' },
+      { k: 'projektNrFormat', l: 'Aufbau der Vorgangsnummer', t: 'zeile', d: '{kunde}-{nr}', h: '{kunde} = Kundennummer (muss vorkommen), {nr} = laufende Nummer je Kunde zweistellig (01, 02 …), {jahr} = Jahr. Standard 1001-01. Das Angebot hängt daran an: 1001-01-01A. Die Nummer wird beim Anlegen einmal vergeben und ändert sich danach nicht mehr.' },
     ]],
     ['Gespräche und Nachfassen', [
       { k: 'gespraechArten', l: 'Arten der Gesprächsaufnahme (eine Zeile je Art)', t: 'liste', d: ['Vor-Ort-Besichtigung', 'Abnahmegespräch', 'Krisengespräch', 'Baubesprechung'] },
