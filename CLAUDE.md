@@ -237,6 +237,10 @@ Eine Seite Einstellungen › Textbausteine (`EINST` `textbausteine` → `Angebot
 Gültigkeit Vorgabe `angebotGueltigTage` (28), nicht mehr `E.gueltig`. Rechtstexte als leere Vorgaben: `textAuftragWiderruf` (in der Auftragserteilung), `textWiderrufAnlage` (eigene Seite „Anlage: Widerrufsbelehrung“, Platzhalter `{firma}`, `{anschrift}`, `{email}`, `{telefon}`), `textVorzeitig` (v122); alle nur Privat/WEG.
 Firmendaten: eigene Einstellung `state.settings.firma` (`FIRMA_KEYS`, `firmaAnwenden` beim Laden der Preisliste, `firmaSetzen` aus Einstellungen › Firmendaten). Beim Einlesen einer Excel-Preisliste werden Firmendaten nur übernommen, wenn in DOM noch nichts oder der Musterwert steht.
 
+## Neuerungen aus Version 124 (P7: persönlicher Satz in der Einleitung)
+
+Ein KI-Aufruf beim Anlegen des Angebots (`kiSatzHolen` in `projekt.js`, einmal je Vorgang, nur Entwurf, mit KI-Schlüssel, Vorgabe `kiSatzAuto`, Prompt `promptKiSatz`): ein Satz aus den Wünschen (`kiSatzStoff`: `r.wishes` je Bereich, `w.gespraech.allgemein.bild`, `w.vorOrt.notiz`). Steht als „KI-Vorschlag“ unter dem Anfangstext (`kiSatzHtml`, `#kiSatz`), Übernehmen / Neu vorschlagen / Löschen inline. Übernehmen hängt ihn als Absatz an die Einleitung in `w.angebotTexte` (danach normaler Text, wird nie überschrieben). Status `w.kiSatz = { status: vorschlag|uebernommen|geloescht, text, t }`. Ein Vorschlag steht nie im PDF.
+
 ## Bereiche
 
 | Bereich | Dateien | Inhalt |

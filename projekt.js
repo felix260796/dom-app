@@ -769,6 +769,7 @@ window.Projekt = (() => {
             ${sq ? `<p class="ab-schnell ape-voll">${icon('phone')}<span>Am Telefon genannt: <b>ca. ${eurRund(sq.von)} – ${eurRund(sq.bis)}</b>${sq.text ? ` · ${esc(sq.text)}` : ''}</span></p>` : ''}
           </section>
           ${window.Bausteine.block({ wo: 'vor', titel: 'Anfangstext', leer: 'Kein Text vor den Positionen', liste: texte, passt: passtV })}
+          ${kiSatzHtml(w)}
           <div class="ape-h"><h2>Positionen</h2><span class="muted">Titel = Bereich (Bad, Küche, Elektro …). Positionen eintippen oder aus der Preisliste wählen.</span></div>
           <div id="xtAng" class="xt-box"></div>
           ${list.length ? `<div class="xt-raeume"><span>Einzeln bearbeiten (Paket, Partnerangebot übernehmen):</span>${list.map((r) => `<button type="button" class="qchip" data-angraum="${r.id}">${esc(raumTitel(r))}</button>`).join('')}</div>` : ''}
@@ -943,7 +944,8 @@ window.Projekt = (() => {
           ${k ? '<p class="hint" style="margin:8px 0 0">Betreff ist der Projektname (oben beim Kunden).</p>' : `<label>Projektname (= Betreff)</label><input type="text" id="wTitel" value="${esc(w.titel || '')}" placeholder="z. B. Badumbau" autocomplete="off">`}
           <label>Anrede</label><input type="text" id="bAnrede" value="${esc(K.anrede)}" placeholder="${esc(erst ? A.anredeDefault(erst) : 'Sehr geehrte Damen und Herren,')}" autocomplete="off">
         </div>
-        ${window.Bausteine.block({ wo: 'vor', titel: 'Anfangstexte', leer: 'Kein Text vor den Positionen', liste: texte, passt: passtV })}`,
+        ${window.Bausteine.block({ wo: 'vor', titel: 'Anfangstexte', leer: 'Kein Text vor den Positionen', liste: texte, passt: passtV })}
+        ${kiSatzHtml(w)}`,
       masse: () => `
         <div class="sec-h"><h2>Was wird angeboten?</h2>${list.length ? `<span class="count">${list.length}</span>` : ''}</div>
         <div class="docs" id="wWas">${list.map((r) => { const m = massVon(r); return `<div class="wl" data-wl="${r.id}"><div class="card bm">
@@ -1028,6 +1030,59 @@ window.Projekt = (() => {
         <button class="link-danger" id="wDel">${icon('trash')} Angebot löschen</button></div>`;
   }
 
+  // ---------- Persönlicher Satz in der Einleitung (P7, Runde 12) ----------
+  // Ein KI-Aufruf beim Anlegen des Angebots: ein Satz aus den Wünschen des Kunden. Steht als „KI-Vorschlag“ unter dem Anfangstext,
+  // „Übernehmen“ hängt ihn an die Einleitung (danach normaler Text, wird nie wieder überschrieben), „Löschen“ verwirft ihn.
+  // w.kiSatz = { status: 'vorschlag' | 'uebernommen' | 'geloescht', text, t }. Vorgaben kiSatzAuto, promptKiSatz.
+  const kiSatzLaeuft = new Set();
+  function kiSatzStoff(w, list) {
+    const z = [];
+    for (const r of list) for (const l of String(r.wishes || '').split('\n')) { const t = l.replace(/^[-•*]\s*/, '').trim(); if (t) z.push(`${raumTitel(r)}: ${t}`); }
+    for (const x of w.gespraech?.allgemein?.bild || []) z.push(String(x));
+    if (String(w.vorOrt?.notiz || '').trim()) z.push(String(w.vorOrt.notiz).trim());
+    return z.slice(0, 30);
+  }
+  function kiSatzHtml(w) {
+    const s = w.kiSatz;
+    if (s?.status === 'uebernommen' || s?.status === 'geloescht') return '';
+    if (kiSatzLaeuft.has(w.id)) return `<div class="card ki-satz" id="kiSatz"><span class="ki-m">KI-Vorschlag</span><p class="hint" style="margin:6px 0 0">Persönlicher Satz für die Einleitung wird vorgeschlagen …</p></div>`;
+    if (s?.status === 'vorschlag' && s.text) return `<div class="card ki-satz" id="kiSatz"><span class="ki-m">KI-Vorschlag</span><p class="ki-t">${esc(s.text)}</p>
+      <div class="ki-k"><button type="button" class="btn small" data-kisatz="ja">${icon('check')} Übernehmen</button><button type="button" class="btn secondary small" data-kisatz="neu">${icon('refresh')} Neu vorschlagen</button><button type="button" class="link-danger" data-kisatz="weg">${icon('trash')} Löschen</button></div></div>`;
+    if (!state.settings.apiKey) return '';
+    return `<button type="button" class="link-add" id="kiSatz" data-kisatz="neu">${icon('sparkle')} Persönlichen Satz für die Einleitung vorschlagen lassen</button>`;
+  }
+  async function kiSatzHolen(w, list) {
+    if (kiSatzLaeuft.has(w.id) || typeof geminiText !== 'function' || !state.settings.apiKey) return;
+    const stoff = kiSatzStoff(w, list);
+    if (!stoff.length) return toast('Noch keine Wünsche des Kunden aufgenommen. Der Satz entsteht aus der Vor-Ort-Aufnahme.');
+    kiSatzLaeuft.add(w.id);
+    const ersetzen = () => { const el = $('#kiSatz'); if (el) el.outerHTML = kiSatzHtml(w); kiSatzBind(w, list); };
+    ersetzen();
+    try {
+      const k = w.kundeId ? Kunden.byId(w.kundeId) : null;
+      const txt = await geminiText([{ text: vorgabeText('promptKiSatz') + `\n\nPROJECT: ${w.titel || ''}\nCUSTOMER: ${(k && Kunden.name(k)) || w.customer || ''}\nWISHES (confirmed on site):\n- ${stoff.join('\n- ')}` }]);
+      const satz = String(txt || '').replace(/^["„“\s]+|["“”\s]+$/g, '').split('\n')[0].trim();
+      if (satz) { w.kiSatz = { status: 'vorschlag', text: satz, t: Date.now() }; delete w.isNew; await save(w); }
+      else toast('Die KI hat keinen Satz geliefert.');
+    } catch (e) { toast('Vorschlag ging nicht: ' + (e.message || e), 4500); }
+    kiSatzLaeuft.delete(w.id);
+    ersetzen();
+  }
+  function kiSatzBind(w, list) {
+    $$('[data-kisatz]').forEach((b) => (b.onclick = async () => {
+      const was = b.dataset.kisatz;
+      if (was === 'neu') return kiSatzHolen(w, list);
+      if (was === 'weg') { w.kiSatz = { ...(w.kiSatz || {}), status: 'geloescht' }; await save(w); const el = $('#kiSatz'); if (el) el.remove(); return; }
+      // Übernehmen: als eigener Absatz hinter die Einleitung, danach normaler Text
+      const satz = w.kiSatz?.text; if (!satz) return;
+      const l = Array.isArray(w.angebotTexte) && w.angebotTexte.length ? w.angebotTexte : texteVon(w).map((x) => ({ ...x }));
+      const e = l.find((x) => x.id === 'einl' && x.wo === 'vor') || l.find((x) => x.wo === 'vor' && !x.fest);
+      if (e) { e.text = [String(e.text || '').trim(), satz].filter(Boolean).join('\n\n'); delete e.aus; } else l.unshift({ id: uid(), wo: 'vor', titel: '', text: satz });
+      w.angebotTexte = l; w.kiSatz = { ...w.kiSatz, status: 'uebernommen', uebernommen: Date.now() };
+      await save(w); toast('Satz steht jetzt in der Einleitung.');
+      const y = window.scrollY; await view(); window.scrollTo(0, y);
+    }));
+  }
   /** Skonto für dieses Angebot (v122): leer = Standard aus den Einstellungen, 0 = kein Skonto. Betrag vom Zahlbetrag brutto. */
   function skontoKarte(w) {
     const o = w.skonto || {}, wert = (v) => (v === undefined || v === null || v === '' ? '' : String(v).replace('.', ','));
@@ -1066,6 +1121,8 @@ window.Projekt = (() => {
       toast(v === '' ? 'Wieder der Standard aus den Einstellungen' : 'Aufschlag gilt für dieses Angebot');
       if ($('#xtAng')) { const y = window.scrollY; await view(); window.scrollTo(0, y); } // Preise in der Tabelle neu
     }));
+    kiSatzBind(w, list);
+    if (!w.kiSatz && !w.isNew && $('#kiSatz') && vorgabe('kiSatzAuto') !== 'nein' && state.settings.apiKey && !gesperrt(w) && kiSatzStoff(w, list).length) kiSatzHolen(w, list);
     $$('[data-sko]').forEach((el) => (el.onchange = async () => {
       const v = el.value.trim().replace(',', '.'), n = parseFloat(v);
       if (v !== '' && !(Number.isFinite(n) && n >= 0)) return toast('Bitte eine Zahl eintragen.');
