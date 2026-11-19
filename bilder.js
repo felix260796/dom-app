@@ -420,5 +420,5 @@ window.Bilder = (() => {
     await speichern(kid, oid, dd);
     return o;
   }
-  return { view, anzahl, ablegen, fotosMachen, alleView, laden };
+  return { view, anzahl, ablegen, fotosMachen, alleView, laden, speichern };
 })();

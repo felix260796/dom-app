@@ -549,6 +549,7 @@ window.Buero = (() => {
       const t = Math.max(g.t || 0, ...scans.map((sc) => sc.t || 0), vo.t || 0) || w.created || 0;
       const st = Projekt.norm(w.status);
       const stand = st === 'besichtigung' ? ['Noch kein Angebot', 'gelb'] : st === 'entwurf' ? ['Angebot in Arbeit', ''] : st === 'angebot' ? ['Angebot verschickt', ''] : st === 'abgesagt' ? ['Abgesagt', 'muted'] : ['Zugesagt', 'gruen'];
+      if (w.pruefung?.geprueft) was.push('geprüft');
       return { x, w, t, was, stand, neu: ['besichtigung', 'entwurf'].includes(st) };
     }));
     return l.filter(Boolean).sort((a, b) => b.t - a.t);
@@ -560,8 +561,8 @@ window.Buero = (() => {
       zeilen: l.map((a) => ({ id: a.x.id, werte: { tag: { text: tag(a.t), sort: a.t }, kunde: { text: Kunden.name(Kunden.byId(a.w.kundeId)) || a.w.customer || '', html: `<b>${esc(Kunden.name(Kunden.byId(a.w.kundeId)) || a.w.customer || '')}</b>` },
         prj: { text: a.w.titel || 'Projekt', html: mitKunde ? esc(a.w.titel || 'Projekt') : `<b>${esc(a.w.titel || 'Projekt')}</b>` }, was: a.was.join(', '),
         stand: { text: a.stand[0], html: `<span class="vo-st ${a.stand[1]}">${esc(a.stand[0])}</span>` },
-        los: { text: '', html: `<span class="vo-los"><button type="button" class="btn secondary small" data-vo="${esc(a.x.id)}">Aufnahme</button><button type="button" class="btn small" data-voa="${esc(a.x.id)}">${a.stand[0] === 'Noch kein Angebot' ? 'Angebot erstellen' : 'Zum Angebot'}</button></span>` } } })) });
-    $$('[data-vo]', el).forEach((b) => (b.onclick = (e) => { e.stopPropagation(); Projekt.oeffnen(b.dataset.vo, { pc: 'vorort' }); }));
+        los: { text: '', html: `<span class="vo-los"><button type="button" class="btn secondary small" data-vo="${esc(a.x.id)}">${a.w.pruefung?.geprueft ? 'Aufnahme' : 'Prüfen'}</button><button type="button" class="btn small" data-voa="${esc(a.x.id)}">${a.stand[0] === 'Noch kein Angebot' ? 'Angebot erstellen' : 'Zum Angebot'}</button></span>` } } })) });
+    $$('[data-vo]', el).forEach((b) => (b.onclick = (e) => { e.stopPropagation(); window.Pruefen ? Pruefen.view(b.dataset.vo) : Projekt.oeffnen(b.dataset.vo, { pc: 'vorort' }); }));
     $$('[data-voa]', el).forEach((b) => (b.onclick = (e) => { e.stopPropagation(); Projekt.oeffnen(b.dataset.voa, { pc: 'angebot' }); }));
   }
 

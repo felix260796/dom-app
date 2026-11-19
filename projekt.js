@@ -359,6 +359,7 @@ window.Projekt = (() => {
     window.Gespraech?.bind(w, list);
     window.VorOrt?.bind(w, list, () => view());
     window.Besuch?.bind(w, async () => { const y = window.scrollY; await view(); window.scrollTo(0, y); });
+    $$('[data-pruefen]').forEach((b) => (b.onclick = async () => { if (w.isNew) { delete w.isNew; await save(w); } window.Pruefen?.view(w.id); window.scrollTo(0, 0); }));
     // Bereichsleiste vor Ort
     const neuZeichnen = async () => { const y = window.scrollY; await view(); window.scrollTo(0, y); };
     $$('[data-bereich]').forEach((b) => (b.onclick = () => { bereichWahl.set(w.id, b.dataset.bereich); neuZeichnen(); }));
@@ -738,6 +739,7 @@ window.Projekt = (() => {
     const versteckt = `<button id="dMappe" hidden></button><button id="dBau" hidden></button><button id="dAngebot" hidden></button>`;
     // Roter Faden am PC: Aufnahme ansehen → „Weiter zum Angebot“ (Rückmeldung Felix 15.11.)
     if (seite === 'vorort') return `${kopf}<div class="ape-weiter"><span>${nVo ? 'Das wurde vor Ort aufgenommen. Daraus entsteht das Angebot.' : 'Noch nichts vor Ort aufgenommen. Das Angebot geht auch ohne.'}</span>
+        <button type="button" class="btn secondary small" data-pruefen>${icon('check')} Aufnahme prüfen${w.pruefung?.geprueft ? ' (geprüft)' : ''}</button>
         <button type="button" class="btn small" data-pcs="angebot">${zu ? 'Zum Angebot' : 'Weiter zum Angebot'} ${icon('chevron')}</button></div><div class="ape-vo">${vorOrtTab(ctx)}</div>${versteckt}<button id="wDel" hidden></button>`;
     if (zu) return `${kopf}<div class="ape ape-zu"><div class="ape-main">${angeboteTab(ctx)}</div></div>${versteckt}`;
     const A = window.Angebot._intern, texte = texteVon(w), anspr = A.ansprechpartner(), E = A.einstellungen();
@@ -849,6 +851,7 @@ window.Projekt = (() => {
       ${gesperrt(w) ? '' : window.VorOrt?.karte(w, list) || ''}
       ${k ? `<button id="wBilder" hidden></button>` : ''}
       ${window.Besuch?.verkaufHtml(w) || ''}
+      ${window.Pruefen && !window.Tabelle?.istBuero() && (w.gespraech?.transcript || list.length) ? `<div class="docs" style="margin-top:12px">${punkt('data-pruefen', 'check', w.pruefung?.geprueft ? 'navy' : 'grey', 'Aufnahme prüfen', w.pruefung?.geprueft ? 'Geprüft. Punkte, Maße und Fotos je Bereich, Offenes, An Sub schicken' : 'Punkte je Bereich übernehmen oder verwerfen, Maße, Offenes, An Sub schicken')}</div>` : ''}
       ${gesperrt(w) || zugesagt(w.status) ? '' : window.Besuch?.abschlussHtml(w) || ''}
 
       <div class="sec-h" style="margin-top:26px"><h2>Zusatz</h2></div>

@@ -121,5 +121,5 @@ ${w.gespraech?.transcript || ''}` }], true, { responseSchema: { type: 'OBJECT', 
     const name = (w.gespraechPdfs || []).find((x) => x.art === art)?.name || 'Gespräch.pdf';
     pdfAnsicht(new File([blob], name, { type: 'application/pdf' }), name);
   }
-  return { erstellen, oeffnen, zusammenfassen };
+  return { erstellen, oeffnen, zusammenfassen, _geruest: geruest };
 })();
