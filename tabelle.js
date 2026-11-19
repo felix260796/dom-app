@@ -13,7 +13,9 @@ window.Tabelle = (() => {
   const SPALTEN = ['text', 'menge', 'einheit', 'ep'];
 
   /** Am Computer? (Windows-Programm, oder breiter Bildschirm mit Maus; nicht am iPad mit Finger oder Stift) */
-  const istBuero = () => document.documentElement.classList.contains('desktop') || matchMedia('(min-width: 1100px) and (pointer: fine)').matches;
+  // iPad nie Büro-Ansicht, auch nicht mit Tastatur und Trackpad (Runde 13: drei Ansichten iPhone, iPad, PC)
+  const istIpad = () => /iPad/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1) || !!window.Capacitor?.isNativePlatform?.();
+  const istBuero = () => document.documentElement.classList.contains('desktop') || (!istIpad() && matchMedia('(min-width: 1100px) and (pointer: fine)').matches);
   // Klasse buero an <html>: dichte Büro-Optik (css, html.buero) nur im Windows-Programm bzw. breit mit Maus; iPhone und iPad nie.
   const bueroKlasse = () => document.documentElement.classList.toggle('buero', istBuero());
   bueroKlasse(); try { matchMedia('(min-width: 1100px) and (pointer: fine)').addEventListener('change', bueroKlasse); } catch {}

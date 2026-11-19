@@ -781,6 +781,8 @@ window.Projekt = (() => {
             <p class="hint">${mitPos.length ? '„Ansehen“ speichert das PDF beim Projekt. Nach dem Senden ist das Angebot fest, Ändern geht dann über eine Kopie mit neuer Nummer.' : 'Sobald die erste Position steht, kannst du ansehen und senden.'}</p>
           </div>
           ${offen.length ? `<div class="card wf-offen"><b>Noch offen (${offen.length})</b><ul class="wf-o">${offen.map((o) => `<li>${esc(o.text)}</li>`).join('')}</ul></div>` : ''}
+          ${(w.subAnfragen || []).length ? `<div class="card ape-subs"><b>Bei Subunternehmern angefragt</b><ul class="wf-o">${w.subAnfragen.map((q) => { const p = window.Partner?.byId(q.partnerId); const ueber = q.frist && q.frist < new Date().toISOString().slice(0, 10); return `<li>${esc(p ? Partner.titel(p) : 'Partner')} · ${q.art === 'angebot' ? `Angebot bis ${esc(new Date(q.frist + 'T12:00').toLocaleDateString('de-DE'))}${ueber ? ' <b class="warn">überfällig</b>' : ''}` : 'nur Info'}</li>`; }).join('')}</ul>
+            <p class="hint" style="margin:6px 0 0">Preise dieser Gewerke sind vorläufig, bis das Angebot da ist. Übernehmen über „Partnerangebot übernehmen“ im Bereich.</p></div>` : ''}
           <details class="more card ape-ki" ${list.length ? '' : 'open'}><summary>${icon('sparkle')}<span>Positionen vorschlagen lassen<small>Die KI schlägt aus Notizen, Gespräch und Fotos Positionen vor</small></span>${icon('chevron', 'more-chev')}</summary>
             ${window.VorOrt?.bueroKarte(w, list) || ''}</details>
           ${erst ? `<details class="more card bs"><summary>${icon('sliders')}<span>Aufschläge<small>Nur für dieses Angebot, leer = Standard</small></span>${icon('chevron', 'more-chev')}</summary>

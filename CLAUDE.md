@@ -220,6 +220,10 @@ Nicht gebaut (siehe Bericht): Auswertung in der Cloud (Supabase-Funktion, Audio-
 
 Position `x.art`: '' normal, 'bedarf', 'alternativ', 'kostenlos' (`ARTEN_POS`, `NICHT_SUMME` in `angebot.js`). `summen()` liefert je Zeile `zaehlt`, `gpAnzeige` (Betrag neben der Position) und `gp` (zählt: 0 bei Bedarf, Alternative und kostenlos), Lohnanteil ebenso. Rechnung (`Rechnung.auftrag`) nimmt nur zählende Zeilen, die Kalkulation (Plan aus Sub-Preisen) lässt Bedarf, Alternative und kostenlos weg; sonst bleibt die Kalkulation unverändert. `x.lang` (Langtext, im PDF klein unter der Leistung), `x.notiz` (intern, nie im PDF). Bearbeiten über `posDetails(x)` (Auswahlfenster): am PC „…“ in der Pos.-Spalte (`[data-xd]`, Kürzel B/A/0), am iPhone/iPad Tipp auf den Positionstext (`[data-posd]`). PDF: GP in Klammern bei Bedarf/Alternative, „kostenlos“, Art kursiv unter der Leistung. Preis-Hinweis `preisHinweis(x, k)`: eigener Preis weicht um Vorgabe `preisAbweichung` % (30) von der Preisliste ab → rot mit Erklärung, ändert nichts.
 
+## Neuerungen aus Version 121 (P6 Teil 2: Nummerierung, Zusammenstellung, iPad)
+
+Angebots-PDF (`baueAngebotPdf`): bei mehreren Titeln Titel mit Nummer, Positionen 1.1, 1.2 … (wie die Tabelle am PC), „Summe n Titel“ unter jedem Titel und vor den Summen die „Zusammenstellung“ (Summe je Titel, Vorgabe `angebotZusammenstellung`). Angebot am PC rechts: Karte „Bei Subunternehmern angefragt“ aus `w.subAnfragen` (Frist, überfällig). `Tabelle.istBuero()` ist auf dem iPad (auch mit Tastatur/Trackpad) und in der TestFlight-App nie wahr (`istIpad`): drei Ansichten iPhone, iPad, PC.
+
 ## Bereiche
 
 | Bereich | Dateien | Inhalt |

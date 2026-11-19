@@ -301,3 +301,4 @@ tr.xt-titel.ed:hover .xt-tdel, .xt-tdel:focus { opacity: 1; }
 .xt-d { border: 0; background: none; color: var(--muted); cursor: pointer; padding: 0 2px; font: inherit; line-height: 1; }
 .xt-d.hat { color: var(--brass); font-weight: 700; }
 .xtab input.warn { color: var(--danger); }
+.ape-subs .warn { color: var(--danger); }

@@ -1040,9 +1040,12 @@ Gib Länge (längere Seite) und Breite der Grundfläche, Raumhöhe, Anzahl und G
     const platz = async (h, mitKopf) => { if (y + h > H - 28) { await neueSeite(); if (mitKopf) tabKopf(); } };
     tabKopf();
     const raeume = [...new Set(S.zeilen.map((z) => z.raum))];
-    let n = 0;
+    let n = 0, ti = 0;
+    const titelSumme = (rn) => r2(S.zeilen.filter((x) => x.raum === rn).reduce((a, x) => a + x.gp, 0));
     for (const rn of raeume) {
-      if (raeume.length > 1) { await platz(12, true); doc.setFont('helvetica', 'bold'); doc.setFontSize(9); doc.setTextColor(...BRASS); t(rn || 'Allgemein', C.txt, y + 1); doc.setFont('helvetica', 'normal'); doc.setTextColor(30); y += 6; }
+      // Titel mit Nummer (1, 2 …), Positionen darunter 1.1, 1.2 … wie in der Tabelle am PC (v121)
+      ti++; n = raeume.length > 1 ? 0 : n;
+      if (raeume.length > 1) { await platz(12, true); doc.setFont('helvetica', 'bold'); doc.setFontSize(9); doc.setTextColor(...BRASS); t(String(ti), C.pos + 3, y + 1, { align: 'center' }); t(rn || 'Allgemein', C.txt, y + 1); doc.setFont('helvetica', 'normal'); doc.setTextColor(30); y += 6; }
       for (const z of S.zeilen.filter((x) => x.raum === rn)) {
         doc.setFontSize(9);
         const lines = doc.splitTextToSize(z.it.text + (z.bem ? ' – ' + z.bem : ''), C.menge - C.txt - 14);
@@ -1052,13 +1055,21 @@ Gib Länge (längere Seite) und Breite der Grundfläche, Raumhöhe, Anzahl und G
         const h = 4.3 * lines.length + 3.6 * (lang.length + art.length) + 1.6;
         await platz(h, true);
         n++;
-        t(String(n), C.pos + 3, y, { align: 'center' }); t(lines, C.txt, y);
+        t(raeume.length > 1 ? `${ti}.${n}` : String(n), C.pos + 3, y, { align: 'center' }); t(lines, C.txt, y);
         t(fmtNum(z.menge, STUECK.test(z.it.einheit) ? 0 : 1), C.menge, y, { align: 'right' }); t(z.it.einheit, C.einh, y);
         t(fmtEur(z.ep), C.ep, y, { align: 'right' }); t(z.art === 'kostenlos' ? 'kostenlos' : z.zaehlt === false ? `(${fmtEur(z.gpAnzeige)})` : fmtEur(z.gp), C.gp, y, { align: 'right' });
         let yy = y + 4.3 * lines.length;
         if (lang.length || art.length) { doc.setFontSize(8); doc.setTextColor(90); if (lang.length) { t(lang, C.txt, yy); yy += 3.6 * lang.length; } if (art.length) { doc.setFont('helvetica', 'italic'); t(art, C.txt, yy); doc.setFont('helvetica', 'normal'); } doc.setTextColor(30); doc.setFontSize(9); }
         y += h; doc.setDrawColor(230); doc.line(M - 1, y - 3.2, R + 1, y - 3.2);
       }
+      if (raeume.length > 1) { await platz(7); doc.setFont('helvetica', 'bold'); doc.setFontSize(8.5); t(`Summe ${ti} ${rn || 'Allgemein'}`, C.txt, y); t(fmtEur(titelSumme(rn)), C.gp, y, { align: 'right' }); doc.setFont('helvetica', 'normal'); y += 6; }
+    }
+    // Zusammenstellung: Summe je Titel, dann die Gesamtsumme (v121)
+    if (raeume.length > 1 && vorgabe('angebotZusammenstellung') !== 'nein') {
+      await platz(12 + 5 * raeume.length);
+      y += 2; doc.setFont('helvetica', 'bold'); doc.setFontSize(10); doc.setTextColor(...NAVY); t('Zusammenstellung', C.txt, y); y += 5.5;
+      doc.setFont('helvetica', 'normal'); doc.setFontSize(9); doc.setTextColor(30);
+      raeume.forEach((rn, k) => { t(`${k + 1}  ${rn || 'Allgemein'}`, C.txt, y); t(fmtEur(titelSumme(rn)), C.gp, y, { align: 'right' }); y += 4.8; });
     }
     // Summen
     await platz(30);
