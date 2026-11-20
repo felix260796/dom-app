@@ -1877,6 +1877,59 @@ Gib Länge (längere Seite) und Breite der Grundfläche, Raumhöhe, Anzahl und G
     $('#plVorl').onclick = () => vorlagenView();
   }
 
+  // ---------- Lernende Vorlagen (Runde 15, B5; Runde 10 B16) ----------
+  // Beim Versand merkt DOM je Bereich mit Paket, was gegenüber der Vorlage von Hand ergänzt (plus) oder gelöscht (minus) wurde
+  // (kv 'vorlageLernen' = { log: [{ t, pkg, grp, plus, minus }], nein: { key: Anzahl Fälle bei der Ablehnung } }).
+  // Vorschlag, wenn dieselbe Position in mindestens Vorgabe vorlageLernenAb (3) der letzten vorlageLernenAus (5) Fälle
+  // gleicher Raumgruppe und gleichen Pakets ergänzt bzw. gelöscht wurde. Abgelehnt: erst nach 5 weiteren Fällen wieder.
+  const VL_KEY = 'vorlageLernen';
+  async function vlLaden() { const v = (await kvGet(VL_KEY)) || {}; v.log ??= []; v.nein ??= {}; return v; }
+  async function vorlageMerken(raeume) {
+    await preisliste(); await vorlagen();
+    const v = await vlLaden(); let neu = 0;
+    for (const r of raeume) {
+      const pkg = r.angebot?.paket, typ = r.aufmass?.raeume?.[0]?.typ || r.roomType || '';
+      if (!pkg || !r.angebot?.positionen?.length) continue;
+      const grp = gruppe(typ), vor = new Set(vorlageFuer(pkg, grp).map((x) => x.nr));
+      const ist = new Set(r.angebot.positionen.filter((x) => !x.frei && pos(x.nr) && (+x.menge || 0) > 0).map((x) => x.nr));
+      v.log.push({ t: Date.now(), pkg, grp, plus: [...ist].filter((n) => !vor.has(n)), minus: [...vor].filter((n) => !ist.has(n)), r: r.id }); neu++;
+    }
+    if (!neu) return;
+    v.log = v.log.slice(-300); await kvSet(VL_KEY, v);
+    for (const s of await vorlageVorschlaege()) await window.Todos?.anlegen({ text: `Vorlage prüfen: ${s.text}`, prio: 'niedrig', schluessel: 'vlern:' + s.key, art: 'vorlage' }).catch(() => {});
+  }
+  async function vorlageVorschlaege() {
+    await preisliste(); await vorlagen();
+    const v = await vlLaden(), ab = +vorgabe('vorlageLernenAb') || 3, aus = +vorgabe('vorlageLernenAus') || 5, out = [];
+    const gruppen = new Map(); for (const e of v.log) { const k = e.pkg + '|' + e.grp; if (!gruppen.has(k)) gruppen.set(k, []); gruppen.get(k).push(e); }
+    for (const [k, l] of gruppen) {
+      const [pkg, grp] = k.split('|'), letzte = l.slice(-aus), vor = new Set(vorlageFuer(pkg, grp).map((x) => x.nr));
+      for (const art of ['plus', 'minus']) {
+        const z = new Map(); for (const e of letzte) for (const n of e[art] || []) z.set(n, (z.get(n) || 0) + 1);
+        for (const [nr, c] of z) {
+          if (c < ab || (art === 'plus' ? vor.has(nr) : !vor.has(nr))) continue;
+          const key = `${k}|${art}|${nr}`;
+          if (v.nein[key] !== undefined && l.length - v.nein[key] < aus) continue;
+          const it = pos(nr), pk = PAKETE_STD().find((x) => x.id === pkg)?.name || pkg, gn = GRUPPEN[grp] || grp;
+          out.push({ key, pkg, grp, art, nr, c, n: letzte.length,
+            text: art === 'plus' ? `„${it?.text || nr}“ wurde in ${c} der letzten ${letzte.length} Angebote (${gn}, ${pk}) ergänzt. In die Vorlage aufnehmen?` : `„${it?.text || nr}“ wurde in ${c} der letzten ${letzte.length} Angebote (${gn}, ${pk}) aus der Vorlage gelöscht. Aus der Vorlage nehmen?` });
+        }
+      }
+    }
+    return out;
+  }
+  async function vorlageAntwort(s, ja) {
+    const v = await vlLaden();
+    if (ja) {
+      await vorlagen(); VORL[s.pkg] ??= structuredClone(VORL.standard || {}); const rows = (VORL[s.pkg][s.grp] ??= []);
+      if (s.art === 'plus') { const e = pos(s.nr)?.einheit || ''; rows.push({ nr: s.nr, menge: /m²|m2/.test(e) ? 'boden' : /lfm|m$/.test(e) ? 'umfang' : '1', bem: '' }); }
+      else { const i = rows.findIndex((x) => x.nr === s.nr); if (i >= 0) rows.splice(i, 1); }
+      await kvSet('angebotVorlagen', VORL);
+    }
+    v.nein[s.key] = v.log.filter((e) => e.pkg + '|' + e.grp === s.pkg + '|' + s.grp).length; // nach Ja wie nach Nein: erst nach 5 weiteren Fällen wieder prüfen
+    await kvSet(VL_KEY, v);
+    try { await window.Todos?.laden?.(); for (const t of window.Todos?.liste?.() || []) if (t.schluessel === 'vlern:' + s.key && !t.erledigt) { t.erledigt = Date.now(); await kvSet('todo:' + t.id, t); } } catch {}
+  }
   async function vorlagenView(pkgId = 'basic', grp = 'nass') {
     await preisliste(); await vorlagen();
     setTitle('Paket-Vorlagen');
@@ -1891,6 +1944,7 @@ Gib Länge (längere Seite) und Breite der Grundfläche, Raumhöhe, Anzahl und G
         <div class="row"><select id="vPkg">${PAKETE_STD().map((x) => `<option value="${x.id}" ${x.id === pkgId ? 'selected' : ''}>${esc(x.name)}</option>`).join('')}</select>
           <select id="vGrp">${Object.entries(GRUPPEN).map(([k, l]) => `<option value="${k}" ${k === grp ? 'selected' : ''}>${l}</option>`).join('')}</select></div>
       </div>
+      <div id="vLern"></div>
       <div class="card">${rows.map((v, i) => { const it = pos(v.nr); return `<div class="vrow">
         <div class="vt"><b>${esc(v.nr)}</b> ${it ? esc(it.text) + ` <span class="muted">(${esc(it.einheit)})</span>` : '<span style="color:var(--danger)">nicht in Preisliste</span>'}</div>
         <input type="text" data-vm="${i}" value="${esc(v.menge)}" placeholder="Menge/Formel" autocapitalize="off" autocorrect="off" spellcheck="false">
@@ -1901,6 +1955,12 @@ Gib Länge (längere Seite) und Breite der Grundfläche, Raumhöhe, Anzahl und G
       </div>
       <div class="card"><button class="btn danger block" id="vReset">Alle Vorlagen auf Standard zurücksetzen</button></div>`;
     const save = debounce(() => kvSet('angebotVorlagen', VORL), 300);
+    vorlageVorschlaege().then((l) => {
+      const el = $('#vLern'); if (!el || !l.length) return;
+      el.innerHTML = `<div class="card vl-karte"><h3 style="margin-top:0">Aus deinen Angeboten gelernt</h3>${l.map((s, i) => `<div class="vl-z"><p>${esc(s.text)}</p><div class="row"><button class="btn small" data-vlja="${i}">${s.art === 'plus' ? 'Aufnehmen' : 'Herausnehmen'}</button><button class="btn small secondary" data-vlnein="${i}">Nein</button></div></div>`).join('')}
+        <p class="hint" style="margin-bottom:0">Neue Positionen kommen mit einer einfachen Mengenformel (Fläche, Umfang oder 1). Bitte unten prüfen.</p></div>`;
+      $$('[data-vlja],[data-vlnein]', el).forEach((b) => (b.onclick = async () => { const s = l[+(b.dataset.vlja ?? b.dataset.vlnein)]; await vorlageAntwort(s, b.dataset.vlja !== undefined); toast(b.dataset.vlja !== undefined ? 'Vorlage geändert.' : 'Ich frage erst nach 5 weiteren Angeboten wieder.', 3500); vorlagenView(s.pkg, s.grp); }));
+    }).catch((e) => console.warn(e));
     $('#vBack').onclick = () => (window.einstellungSeite ? einstellungSeite('preise') : switchTab('einstellungen'));
     $('#vPkg').onchange = (e) => vorlagenView(e.target.value, grp);
     $('#vGrp').onchange = (e) => vorlagenView(pkgId, e.target.value);
@@ -1912,6 +1972,6 @@ Gib Länge (längere Seite) und Breite der Grundfläche, Raumhöhe, Anzahl und G
     $('#vReset').onclick = async () => { if (!loeschFrage('Alle Paket-Vorlagen zurücksetzen?')) return; await kvDel('angebotVorlagen'); VORL = null; vorlagenView(pkgId, grp); };
   }
 
-  return { projektKarte, ansicht, einstellungenKarte, _intern: { bildWaehlen, texteEigen, texteSpeichern, versandMeta, DARST, darstAngebot, darstOptionen, darstSetzen, lohnSchaetzung, ekVon, vkVon, gewerkVon, planEinfuegen, firmaSetzen, FIRMA_KEYS, kontextFuer, passt, giltText, zahlungsplanText, privatArt, skontoVon, posDetails, preisHinweis, artText, NICHT_SUMME, init, gruppe, materialliste, uebernimmSchaetzung, masse, rechne, erzeuge, summen, bauzeit, ep, lohnEp, preisliste, vorlagen, neuerRaum, baueAngebotPdf, importExcel, naechsteNummer, mailText, bausteine, textEditor, texteAuftrag, texteEinstellungen, subUebernehmen, ansprechpartner, ansprVon, einePerson, texteFuer, anredeDefault, einstellungen: () => PL.einstellungen, kalkSetzen, kalkNorm, kalkWert, kalkFeld, satz } };
+  return { projektKarte, ansicht, einstellungenKarte, _intern: { vorlageMerken, vorlageVorschlaege, vorlageAntwort, bildWaehlen, texteEigen, texteSpeichern, versandMeta, DARST, darstAngebot, darstOptionen, darstSetzen, lohnSchaetzung, ekVon, vkVon, gewerkVon, planEinfuegen, firmaSetzen, FIRMA_KEYS, kontextFuer, passt, giltText, zahlungsplanText, privatArt, skontoVon, posDetails, preisHinweis, artText, NICHT_SUMME, init, gruppe, materialliste, uebernimmSchaetzung, masse, rechne, erzeuge, summen, bauzeit, ep, lohnEp, preisliste, vorlagen, neuerRaum, baueAngebotPdf, importExcel, naechsteNummer, mailText, bausteine, textEditor, texteAuftrag, texteEinstellungen, subUebernehmen, ansprechpartner, ansprVon, einePerson, texteFuer, anredeDefault, einstellungen: () => PL.einstellungen, kalkSetzen, kalkNorm, kalkWert, kalkFeld, satz } };
 })();
 window.Angebot = Angebot;

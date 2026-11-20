@@ -1436,6 +1436,7 @@ window.Projekt = (() => {
     w.angebotGesperrt = { t: Date.now(), nr: nrAusPdf(w) }; delete w.angebotFrei;
     await save(w);
     await AngebotDaten.versendet(w, { datum: w.versendetAm, name: w.angebotPdf?.name || '', weg });
+    try { await window.Angebot._intern.vorlageMerken(await raeume(w)); } catch (e) { console.warn('Vorlage lernen', e); } // Runde 15 (B5)
     if (state.wohnung?.id === w.id) Object.assign(state.wohnung, { status: w.status, versendetAm: w.versendetAm, verlauf: w.verlauf, angebotGesperrt: w.angebotGesperrt, angebotFrei: undefined });
     toast(datum ? `Als versendet markiert (${datumText(w.versendetAm)}${weg ? ', ' + wegText(weg) : ''}). Es ist jetzt gesperrt, das Nachfassen läuft.` : 'Angebot versendet. Es ist jetzt gesperrt, Änderungen gehen über eine Kopie.', 4500);
   }

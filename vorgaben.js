@@ -72,6 +72,8 @@ const VORGABEN = {
       { k: 'angebotDarstellung', l: 'Angebot: Preise im PDF (Standard, je Angebot und je Titel änderbar)', t: 'wahl', d: 'einzel', o: [['einzel', 'Einzelpreise'], ['inhalt', 'Paketpreis mit Inhalt'], ['paket', 'Nur Paketpreis']], h: 'Bedarfs- und Alternativpositionen stehen immer mit eigenem Preis im Angebot.' },
       { k: 'allgemeinVerteilen', l: 'Angebot: „Allgemeines“ (Baustelleneinrichtung, Schutz, Reinigung) auf die Positionen verteilen', t: 'janein', d: 'nein', h: 'Standard für neue Angebote, je Angebot umschaltbar. Verteilt: Die Positionen stehen nicht im PDF, ihr Betrag steckt anteilig in den Einzelpreisen, darunter steht der Satz unten.' },
       { k: 'textAllgemeinVerteilt', l: 'Angebot: Satz, wenn „Allgemeines“ verteilt ist ({leistungen})', t: 'zeile', d: 'Die Einzelpreise enthalten anteilig: {leistungen}.' },
+      { k: 'vorlageLernenAb', l: 'Lernende Vorlagen: Vorschlag, wenn eine Position so oft von Hand ergänzt oder gelöscht wurde …', t: 'zahl', d: 3 },
+      { k: 'vorlageLernenAus', l: '… in den letzten so vielen Angeboten mit gleichem Paket und gleicher Raumgruppe', t: 'zahl', d: 5, h: 'Ein abgelehnter Vorschlag kommt erst nach so vielen weiteren Angeboten wieder.' },
       { k: 'plausiMin', l: 'Preis-Plausibilität: ab so vielen vergleichbaren Bereichen (verschickte Angebote)', t: 'zahl', d: 5, h: 'Darunter vergleicht DOM mit der Paket-Vorlage.' },
       { k: 'plausiMonate', l: 'Preis-Plausibilität: nur Angebote der letzten Monate', t: 'zahl', d: 24 },
       { k: 'angebotZusammenstellung', l: 'Angebot mit mehreren Titeln: Zusammenstellung (Summe je Titel) vor der Gesamtsumme', t: 'janein', d: 'ja' },
