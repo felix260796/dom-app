@@ -88,6 +88,7 @@ window.Tabelle = (() => {
             return (opt.titelNeu ? `<tr class="xt-titel ed" data-tr="${r.id}"><td class="xt-nr">${g > 1 && tn ? tn : ''}</td>
               <td colspan="${4 + kc}"><div class="xt-tn"><input data-t="name" value="${esc(titel(r))}" title="Titel (Bereich) umbenennen" autocomplete="off">
                 ${ohneMasse(r) ? '' : `<span class="xt-masse" title="Raummaße in Metern, für Mengen aus dem Aufmaß. Dürfen leer bleiben.">${[['l', 'L'], ['b', 'B'], ['h', 'H']].map(([f, k]) => `<label>${k}<input data-t="${f}" class="r xt-mass" value="${esc(m[f])}" placeholder="–" autocomplete="off" aria-label="${{ l: 'Länge', b: 'Breite', h: 'Höhe' }[f]} in m"></label>`).join('')}<span>m</span></span>`}
+                <select data-t="dar" class="xt-dar" title="Preise im Angebot für diesen Titel" aria-label="Preise im Angebot für diesen Titel">${window.Angebot._intern.darstOptionen(r.angebot?.darstellung || '', true).replace('wie im Angebot', 'Preise wie im Angebot')}</select>
                 <button type="button" class="xt-tdel" data-t="del" title="Titel mit seinen Positionen löschen" aria-label="Titel löschen">${icon('trash')}</button></div></td>
               <td class="r" data-zs="${r.id}">${zs.length ? zahl(zs.reduce((a, z) => a + z.gp, 0)) : ''}</td>${ks ? '<td></td>' : ''}</tr>`
               : `<tr class="xt-titel"><td class="xt-nr">${g > 1 && tn ? tn : ''}</td><td colspan="${4 + kc}"><b>${esc(titel(r))}</b></td><td class="r" data-zs="${r.id}">${zs.length ? zahl(zs.reduce((a, z) => a + z.gp, 0)) : ''}</td>${ks ? '<td></td>' : ''}</tr>`)
@@ -262,6 +263,7 @@ window.Tabelle = (() => {
         letzteZelle = { neu: r.id, c: 'text' }; return zeichnen();
       }
       const r = list.find((x) => x.id === el.closest('tr')?.dataset.tr); if (!r) return;
+      if (t === 'dar') { window.Angebot._intern.init(r); if (v) r.angebot.darstellung = v; else delete r.angebot.darstellung; await sichern(r); return; }
       if (t === 'name') { if (!v) { el.value = titel(r); return; } r.room = v; if (r.aufmass?.raeume?.[0]) r.aufmass.raeume[0].name = v; await sichern(r); return; }
       if (['l', 'b', 'h'].includes(t)) {
         A.init(r);

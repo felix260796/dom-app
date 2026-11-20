@@ -270,6 +270,10 @@ Fehler behoben: Das verschickte Angebot (ohne „ENTWURF“) wird bei jedem Vers
 Prüfung vor dem Versand: `versandStand(w, list, { mail })` / `versandPruefen` in `projekt.js` (in `_intern`), aufgerufen vor `sendenMitMappe`, `alsVersendet` (ohne Mail-Prüfung), `gesamtAngebot` und `#aPdf` im Raum. Harte Sperre nur bei zählenden Positionen mit 0 € (Bedarf/Alternative/kostenlos ausgenommen). Stille Liste mit „Trotzdem senden“ (`#vpOk`): Anschrift ohne PLZ, Angebots-Mail fehlt, Mindestmarge (Angebot oder Gewerk), vorläufige Sub-Preise (`K.vorl`), Zielpreis nicht erreicht, Lohnanteil geschätzt (nur Privat/WEG, nur dort steht er im PDF).
 Lohnanteil geschätzt: In `summen()` bekommen Zeilen ohne Preisliste und ohne bekannten Lohn (Sub-Angebot pauschal, eigene Zeile ohne `x.ek`) Lohn = VK × Anteil je Gewerk (Vorgabe `lohnSchaetzung`, Zeilen „Gewerk: %“, `Sonstige`), Kennzeichen `z.lohnG`. Bestätigen von Hand in den Positionsdetails (`x.lohnP` in %, gilt auch für Preisliste-Zeilen). Steht in „Noch offen“ (`VorOrt.offenListe`).
 
+## Neuerungen aus Version 131 (Runde 15: Preisdarstellung im PDF)
+
+Preisdarstellung im PDF: `einzel` (Einzelpreise), `inhalt` (Paketpreis mit Inhalt: Positionen mit Menge ohne Preise, „Paketpreis n Titel“ bzw. „Paketpreis für die oben genannten Leistungen“), `paket` (nur Paketpreis: eine Zeile „<Titel>, Leistungen pauschal“). Standard Vorgabe `angebotDarstellung`, je Angebot `a.darstellung` (`Angebot._intern.darstAngebot/darstSetzen`, Auswahl `[data-dar]` am PC rechts und im Reiter Angebote), je Titel `r.angebot.darstellung` ('' = wie im Angebot; PC Titelzeile `select[data-t="dar"]`, iPhone/iPad im Bereich `#aDar`; im Gesamtangebot an der Zeile als `_dar`). Bedarf und Alternative immer mit eigenem Preis, Auftragsbestätigung immer Einzelpreise. Untertitel gibt es in der Gliederung noch nicht, daher nur je Titel.
+
 ## Bereiche
 
 | Bereich | Dateien | Inhalt |

@@ -390,3 +390,6 @@ html.buero .akte-objl .olist .row .add-room { flex: 0 0 auto; }
 .xtab.kalk col.c-t { width: 240px; }
 .xtab.kalk col.c-m { width: 64px; } .xtab.kalk col.c-e { width: 72px; } .xtab.kalk col.c-ep { width: 90px; } .xtab.kalk col.c-gp { width: 96px; } .xtab.kalk col.c-nr { width: 58px; }
 .xtab input.lv-ziel { color: #6d28d9; background: #f5f3ff; }
+.xtab .xt-dar { font-size: 12px; padding: 2px 4px; margin-left: 8px; max-width: 170px; border: 1px solid var(--line, #e5e7eb); border-radius: 6px; background: #fff; }
+.ape-dar { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 13px; margin: 0 0 10px; }
+.ape-dar select { max-width: 60%; }

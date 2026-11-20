@@ -68,6 +68,7 @@ const VORGABEN = {
       { k: 'ordnerBereich', l: 'Bilder-Ordner, wenn vor Ort ein Bereich gewählt ist', t: 'zeile', d: '{bereich}', h: '{bereich} = Name des Bereichs (z. B. Bad), {datum} = heute. Ohne gewählten Bereich gilt der Ordner für „Fotos machen“.' },
       { k: 'briefingTempo', l: 'Briefing: Sprechtempo (1 = normal, 0,8 langsamer, 1,2 schneller)', t: 'zahl', d: 1 },
       { k: 'verkaufFelder', l: 'Verkaufsinfos (intern) im Vor-Ort-Termin (eine Zeile je Feld)', t: 'liste', d: ['Wer entscheidet?', 'Budget', 'Zeitrahmen', 'Holt noch andere Angebote ein?', 'Zuschuss oder Förderung möglich?', 'Weitere Wünsche für später'], h: 'Nur für euch, steht nie im Angebot. Das Briefing liest sie mit vor.' },
+      { k: 'angebotDarstellung', l: 'Angebot: Preise im PDF (Standard, je Angebot und je Titel änderbar)', t: 'wahl', d: 'einzel', o: [['einzel', 'Einzelpreise'], ['inhalt', 'Paketpreis mit Inhalt'], ['paket', 'Nur Paketpreis']], h: 'Bedarfs- und Alternativpositionen stehen immer mit eigenem Preis im Angebot.' },
       { k: 'angebotZusammenstellung', l: 'Angebot mit mehreren Titeln: Zusammenstellung (Summe je Titel) vor der Gesamtsumme', t: 'janein', d: 'ja' },
       { k: 'preisAbweichung', l: 'Angebot: Hinweis, wenn ein eigener Preis so viel % von der Preisliste abweicht (0 = aus)', t: 'zahl', d: 30, h: 'Nur ein Hinweis an der Position, nichts wird geändert.' },
       { k: 'anrufArt', l: 'Bezeichnung für notierte Anrufe im Gespräch', t: 'zeile', d: 'Telefonat' },

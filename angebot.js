@@ -380,6 +380,14 @@ const Angebot = (() => {
     if (ek > 0) return { ep: r2(r6(E.lohn * (1 + satz(k, 'aufLohn')) + E.mat * (1 + satz(k, 'aufMat')) + E.pausch * (1 + satz(k, 'aufPausch')))), ebene: 'angebot' };
     return { ep: 0, ebene: 'ohne' };
   }
+  // ---------- Preisdarstellung im PDF (Runde 15, A2; Runde 9 B4) ----------
+  // 'einzel' = Einzelpreise, 'inhalt' = Paketpreis mit Inhalt (Positionen ohne Preise), 'paket' = nur Paketpreis.
+  // Standard Vorgabe angebotDarstellung, je Angebot a.darstellung, je Titel (Bereich) r.angebot.darstellung.
+  // Bedarfs- und Alternativpositionen stehen immer mit eigenem Preis da.
+  const DARST = [['einzel', 'Einzelpreise'], ['inhalt', 'Paketpreis mit Inhalt'], ['paket', 'Nur Paketpreis']];
+  const darstAngebot = (w) => window.AngebotDaten?.aktivSync?.(w)?.darstellung || vorgabe('angebotDarstellung') || 'einzel';
+  const darstOptionen = (wert, mitWie) => (mitWie ? `<option value="">wie im Angebot</option>` : '') + DARST.map(([v, n]) => `<option value="${v}" ${wert === v ? 'selected' : ''}>${n}</option>`).join('');
+  async function darstSetzen(w, v) { const a = window.AngebotDaten?.aktivSync?.(w); if (!a) return; if (v) a.darstellung = v; else delete a.darstellung; await window.AngebotDaten.speichern(a); }
   /** Geschätzter Lohnanteil in % für ein Gewerk (Vorgabe lohnSchaetzung, Zeilen „Gewerk: %“, „Sonstige“ für den Rest). */
   function lohnSchaetzung(g) {
     const m = {}; for (const z of [].concat(vorgabe('lohnSchaetzung') || [])) { const t = String(z).match(/^\s*(.+?)\s*[:=]\s*([\d.,]+)/); if (t) m[t[1].toLowerCase()] = parseFloat(t[2].replace(',', '.')); }
@@ -937,7 +945,8 @@ Gib Länge (längere Seite) und Breite der Grundfläche, Raumhöhe, Anzahl und G
         <button type="button" class="btn secondary block" id="tbSub" style="margin-top:8px">${icon('wrench')} Partnerangebot übernehmen (Scan, Foto, PDF) oder Preisliste</button>
       </div>
 
-      ${ausPrj ? `<div class="card"><button class="btn big block" id="aFertig">${icon('check')} Fertig</button>
+      ${ausPrj ? `<div class="card"><label style="margin-top:0">Preise im Angebot für diesen Bereich</label><select id="aDar">${darstOptionen(A.darstellung || '', true)}</select>
+        <button class="btn big block" id="aFertig" style="margin-top:12px">${icon('check')} Fertig</button>
         <p class="hint center" style="margin:6px 0 0">Nummer, Betreff, Texte, Speichern und Senden stehen eine Seite zurück im Büro.</p></div>` : `<div class="card">
         <button class="btn secondary big block" id="aSpeichern">${icon('download')} Speichern und ansehen</button>
         <button class="btn big block" id="aPdf" style="margin-top:8px">${icon('mail')} Senden</button>
@@ -1057,6 +1066,7 @@ Gib Länge (längere Seite) und Breite der Grundfläche, Raumhöhe, Anzahl und G
     }));
     $('#tbLeeren').onclick = () => { if (!confirm('Alle Mengen auf 0 setzen? Eigene Positionen bleiben.')) return; A.positionen = A.positionen.filter((x) => x.frei); A.geaendert = true; neu(); };
     if ($('#aWunsch')) $('#aWunsch').onclick = () => wunschVorschlaege(p, neu).catch((e) => toast('Vorschläge gingen nicht: ' + e.message, 5000));
+    if ($('#aDar')) $('#aDar').onchange = async (e) => { if (e.target.value) A.darstellung = e.target.value; else delete A.darstellung; await saveProject(p); };
     if ($('#aFertig')) $('#aFertig').onclick = async () => { await saveProject(p); state.angebotAusProjekt = false; state.project = null; Projekt.view(); window.scrollTo(0, 0); };
     if ($('#aPdf')) $('#aPdf').onclick = async () => { if (!summen(A.positionen, A.kalk).zeilen.length) return toast('Bitte zuerst Mengen eintragen.');
       const W0 = p.wohnungId && (state.wohnung?.id === p.wohnungId ? state.wohnung : await kvGet('wohnung:' + p.wohnungId));
@@ -1207,11 +1217,23 @@ Gib Länge (längere Seite) und Breite der Grundfläche, Raumhöhe, Anzahl und G
     const raeume = [...new Set(S.zeilen.map((z) => z.raum))];
     let n = 0, ti = 0;
     const titelSumme = (rn) => r2(S.zeilen.filter((x) => x.raum === rn).reduce((a, x) => a + x.gp, 0));
+    // Preisdarstellung je Titel (Runde 15): Titel-Wert (im Gesamtangebot an der Zeile als _dar) > Angebot > Vorgabe
+    const darA = WA ? darstAngebot(WA) : (vorgabe('angebotDarstellung') || 'einzel');
+    const darVon = (rn) => S.zeilen.find((x) => x.raum === rn && x._dar)?._dar || (p._gesamt ? '' : A.darstellung) || darA;
+    const immerPreis = (z) => z.zaehlt === false; // Bedarf und Alternative: immer mit eigenem Preis
     for (const rn of raeume) {
       // Titel mit Nummer (1, 2 …), Positionen darunter 1.1, 1.2 … wie in der Tabelle am PC (v121)
       ti++; n = raeume.length > 1 ? 0 : n;
       if (raeume.length > 1) { await platz(12, true); doc.setFont('helvetica', 'bold'); doc.setFontSize(9); doc.setTextColor(...BRASS); t(String(ti), C.pos + 3, y + 1, { align: 'center' }); t(rn || 'Allgemein', C.txt, y + 1); doc.setFont('helvetica', 'normal'); doc.setTextColor(30); y += 6; }
-      for (const z of S.zeilen.filter((x) => x.raum === rn)) {
+      const dar = ab ? 'einzel' : darVon(rn);
+      if (dar === 'paket') { // nur Paketpreis: eine Zeile für den Titel, darunter Bedarf/Alternative mit Preis
+        doc.setFontSize(9); const txt = doc.splitTextToSize(raeume.length > 1 ? `${rn || 'Allgemein'}, Leistungen pauschal` : `${String(WA?.titel || '').trim() || A.titel || 'Leistungen'}, pauschal`, C.menge - C.txt - 14);
+        await platz(4.3 * txt.length + 1.6, true); n++;
+        t(raeume.length > 1 ? `${ti}.${n}` : String(n), C.pos + 3, y, { align: 'center' }); t(txt, C.txt, y); t('1', C.menge, y, { align: 'right' }); t('psch.', C.einh, y); t(fmtEur(titelSumme(rn)), C.gp, y, { align: 'right' });
+        y += 4.3 * txt.length + 1.6; doc.setDrawColor(230); doc.line(M - 1, y - 3.2, R + 1, y - 3.2);
+      }
+      for (const z of S.zeilen.filter((x) => x.raum === rn && (dar !== 'paket' || immerPreis(x)))) {
+        const ohnePreis = dar !== 'einzel' && !immerPreis(z);
         doc.setFontSize(9);
         const lines = doc.splitTextToSize(z.it.text + (z.bem ? ' – ' + z.bem : ''), C.menge - C.txt - 14);
         doc.setFontSize(8);
@@ -1222,12 +1244,14 @@ Gib Länge (längere Seite) und Breite der Grundfläche, Raumhöhe, Anzahl und G
         n++;
         t(raeume.length > 1 ? `${ti}.${n}` : String(n), C.pos + 3, y, { align: 'center' }); t(lines, C.txt, y);
         t(fmtNum(z.menge, STUECK.test(z.it.einheit) ? 0 : 1), C.menge, y, { align: 'right' }); t(z.it.einheit, C.einh, y);
-        t(fmtEur(z.ep), C.ep, y, { align: 'right' }); t(z.art === 'kostenlos' ? 'kostenlos' : z.zaehlt === false ? `(${fmtEur(z.gpAnzeige)})` : fmtEur(z.gp), C.gp, y, { align: 'right' });
+        if (!ohnePreis) { t(fmtEur(z.ep), C.ep, y, { align: 'right' }); t(z.art === 'kostenlos' ? 'kostenlos' : z.zaehlt === false ? `(${fmtEur(z.gpAnzeige)})` : fmtEur(z.gp), C.gp, y, { align: 'right' }); }
+        else if (z.art === 'kostenlos') t('kostenlos', C.gp, y, { align: 'right' });
         let yy = y + 4.3 * lines.length;
         if (lang.length || art.length) { doc.setFontSize(8); doc.setTextColor(90); if (lang.length) { t(lang, C.txt, yy); yy += 3.6 * lang.length; } if (art.length) { doc.setFont('helvetica', 'italic'); t(art, C.txt, yy); doc.setFont('helvetica', 'normal'); } doc.setTextColor(30); doc.setFontSize(9); }
         y += h; doc.setDrawColor(230); doc.line(M - 1, y - 3.2, R + 1, y - 3.2);
       }
-      if (raeume.length > 1) { await platz(7); doc.setFont('helvetica', 'bold'); doc.setFontSize(8.5); t(`Summe ${ti} ${rn || 'Allgemein'}`, C.txt, y); t(fmtEur(titelSumme(rn)), C.gp, y, { align: 'right' }); doc.setFont('helvetica', 'normal'); y += 6; }
+      if (dar === 'inhalt' && raeume.length === 1) { await platz(7); doc.setFont('helvetica', 'bold'); doc.setFontSize(8.5); t('Paketpreis für die oben genannten Leistungen', C.txt, y); t(fmtEur(titelSumme(rn)), C.gp, y, { align: 'right' }); doc.setFont('helvetica', 'normal'); y += 6; }
+      if (raeume.length > 1) { await platz(7); doc.setFont('helvetica', 'bold'); doc.setFontSize(8.5); t(`${dar === 'inhalt' ? 'Paketpreis' : 'Summe'} ${ti} ${rn || 'Allgemein'}`, C.txt, y); t(fmtEur(titelSumme(rn)), C.gp, y, { align: 'right' }); doc.setFont('helvetica', 'normal'); y += 6; }
     }
     // Zusammenstellung: Summe je Titel, dann die Gesamtsumme (v121)
     if (raeume.length > 1 && vorgabe('angebotZusammenstellung') !== 'nein') {
@@ -1790,6 +1814,6 @@ Gib Länge (längere Seite) und Breite der Grundfläche, Raumhöhe, Anzahl und G
     $('#vReset').onclick = async () => { if (!loeschFrage('Alle Paket-Vorlagen zurücksetzen?')) return; await kvDel('angebotVorlagen'); VORL = null; vorlagenView(pkgId, grp); };
   }
 
-  return { projektKarte, ansicht, einstellungenKarte, _intern: { lohnSchaetzung, ekVon, vkVon, gewerkVon, planEinfuegen, firmaSetzen, FIRMA_KEYS, kontextFuer, passt, giltText, zahlungsplanText, privatArt, skontoVon, posDetails, preisHinweis, artText, NICHT_SUMME, init, gruppe, materialliste, uebernimmSchaetzung, masse, rechne, erzeuge, summen, bauzeit, ep, lohnEp, preisliste, vorlagen, neuerRaum, baueAngebotPdf, importExcel, naechsteNummer, mailText, bausteine, textEditor, texteAuftrag, texteEinstellungen, subUebernehmen, ansprechpartner, ansprVon, einePerson, texteFuer, anredeDefault, einstellungen: () => PL.einstellungen, kalkSetzen, kalkNorm, kalkWert, kalkFeld, satz } };
+  return { projektKarte, ansicht, einstellungenKarte, _intern: { DARST, darstAngebot, darstOptionen, darstSetzen, lohnSchaetzung, ekVon, vkVon, gewerkVon, planEinfuegen, firmaSetzen, FIRMA_KEYS, kontextFuer, passt, giltText, zahlungsplanText, privatArt, skontoVon, posDetails, preisHinweis, artText, NICHT_SUMME, init, gruppe, materialliste, uebernimmSchaetzung, masse, rechne, erzeuge, summen, bauzeit, ep, lohnEp, preisliste, vorlagen, neuerRaum, baueAngebotPdf, importExcel, naechsteNummer, mailText, bausteine, textEditor, texteAuftrag, texteEinstellungen, subUebernehmen, ansprechpartner, ansprVon, einePerson, texteFuer, anredeDefault, einstellungen: () => PL.einstellungen, kalkSetzen, kalkNorm, kalkWert, kalkFeld, satz } };
 })();
 window.Angebot = Angebot;

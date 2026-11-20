@@ -424,6 +424,7 @@ window.Projekt = (() => {
     if ($('#wRechAdr')) $('#wRechAdr').onclick = () => Kunden.oeffnen(k.id);
     if ($('#wAlsVersendet')) $('#wAlsVersendet').onclick = async () => { const b = $('#wAlsVersendet'); b.disabled = true; try { await alsVersendet(w, list); } catch (e) { console.error(e); toast('PDF-Fehler: ' + e.message, 6000); } if (b.isConnected) b.disabled = false; };
     if ($('#wNochmal')) $('#wNochmal').onclick = () => angebotNochmal(w);
+    $$('[data-dar]').forEach((s) => (s.onchange = () => window.Angebot._intern.darstSetzen(w, s.value)));
     if ($('#wSenden')) $('#wSenden').onclick = async () => { const b = $('#wSenden'); b.disabled = true; try { await sendenMitMappe(w, list); } catch (e) { console.error(e); toast('PDF-Fehler: ' + e.message, 6000); } b.disabled = false; };
     if ($('#wSpeichern')) $('#wSpeichern').onclick = async () => { const b = $('#wSpeichern'); b.disabled = true; try { await angebotSpeichern(w, list); } catch (e) { console.error(e); toast('PDF-Fehler: ' + e.message, 6000); } if (b.isConnected) b.disabled = false; };
     if ($('#wAnpassen')) $('#wAnpassen').onclick = () => { if (gesperrt(w) || norm(w.status) === 'abgesagt') return angebotKopieren(w); reiterSetzen(w, 'buero'); view(); window.scrollTo(0, 0); };
@@ -784,6 +785,7 @@ window.Projekt = (() => {
           <div class="ape-pane" data-apc="pl" hidden></div>
           <div class="ape-pane" data-apc="akt">
           <div class="card ape-akt">
+            <label class="ape-dar">Preise im PDF<select data-dar ${gesperrt(w) ? 'disabled' : ''}>${window.Angebot._intern.darstOptionen(window.Angebot._intern.darstAngebot(w))}</select></label>
             <button class="btn block" id="wSpeichern" ${mitPos.length ? '' : 'disabled'}>${icon('eye')} Ansehen (PDF)</button>
             <button class="btn block" id="wSenden" ${mitPos.length ? '' : 'disabled'}>${icon('mail')} Senden</button>
             <button class="btn secondary block" id="wAlsVersendet" ${mitPos.length ? '' : 'disabled'}>${icon('check')} Als versendet markieren</button>
@@ -1015,7 +1017,8 @@ window.Projekt = (() => {
           <button class="btn secondary block" id="wAnpassen" style="margin-top:8px">${icon('edit')} Angebot ändern</button>
           <p class="hint center" style="margin-bottom:0">„Angebot ändern“ legt eine Kopie mit neuer Nummer und neuem Datum an. Dieses Angebot bleibt unverändert.</p>`
         : `
-          <button class="btn secondary block" id="wSpeichern" ${mitPos.length ? '' : 'disabled'}>${icon('download')} Speichern und ansehen</button>
+          <label style="margin-top:0">Preise im Angebot</label><select data-dar>${window.Angebot._intern.darstOptionen(window.Angebot._intern.darstAngebot(w))}</select>
+          <button class="btn secondary block" id="wSpeichern" style="margin-top:12px" ${mitPos.length ? '' : 'disabled'}>${icon('download')} Speichern und ansehen</button>
           <button class="btn big block" id="wSenden" style="margin-top:8px" ${mitPos.length ? '' : 'disabled'}>${icon('mail')} ${anyResult ? 'Senden mit Mappe' : 'Angebot senden'}</button>
           <button class="btn secondary block" id="wAlsVersendet" style="margin-top:8px" ${mitPos.length ? '' : 'disabled'}>${icon('check')} Als versendet markieren</button>
           <p class="hint center" style="margin-bottom:0">${mitPos.length ? '„Als versendet markieren“, wenn der Kunde das Angebot anders bekommen hat, z. B. ausgedruckt. Danach ist es gesperrt (Ändern über eine Kopie mit neuer Nummer), und das Nachfassen läuft.' : 'Zuerst im Reiter „Büro“ ausarbeiten.'}</p>`}
@@ -1668,7 +1671,7 @@ window.Projekt = (() => {
     for (const r of raeume) for (const [i, x0] of r.angebot.positionen.entries()) {
       const x = mitPreis(x0, r, A.summen(r.angebot.positionen, r.angebot.kalk).zeilen.find((z) => z.i === i));
       if (!x.raum) { const v = allg.get(x.nr); if (!v || v.menge < x.menge) allg.set(x.nr, { ...x }); continue; } // Allgemeines (z. B. Baustelleneinrichtung) nur einmal
-      pos.push({ ...x, raum: mehrere ? `${r.room || 'Raum'}: ${x.raum}` : x.raum });
+      pos.push({ ...x, raum: mehrere ? `${r.room || 'Raum'}: ${x.raum}` : x.raum, _dar: r.angebot.darstellung || '' });
     }
     w.gesamtAngebot ??= {};
     w.gesamtAngebot.nr = angNr(w) || w.gesamtAngebot.nr || await A.naechsteNummer();
