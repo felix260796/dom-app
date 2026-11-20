@@ -425,6 +425,7 @@ window.Projekt = (() => {
     if ($('#wAlsVersendet')) $('#wAlsVersendet').onclick = async () => { const b = $('#wAlsVersendet'); b.disabled = true; try { await alsVersendet(w, list); } catch (e) { console.error(e); toast('PDF-Fehler: ' + e.message, 6000); } if (b.isConnected) b.disabled = false; };
     if ($('#wNochmal')) $('#wNochmal').onclick = () => angebotNochmal(w);
     $$('[data-dar]').forEach((s) => (s.onchange = () => window.Angebot._intern.darstSetzen(w, s.value)));
+    $$('[data-allg]').forEach((c) => (c.onchange = async () => { const a = window.AngebotDaten.aktivSync(w); if (!a) return; a.allgemeinVerteilt = c.checked; await window.AngebotDaten.speichern(a); toast(c.checked ? 'Allgemeines steckt jetzt anteilig in den Einzelpreisen (nur im PDF).' : 'Allgemeines steht wieder als eigener Titel im PDF.', 3500); }));
     if ($('#wSenden')) $('#wSenden').onclick = async () => { const b = $('#wSenden'); b.disabled = true; try { await sendenMitMappe(w, list); } catch (e) { console.error(e); toast('PDF-Fehler: ' + e.message, 6000); } b.disabled = false; };
     if ($('#wSpeichern')) $('#wSpeichern').onclick = async () => { const b = $('#wSpeichern'); b.disabled = true; try { await angebotSpeichern(w, list); } catch (e) { console.error(e); toast('PDF-Fehler: ' + e.message, 6000); } if (b.isConnected) b.disabled = false; };
     if ($('#wAnpassen')) $('#wAnpassen').onclick = () => { if (gesperrt(w) || norm(w.status) === 'abgesagt') return angebotKopieren(w); reiterSetzen(w, 'buero'); view(); window.scrollTo(0, 0); };
@@ -785,6 +786,7 @@ window.Projekt = (() => {
           <div class="ape-pane" data-apc="pl" hidden></div>
           <div class="ape-pane" data-apc="akt">
           <div class="card ape-akt">
+            <label class="ape-allg"><input type="checkbox" data-allg ${window.AngebotDaten.aktivSync(w)?.allgemeinVerteilt ?? vorgabe('allgemeinVerteilen') === 'ja' ? 'checked' : ''} ${gesperrt(w) ? 'disabled' : ''}> Allgemeines auf die Positionen verteilen</label>
             <label class="ape-dar">Preise im PDF<select data-dar ${gesperrt(w) ? 'disabled' : ''}>${window.Angebot._intern.darstOptionen(window.Angebot._intern.darstAngebot(w))}</select></label>
             <button class="btn block" id="wSpeichern" ${mitPos.length ? '' : 'disabled'}>${icon('eye')} Ansehen (PDF)</button>
             <button class="btn block" id="wSenden" ${mitPos.length ? '' : 'disabled'}>${icon('mail')} Senden</button>
@@ -1017,7 +1019,8 @@ window.Projekt = (() => {
           <button class="btn secondary block" id="wAnpassen" style="margin-top:8px">${icon('edit')} Angebot ändern</button>
           <p class="hint center" style="margin-bottom:0">„Angebot ändern“ legt eine Kopie mit neuer Nummer und neuem Datum an. Dieses Angebot bleibt unverändert.</p>`
         : `
-          <label style="margin-top:0">Preise im Angebot</label><select data-dar>${window.Angebot._intern.darstOptionen(window.Angebot._intern.darstAngebot(w))}</select>
+          <label class="ape-allg" style="margin-top:0"><input type="checkbox" data-allg ${window.AngebotDaten.aktivSync(w)?.allgemeinVerteilt ?? vorgabe('allgemeinVerteilen') === 'ja' ? 'checked' : ''}> Allgemeines auf die Positionen verteilen</label>
+          <label>Preise im Angebot</label><select data-dar>${window.Angebot._intern.darstOptionen(window.Angebot._intern.darstAngebot(w))}</select>
           <button class="btn secondary block" id="wSpeichern" style="margin-top:12px" ${mitPos.length ? '' : 'disabled'}>${icon('download')} Speichern und ansehen</button>
           <button class="btn big block" id="wSenden" style="margin-top:8px" ${mitPos.length ? '' : 'disabled'}>${icon('mail')} ${anyResult ? 'Senden mit Mappe' : 'Angebot senden'}</button>
           <button class="btn secondary block" id="wAlsVersendet" style="margin-top:8px" ${mitPos.length ? '' : 'disabled'}>${icon('check')} Als versendet markieren</button>
@@ -1489,6 +1492,7 @@ window.Projekt = (() => {
       const zs = Kalk.zielStand(w, list);
       if (zs && Math.abs(zs.diff) >= 0.05) hinweise.push(`Zielpreis nicht mehr erreicht (${zs.diff > 0 ? '+' : '-'}${fmtNum(Math.abs(zs.diff), 2)} €).`);
     }
+    for (const h of window.Kalk?.plausi?.(w, list) || []) hinweise.push(h);
     if (geschaetzt && A.privatArt(kd)) hinweise.push(`Lohnanteil bei ${geschaetzt} ${geschaetzt === 1 ? 'Position' : 'Positionen'} nur geschätzt (in der Position bestätigen).`);
     return { sperre, hinweise };
   }

@@ -394,3 +394,4 @@ html.buero .akte-objl .olist .row .add-room { flex: 0 0 auto; }
 .ape-dar { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 13px; margin: 0 0 10px; }
 .ape-dar select { max-width: 60%; }
 .xtab .xt-m.bi svg { width: 12px; height: 12px; vertical-align: -2px; }
+.ape-allg { display: flex; gap: 8px; align-items: center; font-size: 13px; margin: 0 0 8px; }

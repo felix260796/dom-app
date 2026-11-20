@@ -1254,7 +1254,28 @@ Gib Länge (längere Seite) und Breite der Grundfläche, Raumhöhe, Anzahl und G
     const neueSeite = async () => { doc.addPage(); await kopf(false); y = 34; };
     const platz = async (h, mitKopf) => { if (y + h > H - 28) { await neueSeite(); if (mitKopf) tabKopf(); } };
     tabKopf();
-    const raeume = [...new Set(S.zeilen.map((z) => z.raum))];
+    // Runde 15 (B6): „Allgemeines“ (Positionen ohne Bereich, z. B. Baustelleneinrichtung) ist der erste Titel.
+    // Schalter je Angebot a.allgemeinVerteilt (Standard Vorgabe allgemeinVerteilen): dann stehen die Positionen nicht im PDF,
+    // ihr Betrag G geht anteilig auf alle zählenden Positionen (Faktor (S + G) / S, Einzelpreise auf 10 Cent, Rest auf die
+    // größte Position), der Lohnanteil des Titels getrennt nach GP-Anteil. Summen bleiben genau gleich. Intern (Kalkulation) bleibt er ein Titel.
+    const istAllg = (z) => !z.raum;
+    let allgSatz = '';
+    const verteilt = !ab && (ent?.allgemeinVerteilt ?? (vorgabe('allgemeinVerteilen') === 'ja'));
+    if (verteilt) {
+      const AL = S.zeilen.filter((z) => istAllg(z) && z.zaehlt !== false), REST = S.zeilen.filter((z) => !istAllg(z) && z.zaehlt !== false && z.art !== 'kostenlos' && z.gp > 0);
+      const G = r2(AL.reduce((s, z) => s + z.gp, 0)), LG = AL.reduce((s, z) => s + z.lohn, 0), Ssum = r2(REST.reduce((s, z) => s + z.gp, 0));
+      if (G > 0 && Ssum > 0) {
+        const f = (Ssum + G) / Ssum;
+        for (const z of REST) { const gpAlt = z.gp; z.ep = Math.round(z.ep * f * 10) / 10; z.gp = r2(z.menge * z.ep); z.gpAnzeige = z.gp; z.lohn = r2(z.lohn + LG * gpAlt / Ssum); }
+        const rest = r2(Ssum + G - REST.reduce((s, z) => s + z.gp, 0));
+        if (Math.abs(rest) >= 0.005) { const ein = REST.filter((z) => +z.menge === 1), gr = (ein.length ? ein : REST).reduce((x, y) => (y.gp > x.gp ? y : x)); /* Rest möglichst auf eine Position mit Menge 1, damit EP × Menge = GP bleibt */ gr.ep = r2(gr.ep + rest / gr.menge); gr.gp = r2(gr.gp + rest); gr.gpAnzeige = gr.gp; }
+        const texte = [...new Set(AL.filter((z) => z.art !== 'kostenlos').map((z) => String(z.it?.text || '').trim()).filter(Boolean))];
+        const leist = texte.length > 1 ? texte.slice(0, -1).join(', ') + ' und ' + texte[texte.length - 1] : texte[0] || '';
+        allgSatz = vorgabeText('textAllgemeinVerteilt', { leistungen: leist });
+        S.zeilen = S.zeilen.filter((z) => !(istAllg(z) && z.zaehlt !== false));
+      }
+    }
+    const raeume = [...new Set(S.zeilen.map((z) => z.raum))].sort((x, y) => (!x ? 0 : 1) - (!y ? 0 : 1));
     let n = 0, ti = 0;
     const titelSumme = (rn) => r2(S.zeilen.filter((x) => x.raum === rn).reduce((a, x) => a + x.gp, 0));
     // Preisdarstellung je Titel (Runde 15): Titel-Wert (im Gesamtangebot an der Zeile als _dar) > Angebot > Vorgabe
@@ -1313,6 +1334,7 @@ Gib Länge (längere Seite) und Breite der Grundfläche, Raumhöhe, Anzahl und G
       doc.setFont('helvetica', 'normal'); doc.setFontSize(9); doc.setTextColor(30);
       raeume.forEach((rn, k) => { t(`${k + 1}  ${rn || 'Allgemein'}`, C.txt, y); t(fmtEur(titelSumme(rn)), C.gp, y, { align: 'right' }); y += 4.8; });
     }
+    if (allgSatz) { await platz(8); doc.setFont('helvetica', 'italic'); doc.setFontSize(9); doc.setTextColor(60); const ls = doc.splitTextToSize(allgSatz, R - C.txt); t(ls, C.txt, y + 1); y += 4.4 * ls.length + 1; doc.setFont('helvetica', 'normal'); doc.setTextColor(30); }
     // Summen
     await platz(30);
     y += 3; doc.setFontSize(10);

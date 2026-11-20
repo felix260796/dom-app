@@ -288,6 +288,11 @@ Texte je Angebot: `Angebot._intern.texteEigen(w)` liest die eigenen Texte des ak
 
 Bilder an Positionen: `x.bilder = [{ id, imPdf }]` (id aus `bilder:<kunde>:<objekt>`, Bild in `bild:<id>`). PC: Bild aus dem Reiter Bilder rechts (`.apb-b` ist `draggable`, Typ `application/x-dom-bild`) auf eine Zeile der Tabelle ziehen (`box.ondrop` in `tabelle.js`), Kennzeichen `.xt-m.bi`. Überall: Positionsdetails (`posDetails`) mit Bildern, Haken „im PDF zeigen“, Entfernen, „Bild hinzufügen“ (`bildWaehlen`, Bilder des Objekts, eigene des Vorgangs zuerst). PDF: bis zu drei Bilder nebeneinander unter der Position (42 × 30 mm).
 
+## Neuerungen aus Version 135 (Runde 15: Allgemeines zuerst und verteilt, Preis-Plausibilität)
+
+„Allgemeines“ (Positionen ohne Bereich, `x.raum === ''`, z. B. Baustelleneinrichtung) ist im PDF immer der erste Titel. Schalter je Angebot `a.allgemeinVerteilt` (Standard Vorgabe `allgemeinVerteilen`, Häkchen `[data-allg]` am PC rechts und im Reiter Angebote): Dann fallen die zählenden Allgemein-Positionen im PDF weg, ihr Betrag G geht mit Faktor (S + G) / S auf alle zählenden Positionen (nicht Bedarf, Alternative, kostenlos), Einzelpreise auf 10 Cent, der Rest auf die größte Position mit Menge 1 (sonst die größte), Lohnanteil des Titels getrennt nach GP-Anteil. Netto, brutto und Lohnanteil bleiben genau gleich. Satz Vorgabe `textAllgemeinVerteilt` (`{leistungen}` aus den Positionstexten). Nur das PDF: Kalkulation und Rechnung sehen Allgemeines weiter als eigenen Titel (Rechnung mit verteilten Preisen wäre Schritt 12).
+Preis-Plausibilität (`Kalk.plausi(w, list)`, `plausiLaden`): je Bereich netto (ohne Allgemeines) je m² Bodenfläche gegen verschickte/zugesagte Angebote gleichen Raumtyps der letzten `plausiMonate` (24); ab `plausiMin` (5) Vergleichen gilt 25–75 % als üblich, darunter Vergleich mit der Paket-Vorlage (`A.erzeuge`, ± `preisAbweichung` %). Stiller Hinweis in der Karte Kalkulation und in der Prüfung vor dem Versand.
+
 ## Bereiche
 
 | Bereich | Dateien | Inhalt |

@@ -226,6 +226,57 @@ window.Kalk = (() => {
       ${s ? `<div class="kz-z kz-zs">${stand}${gesp ? '' : '<button type="button" class="link-danger" data-kzz="weg">Zielpreis entfernen</button>'}</div>` : ''}`;
   }
   /** HTML der Karte. opt.offen: aufgeklappt (PC), sonst zu (iPhone/iPad). */
+  // ---------- Preis-Plausibilität (Runde 15, B6; Runde 10 B18) ----------
+  // Je Bereich Preis netto je m² Bodenfläche gegen verschickte/zugesagte Angebote der letzten Monate (Vorgabe plausiMonate)
+  // mit gleichem Raumtyp. Ab Vorgabe plausiMin Vergleichen gilt die mittlere Hälfte (25–75 %) als üblich, darunter die
+  // Paket-Vorlage ± Vorgabe preisAbweichung %. Nur ein stiller Hinweis.
+  let PLAUSI = null, plausiLaeuft = null;
+  async function plausiLaden(neu = false) {
+    if (PLAUSI && !neu) return PLAUSI;
+    if (plausiLaeuft) return plausiLaeuft;
+    plausiLaeuft = (async () => {
+      const A = I(), ab = Date.now() - (+vorgabe('plausiMonate') || 24) * 30.4 * 864e5, out = {};
+      for (const x of (await projectIndex()).filter((x) => x.kind === 'wohnung')) {
+        const w = await kvGet('wohnung:' + x.id); if (!w) continue;
+        const st = window.Projekt?.norm(w.status) || w.status;
+        if (st === 'entwurf' || st === 'besichtigung' || st === 'abgesagt' || !w.versendetAm || new Date(w.versendetAm) < ab) continue;
+        for (const r of await window.Projekt.raeume(w)) {
+          const v = proQm(r); if (v) (out[r.roomType || 'sonstiges'] ??= []).push({ v, w: w.id });
+        }
+      }
+      PLAUSI = out; plausiLaeuft = null; return out;
+    })();
+    return plausiLaeuft;
+  }
+  function proQm(r) {
+    const A = I(); if (!r?.angebot?.positionen?.length || !r.aufmass?.raeume?.[0]) return 0;
+    let qm = 0; try { qm = A.masse({ teile: [], oeff: [], ...r.aufmass.raeume[0] }).boden; } catch { qm = 0; }
+    if (!(qm > 0)) return 0;
+    const n = A.summen(r.angebot.positionen, r.angebot.kalk).zeilen.filter((z) => z.raum).reduce((s, z) => s + z.gp, 0); // ohne Allgemeines
+    return n > 0 ? n / qm : 0;
+  }
+  const quart = (l, q) => { const s = [...l].sort((a, b) => a - b), i = (s.length - 1) * q, u = Math.floor(i); return s[u] + (s[Math.min(u + 1, s.length - 1)] - s[u]) * (i - u); };
+  /** Hinweise je Bereich (Texte). Ohne geladene Vergleichsdaten nur der Vergleich mit der Paket-Vorlage. */
+  function plausi(w, list) {
+    const A = I(), out = [], min = +vorgabe('plausiMin') || 5, abw = (+vorgabe('preisAbweichung') || 30) / 100;
+    if (!PLAUSI && !plausiLaeuft) plausiLaden().catch(() => {});
+    for (const r of mitPos(list)) {
+      const v = proQm(r); if (!v) continue;
+      const name = r.room || 'Bereich', verg = (PLAUSI?.[r.roomType || 'sonstiges'] || []).filter((x) => x.w !== w.id).map((x) => x.v);
+      if (verg.length >= min) {
+        const lo = quart(verg, 0.25), hi = quart(verg, 0.75);
+        if (v < lo * 0.95 || v > hi * 1.05) out.push(`${name}: ${eur(v)}/m², bisher üblich ${eur(lo)} bis ${eur(hi)}/m² (${verg.length} Angebote).`);
+      } else {
+        try {
+          const pk = r.angebot.paket; if (!pk) continue;
+          const vor = A.erzeuge(r, pk).positionen.filter((x) => x.raum);
+          const qm = A.masse({ teile: [], oeff: [], ...r.aufmass.raeume[0] }).boden, vn = A.summen(vor, r.angebot.kalk).netto / qm;
+          if (vn > 0 && Math.abs(v - vn) / vn > abw) out.push(`${name}: ${eur(v)}/m², die Paket-Vorlage ergäbe ${eur(vn)}/m².`);
+        } catch (e) { /* ohne Vorlage kein Vergleich */ }
+      }
+    }
+    return out;
+  }
   function karte(w, list, opt = {}) {
     if (!mitPos(list).length) return '';
     let K; try { K = kennzahlen(w, list); } catch (e) { console.warn(e); return ''; }
@@ -236,6 +287,7 @@ window.Kalk = (() => {
       ...Object.entries(K.gewerke).filter(([, g]) => g.unter).map(([name, g]) => `${name}: Marge ${pz(g.marge)} unter ${pz(K.min)}.`),
       K.vorl ? `${K.vorl} ${K.vorl === 1 ? 'Position ist' : 'Positionen sind'} vorläufig (Sub angefragt, Preis kommt noch).` : '',
       K.ohne ? `${K.ohne} ${K.ohne === 1 ? 'Position hat' : 'Positionen haben'} keinen Einkauf. Ihr Preis zählt ganz als Rohertrag.` : '',
+      ...plausi(w, list),
       K.kostenlos ? `${K.kostenlos} kostenlose ${K.kostenlos === 1 ? 'Position kostet' : 'Positionen kosten'} uns den Einkauf ohne Erlös.` : '',
     ].filter(Boolean);
     const gewerke = Object.entries(K.gewerke).sort((x, y) => y[1].vk - x[1].vk);
@@ -293,5 +345,5 @@ window.Kalk = (() => {
     if ($('[data-kzzw]', box)) { $('[data-kzzw]', box).onchange = ziel; $('[data-kzza]', box).onchange = () => { if ($('[data-kzzw]', box).value.trim()) ziel(); }; }
     $$('[data-kzz]', box).forEach((b) => (b.onclick = async () => { if (b.dataset.kzz === 'weg') await zielEntfernen(w, list); else { const s = zielStand(w, list); if (s) { const msg = await zielSetzen(w, list, s.wert, s.art); if (msg) toast(msg, 6000); } } nach(); }));
   }
-  return { zielSetzen, zielEntfernen, zielStand, zielRechnen, gesamt, nachlassText, kennzahlen, karte, binden, abgleichen, angebotSetzen, gewerkSetzen, matSubSetzen, nachlassSetzen, nachlassVon, angebotVon };
+  return { plausi, plausiLaden, zielSetzen, zielEntfernen, zielStand, zielRechnen, gesamt, nachlassText, kennzahlen, karte, binden, abgleichen, angebotSetzen, gewerkSetzen, matSubSetzen, nachlassSetzen, nachlassVon, angebotVon };
 })();
