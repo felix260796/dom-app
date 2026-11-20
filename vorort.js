@@ -256,6 +256,9 @@ window.VorOrt = (() => {
       if (x.frei && !(x.epFix > 0) && !(+x.sub?.ep > 0) && !(x.ek && (+x.ek.lohn || +x.ek.mat || +x.ek.pausch))) out.push({ text: `Preis fehlt: ${raumName(r)} – ${x.frei.text}${x.ki?.partner ? ' (kommt von Partner)' : ''}` });
       else if (x.ki?.sicher === 'geschaetzt') out.push({ text: `Menge geschätzt: ${raumName(r)} – ${x.frei?.text || x.nr}, bitte prüfen` });
     }
+    // Runde 15 (A4): geschätzter Lohnanteil (Positionen ohne Preisliste und ohne bekannten Lohn)
+    const A = window.Angebot?._intern;
+    if (A) for (const r of list) if (r.angebot?.positionen?.length) for (const z of A.summen(r.angebot.positionen, r.angebot.kalk).zeilen) if (z.lohnG) out.push({ text: `Lohnanteil geschätzt: ${raumName(r)} – ${z.it?.text || z.nr}, in der Position bestätigen` });
     return out;
   }
   /** Büro, Schritt 3: Die KI schlägt Positionen vor. Ohne Aufnahme reicht eine kurze Beschreibung (aus der Erinnerung). */

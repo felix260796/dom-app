@@ -129,6 +129,7 @@ const VORGABEN = {
     ['Kalkulation', [
       { k: 'mindestMarge', l: 'Mindestmarge in % vom Verkaufspreis netto', t: 'zahl', d: 15, h: 'Liegt ein Angebot oder ein Gewerk darunter, zeigt DOM einen stillen Hinweis. Es wird nichts gesperrt.' },
       { k: 'ampelGut', l: 'Soll/Ist: Marge grün ab %', t: 'zahl', d: 20 },
+      { k: 'lohnSchaetzung', l: 'Geschätzter Lohnanteil je Gewerk in % (eine Zeile je Gewerk, „Gewerk: %“)', t: 'liste', d: ['Fliesen: 60', 'Maler: 80', 'Sonstige: 50'], h: 'Gilt nur für Positionen ohne Preisliste und ohne bekannten Lohn (z. B. Sub-Angebot pauschal). Sie sind als „geschätzt“ markiert und stehen in der Prüfung vor dem Versand, bis du den Anteil in der Position bestätigst.' },
       { k: 'ampelKnapp', l: 'Soll/Ist: Marge gelb („knapp“) ab %, darunter rot', t: 'zahl', d: 15, h: 'Standard wie die Mindestmarge.' },
     ]],
     ['Kalender und Geburtstage', [

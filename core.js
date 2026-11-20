@@ -366,7 +366,8 @@ async function dokMerken(files) {
     const key = 'wdok:' + w.id + ':' + f.name.replace(/[^\wäöüÄÖÜß.-]+/g, '_');
     await kvSet(key, await datUrl(f));
     w.dokumente = [...(w.dokumente || []).filter((x) => x.key !== key), { key, name: f.name, t: Date.now() }];
-    window.Buero?.ablage(w, f.name, f); // am PC zusätzlich in den Kundenordner
+    // am PC zusätzlich in den Kundenordner. Angebote erst beim Versand (Projekt.angebotMerken), nie als Entwurf (Runde 15)
+    if (!/^Angebot_/i.test(f.name)) window.Buero?.ablage(w, f.name, f);
   }
   await Projekt.save(w);
   return true;

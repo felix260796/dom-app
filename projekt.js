@@ -1317,6 +1317,7 @@ window.Projekt = (() => {
   /** Angebot (ein Raum oder Gesamtangebot) und Kundenmappe zusammen teilen. Danach Status „versendet“. */
   async function sendenMitMappe(w, list) {
     if (gesperrt(w)) return gesperrtFrage(w);
+    if (!(await versandPruefen(w, list))) return;
     const A = window.Angebot._intern;
     const r = await angebotDateien(w, list, { final: true }); // ohne Wasserzeichen „Entwurf“
     if (!r) return;
@@ -1352,11 +1353,18 @@ window.Projekt = (() => {
   async function angebotMerken(wid, doc, name) {
     if (!wid) return;
     try {
-      await kvSet('angpdf:' + wid, doc.output('datauristring'));
+      const uri = doc.output('datauristring');
+      await kvSet('angpdf:' + wid, uri);
       const w = state.wohnung?.id === wid ? state.wohnung : await kvGet(key(wid));
       if (!w) return;
       w.angebotPdf = { name, typ: 'application/pdf', t: Date.now() };
+      // Runde 15: die verschickte Fassung (ohne „ENTWURF“) auch unter „Dokumente“ und im Kundenordner ablegen,
+      // gleich wie bei „Als versendet markieren“; ersetzt dort das Entwurfs-PDF mit gleichem Namen.
+      const dk = 'wdok:' + w.id + ':' + name.replace(/[^\wäöüÄÖÜß.-]+/g, '_');
+      await kvSet(dk, uri);
+      w.dokumente = [...(w.dokumente || []).filter((x) => x.key !== dk), { key: dk, name, t: Date.now() }];
       await save(w);
+      window.Buero?.ablage(w, name, doc.output('blob'));
     } catch (e) { console.warn('Angebot-PDF nicht gespeichert', e); }
   }
   /** Baustart als ganztägiger Baustellen-Termin im Kalender (ein Termin je Projekt, wird angepasst oder entfernt). */
@@ -1441,9 +1449,60 @@ window.Projekt = (() => {
       $('#dfOk', bg).onclick = () => zu($('#dfD', bg).value || heuteIso());
     });
   }
+  // ---------- Prüfung vor dem Versand (Runde 15, A1) ----------
+  // Harte Sperre nur, solange eine zählende Position 0 € hat (Bedarf, Alternative und kostenlos ausgenommen).
+  // Alles andere ist eine stille Liste mit „Trotzdem senden“.
+  function versandStand(w, list, { mail = true } = {}) {
+    const A = window.Angebot._intern, kd = w.kundeId ? Kunden.byId(w.kundeId) : null;
+    const fmtNum = (x, d) => (+x || 0).toLocaleString('de-DE', { minimumFractionDigits: d, maximumFractionDigits: d });
+    const sperre = [], hinweise = [];
+    let geschaetzt = 0;
+    for (const r of list.filter((x) => x.angebot?.positionen?.length)) {
+      for (const z of A.summen(r.angebot.positionen, r.angebot.kalk).zeilen) {
+        if (z.zaehlt !== false && z.art !== 'kostenlos' && !(z.ep > 0)) sperre.push(`${raumTitel(r)}: ${z.it?.text || 'Position'}`);
+        if (z.lohnG) geschaetzt++;
+      }
+    }
+    const post = kd ? Kunden.postanschrift(kd) : null;
+    const adr = post || [w.customer, ...String(w.address || '').split(/\s*,\s*|\n/)];
+    if (!adr.some((l) => /\b\d{4,5}\b/.test(String(l || '')))) hinweise.push('Anschrift des Kunden fehlt (keine Postleitzahl).');
+    if (mail && !(kd && Kunden.angebotMail(kd))) hinweise.push('E-Mail-Adresse für das Angebot fehlt.');
+    if (window.Kalk) {
+      const K = Kalk.kennzahlen(w, list);
+      if (K.unter) hinweise.push(`Marge ${fmtNum(K.marge, 1)} % liegt unter der Mindestmarge von ${fmtNum(K.min, 0)} %.`);
+      for (const [g, o] of Object.entries(K.gewerke || {})) if (o.unter && !K.unter) hinweise.push(`${g}: Marge unter der Mindestmarge.`);
+      if (K.vorl > 0) hinweise.push(`${K.vorl} ${K.vorl === 1 ? 'Position hat' : 'Positionen haben'} nur einen vorläufigen Preis (Sub angefragt).`);
+      const zs = Kalk.zielStand(w, list);
+      if (zs && Math.abs(zs.diff) >= 0.05) hinweise.push(`Zielpreis nicht mehr erreicht (${zs.diff > 0 ? '+' : '-'}${fmtNum(Math.abs(zs.diff), 2)} €).`);
+    }
+    if (geschaetzt && A.privatArt(kd)) hinweise.push(`Lohnanteil bei ${geschaetzt} ${geschaetzt === 1 ? 'Position' : 'Positionen'} nur geschätzt (in der Position bestätigen).`);
+    return { sperre, hinweise };
+  }
+  /** Vor Senden, „Als versendet markieren“ und Gesamtangebot: true = weiter. */
+  function versandPruefen(w, list, opt = {}) {
+    const { sperre, hinweise } = versandStand(w, list, opt);
+    if (!sperre.length && !hinweise.length) return Promise.resolve(true);
+    return new Promise((res) => {
+      const bg = document.createElement('div');
+      bg.className = 'sheet-bg';
+      bg.innerHTML = `<div class="sheet vp-sheet" role="dialog" aria-label="Vor dem Versand"><div class="sheet-h"><b>${sperre.length ? 'Noch nicht versandbereit' : 'Vor dem Versand'}</b><button class="icon-btn" data-zu aria-label="Schließen">${icon('x')}</button></div>
+        <div style="padding:0 16px 16px">
+        ${sperre.length ? `<p class="hint" style="margin-top:0">Diese Positionen haben noch keinen Preis. Bitte Preis eintragen oder als Bedarf, Alternative oder kostenlos kennzeichnen:</p><ul class="wf-o vp-sperre">${sperre.slice(0, 12).map((s) => `<li>${esc(s)}</li>`).join('')}${sperre.length > 12 ? `<li>und ${sperre.length - 12} weitere</li>` : ''}</ul>` : ''}
+        ${hinweise.length ? `<p class="hint" ${sperre.length ? '' : 'style="margin-top:0"'}>${sperre.length ? 'Außerdem:' : 'Bitte kurz prüfen:'}</p><ul class="wf-o vp-hinweise">${hinweise.map((s) => `<li>${esc(s)}</li>`).join('')}</ul>` : ''}
+        ${sperre.length ? `<button class="btn block" data-zu style="margin-top:12px">Zurück zum Angebot</button>`
+        : `<button class="btn block" id="vpOk" style="margin-top:12px">${icon('mail')} Trotzdem senden</button><button class="btn secondary block" data-zu style="margin-top:8px">Zurück zum Angebot</button>`}
+        </div></div>`;
+      document.body.appendChild(bg);
+      requestAnimationFrame(() => bg.classList.add('on'));
+      const zu = (v) => { bg.remove(); res(v); };
+      bg.onclick = (e) => { if (e.target === bg || e.target.closest('[data-zu]')) zu(false); };
+      if ($('#vpOk', bg)) $('#vpOk', bg).onclick = () => zu(true);
+    });
+  }
   /** Angebot ohne Teilen-Menü als verschickt festhalten (z. B. ausgedruckt): PDF ablegen, sperren, Nachfassen läuft ab dem Datum. */
   async function alsVersendet(w, list) {
     if (gesperrt(w)) return gesperrtFrage(w);
+    if (!(await versandPruefen(w, list, { mail: false }))) return;
     const datum = await datumFrage('Als versendet markieren', 'Wann hat der Kunde das Angebot bekommen, z. B. ausgedruckt oder persönlich übergeben? Danach ist es gesperrt, und das Nachfassen läuft ab diesem Tag.');
     if (!datum) return;
     if (w.isNew) { delete w.isNew; await save(w); }
@@ -1585,6 +1644,7 @@ window.Projekt = (() => {
   /** B4: ein Angebot über alle Räume. Baut aus den Raum-Angeboten ein gemeinsames und nutzt das normale Angebots-PDF. */
   async function gesamtAngebot(w, raeume) {
     if (gesperrt(w)) return gesperrtFrage(w);
+    if (!(await versandPruefen(w, raeume))) return;
     toast('Gesamtangebot wird erstellt …', 8000);
     const { doc, name, syn } = await gesamtDoc(w, raeume, { final: true });
     const A = window.Angebot._intern;
@@ -1784,7 +1844,7 @@ window.Projekt = (() => {
   }
 
   const forget = (id) => rooms.delete(id);
-  return { automatik, anlegen, angebotVersendet, gesperrt, gesperrtFrage, angebotKopieren, dateiZeigen, nachfassen, seitTagen, STATUS, ANGEBOT, ALLE, PHASEN, phase, farbe, pill, norm, zugesagt, statusName, statusKurz, raumAngebot, angebotMerken, forget, neu, neuDirekt, neuFuer, kundeUebernehmen, oeffnen, view, mappeView, moodboardView, migrate, raum, raeume, raumGespeichert, raumEntfernt, save, wahl, PKG_IDS, _intern: { titel, addRoom, raumAusScan, raumAnlegen, reiterSetzen, auftragsbestaetigung } };
+  return { automatik, anlegen, angebotVersendet, gesperrt, gesperrtFrage, angebotKopieren, dateiZeigen, nachfassen, seitTagen, STATUS, ANGEBOT, ALLE, PHASEN, phase, farbe, pill, norm, zugesagt, statusName, statusKurz, raumAngebot, angebotMerken, forget, neu, neuDirekt, neuFuer, kundeUebernehmen, oeffnen, view, mappeView, moodboardView, migrate, raum, raeume, raumGespeichert, raumEntfernt, save, wahl, PKG_IDS, _intern: { versandStand, versandPruefen, sendenMitMappe, alsVersendet, angebotSpeichern, titel, addRoom, raumAusScan, raumAnlegen, reiterSetzen, auftragsbestaetigung } };
 })();
 // Ältere Aufrufe (PR „Wohnungen“) laufen weiter
 window.Wohnung = { neu: () => Projekt.neu(), oeffnen: (id) => Projekt.oeffnen(id), view: () => Projekt.view(), raumGespeichert: (p) => Projekt.raumGespeichert(p), raumEntfernt: (p) => Projekt.raumEntfernt(p) };

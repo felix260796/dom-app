@@ -264,6 +264,12 @@ Nachlass: `Kalk.gesamt(w, list)` (`vor`, `nachlass`, `netto`, `mwst`, `brutto`) 
 
 `Finanzen.soll(w)`: nur das gewählte Angebot (über `AngebotDaten.raum`, aktiv bzw. zugesagt), netto nach Nachlass (`soll.nachlass`), Gewerk aus `z.kalk.g`, geplante Kosten = Einkauf der Kalkulation (`z.kalk.ekEp`, kostenlose Zeilen zählen als Kosten), nur ohne Einkauf der günstigste Partnerpreis. `ist(pid)`: Eingangsrechnung netto minus `b.skonto` (Feld „Skonto gezogen“ `#bSkonto`, nur wenn wirklich abgezogen), `ist.skonto`. Ampel `ampelKnapp` Standard 15 (= Mindestmarge).
 
+## Neuerungen aus Version 130 (Runde 15: Ablage beim Versand, Prüfung vor dem Versand, Lohnanteil geschätzt)
+
+Fehler behoben: Das verschickte Angebot (ohne „ENTWURF“) wird bei jedem Versandweg in `Projekt.angebotMerken` unter `w.dokumente` abgelegt (ersetzt das Entwurfs-PDF mit gleichem Namen) und am PC in den Kundenordner gelegt. `dokMerken` (core.js) legt Dateien `Angebot_…` nie in den Kundenordner, Entwürfe also nie.
+Prüfung vor dem Versand: `versandStand(w, list, { mail })` / `versandPruefen` in `projekt.js` (in `_intern`), aufgerufen vor `sendenMitMappe`, `alsVersendet` (ohne Mail-Prüfung), `gesamtAngebot` und `#aPdf` im Raum. Harte Sperre nur bei zählenden Positionen mit 0 € (Bedarf/Alternative/kostenlos ausgenommen). Stille Liste mit „Trotzdem senden“ (`#vpOk`): Anschrift ohne PLZ, Angebots-Mail fehlt, Mindestmarge (Angebot oder Gewerk), vorläufige Sub-Preise (`K.vorl`), Zielpreis nicht erreicht, Lohnanteil geschätzt (nur Privat/WEG, nur dort steht er im PDF).
+Lohnanteil geschätzt: In `summen()` bekommen Zeilen ohne Preisliste und ohne bekannten Lohn (Sub-Angebot pauschal, eigene Zeile ohne `x.ek`) Lohn = VK × Anteil je Gewerk (Vorgabe `lohnSchaetzung`, Zeilen „Gewerk: %“, `Sonstige`), Kennzeichen `z.lohnG`. Bestätigen von Hand in den Positionsdetails (`x.lohnP` in %, gilt auch für Preisliste-Zeilen). Steht in „Noch offen“ (`VorOrt.offenListe`).
+
 ## Bereiche
 
 | Bereich | Dateien | Inhalt |

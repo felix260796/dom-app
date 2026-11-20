@@ -313,12 +313,17 @@ const Angebot = (() => {
         <p class="hint" style="margin:4px 0 0">Bedarfs- und Alternativpositionen stehen mit Preis im Angebot, zählen aber nicht zur Summe.</p>
         <label>Langtext (steht im Angebot unter der Leistung)</label>
         <textarea id="pdLang" data-frei rows="4" placeholder="Genaue Beschreibung, z. B. Fabrikat, Ausführung">${esc(x.lang || '')}</textarea>
+        <label>Lohnanteil in % (für § 35a)</label>
+        <input type="text" id="pdLohn" inputmode="decimal" value="${esc(x.lohnP ?? '')}" placeholder="leer = aus der Preisliste bzw. geschätzt nach Gewerk">
+        <p class="hint" style="margin:4px 0 0">Bei Positionen ohne Preisliste schätzt DOM den Lohnanteil je Gewerk (Einstellungen › Kalkulation). Mit einem Wert hier gilt er als bestätigt.</p>
         <label>Interne Notiz (nie im Angebot)</label>
         <textarea id="pdNotiz" data-frei rows="2" placeholder="z. B. Preis mit Kaya abgestimmt">${esc(x.notiz || '')}</textarea>
         <button class="btn block" data-ok style="margin-top:12px">Übernehmen</button></div>`;
       $('[data-ok]', bg).onclick = () => {
         const art = $('#pdArt', bg).value, lang = $('#pdLang', bg).value.trim(), notiz = $('#pdNotiz', bg).value.trim();
-        const neu = art !== (x.art || '') || lang !== (x.lang || '') || notiz !== (x.notiz || '');
+        const lohn = $('#pdLohn', bg).value.trim().replace('%', '').trim();
+        const neu = art !== (x.art || '') || lang !== (x.lang || '') || notiz !== (x.notiz || '') || lohn !== String(x.lohnP ?? '');
+        if (lohn !== '' && Number.isFinite(parseFloat(lohn.replace(',', '.')))) x.lohnP = lohn; else delete x.lohnP;
         if (art) x.art = art; else delete x.art;
         if (lang) x.lang = lang; else delete x.lang;
         if (notiz) x.notiz = notiz; else delete x.notiz;
@@ -375,6 +380,12 @@ const Angebot = (() => {
     if (ek > 0) return { ep: r2(r6(E.lohn * (1 + satz(k, 'aufLohn')) + E.mat * (1 + satz(k, 'aufMat')) + E.pausch * (1 + satz(k, 'aufPausch')))), ebene: 'angebot' };
     return { ep: 0, ebene: 'ohne' };
   }
+  /** Geschätzter Lohnanteil in % für ein Gewerk (Vorgabe lohnSchaetzung, Zeilen „Gewerk: %“, „Sonstige“ für den Rest). */
+  function lohnSchaetzung(g) {
+    const m = {}; for (const z of [].concat(vorgabe('lohnSchaetzung') || [])) { const t = String(z).match(/^\s*(.+?)\s*[:=]\s*([\d.,]+)/); if (t) m[t[1].toLowerCase()] = parseFloat(t[2].replace(',', '.')); }
+    const k = String(g || '').toLowerCase();
+    return m[k] ?? Object.entries(m).find(([n]) => n !== 'sonstige' && (k.includes(n) || n.includes(k)))?.[1] ?? m.sonstige ?? 0;
+  }
   function summen(positionen, k) {
     const S = PL.einstellungen;
     const zeilen = positionen.map((x, i) => {
@@ -385,11 +396,20 @@ const Angebot = (() => {
       const EK = ekVon(x, it, k), V = vkVon(x, it, k, EK);
       const std = ep(it, k), e = V.ep, ekS = EK.lohn + EK.mat + EK.pausch;
       // Lohnanteil: beim Zielpreis Lohn im Verkauf = Verkauf × Lohn-Einkauf / Einkauf, sonst wie bisher
-      const l = V.ebene === 'ziel' && ekS > 0 ? e * EK.lohn / ekS : lohnEp(it, k) * (std ? e / std : 1);
+      // Runde 15 (A4): Zeilen ohne Preisliste und ohne bekannten Lohn (Sub-Angebot pauschal, eigene Zeile ohne Einkauf)
+      // bekommen einen geschätzten Lohnanteil je Gewerk (Vorgabe lohnSchaetzung), markiert als „geschätzt“, bis er von Hand
+      // bestätigt ist (x.lohnP in %, Positionsdetails).
+      const ohnePL = !pos(x.nr), lp = String(x.lohnP ?? '').trim();
+      let l, lohnG = false;
+      if (lp !== '' && Number.isFinite(parseFloat(lp.replace(',', '.')))) l = e * parseFloat(lp.replace(',', '.')) / 100;
+      else if (!ohnePL) l = V.ebene === 'ziel' && ekS > 0 ? e * EK.lohn / ekS : lohnEp(it, k) * (std ? e / std : 1);
+      else if (ekS > 0 && (EK.quelle === 'subpreisliste' || (x.ek && typeof x.ek === 'object'))) l = e * EK.lohn / ekS;
+      else { l = e * lohnSchaetzung(EK.g) / 100; lohnG = e > 0; }
       // Positionsart (v120): Bedarfs- und Alternativpositionen stehen mit Preis im Angebot, zählen aber nicht zur Summe;
       // „kostenlos“ zeigt den Wert und kostet 0 €. gpAnzeige = Betrag, der neben der Position steht.
       const zaehlt = !NICHT_SUMME.includes(x.art), gpA = r2(x.menge * e);
       return { ...x, i, it, ep: e, fix: x.epFix > 0, gp: zaehlt && x.art !== 'kostenlos' ? gpA : 0, gpAnzeige: gpA, zaehlt, lohn: zaehlt && x.art !== 'kostenlos' ? r2(x.menge * l) : 0,
+        lohnG: lohnG && zaehlt && x.art !== 'kostenlos',
         kalk: { ...EK, ekEp: r2(EK.lohn + EK.mat + EK.pausch), ebene: V.ebene, zuEp: r2(e - (EK.lohn + EK.mat + EK.pausch)) } };
     }).filter(Boolean);
     const netto = r2(zeilen.reduce((s, z) => s + z.gp, 0));
@@ -1038,7 +1058,9 @@ Gib Länge (längere Seite) und Breite der Grundfläche, Raumhöhe, Anzahl und G
     $('#tbLeeren').onclick = () => { if (!confirm('Alle Mengen auf 0 setzen? Eigene Positionen bleiben.')) return; A.positionen = A.positionen.filter((x) => x.frei); A.geaendert = true; neu(); };
     if ($('#aWunsch')) $('#aWunsch').onclick = () => wunschVorschlaege(p, neu).catch((e) => toast('Vorschläge gingen nicht: ' + e.message, 5000));
     if ($('#aFertig')) $('#aFertig').onclick = async () => { await saveProject(p); state.angebotAusProjekt = false; state.project = null; Projekt.view(); window.scrollTo(0, 0); };
-    if ($('#aPdf')) $('#aPdf').onclick = () => { if (!summen(A.positionen, A.kalk).zeilen.length) return toast('Bitte zuerst Mengen eintragen.'); teilePdf(p).catch((e) => toast('PDF-Fehler: ' + e.message, 5000)); };
+    if ($('#aPdf')) $('#aPdf').onclick = async () => { if (!summen(A.positionen, A.kalk).zeilen.length) return toast('Bitte zuerst Mengen eintragen.');
+      const W0 = p.wohnungId && (state.wohnung?.id === p.wohnungId ? state.wohnung : await kvGet('wohnung:' + p.wohnungId));
+      if (W0 && window.Projekt?._intern?.versandPruefen && !(await Projekt._intern.versandPruefen(W0, [p]))) return; teilePdf(p).catch((e) => toast('PDF-Fehler: ' + e.message, 5000)); };
     if ($('#aSpeichern')) $('#aSpeichern').onclick = () => { if (!summen(A.positionen, A.kalk).zeilen.length) return toast('Bitte zuerst Mengen eintragen.'); speicherePdf(p).catch((e) => toast('PDF-Fehler: ' + e.message, 5000)); };
     $('#tbSub').onclick = () => subUebernehmen(p, neu).catch((e) => toast('Übernehmen ging nicht: ' + e.message, 5000));
     $('#aExcel').onclick = async () => {
@@ -1768,6 +1790,6 @@ Gib Länge (längere Seite) und Breite der Grundfläche, Raumhöhe, Anzahl und G
     $('#vReset').onclick = async () => { if (!loeschFrage('Alle Paket-Vorlagen zurücksetzen?')) return; await kvDel('angebotVorlagen'); VORL = null; vorlagenView(pkgId, grp); };
   }
 
-  return { projektKarte, ansicht, einstellungenKarte, _intern: { ekVon, vkVon, gewerkVon, planEinfuegen, firmaSetzen, FIRMA_KEYS, kontextFuer, passt, giltText, zahlungsplanText, privatArt, skontoVon, posDetails, preisHinweis, artText, NICHT_SUMME, init, gruppe, materialliste, uebernimmSchaetzung, masse, rechne, erzeuge, summen, bauzeit, ep, lohnEp, preisliste, vorlagen, neuerRaum, baueAngebotPdf, importExcel, naechsteNummer, mailText, bausteine, textEditor, texteAuftrag, texteEinstellungen, subUebernehmen, ansprechpartner, ansprVon, einePerson, texteFuer, anredeDefault, einstellungen: () => PL.einstellungen, kalkSetzen, kalkNorm, kalkWert, kalkFeld, satz } };
+  return { projektKarte, ansicht, einstellungenKarte, _intern: { lohnSchaetzung, ekVon, vkVon, gewerkVon, planEinfuegen, firmaSetzen, FIRMA_KEYS, kontextFuer, passt, giltText, zahlungsplanText, privatArt, skontoVon, posDetails, preisHinweis, artText, NICHT_SUMME, init, gruppe, materialliste, uebernimmSchaetzung, masse, rechne, erzeuge, summen, bauzeit, ep, lohnEp, preisliste, vorlagen, neuerRaum, baueAngebotPdf, importExcel, naechsteNummer, mailText, bausteine, textEditor, texteAuftrag, texteEinstellungen, subUebernehmen, ansprechpartner, ansprVon, einePerson, texteFuer, anredeDefault, einstellungen: () => PL.einstellungen, kalkSetzen, kalkNorm, kalkWert, kalkFeld, satz } };
 })();
 window.Angebot = Angebot;
