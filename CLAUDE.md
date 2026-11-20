@@ -241,6 +241,11 @@ Firmendaten: eigene Einstellung `state.settings.firma` (`FIRMA_KEYS`, `firmaAnwe
 
 Ein KI-Aufruf beim Anlegen des Angebots (`kiSatzHolen` in `projekt.js`, einmal je Vorgang, nur Entwurf, mit KI-Schlüssel, Vorgabe `kiSatzAuto`, Prompt `promptKiSatz`): ein Satz aus den Wünschen (`kiSatzStoff`: `r.wishes` je Bereich, `w.gespraech.allgemein.bild`, `w.vorOrt.notiz`). Steht als „KI-Vorschlag“ unter dem Anfangstext (`kiSatzHtml`, `#kiSatz`), Übernehmen / Neu vorschlagen / Löschen inline. Übernehmen hängt ihn als Absatz an die Einleitung in `w.angebotTexte` (danach normaler Text, wird nie überschrieben). Status `w.kiSatz = { status: vorschlag|uebernommen|geloescht, text, t }`. Ein Vorschlag steht nie im PDF.
 
+## Neuerungen aus Version 125 (P8 Teil 1: Aufschläge, kein Wagnis)
+
+Aufschläge sind eine eigene Einstellung `state.settings.kalk` (`aufLohn`, `aufMat`, `aufPausch`, `mwst`, `spanne`), getrennt von der Preisliste: `kalkAnwenden(E)` spiegelt sie beim Laden in `PL.einstellungen` (alte Leser bleiben), `kalkSetzen(k, v)` aus Einstellungen › Aufschläge; das Einlesen einer Excel-Preisliste ändert sie nicht. Wagnis ist weg (Felix 20.11.): beim ersten Start eingerechnet, (1 + a) × (1 + w) − 1, Standard 31,25 % / 20,75 %, Pauschal 20 %; alte Werte in `settings.kalk.alt`. Aufschläge je Angebot (`r.angebot.kalk`) ohne `v: 2` rechnet `kalkNorm` beim Rechnen genauso um; ändern nur über `kalkWert(kalk, n, v)` (setzt `v: 2`), Anzeige `kalkFeld`. `ep/lohnEp` ohne Wagnis (`r6` gegen Rundungsfehler). Sub-Angebote übernehmen mit Zuschlag Pauschal (Vorgabe `subZuschlag` entfällt). Vorgaben `mindestMarge` 15, `ampelKnapp` 15, `skontoProzent` 2, `skontoTage` 7.
+Baustein „Planung und Statik“ (`id 'plan'`, Standard aus, `planEinfuegen`; in eigene Listen einmal eingefügt, `settings.bausteinPlan`). `planHtml/planBind` in `projekt.js`: Stichworte in der Aufnahme (`PLAN_WORT`: Wanddurchbruch, tragende Wand, Statik …) → Vorschlag bei den Schlusstexten, „Nicht nötig“ = `w.planHinweis = 'nein'`.
+
 ## Bereiche
 
 | Bereich | Dateien | Inhalt |

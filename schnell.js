@@ -179,7 +179,7 @@ window.Schnell = (() => {
     el.innerHTML += `<div class="psum"><span>Summe Paket-Positionen netto</span><b>${eur2(sumGen)}</b>
       ${nExtra ? `<span>+ einzelne Punkte netto</span><b>${eur2(s.netto - sumGen)}</b><span>Summe netto</span><b>${eur2(s.netto)}</b>` : ''}</div>
       <p class="hint">Alle Preise hier sind <b>netto</b>. Oben steht der Preis mit ${pz(E.mwst)} MwSt.<br>
-      So entsteht ein Einzelpreis (wie in deinem Excel-Angebotstool): Sub-Lohn + ${pz(E.aufLohn)} Aufschlag, plus Material + ${pz(E.aufMat)} Aufschlag, das Ganze + ${pz(E.wagnis)} Wagnis. Die Mengen rechnet die App aus der Grundfläche (Raum etwa 4 : 3, Höhe 2,50 m, eine Tür, ein Fenster) mit den Paket-Vorlagen aus den Einstellungen.</p>`;
+      So entsteht ein Einzelpreis (wie in deinem Excel-Angebotstool): Sub-Lohn + ${pz(E.aufLohn)} Zuschlag, plus Material + ${pz(E.aufMat)} Zuschlag. Die Mengen rechnet die App aus der Grundfläche (Raum etwa 4 : 3, Höhe 2,50 m, eine Tür, ein Fenster) mit den Paket-Vorlagen aus den Einstellungen.</p>`;
     $$('[data-pk2]', el).forEach((c) => (c.onchange = () => {
       const k = c.dataset.pk2; S.aus = c.checked ? S.aus.filter((x) => x !== k) : [...S.aus, k]; speichern(); rechnen();
     }));

@@ -238,7 +238,7 @@ window.VorOrt = (() => {
         } else {
           if (r.angebot.positionen.some((y) => y.frei && gleich(y.frei.text, x.text))) continue;
           r.angebot.positionen.push({ nr: 'FREI-' + uid(), frei: { text: x.text.trim(), einheit: x.einheit }, raum, menge: x.menge, bem: '', epFix: x.preis > 0 ? x.preis : 0, ki,
-            ...(x.partner ? { sub: { partnerId: '', firma: '', ep: 0, zuschlag: +vorgabe('subZuschlag') || 0 } } : {}) });
+            ...(x.partner ? { sub: { partnerId: '', firma: '', ep: 0, zuschlag: Math.round((+window.Angebot?._intern?.einstellungen?.()?.aufPausch || 0) * 10000) / 100 } } : {}) });
         }
         k++;
       }

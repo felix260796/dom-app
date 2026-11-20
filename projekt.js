@@ -750,7 +750,7 @@ window.Projekt = (() => {
     const A = window.Angebot._intern, texte = texteVon(w), anspr = A.ansprechpartner(), E = A.einstellungen();
     const KX = A.kontextFuer(w, list), passtV = (b) => A.passt(b, KX);
     const K = kopfVon(w, list), erst = K.erst, a = K.a, mitPos = mitPosVon(list), sq = schnellVon(k);
-    const proz = (x) => String(Math.round((+x || 0) * 1000) / 10).replace('.', ',');
+    const proz = (x) => String(Math.round((+x || 0) * 10000) / 100).replace('.', ',');
     const offen = window.VorOrt?.offenListe(w, list) || [];
     return `${kopf}
       <div class="ape">
@@ -774,6 +774,7 @@ window.Projekt = (() => {
           <div id="xtAng" class="xt-box"></div>
           ${list.length ? `<div class="xt-raeume"><span>Einzeln bearbeiten (Paket, Partnerangebot übernehmen):</span>${list.map((r) => `<button type="button" class="qchip" data-angraum="${r.id}">${esc(raumTitel(r))}</button>`).join('')}</div>` : ''}
           ${window.Bausteine.block({ wo: 'nach', titel: 'Schlusstext', leer: 'Kein Text nach den Positionen', liste: texte, passt: passtV })}
+          ${planHtml(w, list, texte)}
           <p class="hint">Am Schluss stehen „${esc(vorgabeText('textGruss'))}“ mit ${esc(A.einePerson(K.anspr) || anspr[0] || 'Name')}, Unterschrift und Stempel, danach die Auftragserteilung für den Kunden.</p>
         </div>
         <aside class="ape-seite">
@@ -793,7 +794,7 @@ window.Projekt = (() => {
           <details class="more card ape-ki" ${list.length ? '' : 'open'}><summary>${icon('sparkle')}<span>Positionen vorschlagen lassen<small>Die KI schlägt aus Notizen, Gespräch und Fotos Positionen vor</small></span>${icon('chevron', 'more-chev')}</summary>
             ${window.VorOrt?.bueroKarte(w, list) || ''}</details>
           ${erst ? `<details class="more card bs"><summary>${icon('sliders')}<span>Aufschläge<small>Nur für dieses Angebot, leer = Standard</small></span>${icon('chevron', 'more-chev')}</summary>
-            <div class="row">${[['aufLohn', 'Lohn %'], ['aufMat', 'Material %'], ['wagnis', 'Wagnis %']].map(([n, l]) => `<div><label>${l}</label><input type="text" inputmode="decimal" data-bnk="${n}" value="${a.kalk?.[n] !== undefined && a.kalk?.[n] !== null && a.kalk?.[n] !== '' ? proz(a.kalk[n]) : ''}" placeholder="${proz(E[n])}"></div>`).join('')}</div>
+            <div class="row">${[['aufLohn', 'Lohn %'], ['aufMat', 'Material %'], ['aufPausch', 'Pauschal %']].map(([n, l]) => `<div><label>${l}</label><input type="text" inputmode="decimal" data-bnk="${n}" value="${A.kalkFeld(a.kalk, n) !== '' ? proz(A.kalkFeld(a.kalk, n)) : ''}" placeholder="${proz(E[n])}"></div>`).join('')}</div>
           </details>` : ''}
           ${skontoKarte(w)}
           ${dokListe(w)}
@@ -930,7 +931,7 @@ window.Projekt = (() => {
     const K = kopfVon(w, list), erst = K.erst, a = K.a, mehrere = mitPos.length > 1;
     const s = schrittVon(w), i = SCHRITTE.findIndex((x) => x[0] === s);
     const ok = { davor: !!(k && k.privat.trim()), masse: list.length > 0, pos: mitPos.length > 0, danach: mitPos.length > 0, ansicht: !!w.angebotPdf };
-    const proz = (x) => String(Math.round((+x || 0) * 1000) / 10).replace('.', ',');
+    const proz = (x) => String(Math.round((+x || 0) * 10000) / 100).replace('.', ',');
     const nPos = mitPos.reduce((n, r) => n + r.angebot.positionen.length, 0);
     const offen = window.VorOrt?.offenListe(w, list) || [];
     const seite = {
@@ -965,11 +966,12 @@ window.Projekt = (() => {
         ${list.length ? `<div class="sec-h"><h2>Vorschlag der KI</h2></div>
         ${window.VorOrt?.bueroKarte(w, list) || ''}
         ${erst ? `<details class="more card bs"><summary>${icon('sliders')}<span>Aufschläge<small>Nur für dieses Angebot, leer = Standard</small></span>${icon('chevron', 'more-chev')}</summary>
-          <div class="row">${[['aufLohn', 'Lohn %'], ['aufMat', 'Material %'], ['wagnis', 'Wagnis %']].map(([n, l]) => `<div><label>${l}</label><input type="text" inputmode="decimal" data-bnk="${n}" value="${a.kalk?.[n] !== undefined && a.kalk?.[n] !== null && a.kalk?.[n] !== '' ? proz(a.kalk[n]) : ''}" placeholder="${proz(E[n])}"></div>`).join('')}</div>
+          <div class="row">${[['aufLohn', 'Lohn %'], ['aufMat', 'Material %'], ['aufPausch', 'Pauschal %']].map(([n, l]) => `<div><label>${l}</label><input type="text" inputmode="decimal" data-bnk="${n}" value="${A.kalkFeld(a.kalk, n) !== '' ? proz(A.kalkFeld(a.kalk, n)) : ''}" placeholder="${proz(E[n])}"></div>`).join('')}</div>
         </details>` : ''}` : `<div class="card"><p class="hint" style="margin-top:0">Noch nichts angelegt. In Schritt 2 trägst du ein, was angeboten wird.</p><button class="btn block" data-schritt="masse">Zu Schritt 2</button></div>`}`,
       danach: () => `
         <div class="sec-h"><h2>Was steht nach den Positionen?</h2></div>
         ${window.Bausteine.block({ wo: 'nach', titel: 'Schlusstexte', leer: 'Kein Text nach den Positionen', liste: texte, offen: true, passt: passtV })}
+        ${planHtml(w, list, texte)}
         <p class="hint">Am Schluss stehen immer „${esc(vorgabeText('textGruss'))}“ mit ${esc(A.einePerson(K.anspr) || anspr[0] || 'Name')}, Unterschrift und Stempel und ganz zuletzt die Auftragserteilung für den Kunden. Abwählen oder Text ändern geht hier.</p>
         ${skontoKarte(w)}`,
       ansicht: () => `
@@ -1083,6 +1085,33 @@ window.Projekt = (() => {
       const y = window.scrollY; await view(); window.scrollTo(0, y);
     }));
   }
+  // ---------- Baustein „Planung und Statik“ vorschlagen (Nachtrag P7, Runde 14) ----------
+  // Standard aus. Steht in der Aufnahme etwas wie Wanddurchbruch oder tragende Wand, schlägt DOM vor, ihn einzuschalten.
+  // Ohne KI-Aufruf: Suche nach Stichworten (geht offline). w.planHinweis = 'nein' = Vorschlag verworfen.
+  const PLAN_WORT = /(wand|decken)\s*-?\s*durchbr(uch|üche|echen)|durchbruch|tragend\w*\s+w(and|ände)|statik|statiker|stahlträger|träger\s+einziehen|wand\s+(entfernen|rausnehmen|herausnehmen|abreißen|einreißen|versetzen)|wände\s+(entfernen|rausnehmen|abreißen)/i;
+  function planStoff(w, list) {
+    const g = w.gespraech || {};
+    return [g.transcript, ...(g.allgemein?.bild || []), ...(g.allgemein?.sonstiges || []), w.vorOrt?.notiz, ...(w.vorOrt?.fragen || []).map((f) => f?.text || f),
+      ...list.flatMap((r) => [r.wishes, r.otherNotes])].filter(Boolean).map(String).join('\n');
+  }
+  function planHtml(w, list, texte) {
+    if (w.planHinweis === 'nein' || gesperrt(w)) return '';
+    const b = texte.find((x) => x.id === 'plan');
+    if (b && !b.aus) return '';
+    const m = planStoff(w, list).match(PLAN_WORT);
+    if (!m) return '';
+    return `<div class="card ki-satz" id="planHinw"><span class="ki-m">Vorschlag</span><p class="ki-t">In der Aufnahme steht „${esc(m[0])}“. Soll der Satz „Planungs- und Statikleistungen sowie Genehmigungen sind nicht enthalten.“ ins Angebot?</p>
+      <div class="ki-k"><button type="button" class="btn small" data-plan="ja">${icon('check')} Aufnehmen</button><button type="button" class="link-danger" data-plan="nein">Nicht nötig</button></div></div>`;
+  }
+  function planBind(w) {
+    $$('[data-plan]').forEach((b) => (b.onclick = async () => {
+      if (b.dataset.plan === 'nein') { w.planHinweis = 'nein'; await save(w); $('#planHinw')?.remove(); return; }
+      const l = Array.isArray(w.angebotTexte) && w.angebotTexte.length ? w.angebotTexte : texteVon(w).map((x) => ({ ...x }));
+      window.Angebot._intern.planEinfuegen(l, false);
+      w.angebotTexte = l; await save(w); toast('Steht jetzt bei den Schlusstexten.');
+      const y = window.scrollY; await view(); window.scrollTo(0, y);
+    }));
+  }
   /** Skonto für dieses Angebot (v122): leer = Standard aus den Einstellungen, 0 = kein Skonto. Betrag vom Zahlbetrag brutto. */
   function skontoKarte(w) {
     const o = w.skonto || {}, wert = (v) => (v === undefined || v === null || v === '' ? '' : String(v).replace('.', ','));
@@ -1117,11 +1146,11 @@ window.Projekt = (() => {
     $$('[data-bnk]').forEach((el) => (el.onchange = async () => {
       const v = el.value.trim(), n = parseFloat(v.replace(',', '.'));
       if (v !== '' && !Number.isFinite(n)) return toast('Bitte eine Zahl eintragen.');
-      for (const r of alle) { r.angebot.kalk ??= {}; if (v === '') delete r.angebot.kalk[el.dataset.bnk]; else r.angebot.kalk[el.dataset.bnk] = n / 100; await saveProject(r); }
+      for (const r of alle) { r.angebot.kalk = window.Angebot._intern.kalkWert(r.angebot.kalk, el.dataset.bnk, v === '' ? null : n / 100); await saveProject(r); }
       toast(v === '' ? 'Wieder der Standard aus den Einstellungen' : 'Aufschlag gilt für dieses Angebot');
       if ($('#xtAng')) { const y = window.scrollY; await view(); window.scrollTo(0, y); } // Preise in der Tabelle neu
     }));
-    kiSatzBind(w, list);
+    kiSatzBind(w, list); planBind(w);
     if (!w.kiSatz && !w.isNew && $('#kiSatz') && vorgabe('kiSatzAuto') !== 'nein' && state.settings.apiKey && !gesperrt(w) && kiSatzStoff(w, list).length) kiSatzHolen(w, list);
     $$('[data-sko]').forEach((el) => (el.onchange = async () => {
       const v = el.value.trim().replace(',', '.'), n = parseFloat(v);

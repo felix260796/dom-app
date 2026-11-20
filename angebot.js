@@ -37,8 +37,53 @@ const Angebot = (() => {
     }
     gewaehrNeu(PL.einstellungen);
     firmaAnwenden(PL.einstellungen);
+    kalkAnwenden(PL.einstellungen);
     return PL;
   }
+  // ---------- Aufschläge (P8, Runde 14) ----------
+  // Eigene Einstellung state.settings.kalk, getrennt von der Preisliste: Lohn, Material, Pauschal (Sub-Angebote), MwSt., Spanne.
+  // Wagnis gibt es nicht mehr (Felix 20.11.): beim ersten Start wird es in Lohn und Material eingerechnet, (1 + a) × (1 + w) − 1,
+  // damit die Preise gleich bleiben (25 % / 15 % + 5 % Wagnis = 31,25 % / 20,75 %). Alte Werte je Angebot (kalk ohne v: 2)
+  // rechnet kalkNorm genauso um. Das Einlesen einer Excel-Preisliste ändert die Aufschläge nicht mehr.
+  const KALK_KEYS = ['aufLohn', 'aufMat', 'aufPausch', 'mwst', 'spanne'];
+  const r4 = (x) => Math.round(x * 10000) / 10000;
+  const gesetzt = (k, n) => !!k && k[n] !== null && k[n] !== undefined && k[n] !== '';
+  function kalkAnwenden(E) {
+    const S = state.settings;
+    if (!S.kalk || typeof S.kalk !== 'object') {
+      const w = +E.wagnis || 0, l = E.aufLohn ?? 0.25, m = E.aufMat ?? 0.15;
+      S.kalk = { aufLohn: r4((1 + l) * (1 + w) - 1), aufMat: r4((1 + m) * (1 + w) - 1), aufPausch: 0.2, mwst: E.mwst ?? 0.19, spanne: E.spanne ?? 0.15, alt: { aufLohn: l, aufMat: m, wagnis: w } };
+      saveSettings();
+    }
+    if (!gesetzt(S.kalk, 'aufPausch')) S.kalk.aufPausch = 0.2;
+    for (const k of KALK_KEYS) if (gesetzt(S.kalk, k)) E[k] = S.kalk[k];
+    E.wagnis = 0;
+  }
+  /** Aufschlag in den Einstellungen ändern (Einstellungen › Aufschläge). */
+  async function kalkSetzen(k, v) {
+    await preisliste();
+    (state.settings.kalk ??= {})[k] = v; PL.einstellungen[k] = v;
+    await saveSettings();
+  }
+  /** Aufschläge eines Angebots ohne Wagnis (alte Werte umgerechnet). */
+  function kalkNorm(k) {
+    if (!k || k.v === 2) return k;
+    if (!gesetzt(k, 'aufLohn') && !gesetzt(k, 'aufMat') && !gesetzt(k, 'wagnis')) return k;
+    const alt = state.settings.kalk?.alt || { aufLohn: 0.25, aufMat: 0.15, wagnis: 0.05 };
+    const w = gesetzt(k, 'wagnis') ? +k.wagnis : alt.wagnis;
+    const out = { ...k, v: 2 }; delete out.wagnis;
+    if (gesetzt(k, 'aufLohn') || gesetzt(k, 'wagnis')) out.aufLohn = r4((1 + (gesetzt(k, 'aufLohn') ? +k.aufLohn : alt.aufLohn)) * (1 + w) - 1);
+    if (gesetzt(k, 'aufMat') || gesetzt(k, 'wagnis')) out.aufMat = r4((1 + (gesetzt(k, 'aufMat') ? +k.aufMat : alt.aufMat)) * (1 + w) - 1);
+    return out;
+  }
+  /** Einen Aufschlag im Angebot setzen (v = null: wieder Standard). Gibt das neue kalk-Objekt zurück. */
+  function kalkWert(k, n, v) {
+    const out = { ...(kalkNorm(k) || {}), v: 2 };
+    if (v === null || v === undefined || v === '') delete out[n]; else out[n] = v;
+    return out;
+  }
+  /** Wert für die Anzeige im Feld eines Angebots ('' = Standard). */
+  const kalkFeld = (k, n) => { const x = kalkNorm(k); return gesetzt(x, n) ? x[n] : ''; }
   // Firmendaten (P7): eigene Einstellung state.settings.firma, nicht mehr Teil der Preisliste. Beim ersten Start werden die
   // vorhandenen Werte übernommen. Das Einlesen einer Preisliste überschreibt sie nie mit Musterwerten.
   const FIRMA_KEYS = ['firma', 'strasse', 'ort', 'telefon', 'email', 'ustid', 'sitz', 'hrb', 'gf', 'bank', 'iban', 'bic'];
@@ -68,16 +113,17 @@ const Angebot = (() => {
   }
   const pos = (nr) => PL.positionen.find((x) => x.nr === nr);
   /** Einheitspreis Kunde netto wie im Excel (Preisliste Spalte H). */
-  // k = Nachkalkulation eines Angebots { aufLohn, aufMat, wagnis } (leer = Standard aus den Einstellungen)
-  const satz = (k, n) => (k && k[n] !== null && k[n] !== undefined && k[n] !== '' ? k[n] : PL.einstellungen[n]);
+  // k = Aufschläge eines Angebots { aufLohn, aufMat, aufPausch, v: 2 } (leer = Standard aus den Einstellungen). Kein Wagnis mehr (P8).
+  const r6 = (x) => Math.round(x * 1e6) / 1e6; // Rundungsfehler vor dem Runden auf Cent wegnehmen (60,375 bleibt 60,38)
+  const satz = (k, n) => { const x = kalkNorm(k); return gesetzt(x, n) ? +x[n] : +PL.einstellungen[n] || 0; };
   function ep(it, k) {
     const eigen = it.auf !== null && it.auf !== undefined;
-    return r2((it.lohn * (1 + (eigen ? it.auf : satz(k, 'aufLohn'))) + it.mat * (1 + satz(k, 'aufMat'))) * (1 + (eigen ? 0 : satz(k, 'wagnis'))));
+    return r2(r6(it.lohn * (1 + (eigen ? it.auf : satz(k, 'aufLohn'))) + it.mat * (1 + satz(k, 'aufMat'))));
   }
   /** Lohnanteil je Einheit netto (Preisliste Spalte L, für § 35a EStG). */
   function lohnEp(it, k) {
     const eigen = it.auf !== null && it.auf !== undefined;
-    return r2(it.lohn * (1 + (eigen ? it.auf : satz(k, 'aufLohn'))) * (1 + (eigen ? 0 : satz(k, 'wagnis'))));
+    return r2(r6(it.lohn * (1 + (eigen ? it.auf : satz(k, 'aufLohn')))));
   }
 
   // Excel-Angebotstool einlesen (Blätter „Preisliste“ und „Einstellungen“)
@@ -688,7 +734,7 @@ Gib Länge (längere Seite) und Breite der Grundfläche, Raumhöhe, Anzahl und G
         <label>Betreff (= Projektname)</label><input type="text" id="aTitel" value="${esc(betreffWert(p))}" placeholder="${esc(titelDefault(p, pk))}">
         <label>Anrede</label><input type="text" id="aAnrede" value="${esc(A.anrede)}" placeholder="${esc(anredeDefault(p))}">
         <label>Aufschläge nur für dieses Angebot (leer = Standard)</label>
-        <div class="row">${[['aufLohn', 'Lohn %'], ['aufMat', 'Material %'], ['wagnis', 'Wagnis %']].map(([n, l]) => `<div><label>${l}</label><input type="text" inputmode="decimal" data-nk="${n}" value="${A.kalk?.[n] !== undefined && A.kalk?.[n] !== null && A.kalk?.[n] !== '' ? String(Math.round(A.kalk[n] * 1000) / 10).replace('.', ',') : ''}" placeholder="${String(Math.round(PL.einstellungen[n] * 1000) / 10).replace('.', ',')}"></div>`).join('')}</div>
+        <div class="row">${[['aufLohn', 'Lohn %'], ['aufMat', 'Material %'], ['aufPausch', 'Pauschal %']].map(([n, l]) => `<div><label>${l}</label><input type="text" inputmode="decimal" data-nk="${n}" value="${kalkFeld(A.kalk, n) !== '' ? String(Math.round(kalkFeld(A.kalk, n) * 10000) / 100).replace('.', ',') : ''}" placeholder="${String(Math.round(PL.einstellungen[n] * 10000) / 100).replace('.', ',')}"></div>`).join('')}</div>
         ${A.kalk && Object.values(A.kalk).some((v) => v !== null && v !== '') || A.positionen.some((x) => x.epFix > 0) ? '<button class="btn secondary block" id="nkReset" style="margin-top:10px">Alles auf Standard zurück</button>' : ''}
         </div>
         <h3>Preisrichtung je Paket</h3>
@@ -720,8 +766,8 @@ Gib Länge (längere Seite) und Breite der Grundfläche, Raumhöhe, Anzahl und G
     if ($('#aWunsch')) $('#aWunsch').onclick = () => wunschVorschlaege(p, re).catch((e) => toast('Vorschläge gingen nicht: ' + e.message, 5000));
     $('#aNeuBerechnen').onclick = () => { if (A.geaendert && !confirm('Eigene Änderungen an den Positionen gehen verloren. Neu berechnen?')) return; A.positionen = null; A.geaendert = false; re(); };
     $$('[data-nk]').forEach((el) => (el.onchange = () => {
-      const v = el.value.trim(); A.kalk ??= {};
-      if (v === '') delete A.kalk[el.dataset.nk]; else { const n = num(v); if (!Number.isFinite(n)) return toast('Bitte eine Zahl eintragen.'); A.kalk[el.dataset.nk] = n / 100; }
+      const v = el.value.trim();
+      if (v === '') A.kalk = kalkWert(A.kalk, el.dataset.nk, null); else { const n = num(v); if (!Number.isFinite(n)) return toast('Bitte eine Zahl eintragen.'); A.kalk = kalkWert(A.kalk, el.dataset.nk, n / 100); }
       re();
     }));
     if ($('#nkReset')) $('#nkReset').onclick = () => { delete A.kalk; A.positionen.forEach((x) => delete x.epFix); re(); };
@@ -835,7 +881,7 @@ Gib Länge (längere Seite) und Breite der Grundfläche, Raumhöhe, Anzahl und G
         <label>Betreff (= Projektname)</label><input type="text" id="aTitel" value="${esc(betreffWert(p))}" placeholder="${esc(titelDefault(p, pk))}">
         <label>Anrede</label><input type="text" id="aAnrede" value="${esc(A.anrede)}" placeholder="${esc(anredeDefault(p))}">
         <label>Aufschläge nur für dieses Angebot (leer = Standard)</label>
-        <div class="row">${[['aufLohn', 'Lohn %'], ['aufMat', 'Material %'], ['wagnis', 'Wagnis %']].map(([n, l]) => `<div><label>${l}</label><input type="text" inputmode="decimal" data-nk="${n}" value="${A.kalk?.[n] !== undefined && A.kalk?.[n] !== null && A.kalk?.[n] !== '' ? String(Math.round(A.kalk[n] * 1000) / 10).replace('.', ',') : ''}" placeholder="${String(Math.round(PL.einstellungen[n] * 1000) / 10).replace('.', ',')}"></div>`).join('')}</div>
+        <div class="row">${[['aufLohn', 'Lohn %'], ['aufMat', 'Material %'], ['aufPausch', 'Pauschal %']].map(([n, l]) => `<div><label>${l}</label><input type="text" inputmode="decimal" data-nk="${n}" value="${kalkFeld(A.kalk, n) !== '' ? String(Math.round(kalkFeld(A.kalk, n) * 10000) / 100).replace('.', ',') : ''}" placeholder="${String(Math.round(PL.einstellungen[n] * 10000) / 100).replace('.', ',')}"></div>`).join('')}</div>
         </div>`}
         <button class="btn secondary block" id="tbLeeren" style="margin-top:12px">${icon('x')} Alle Mengen auf 0</button>
         <button class="btn secondary block" id="aExcel" style="margin-top:10px">Positionen fürs Excel-Tool kopieren</button>
@@ -935,8 +981,8 @@ Gib Länge (längere Seite) und Breite der Grundfläche, Raumhöhe, Anzahl und G
     betreffBinden(p);
     if ($('#aAnspr')) $('#aAnspr').onchange = (e) => { A.anspr = e.target.value; persist(p); };
     $$('[data-nk]', body).forEach((el) => (el.onchange = () => {
-      const v = el.value.trim(); A.kalk ??= {};
-      if (v === '') delete A.kalk[el.dataset.nk]; else { const n = num(v); if (!Number.isFinite(n)) return toast('Bitte eine Zahl eintragen.'); A.kalk[el.dataset.nk] = n / 100; }
+      const v = el.value.trim();
+      if (v === '') A.kalk = kalkWert(A.kalk, el.dataset.nk, null); else { const n = num(v); if (!Number.isFinite(n)) return toast('Bitte eine Zahl eintragen.'); A.kalk = kalkWert(A.kalk, el.dataset.nk, n / 100); }
       neu();
     }));
     $('#tbLeeren').onclick = () => { if (!confirm('Alle Mengen auf 0 setzen? Eigene Positionen bleiben.')) return; A.positionen = A.positionen.filter((x) => x.frei); A.geaendert = true; neu(); };
@@ -1285,9 +1331,11 @@ Gib Länge (längere Seite) und Breite der Grundfläche, Raumhöhe, Anzahl und G
   // 5 Preisbindung, 6 Zahlungsbedingungen, 7 Gewährleistung, 8 Gruß, 9 Auftragserteilung, 10 Anlage Widerruf.
   // b.gilt = { kunde: ['privat'|'firma'|'weg'] (leer = alle), preis: '' | 'ep' | 'pauschale' }: DOM wählt danach selbst aus.
   // Rechtstexte (Widerruf) bleiben leer, bis Felix sie geprüft einträgt; leere Bausteine stehen nicht im PDF.
+  const PLAN_TEXT = 'Planungs- und Statikleistungen sowie Genehmigungen sind nicht enthalten.';
   const BAUSTEIN_STD = (E) => [
     { id: 'einl', wo: 'vor', titel: '', text: 'vielen Dank für das angenehme Gespräch. Gerne bieten wir Ihnen folgende Leistungen an:' },
     { id: 'nicht', wo: 'nach', titel: 'Nicht enthalten', text: [E.textLeistung, E.textBauseits].filter(Boolean).join('\n\n') },
+    { id: 'plan', wo: 'nach', titel: 'Planung und Statik', aus: true, text: PLAN_TEXT },
     { id: 'ausf', wo: 'nach', titel: 'Ausführung', text: 'Ausführungszeitraum: {zeitraum}.' },
     { id: 'preisb', wo: 'nach', titel: 'Preisbindung', text: 'An dieses Angebot halten wir uns bis zum {gueltig} gebunden.' },
     { id: 'abr', wo: 'nach', titel: 'Abrechnung', gilt: { kunde: [], preis: 'ep' }, text: ['Alle Preise verstehen sich als Festpreise je Einheit; abgerechnet wird nach tatsächlichem Aufmaß.', 'Nicht vorhersehbare Mehrarbeiten (z. B. schlechter Untergrund, Schadstoffe) werden nach Absprache gesondert berechnet.'].join('\n\n') },
@@ -1354,9 +1402,24 @@ Gib Länge (längere Seite) und Breite der Grundfläche, Raumhöhe, Anzahl und G
    *  Selbst geänderte Texte aus der Preisliste werden einmal übernommen. */
   function stdListe() {
     const S = state.settings, E = PL.einstellungen;
-    if (Array.isArray(S.textbausteine) && S.textbausteine.length) return S.textbausteine;
+    if (Array.isArray(S.textbausteine) && S.textbausteine.length) {
+      // P8: neuer Baustein „Planung und Statik“ (aus) einmal in eigene Listen einfügen, hinter „Nicht enthalten“
+      if (!S.bausteinPlan) { S.bausteinPlan = 1; planEinfuegen(S.textbausteine, true); saveSettings(); }
+      return S.textbausteine;
+    }
     if (Array.isArray(E.bausteine) && E.bausteine.length) { S.textbausteine = E.bausteine; saveSettings(); return S.textbausteine; }
     return BAUSTEIN_STD(E);
+  }
+  /** Baustein „Planung und Statik“ in eine Liste einfügen (falls er fehlt) bzw. an- oder ausschalten. */
+  function planEinfuegen(l, aus) {
+    let b = l.find((x) => x.id === 'plan');
+    if (!b) {
+      b = { id: 'plan', wo: 'nach', titel: 'Planung und Statik', text: PLAN_TEXT };
+      const i = l.findIndex((x) => x.id === 'nicht');
+      if (i >= 0) l.splice(i + 1, 0, b); else { const j = l.findIndex((x) => x.fest); if (j >= 0) l.splice(j, 0, b); else l.push(b); }
+    }
+    if (aus) b.aus = true; else delete b.aus;
+    return b;
   }
   const bausteine = () => mitFest(stdListe());
   /** Texte eines Angebots (w): eigene Fassung oder Kopie des Standards. Wird erst beim Ändern als w.angebotTexte gespeichert. */
@@ -1528,7 +1591,7 @@ Gib Länge (längere Seite) und Breite der Grundfläche, Raumhöhe, Anzahl und G
     }
     if (!zeilen.length) return toast('Keine Positionen gefunden.', 4000);
     // Prüfen: anhaken, Menge und Text ändern, Zuschlag setzen
-    let z = +vorgabe('subZuschlag') || 0;
+    let z = r2(satz(p?.angebot?.kalk, 'aufPausch') * 100);
     const bg = document.createElement('div');
     bg.className = 'sheet-bg';
     bg.innerHTML = `<div class="sheet sub-sheet"><div class="sheet-h"><b>Positionen übernehmen</b><button class="icon-btn" data-zu aria-label="Schließen">${icon('x')}</button></div>
@@ -1593,13 +1656,13 @@ Gib Länge (längere Seite) und Breite der Grundfläche, Raumhöhe, Anzahl und G
   async function einstellungenKarte() {
     const el = $('#angebot-settings'); if (!el) return;
     await preisliste();
-    const E = PL.einstellungen, pct = (x) => Math.round(x * 100) + ' %';
+    const E = PL.einstellungen, pct = (x) => fmtNum((+x || 0) * 100, 2) + ' %';
     el.innerHTML = `<div class="card"><h2>Preisliste & Angebot</h2>
       <p class="muted">Du kannst dein <b>Excel-Angebotstool</b> laden. Einzelne Preise, Aufschläge und Texte änderst du danach direkt in der App (Einstellungen › Preisliste und › Aufschläge bzw. Textbausteine).</p>
       <div class="tot"><span class="muted">Quelle</span><span>${esc(PL.quelle || '')}</span></div>
       <div class="tot"><span class="muted">Stand</span><span>${esc(PL.stand || '')}</span></div>
       <div class="tot"><span class="muted">Positionen</span><span>${PL.positionen.length}${PL.positionen.some((x) => x.status === 'geschätzt') ? ` (${PL.positionen.filter((x) => x.status === 'geschätzt').length} geschätzt)` : ''}</span></div>
-      <div class="tot"><span class="muted">Aufschlag Lohn / Material / Wagnis</span><span>${pct(E.aufLohn)} / ${pct(E.aufMat)} / ${pct(E.wagnis)}</span></div>
+      <div class="tot"><span class="muted">Aufschlag Lohn / Material / Pauschal</span><span>${pct(E.aufLohn)} / ${pct(E.aufMat)} / ${pct(E.aufPausch)}</span></div>
       <div class="tot"><span class="muted">Firma</span><span style="text-align:right">${esc(E.firma)}<br>${esc(E.strasse)}, ${esc(E.ort)}</span></div>
       ${/0000|Muster/.test(E.telefon + E.strasse) ? '<p class="muted">Adresse und Telefon sind noch Platzhalter. Unter Einstellungen › Firma & Logo ändern.</p>' : ''}
       <button class="btn block" id="plImport" style="margin-top:10px">Excel-Angebotstool laden</button>
@@ -1651,6 +1714,6 @@ Gib Länge (längere Seite) und Breite der Grundfläche, Raumhöhe, Anzahl und G
     $('#vReset').onclick = async () => { if (!loeschFrage('Alle Paket-Vorlagen zurücksetzen?')) return; await kvDel('angebotVorlagen'); VORL = null; vorlagenView(pkgId, grp); };
   }
 
-  return { projektKarte, ansicht, einstellungenKarte, _intern: { firmaSetzen, FIRMA_KEYS, kontextFuer, passt, giltText, zahlungsplanText, privatArt, skontoVon, posDetails, preisHinweis, artText, NICHT_SUMME, init, gruppe, materialliste, uebernimmSchaetzung, masse, rechne, erzeuge, summen, bauzeit, ep, lohnEp, preisliste, vorlagen, neuerRaum, baueAngebotPdf, importExcel, naechsteNummer, mailText, bausteine, textEditor, texteAuftrag, texteEinstellungen, subUebernehmen, ansprechpartner, ansprVon, einePerson, texteFuer, anredeDefault, einstellungen: () => PL.einstellungen } };
+  return { projektKarte, ansicht, einstellungenKarte, _intern: { planEinfuegen, firmaSetzen, FIRMA_KEYS, kontextFuer, passt, giltText, zahlungsplanText, privatArt, skontoVon, posDetails, preisHinweis, artText, NICHT_SUMME, init, gruppe, materialliste, uebernimmSchaetzung, masse, rechne, erzeuge, summen, bauzeit, ep, lohnEp, preisliste, vorlagen, neuerRaum, baueAngebotPdf, importExcel, naechsteNummer, mailText, bausteine, textEditor, texteAuftrag, texteEinstellungen, subUebernehmen, ansprechpartner, ansprVon, einePerson, texteFuer, anredeDefault, einstellungen: () => PL.einstellungen, kalkSetzen, kalkNorm, kalkWert, kalkFeld, satz } };
 })();
 window.Angebot = Angebot;
