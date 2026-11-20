@@ -1077,10 +1077,10 @@ window.Projekt = (() => {
       if (was === 'weg') { w.kiSatz = { ...(w.kiSatz || {}), status: 'geloescht' }; await save(w); const el = $('#kiSatz'); if (el) el.remove(); return; }
       // Übernehmen: als eigener Absatz hinter die Einleitung, danach normaler Text
       const satz = w.kiSatz?.text; if (!satz) return;
-      const l = Array.isArray(w.angebotTexte) && w.angebotTexte.length ? w.angebotTexte : texteVon(w).map((x) => ({ ...x }));
+      const l = window.Angebot._intern.texteEigen(w) || texteVon(w).map((x) => ({ ...x }));
       const e = l.find((x) => x.id === 'einl' && x.wo === 'vor') || l.find((x) => x.wo === 'vor' && !x.fest);
       if (e) { e.text = [String(e.text || '').trim(), satz].filter(Boolean).join('\n\n'); delete e.aus; } else l.unshift({ id: uid(), wo: 'vor', titel: '', text: satz });
-      w.angebotTexte = l; w.kiSatz = { ...w.kiSatz, status: 'uebernommen', uebernommen: Date.now() };
+      await window.Angebot._intern.texteSpeichern(w, l); w.kiSatz = { ...w.kiSatz, status: 'uebernommen', uebernommen: Date.now() };
       await save(w); toast('Satz steht jetzt in der Einleitung.');
       const y = window.scrollY; await view(); window.scrollTo(0, y);
     }));
@@ -1106,9 +1106,9 @@ window.Projekt = (() => {
   function planBind(w) {
     $$('[data-plan]').forEach((b) => (b.onclick = async () => {
       if (b.dataset.plan === 'nein') { w.planHinweis = 'nein'; await save(w); $('#planHinw')?.remove(); return; }
-      const l = Array.isArray(w.angebotTexte) && w.angebotTexte.length ? w.angebotTexte : texteVon(w).map((x) => ({ ...x }));
+      const l = window.Angebot._intern.texteEigen(w) || texteVon(w).map((x) => ({ ...x }));
       window.Angebot._intern.planEinfuegen(l, false);
-      w.angebotTexte = l; await save(w); toast('Steht jetzt bei den Schlusstexten.');
+      await window.Angebot._intern.texteSpeichern(w, l); toast('Steht jetzt bei den Schlusstexten.');
       const y = window.scrollY; await view(); window.scrollTo(0, y);
     }));
   }
@@ -1165,7 +1165,7 @@ window.Projekt = (() => {
     // Texte: anhaken, was im Angebot steht. Erst beim ersten Ändern bekommt das Angebot eine eigene Fassung.
     const texte = texteVon(w);
     window.Bausteine.bind(main(), { liste: texte,
-      speichern: async () => { w.angebotTexte = texte; if (!w.isNew) await save(w); },
+      speichern: async () => { await window.Angebot._intern.texteSpeichern(w, texte); },
       bearbeiten: () => A.texteAuftrag(w, () => { view(); window.scrollTo(0, 0); }) });
   }
   /** Raum ohne Fotos und Visualisierung anlegen (fürs Angebot). Öffnet nichts. */

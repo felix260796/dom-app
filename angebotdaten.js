@@ -114,7 +114,8 @@ window.AngebotDaten = (() => {
     const vorh = await liste(w);
     const n = Math.max(+w.angebotZaehler || 0, ...vorh.map((a) => a.n || 0)) + 1;
     const a = normal({ id: uid(), vorgangId: w.id, n, art, zuId, buchstabe: 'A', status: 'entwurf', created: Date.now(),
-      inhalt: { bereiche: von ? JSON.parse(JSON.stringify(von.inhalt?.bereiche || {})) : {} } });
+      inhalt: { bereiche: von ? JSON.parse(JSON.stringify(von.inhalt?.bereiche || {})) : {},
+        ...(von?.inhalt && Object.prototype.hasOwnProperty.call(von.inhalt, 'texte') ? { texte: JSON.parse(JSON.stringify(von.inhalt.texte || [])) } : {}) } });
     if (!vorh.length && !von) standAus(a, w);
     a.vorgangNr = w.nr || '';
     cache.set(a.id, a);

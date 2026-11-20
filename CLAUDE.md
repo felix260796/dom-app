@@ -280,6 +280,10 @@ Briefkopf im PDF (`baueAngebotPdf`): neue Fassung „Ersetzt Angebot 1001-01-01A
 Versandweg: `WEGE` mail/whatsapp/druck/persoenlich in `projekt.js` (`wegFragen`, `wegText` in `_intern`). Am PC kommt „Mail“ aus `desktopTeilen` (gibt `{ weg: 'mail' }` zurück), sonst fragt DOM nach dem Teilen einmal „Wie hat der Kunde das Angebot bekommen?“. „Als versendet markieren“ hat Datum und Weg (`datumFrage(…, mitWeg)`, Standard ausgedruckt). Gespeichert an der Fassung (`fassung.weg`, `AngebotDaten.versendet(w, { weg })`) und im Verlauf (`w.verlauf` `{ st: 'angebot', weg }`), Zeitleiste zeigt ihn.
 Betreff: Vorgabe `mailAngebotBetreff` (`{nr}`, `{betreff}` = Projektname, `{kunde}`), `Angebot._intern.versandMeta(p, w)`; am iPhone/iPad steht der Betreff auch als erste Zeile im Text (WhatsApp hat keinen Betreff). Fassungen heißen weiter 01B.
 
+## Neuerungen aus Version 133 (Runde 15: Texte je Angebot)
+
+Texte je Angebot: `Angebot._intern.texteEigen(w)` liest die eigenen Texte des aktiven Angebots (`a.inhalt.texte`, leere Liste = Standard), sonst wie bisher `w.angebotTexte` des Vorgangs. Geschrieben wird nur noch über `texteSpeichern(w, liste | null)` ans Angebot (Text-Editor, Häkchen, KI-Satz, Planung/Statik). Neue Angebote mit `von` (Alternative) erben die Texte (`AngebotDaten.neu`). Kopf: Anrede und Verfasser lagen schon je Angebot (`r.angebot` ist der Teil des aktiven Angebots); der Betreff bleibt der Projektname (Regel aus v100), `w.angebotKopf` gilt weiter nur, solange es noch keinen Bereich gibt.
+
 ## Bereiche
 
 | Bereich | Dateien | Inhalt |

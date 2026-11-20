@@ -1535,9 +1535,23 @@ Gib Länge (längere Seite) und Breite der Grundfläche, Raumhöhe, Anzahl und G
     return b;
   }
   const bausteine = () => mitFest(stdListe());
-  /** Texte eines Angebots (w): eigene Fassung oder Kopie des Standards. Wird erst beim Ändern als w.angebotTexte gespeichert. */
+  // Runde 15 (B2): Texte je Angebot statt je Vorgang. Eigene Texte liegen am Angebot (a.inhalt.texte, [] = Standard),
+  // ältere Vorgänge lesen weiter w.angebotTexte, bis das Angebot eigene Texte bekommt. Alternativen erben die Texte ihres Angebots.
+  function texteEigen(w) {
+    const a = window.AngebotDaten?.aktivSync?.(w);
+    if (a?.inhalt && Object.prototype.hasOwnProperty.call(a.inhalt, 'texte')) return Array.isArray(a.inhalt.texte) && a.inhalt.texte.length ? a.inhalt.texte : null;
+    return Array.isArray(w?.angebotTexte) && w.angebotTexte.length ? w.angebotTexte : null;
+  }
+  async function texteSpeichern(w, l) {
+    const a = window.AngebotDaten?.aktivSync?.(w);
+    if (a) { (a.inhalt ??= {}).texte = l || []; await window.AngebotDaten.speichern(a); }
+    else if (l) w.angebotTexte = l; else delete w.angebotTexte;
+    if (!w.isNew) await Projekt.save(w);
+  }
+  /** Texte eines Angebots: eigene Fassung oder Kopie des Standards. Wird erst beim Ändern gespeichert (texteSpeichern). */
   function texteFuer(w) {
-    if (Array.isArray(w?.angebotTexte) && w.angebotTexte.length) return mitFest(w.angebotTexte, w.angebotOpt);
+    const eig = texteEigen(w);
+    if (eig) return mitFest(eig, w.angebotOpt);
     const l = bausteine().map((b) => ({ ...b }));
     for (const b of l) if (b.fest && w?.angebotOpt?.[b.fest] !== undefined) { if (w.angebotOpt[b.fest]) delete b.aus; else b.aus = true; }
     return l;
@@ -1618,11 +1632,11 @@ Gib Länge (längere Seite) und Breite der Grundfläche, Raumhöhe, Anzahl und G
   /** Texte für dieses eine Angebot (gilt für alle Räume des Auftrags). Erst beim ersten Ändern wird eine eigene Fassung gespeichert. */
   async function texteAuftrag(w, zurueck) {
     await preisliste();
-    const eigen = Array.isArray(w.angebotTexte) && w.angebotTexte.length;
+    const eigen = !!texteEigen(w);
     const liste = eigen ? texteFuer(w) : kopieB(texteFuer(w));
     textEditor({ titel: 'Texte im Angebot', sub: w.customer || '', liste, vorlagen: bausteine().filter((b) => !b.fest), zurueck, gilt: true,
-      speichern: async () => { w.angebotTexte = liste; if (!w.isNew) await Projekt.save(w); },
-      std: eigen ? { label: 'Wieder die Standardtexte aus den Einstellungen', fn: async () => { if (!confirm('Die angepassten Texte dieses Angebots verwerfen und wieder die Standardtexte nehmen?')) return; delete w.angebotTexte; if (!w.isNew) await Projekt.save(w); texteAuftrag(w, zurueck); } } : null });
+      speichern: async () => { await texteSpeichern(w, liste); },
+      std: eigen ? { label: 'Wieder die Standardtexte aus den Einstellungen', fn: async () => { if (!confirm('Die angepassten Texte dieses Angebots verwerfen und wieder die Standardtexte nehmen?')) return; await texteSpeichern(w, null); if (!w.isNew) await Projekt.save(w); texteAuftrag(w, zurueck); } } : null });
   }
   /** Standard-Textfelder in den Einstellungen. */
   async function texteEinstellungen(zurueck) {
@@ -1827,6 +1841,6 @@ Gib Länge (längere Seite) und Breite der Grundfläche, Raumhöhe, Anzahl und G
     $('#vReset').onclick = async () => { if (!loeschFrage('Alle Paket-Vorlagen zurücksetzen?')) return; await kvDel('angebotVorlagen'); VORL = null; vorlagenView(pkgId, grp); };
   }
 
-  return { projektKarte, ansicht, einstellungenKarte, _intern: { versandMeta, DARST, darstAngebot, darstOptionen, darstSetzen, lohnSchaetzung, ekVon, vkVon, gewerkVon, planEinfuegen, firmaSetzen, FIRMA_KEYS, kontextFuer, passt, giltText, zahlungsplanText, privatArt, skontoVon, posDetails, preisHinweis, artText, NICHT_SUMME, init, gruppe, materialliste, uebernimmSchaetzung, masse, rechne, erzeuge, summen, bauzeit, ep, lohnEp, preisliste, vorlagen, neuerRaum, baueAngebotPdf, importExcel, naechsteNummer, mailText, bausteine, textEditor, texteAuftrag, texteEinstellungen, subUebernehmen, ansprechpartner, ansprVon, einePerson, texteFuer, anredeDefault, einstellungen: () => PL.einstellungen, kalkSetzen, kalkNorm, kalkWert, kalkFeld, satz } };
+  return { projektKarte, ansicht, einstellungenKarte, _intern: { texteEigen, texteSpeichern, versandMeta, DARST, darstAngebot, darstOptionen, darstSetzen, lohnSchaetzung, ekVon, vkVon, gewerkVon, planEinfuegen, firmaSetzen, FIRMA_KEYS, kontextFuer, passt, giltText, zahlungsplanText, privatArt, skontoVon, posDetails, preisHinweis, artText, NICHT_SUMME, init, gruppe, materialliste, uebernimmSchaetzung, masse, rechne, erzeuge, summen, bauzeit, ep, lohnEp, preisliste, vorlagen, neuerRaum, baueAngebotPdf, importExcel, naechsteNummer, mailText, bausteine, textEditor, texteAuftrag, texteEinstellungen, subUebernehmen, ansprechpartner, ansprVon, einePerson, texteFuer, anredeDefault, einstellungen: () => PL.einstellungen, kalkSetzen, kalkNorm, kalkWert, kalkFeld, satz } };
 })();
 window.Angebot = Angebot;
