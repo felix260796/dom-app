@@ -46,29 +46,36 @@ window.Finanzen = (() => {
     const subEp = (nr) => { const ps = (window.Partner?.liste() || []).flatMap((p) => window.SubProfil ? SubProfil.preiseFuer(p, nr) : [+p.preise?.[nr]]).filter((x) => x > 0); return ps.length ? Math.min(...ps) : 0; };
     if (!A || !w?.rooms?.length) return out;
     try { await A.preisliste(); } catch { return out; }
+    // P8: Soll = gewähltes (aktives bzw. zugesagtes) Angebot nach Nachlass; geplante Kosten = Einkauf aus der Kalkulation,
+    // nur wo eine Zeile keinen Einkauf hat, der günstigste Partnerpreis wie bisher.
+    const list = [];
     for (const id of w.rooms) {
       const r = await AngebotDaten.raum(id, w);
       if (!r?.angebot?.positionen?.length) continue;
+      list.push(r);
       try {
         const S = A.summen(r.angebot.positionen, r.angebot.kalk);
         out.netto += S.netto;
         for (const z of S.zeilen) {
-          const g = z.it?.gewerk || 'Sonstiges'; out.gewerke[g] = (out.gewerke[g] || 0) + z.gp;
-          if (z.zaehlt === false || z.art === 'kostenlos') continue; // Bedarf, Alternative, kostenlos: nicht im Plan
-          const ep = subEp(z.nr); out.zeilen++; if (ep) { out.mitPreis++; out.plan += z.menge * ep; }
+          const g = z.kalk?.g || z.it?.gewerk || 'Sonstiges'; out.gewerke[g] = (out.gewerke[g] || 0) + z.gp;
+          if (z.zaehlt === false) continue; // Bedarf, Alternative: nicht im Plan; kostenlos: Kosten ohne Erlös
+          const ep = z.kalk?.ekEp > 0 ? z.kalk.ekEp : subEp(z.nr); out.zeilen++; if (ep) { out.mitPreis++; out.plan += z.menge * ep; }
         }
       } catch {}
     }
+    if (window.Kalk && list.length) { try { const G = Kalk.gesamt(w, list); if (G.nachlass) { out.netto -= G.nachlass; out.nachlass = G.nachlass; } } catch {} }
     // Nachträge zählen zum Auftrag
     for (const n of w.nachtraege || []) { const gp = r2(n.menge * n.ep); out.netto += gp; out.gewerke.Nachträge = (out.gewerke.Nachträge || 0) + gp; }
     out.netto = r2(out.netto);
     return out;
   }
   function ist(pid) {
-    const out = { netto: 0, gewerke: {}, offen: 0 };
+    const out = { netto: 0, gewerke: {}, offen: 0, skonto: 0 };
     for (const b of fuerProjekt(pid)) {
-      out.netto += b.netto; const g = b.gewerk || 'Sonstiges';
-      out.gewerke[g] = (out.gewerke[g] || 0) + b.netto;
+      // Sub-Skonto zählt nur, wenn es tatsächlich gezogen wurde (b.skonto = gezogener Betrag netto, P8)
+      const n = r2((+b.netto || 0) - (+b.skonto || 0)); out.skonto += +b.skonto || 0;
+      out.netto += n; const g = b.gewerk || 'Sonstiges';
+      out.gewerke[g] = (out.gewerke[g] || 0) + n;
       if (!b.bezahlt) out.offen += brutto(b);
     }
     out.netto = r2(out.netto);
@@ -86,9 +93,9 @@ window.Finanzen = (() => {
     const gewerke = [...new Set([...Object.keys(k.soll.gewerke), ...Object.keys(k.ist.gewerke)])];
     const balken = k.soll.netto ? Math.min(100, (k.ist.netto / k.soll.netto) * 100) : 100;
     return `<div class="kalk">
-      <div class="kalk-z"><span>Angebot netto (Soll)</span><b>${eur0(k.soll.netto)}</b></div>
-      ${k.soll.mitPreis ? `<div class="kalk-z"><span>Geplante Kosten (Preise der Subunternehmer, ${k.soll.mitPreis} von ${k.soll.zeilen} Positionen)</span><b>${eur0(k.soll.plan)}</b></div>` : ''}
-      <div class="kalk-z"><span>Kosten netto (Ist)</span><b>${eur0(k.ist.netto)}</b></div>
+      <div class="kalk-z"><span>Angebot netto (Soll)${k.soll.nachlass ? ', nach Nachlass' : ''}</span><b>${eur0(k.soll.netto)}</b></div>
+      ${k.soll.mitPreis ? `<div class="kalk-z"><span>Geplante Kosten (Einkauf aus der Kalkulation, ${k.soll.mitPreis} von ${k.soll.zeilen} Positionen)</span><b>${eur0(k.soll.plan)}</b></div>` : ''}
+      <div class="kalk-z"><span>Kosten netto (Ist)${k.ist.skonto ? `, nach ${eur0(k.ist.skonto)} Skonto` : ''}</span><b>${eur0(k.ist.netto)}</b></div>
       <div class="kalk-bar"><i style="width:${balken}%;background:${k.ampel[1]}"></i></div>
       <div class="kalk-z big" style="--c:${k.ampel[1]}"><span>Marge</span><b>${eur0(k.marge)}${k.soll.netto ? ` · ${k.proz.toLocaleString('de-DE', { maximumFractionDigits: 0 })} %` : ''}</b></div>
       ${k.soll.netto ? `<p class="kalk-amp" style="--c:${k.ampel[1]}"><i></i>${{ gut: 'Im Plan', knapp: 'Knapp, Kosten im Blick behalten', kritisch: 'Kritisch, Kosten liegen über Plan' }[k.ampel[0]]}</p>` : ''}
@@ -377,6 +384,7 @@ Datum als JJJJ-MM-TT. faellig = Fälligkeitsdatum, falls angegeben (oder Datum +
           <div class="row"><div><label>Fällig am</label><input type="date" id="bFaellig" value="${esc(b.faellig)}"></div>
             <div><label>Bezahlt am</label><input type="date" id="bBezahlt" value="${esc(b.bezahlt)}"></div></div>
           ${b.bezahlt ? '' : `<button class="btn secondary block" id="bJetzt" style="margin-top:10px">${icon('check')} Heute bezahlt</button>`}
+          <label>Skonto gezogen (netto €)</label><input type="text" inputmode="decimal" id="bSkonto" value="${b.skonto ? String(b.skonto).replace('.', ',') : ''}" placeholder="nur wenn wirklich abgezogen"${(() => { const p = window.Partner?.byId(b.partnerId); return p && +p.skonto > 0 && b.netto ? ` title="Konditionen: ${String(p.skonto).replace('.', ',')} % in ${p.skontoTage || '?'} Tagen = ${eur(r2(b.netto * p.skonto / 100))}"` : ''; })()}>
           <label>Notiz</label><textarea id="bNotiz" placeholder="z. B. Abschlag 1, Skonto 2 % bis …">${esc(b.notiz)}</textarea>
         </fieldset>
         ${gesperrt ? `<button class="btn secondary big block" id="bEdit">${icon('edit')} Bearbeiten</button>` : `<button class="btn big block" id="bSave">${icon('check')} Fertig</button>`}
@@ -387,6 +395,7 @@ Datum als JJJJ-MM-TT. faellig = Fälligkeitsdatum, falls angegeben (oder Datum +
       b.projektId = $('#bProj').value; b.partnerId = $('#bPartner').value; b.von = $('#bVon').value.trim();
       b.nr = $('#bNr').value.trim(); b.datum = $('#bDatum').value; b.netto = r2(num($('#bNetto').value)); b.satz = +$('#bSatz').value;
       b.gewerk = $('#bGewerk').value; b.faellig = $('#bFaellig').value; b.bezahlt = $('#bBezahlt').value; b.notiz = $('#bNotiz').value.trim();
+      b.skonto = r2(num($('#bSkonto')?.value || '')) || 0;
     };
     const datei = async (camera) => {
       const [f] = await pickFiles({ camera, accept: camera ? 'image/*' : 'application/pdf,image/*' });

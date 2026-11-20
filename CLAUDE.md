@@ -260,6 +260,10 @@ Nachlass: `Kalk.gesamt(w, list)` (`vor`, `nachlass`, `netto`, `mwst`, `brutto`) 
 
 `Kalk.zielSetzen(w, list, wert, 'netto'|'brutto')`: Ziel = netto nach Nachlass, vor Kunden-Skonto (brutto ÷ (1 + MwSt.), § 13b = netto). `zielRechnen`: frei sind nur zählende Zeilen ohne `epFix`, ohne `x.zu`, ohne Gewerk-Zuschlag, mit Einkauf; m = (T − F − E) / Z auf den Zuschlag-Betrag (Basis ohne Ziel), Z = 0 → gleichmäßig nach Einkauf; 10 Cent, Rest auf die größte Position. Preise in `x.ziel` (Ebene `ziel` in `vkVon`, nach Gewerk, vor Angebot; Lohnanteil = VK × Lohn-EK / EK), Ziel am Angebot `a.zielpreis = { wert, art, netto, t }`. `zielStand` → „nicht mehr erreicht (+… €)“ mit „neu verteilen“, `zielEntfernen`. Unter Einkauf oder ohne freie Zeilen: Meldung, nichts verteilt. „Allgemeines verteilen“ gibt es noch nicht (käme danach).
 
+## Neuerungen aus Version 129 (P8 Teil 5: Soll/Ist)
+
+`Finanzen.soll(w)`: nur das gewählte Angebot (über `AngebotDaten.raum`, aktiv bzw. zugesagt), netto nach Nachlass (`soll.nachlass`), Gewerk aus `z.kalk.g`, geplante Kosten = Einkauf der Kalkulation (`z.kalk.ekEp`, kostenlose Zeilen zählen als Kosten), nur ohne Einkauf der günstigste Partnerpreis. `ist(pid)`: Eingangsrechnung netto minus `b.skonto` (Feld „Skonto gezogen“ `#bSkonto`, nur wenn wirklich abgezogen), `ist.skonto`. Ampel `ampelKnapp` Standard 15 (= Mindestmarge).
+
 ## Bereiche
 
 | Bereich | Dateien | Inhalt |
