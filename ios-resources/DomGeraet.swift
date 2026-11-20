@@ -21,6 +21,9 @@ import RoomPlan
 import simd
 import AVFoundation
 import PencilKit
+import PhotosUI
+import MapKit
+import CoreLocation
 
 /// Nicht in Gebrauch: Das Plugin wird über packageClassList in capacitor.config.json angemeldet (siehe Bau). Bleibt als Rückweg.
 class DomBridgeViewController: CAPBridgeViewController {
@@ -40,7 +43,7 @@ enum DomAblage {
 }
 
 @objc(DomGeraetPlugin)
-public class DomGeraetPlugin: CAPPlugin, CAPBridgedPlugin, VNDocumentCameraViewControllerDelegate, CNContactPickerDelegate, CNContactViewControllerDelegate {
+public class DomGeraetPlugin: CAPPlugin, CAPBridgedPlugin, VNDocumentCameraViewControllerDelegate, CNContactPickerDelegate, CNContactViewControllerDelegate, PHPickerViewControllerDelegate {
     public let identifier = "DomGeraetPlugin"
     public let jsName = "DomGeraet"
     public let pluginMethods: [CAPPluginMethod] = [
@@ -64,11 +67,14 @@ public class DomGeraetPlugin: CAPPlugin, CAPBridgedPlugin, VNDocumentCameraViewC
         CAPPluginMethod(name: "aufnahmeAbbrechen", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "audioFreigeben", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "zeichnen", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "mediathek", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "fahrzeit", returnType: CAPPluginReturnPromise),
     ]
 
     private var scanCall: CAPPluginCall?
     private var kontaktCall: CAPPluginCall?
     private var speichernCall: CAPPluginCall?
+    private var mediathekCall: CAPPluginCall?
     private let store = EKEventStore()
 
     override public func load() {
@@ -488,6 +494,141 @@ public class DomGeraetPlugin: CAPPlugin, CAPBridgedPlugin, VNDocumentCameraViewC
             self.zeigen(nav)
         }
     }
+
+    // MARK: Fotos aus der Mediathek (Runde 15, B7)
+    // Apples Auswahl (PHPicker) braucht keine Erlaubnis für die ganze Mediathek. Bilder kommen verkleinert als JPEG zurück.
+
+    @objc func mediathek(_ call: CAPPluginCall) {
+        DispatchQueue.main.async {
+            var cfg = PHPickerConfiguration()
+            cfg.filter = .images
+            cfg.selectionLimit = 0
+            let p = PHPickerViewController(configuration: cfg)
+            p.delegate = self
+            self.mediathekCall = call
+            self.zeigen(p)
+        }
+    }
+
+    public func picker(_ picker: PHPickerViewController, didFinishPicking results: [PHPickerResult]) {
+        let call = mediathekCall
+        mediathekCall = nil
+        picker.dismiss(animated: true)
+        guard let call = call else { return }
+        if results.isEmpty { call.resolve(["bilder": [String]()]); return }
+        let groesse = CGFloat(call.getInt("max") ?? 1600)
+        var out = [String](repeating: "", count: results.count)
+        let schutz = DispatchQueue(label: "dom.mediathek")
+        let g = DispatchGroup()
+        for (i, r) in results.enumerated() {
+            let pr = r.itemProvider
+            guard pr.canLoadObject(ofClass: UIImage.self) else { continue }
+            g.enter()
+            pr.loadObject(ofClass: UIImage.self) { obj, _ in
+                if let img = obj as? UIImage, let d = domVerkleinern(img, groesse).jpegData(compressionQuality: 0.8) {
+                    let s = "data:image/jpeg;base64," + d.base64EncodedString()
+                    schutz.sync { out[i] = s }
+                }
+                g.leave()
+            }
+        }
+        g.notify(queue: .main) {
+            call.resolve(["bilder": out.filter { !$0.isEmpty }])
+        }
+    }
+
+    // MARK: Fahrzeit mit Verkehr (Runde 15, B7): Apple Karten, kostenlos, ohne Schlüssel
+
+    @objc func fahrzeit(_ call: CAPPluginCall) {
+        let ziel = call.getString("adresse") ?? ""
+        guard !ziel.isEmpty else { call.reject("Keine Anschrift."); return }
+        DispatchQueue.main.async {
+            DomFahrt.shared.rechnen(ziel) { sek, km, fehler in
+                if let f = fehler { call.reject(f); return }
+                call.resolve(["sekunden": sek, "km": km])
+            }
+        }
+    }
+}
+
+/// Bild auf höchstens `max` Pixel (längere Seite) bringen, Drehung aus der Kamera wird dabei angewendet.
+func domVerkleinern(_ img: UIImage, _ max: CGFloat) -> UIImage {
+    let w = img.size.width * img.scale, h = img.size.height * img.scale
+    let k = Swift.min(1, max / Swift.max(w, h, 1))
+    let size = CGSize(width: (w * k).rounded(), height: (h * k).rounded())
+    let fmt = UIGraphicsImageRendererFormat()
+    fmt.scale = 1
+    fmt.opaque = true
+    return UIGraphicsImageRenderer(size: size, format: fmt).image { _ in img.draw(in: CGRect(origin: .zero, size: size)) }
+}
+
+/// Fahrzeit vom aktuellen Standort zur Anschrift (Auto, Abfahrt jetzt, mit Verkehr).
+final class DomFahrt: NSObject, CLLocationManagerDelegate {
+    static let shared = DomFahrt()
+    private let lm = CLLocationManager()
+    private var warten: [(CLLocation?) -> Void] = []
+
+    override init() {
+        super.init()
+        lm.delegate = self
+        lm.desiredAccuracy = kCLLocationAccuracyHundredMeters
+    }
+
+    func rechnen(_ adresse: String, fertig: @escaping (Double, Double, String?) -> Void) {
+        standort { ort in
+            guard let ort = ort else {
+                fertig(0, 0, "Kein Standort. Bitte DOM den Standort erlauben (iPhone-Einstellungen › DOM › Standort).")
+                return
+            }
+            CLGeocoder().geocodeAddressString(adresse) { pl, _ in
+                guard let ziel = pl?.first?.location else {
+                    DispatchQueue.main.async { fertig(0, 0, "Anschrift nicht gefunden.") }
+                    return
+                }
+                let req = MKDirections.Request()
+                req.source = MKMapItem(placemark: MKPlacemark(coordinate: ort.coordinate))
+                req.destination = MKMapItem(placemark: MKPlacemark(coordinate: ziel.coordinate))
+                req.transportType = .automobile
+                req.departureDate = Date()
+                MKDirections(request: req).calculateETA { eta, err in
+                    DispatchQueue.main.async {
+                        if let e = eta { fertig(e.expectedTravelTime, e.distance / 1000, nil) }
+                        else { fertig(0, 0, "Fahrzeit nicht berechnet: " + (err?.localizedDescription ?? "")) }
+                    }
+                }
+            }
+        }
+    }
+
+    private func standort(_ f: @escaping (CLLocation?) -> Void) {
+        if let l = lm.location, abs(l.timestamp.timeIntervalSinceNow) < 120 { f(l); return }
+        warten.append(f)
+        if warten.count > 1 { return }
+        switch lm.authorizationStatus {
+        case .notDetermined: lm.requestWhenInUseAuthorization()
+        case .denied, .restricted: alleFertig(nil)
+        default: lm.requestLocation()
+        }
+    }
+
+    private func alleFertig(_ l: CLLocation?) {
+        let w = warten
+        warten = []
+        w.forEach { $0(l) }
+    }
+
+    func locationManagerDidChangeAuthorization(_ m: CLLocationManager) {
+        guard !warten.isEmpty else { return }
+        switch m.authorizationStatus {
+        case .authorizedWhenInUse, .authorizedAlways: m.requestLocation()
+        case .denied, .restricted: alleFertig(nil)
+        default: break
+        }
+    }
+
+    func locationManager(_ m: CLLocationManager, didUpdateLocations l: [CLLocation]) { alleFertig(l.last) }
+
+    func locationManager(_ m: CLLocationManager, didFailWithError e: Error) { alleFertig(m.location) }
 }
 
 /// Gesprächsaufnahme vor Ort, die durchläuft (Wunsch Felix): bei Bildschirmsperre, in anderen Apps, beim Fotografieren.

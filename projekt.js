@@ -388,6 +388,13 @@ window.Projekt = (() => {
     $$('[data-bilder]').forEach((b) => (b.onclick = () => $('#wBilder')?.click()));
     $$('[data-reiter]').forEach((b) => (b.onclick = () => { reiterSetzen(w, b.dataset.reiter); pcWahl.set(w.id, b.dataset.reiter === 'vorort' ? 'vorort' : 'angebot'); view(); window.scrollTo(0, 0); }));
     $$('[data-pcs]').forEach((b) => (b.onclick = () => { pcWahl.set(w.id, b.dataset.pcs); view(); window.scrollTo(0, 0); }));
+    if ($('#wMediathek')) $('#wMediathek').onclick = async () => {
+      if (!k) return toast('Bitte zuerst einen Kunden zuordnen.');
+      if (w.isNew) { delete w.isNew; await save(w); }
+      const br = bereichVon(w, list);
+      const n = await Bilder.ausMediathek({ kundeId: k.id, objektId: w.objektId, projektId: w.id, ...(br ? { ordnerName: vorgabeText('ordnerBereich', { bereich: raumTitel(br), datum: new Date().toLocaleDateString('de-DE') }) || raumTitel(br), bereichId: br.id } : {}) });
+      if (n) { const y = window.scrollY; await view(); window.scrollTo(0, y); }
+    };
     if ($('#wFotos')) $('#wFotos').onclick = async () => {
       if (!k) return toast('Bitte zuerst einen Kunden zuordnen.');
       if (w.isNew) { delete w.isNew; await save(w); }
@@ -852,6 +859,7 @@ window.Projekt = (() => {
       <div class="sec-h"><h2>Fotos</h2>${nFotos ? `<span class="count">${nFotos}</span>` : ''}</div>
       <div class="docs">
         ${punkt('id="wFotos"', 'camera', 'brass', 'Fotos machen', 'Mehrere hintereinander, sie liegen danach beim Projekt')}
+        ${punkt('id="wMediathek"', 'image', 'brass', 'Aus der Mediathek', 'Fotos, die schon auf dem Gerät sind')}
         ${nFotos ? punkt('data-bilder', 'image', 'grey', 'Fotos ansehen', `${nFotos} ${nFotos === 1 ? 'Bild' : 'Bilder'} in diesem Projekt`) : ''}
       </div>
 

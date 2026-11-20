@@ -290,6 +290,31 @@ window.Bilder = (() => {
   /** Kamera öffnen und beliebig viele Fotos nacheinander machen (Kamera.serie). Jedes Foto wird sofort gespeichert:
    * in den Ordner ordnerId, sonst in den Ordner ordnerName (Standard: Vorgabe „ordnerFotos“, wird bei Bedarf angelegt).
    * { kundeId, objektId, projektId?, ordnerId?, ordnerName? } → Anzahl der Fotos. Auch für andere Bereiche (z. B. „Vor Ort“). */
+  /** Fotos aus der Mediathek in denselben Ordner wie „Fotos machen“ (Runde 15, B7). In der App Apples Auswahl,
+   * sonst die Dateiauswahl des Browsers. */
+  async function ausMediathek({ kundeId, objektId = '', projektId = '', ordnerId = '', ordnerName = '', bereichId = '' }) {
+    let roh = [];
+    if (window.Geraet?.nativ?.()) { try { roh = await Geraet.mediathek(1600); } catch (e) { toast('Mediathek ging nicht: ' + (e?.message || e), 5000); return 0; } }
+    else roh = await new Promise((ok) => {
+      const i = document.createElement('input'); i.type = 'file'; i.accept = 'image/*'; i.multiple = true;
+      i.onchange = async () => ok(await Promise.all([...i.files].map((f) => new Promise((r) => { const fr = new FileReader(); fr.onload = () => r(fr.result); fr.onerror = () => r(''); fr.readAsDataURL(f); }))));
+      i.click();
+    });
+    roh = roh.filter(Boolean);
+    if (!roh.length) return 0;
+    const nm = ordnerName || fotoOrdner(), dd = await laden(kundeId, objektId);
+    let o = ordnerId ? dd.ordner.find((x) => x.id === ordnerId) : dd.ordner.find((x) => x.name === nm && (x.projektId || '') === projektId);
+    if (!o) { o = { id: uid(), name: nm, projektId }; dd.ordner.push(o); }
+    for (const r of roh) {
+      const data = await resize(r, 1600, 'image/jpeg', 0.8), id = uid();
+      await kvSet('bild:' + id, data);
+      dd.bilder.push({ id, t: Date.now(), ordner: o.id, projektId, ...(bereichId ? { bereichId } : {}), text: '', thumb: await resize(data, 320, 'image/jpeg', 0.7) });
+    }
+    await speichern(kundeId, objektId, dd);
+    toast(`${roh.length} ${roh.length === 1 ? 'Bild' : 'Bilder'} in „${o.name}“ gespeichert`, 3500);
+    return roh.length;
+  }
+
   async function fotosMachen({ kundeId, objektId = '', projektId = '', ordnerId = '', ordnerName = '', bereichId = '' }) {
     const nm = ordnerName || fotoOrdner();
     let wo = '';
@@ -420,5 +445,5 @@ window.Bilder = (() => {
     await speichern(kid, oid, dd);
     return o;
   }
-  return { view, anzahl, ablegen, fotosMachen, alleView, laden, speichern };
+  return { view, anzahl, ablegen, fotosMachen, ausMediathek, alleView, laden, speichern };
 })();

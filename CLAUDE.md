@@ -305,6 +305,10 @@ Kundenunterschrift am iPad: Reiter Angebote (verschickt, nicht am PC) Knopf `#wU
 
 Zeichnen in der App aus TestFlight (iPad, iPhone) läuft über PencilKit: `Geraet.zeichnen` → `DomZeichnen` in `DomGeraet.swift` (Apples Werkzeugleiste, am iPad zeichnet nur der Stift, wenn das in iOS so eingestellt ist). Gilt für Skizze, Foto übermalen und Grundriss reinzeichnen (alle über `Zeichnen.oeffnen`). Gespeichert wird `striche = { nativ: true, pk, masse }` (PKDrawing Base64, Maße `[x1, y1, x2, y2]` in Blatt-Einheiten); der Hintergrund wird dafür immer auf 1200…1600 Pixel gebracht (`oeffnenNativ`), damit Weiterzeichnen passt. Maß-Werkzeug (nur mit Maßstab aus dem Raumscan): Knopf „Maß“, zwei Punkte antippen oder ziehen → Länge in m, „Maß löschen“ nimmt das letzte. Das Browser-Werkzeug in `zeichnen.js` bleibt nur für den Browser; am PC wird nicht gezeichnet (`#gSkizze`, `[data-zeichnen]` in `buero.css` ausgeblendet). Alte Zeichnungen aus dem Browser-Werkzeug werden beim Weiterzeichnen Teil des Hintergrunds.
 
+## Neuerungen aus Version 139 (Runde 15: Fahrzeit und Mediathek je Bereich)
+
+Nur in der App aus TestFlight (nativ in `DomGeraet.swift`). Fahrzeit: `Geraet.fahrzeit(adresse)` → `DomFahrt` (Standort „beim Verwenden“, `CLGeocoder`, `MKDirections.calculateETA` mit Abfahrt jetzt, also mit Verkehr, kostenlos, ohne Schlüssel), 10 Minuten je Anschrift gemerkt. Steht im Reiter Vor Ort unter der Leiste (`#beFahrt`, `fahrtZeigen` in `besuch.js`, nicht mehr nach „Termin abschließen“), mit Route-Link. Neuer Eintrag `NSLocationWhenInUseUsageDescription` in `info-zusatz.plist`. Mediathek: `Geraet.mediathek(max)` (PHPicker, mehrere, ohne Erlaubnis für die ganze Mediathek, verkleinert über `domVerkleinern`) → `Bilder.ausMediathek({ … wie fotosMachen, bereichId })`, Knopf „Aus der Mediathek“ (`#wMediathek`) im Reiter Vor Ort, landet im Ordner des gewählten Bereichs (Vorgabe `ordnerBereich`). Im Browser Dateiauswahl, am PC ausgeblendet (Hineinziehen gibt es dort).
+
 ## Bereiche
 
 | Bereich | Dateien | Inhalt |
