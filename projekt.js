@@ -793,9 +793,7 @@ window.Projekt = (() => {
             <p class="hint" style="margin:6px 0 0">Preise dieser Gewerke sind vorläufig, bis das Angebot da ist. Übernehmen über „Partnerangebot übernehmen“ im Bereich.</p></div>` : ''}
           <details class="more card ape-ki" ${list.length ? '' : 'open'}><summary>${icon('sparkle')}<span>Positionen vorschlagen lassen<small>Die KI schlägt aus Notizen, Gespräch und Fotos Positionen vor</small></span>${icon('chevron', 'more-chev')}</summary>
             ${window.VorOrt?.bueroKarte(w, list) || ''}</details>
-          ${erst ? `<details class="more card bs"><summary>${icon('sliders')}<span>Aufschläge<small>Nur für dieses Angebot, leer = Standard</small></span>${icon('chevron', 'more-chev')}</summary>
-            <div class="row">${[['aufLohn', 'Lohn %'], ['aufMat', 'Material %'], ['aufPausch', 'Pauschal %']].map(([n, l]) => `<div><label>${l}</label><input type="text" inputmode="decimal" data-bnk="${n}" value="${A.kalkFeld(a.kalk, n) !== '' ? proz(A.kalkFeld(a.kalk, n)) : ''}" placeholder="${proz(E[n])}"></div>`).join('')}</div>
-          </details>` : ''}
+          ${window.Kalk?.karte(w, list, { offen: true, gesperrt: gesperrt(w) }) || ''}
           ${skontoKarte(w)}
           ${dokListe(w)}
           <div class="ape-links">
@@ -965,9 +963,7 @@ window.Projekt = (() => {
         ${mitPos.length ? `<div class="card" style="margin-top:12px">${mitPos.map((r) => `<div class="tot"><span>${esc(raumTitel(r))}</span><span>${r.angebot.positionen.length} Pos.</span></div>`).join('')}<div class="tot big"><span>Gesamt brutto</span><b>${eur2(summe)}</b></div></div>` : ''}` : ''}
         ${list.length ? `<div class="sec-h"><h2>Vorschlag der KI</h2></div>
         ${window.VorOrt?.bueroKarte(w, list) || ''}
-        ${erst ? `<details class="more card bs"><summary>${icon('sliders')}<span>Aufschläge<small>Nur für dieses Angebot, leer = Standard</small></span>${icon('chevron', 'more-chev')}</summary>
-          <div class="row">${[['aufLohn', 'Lohn %'], ['aufMat', 'Material %'], ['aufPausch', 'Pauschal %']].map(([n, l]) => `<div><label>${l}</label><input type="text" inputmode="decimal" data-bnk="${n}" value="${A.kalkFeld(a.kalk, n) !== '' ? proz(A.kalkFeld(a.kalk, n)) : ''}" placeholder="${proz(E[n])}"></div>`).join('')}</div>
-        </details>` : ''}` : `<div class="card"><p class="hint" style="margin-top:0">Noch nichts angelegt. In Schritt 2 trägst du ein, was angeboten wird.</p><button class="btn block" data-schritt="masse">Zu Schritt 2</button></div>`}`,
+        ${window.Kalk?.karte(w, list, { gesperrt: gesperrt(w) }) || ''}` : `<div class="card"><p class="hint" style="margin-top:0">Noch nichts angelegt. In Schritt 2 trägst du ein, was angeboten wird.</p><button class="btn block" data-schritt="masse">Zu Schritt 2</button></div>`}`,
       danach: () => `
         <div class="sec-h"><h2>Was steht nach den Positionen?</h2></div>
         ${window.Bausteine.block({ wo: 'nach', titel: 'Schlusstexte', leer: 'Kein Text nach den Positionen', liste: texte, offen: true, passt: passtV })}
@@ -1151,6 +1147,8 @@ window.Projekt = (() => {
       if ($('#xtAng')) { const y = window.scrollY; await view(); window.scrollTo(0, y); } // Preise in der Tabelle neu
     }));
     kiSatzBind(w, list); planBind(w);
+    window.Kalk?.binden(w, list, view);
+    window.Kalk?.abgleichen(w, list).then((ch) => { if (ch) { const y = window.scrollY; view().then(() => window.scrollTo(0, y)); } }).catch(() => {}); // €-Zuschläge an neue Mengen anpassen
     if (!w.kiSatz && !w.isNew && $('#kiSatz') && vorgabe('kiSatzAuto') !== 'nein' && state.settings.apiKey && !gesperrt(w) && kiSatzStoff(w, list).length) kiSatzHolen(w, list);
     $$('[data-sko]').forEach((el) => (el.onchange = async () => {
       const v = el.value.trim().replace(',', '.'), n = parseFloat(v);

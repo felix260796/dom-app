@@ -69,12 +69,12 @@ window.Buero = (() => {
       const q = quellen.find((x) => x.wert === plQuelle || x.p.id === plQuelle), p = q?.p;
       if (p) SubProfil.stufeSetzen(p, q.stufe);
       if (!p) return PL.positionen.map((x) => ({ text: x.text, einheit: x.einheit, gruppe: x.gewerk || '', preis: A.ep(x), pos: { text: x.text } }));
-      return [...Object.entries(p.preise || {}).map(([nr, preis]) => { const x = posVon(nr); return x && { text: x.text, einheit: x.einheit, gruppe: x.gewerk || '', preis: +preis, pos: { text: x.text, einheit: x.einheit, ep: +preis } }; }).filter(Boolean),
-        ...(p.eigenePreise || []).map((x) => ({ text: x.text || 'Eigene Position', einheit: x.einheit || '', gruppe: 'Eigene Positionen', preis: +x.preis || 0, pos: { text: x.text || 'Eigene Position', einheit: x.einheit || '', ep: +x.preis || 0 } }))];
+      return [...Object.entries(p.preise || {}).map(([nr, preis]) => { const x = posVon(nr); return x && { text: x.text, einheit: x.einheit, gruppe: x.gewerk || '', preis: +preis, pos: { text: x.text, einheit: x.einheit, sub: { partnerId: p.id, firma: Partner.titel(p), ep: +preis, key: 'p:' + nr, stufe: q.stufe || '' } } }; }).filter(Boolean),
+        ...(p.eigenePreise || []).map((x) => ({ text: x.text || 'Eigene Position', einheit: x.einheit || '', gruppe: 'Eigene Positionen', preis: +x.preis || 0, pos: { text: x.text || 'Eigene Position', einheit: x.einheit || '', sub: { partnerId: p.id, firma: Partner.titel(p), ep: +x.preis || 0, key: 'e:' + (x.id || ''), stufe: q.stufe || '' } } }))];
     };
     el.innerHTML = `<select class="apl-q" aria-label="Preisliste"><option value="">Allgemeine Preisliste</option>${quellen.map((q) => `<option value="${esc(q.wert)}" ${q.wert === plQuelle ? 'selected' : ''}>${esc(Partner.titel(q.p))} · ${esc(q.stufe)}${q.p.gewerk ? ' · ' + esc(q.p.gewerk) : ''}${window.Sperre?.ist(q.p) ? ' (gesperrt)' : ''}</option>`).join('')}</select>
       <label class="search apl-s">${icon('search')}<input type="search" placeholder="Leistung suchen …" value="${esc(plSuche)}" autocomplete="off"></label>
-      <p class="hint apl-h">${plQuelle ? 'Partnerpreise ohne Zuschlag.' : 'Preise netto für den Kunden.'} Gruppe anklicken zum Aufklappen, mit + übernehmen oder in die Tabelle ziehen.</p>
+      <p class="hint apl-h">${plQuelle ? 'Partnerpreise sind dein Einkauf, der Zuschlag Lohn kommt dazu.' : 'Preise netto für den Kunden.'} Gruppe anklicken zum Aufklappen, mit + übernehmen oder in die Tabelle ziehen.</p>
       <div class="apl-l"></div>`;
     const liste = $('.apl-l', el);
     const zeichnen = () => {

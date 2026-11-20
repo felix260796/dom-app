@@ -112,9 +112,12 @@ window.Tabelle = (() => {
     /** Text aus der Preisliste? Dann deren Nummer. Auch „FL-03“ direkt. */
     const ausKatalog = (t) => { const s = String(t || '').trim().toLowerCase(); return s ? PL.positionen.find((it) => it.text.toLowerCase() === s || it.nr.toLowerCase() === s) : null; };
     /** Neue Position in Raum r. Gibt den Index zurück. */
-    function anlegen(r, { text, menge, einheit, ep }) {
+    function anlegen(r, { text, menge, einheit, ep, sub }) {
       r.angebot.positionen ??= [];
       const it = ausKatalog(text), m = menge > 0 ? menge : 1;
+      // Aus der Preisliste eines Partners (P8): Partnerpreis = Einkauf, Verkauf mit Zuschlag Lohn, kein fester Preis
+      if (sub && it && /^p:/.test(sub.key || '')) { r.angebot.positionen.push({ nr: it.nr, raum: it.gewerk === 'Allgemein' ? '' : raumName(r), menge: m, bem: '', sub: { ...sub } }); r.angebot.geaendert = true; return r.angebot.positionen.length - 1; }
+      if (sub) { r.angebot.positionen.push({ nr: 'FREI-' + uid(), frei: { text: String(text || '').trim(), einheit: einheit || 'Stück' }, raum: raumName(r), menge: m, bem: '', epFix: 0, sub: { ...sub } }); r.angebot.geaendert = true; return r.angebot.positionen.length - 1; }
       if (it) {
         const x = { nr: it.nr, raum: it.gewerk === 'Allgemein' ? '' : raumName(r), menge: m, bem: '' };
         if (ep > 0 && Math.abs(ep - A.ep(it, r.angebot.kalk)) > 0.005) x.epFix = r2(ep);
@@ -134,7 +137,15 @@ window.Tabelle = (() => {
       const mwst = r2(ges * (A.einstellungen().mwst || 0.19)), f = $$('tfoot td.r', box);
       f[0].textContent = zahl(ges); f[1].textContent = zahl(mwst); f[2].textContent = zahl(r2(ges + mwst)) + ' €';
       opt.geaendert?.(list.some((r) => (r.angebot.positionen || []).length));
+      kalkNeu();
     }
+    /** Karte „Kalkulation“ rechts mitrechnen (P8), ohne die Seite neu zu zeichnen. */
+    const kalkNeu = debounce(async () => {
+      const el = $('#kalkKarte'); if (!el || !window.Kalk) return;
+      await Kalk.abgleichen(w, list);
+      const neu = document.createElement('div'); neu.innerHTML = Kalk.karte(w, list, { offen: el.open, gesperrt: !!el.querySelector('input[disabled]') });
+      if (neu.firstElementChild) { el.replaceWith(neu.firstElementChild); Kalk.binden(w, list, neuZeichnen); }
+    }, 400);
 
     async function aendern(el) {
       const c = el.dataset.c;
@@ -193,7 +204,7 @@ window.Tabelle = (() => {
       if (!r) return;
       const it = !pos.ep && ausKatalog(pos.text);
       if (it && (r.angebot.positionen || []).some((x) => x.nr === it.nr)) return toast(`Steht in „${titel(r)}“ schon drin.`, 3500);
-      const i = anlegen(r, { text: pos.text, menge: 0, einheit: pos.einheit || '', ep: +pos.ep || 0 });
+      const i = anlegen(r, { text: pos.text, menge: 0, einheit: pos.einheit || '', ep: +pos.ep || 0, sub: pos.sub });
       await sichern(r);
       box.dataset.aktTitel = r.id; letzteZelle = { r: r.id, i, c: 'menge' };
       zeichnen(); toast(`In „${titel(r)}“ übernommen. Menge eintragen.`, 2500);

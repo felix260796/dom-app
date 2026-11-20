@@ -253,7 +253,7 @@ window.VorOrt = (() => {
   function offenListe(w, list) {
     const out = (w.entwurf?.offen || []).filter((o) => !o.erledigt).map((o) => ({ id: o.id, text: o.text }));
     for (const r of list) for (const x of r.angebot?.positionen || []) {
-      if (x.frei && !(x.epFix > 0)) out.push({ text: `Preis fehlt: ${raumName(r)} – ${x.frei.text}${x.ki?.partner ? ' (kommt von Partner)' : ''}` });
+      if (x.frei && !(x.epFix > 0) && !(+x.sub?.ep > 0) && !(x.ek && (+x.ek.lohn || +x.ek.mat || +x.ek.pausch))) out.push({ text: `Preis fehlt: ${raumName(r)} – ${x.frei.text}${x.ki?.partner ? ' (kommt von Partner)' : ''}` });
       else if (x.ki?.sicher === 'geschaetzt') out.push({ text: `Menge geschätzt: ${raumName(r)} – ${x.frei?.text || x.nr}, bitte prüfen` });
     }
     return out;

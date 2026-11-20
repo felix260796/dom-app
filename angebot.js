@@ -330,17 +330,64 @@ const Angebot = (() => {
     });
   }
   /** Summen eines Angebots. k = Nachkalkulation; x.epFix = von Hand gesetzter Einzelpreis (Lohnanteil anteilig). */
+  // ---------- Einkauf und Verkauf je Zeile (P8 Teil 2, Runde 14) ----------
+  // Einkauf je Einheit getrennt nach Lohn, Material und Pauschal, je nach Quelle:
+  //   vorlage        Preisliste: Sub-Lohn + Material (Material vom Sub: alles als Lohn des Subs)
+  //   subpreisliste  Preisliste eines Partners (x.sub.key): sein Preis als Lohn, bei einer Vorlage-Zeile plus unser Material
+  //   subangebot     übernommenes Angebot eines Subs (x.sub ohne key): Pauschal
+  //   angefragt      Sub angefragt, noch ohne Preis (x.sub.ep = 0): vorläufig
+  //   frei           eigene Zeile mit Einkauf x.ek = { lohn, mat, pausch }, ohne x.ek „ohne Einkauf“
+  // Verkauf: eigener Preis (x.epFix) > Zeile (x.zu = { art: '%' | '€', wert }, € = je Einheit) > Gewerk (kalk.gewerke[g].p)
+  // > Angebot (kalk.aufLohn/aufMat/aufPausch). Die tiefere Ebene gewinnt.
+  // Preisliste-Position, zu der eine Zeile gehört: die Zeile selbst oder der Preis eines Partners zu dieser Position (sub.key 'p:<nr>')
+  const basisVon = (x, it) => (!x.frei && it && it.nr === x.nr ? it : /^p:/.test(x.sub?.key || '') ? pos(x.sub.key.slice(2)) : null);
+  const subPartner = (x) => (x.sub?.partnerId ? window.Partner?.byId?.(x.sub.partnerId) : null);
+  const gewerkVon = (x, it) => String(x.frei?.gewerk || basisVon(x, it)?.gewerk || (x.frei && x.sub ? subPartner(x)?.gewerke?.[0]?.name || x.sub.firma : '') || it?.gewerk || 'Eigene Positionen');
+  /** Material vom Sub? Einstellung am Angebot je Gewerk, sonst wie im Profil des Partners (Gewerk „Material: Sub“). */
+  function matVomSub(x, k, g) {
+    const m = kalkNorm(k)?.matSub?.[g];
+    if (m !== undefined) return !!m;
+    const p = subPartner(x); return !!p && (p.gewerke || []).some((y) => y.name === g && y.material === 'sub');
+  }
+  function ekVon(x, it, k) {
+    const g = gewerkVon(x, it), matSub = matVomSub(x, k, g), b = basisVon(x, it), vorl = !x.frei && !!it && it.nr === x.nr;
+    if (x.ek && typeof x.ek === 'object') return { lohn: +x.ek.lohn || 0, mat: +x.ek.mat || 0, pausch: +x.ek.pausch || 0, quelle: 'frei', g };
+    if (x.sub && +x.sub.ep > 0) {
+      if (x.sub.key) return { lohn: +x.sub.ep, mat: b && !matSub ? +b.mat || 0 : 0, pausch: 0, quelle: 'subpreisliste', g, matSub };
+      return { lohn: 0, mat: 0, pausch: +x.sub.ep, quelle: 'subangebot', g };
+    }
+    if (x.sub && !vorl) return { lohn: 0, mat: 0, pausch: 0, quelle: 'angefragt', g, vorl: true, ohne: true };
+    if (vorl) {
+      const o = matSub ? { lohn: (+it.lohn || 0) + (+it.mat || 0), mat: 0 } : { lohn: +it.lohn || 0, mat: +it.mat || 0 };
+      return { ...o, pausch: 0, quelle: 'vorlage', g, matSub, vorl: !!x.ki?.partner };
+    }
+    return { lohn: 0, mat: 0, pausch: 0, quelle: 'frei', g, ohne: true };
+  }
+  const zuGesetzt = (z) => !!z && z.wert !== '' && z.wert !== null && z.wert !== undefined && Number.isFinite(+z.wert);
+  function vkVon(x, it, k, E) {
+    if (x.epFix > 0) return { ep: +x.epFix, ebene: 'fix' };
+    const ek = E.lohn + E.mat + E.pausch;
+    if (zuGesetzt(x.zu) && ek > 0) return { ep: r2(r6(x.zu.art === '€' ? ek + +x.zu.wert : ek * (1 + +x.zu.wert / 100))), ebene: 'zeile' };
+    const gz = kalkNorm(k)?.gewerke?.[E.g];
+    if (gz && Number.isFinite(+gz.p) && ek > 0) return { ep: r2(r6(ek * (1 + +gz.p))), ebene: 'gewerk' };
+    if (E.quelle === 'vorlage' && !E.matSub) return { ep: ep(it, k), ebene: 'angebot' };
+    if (ek > 0) return { ep: r2(r6(E.lohn * (1 + satz(k, 'aufLohn')) + E.mat * (1 + satz(k, 'aufMat')) + E.pausch * (1 + satz(k, 'aufPausch')))), ebene: 'angebot' };
+    return { ep: 0, ebene: 'ohne' };
+  }
   function summen(positionen, k) {
     const S = PL.einstellungen;
     const zeilen = positionen.map((x, i) => {
       // Eigene Position (nicht in der Preisliste): Text, Einheit und Preis stehen in der Position selbst
       const it = pos(x.nr) || (x.frei ? { nr: x.nr, text: x.frei.text || 'Eigene Position', einheit: x.frei.einheit || 'Stück', gewerk: 'Eigene Positionen', lohn: 0, mat: 0, auf: 0 } : null);
       if (!it) return null;
-      const std = ep(it, k), e = x.epFix > 0 ? x.epFix : std, l = lohnEp(it, k) * (std ? e / std : 1);
+      // P8: Einkauf je Quelle und Verkauf nach der tiefsten Ebene (eigener Preis, Zeile, Gewerk, Angebot)
+      const EK = ekVon(x, it, k), V = vkVon(x, it, k, EK);
+      const std = ep(it, k), e = V.ep, l = lohnEp(it, k) * (std ? e / std : 1);
       // Positionsart (v120): Bedarfs- und Alternativpositionen stehen mit Preis im Angebot, zählen aber nicht zur Summe;
       // „kostenlos“ zeigt den Wert und kostet 0 €. gpAnzeige = Betrag, der neben der Position steht.
       const zaehlt = !NICHT_SUMME.includes(x.art), gpA = r2(x.menge * e);
-      return { ...x, i, it, ep: e, fix: x.epFix > 0, gp: zaehlt && x.art !== 'kostenlos' ? gpA : 0, gpAnzeige: gpA, zaehlt, lohn: zaehlt && x.art !== 'kostenlos' ? r2(x.menge * l) : 0 };
+      return { ...x, i, it, ep: e, fix: x.epFix > 0, gp: zaehlt && x.art !== 'kostenlos' ? gpA : 0, gpAnzeige: gpA, zaehlt, lohn: zaehlt && x.art !== 'kostenlos' ? r2(x.menge * l) : 0,
+        kalk: { ...EK, ekEp: r2(EK.lohn + EK.mat + EK.pausch), ebene: V.ebene, zuEp: r2(e - (EK.lohn + EK.mat + EK.pausch)) } };
     }).filter(Boolean);
     const netto = r2(zeilen.reduce((s, z) => s + z.gp, 0));
     const mwst = r2(netto * S.mwst), brutto = r2(netto + mwst);
@@ -907,12 +954,12 @@ Gib Länge (längere Seite) und Breite der Grundfläche, Raumhöhe, Anzahl und G
       if (p && window.Sperre && !(await Sperre.pruefen(p, 'Preisliste im Angebot', (x) => Partner.speichern(x)))) { e.target.value = plWahl; return; }
       plWahl = e.target.value; neu();
     };
-    // Menge aus der Preisliste eines Partners: wird eine eigene Position zum Einkaufspreis, ohne Zuschlag
+    // Menge aus der Preisliste eines Partners: wird eine eigene Position, Partnerpreis = Einkauf, darauf der Zuschlag Lohn (P8)
     $$('[data-pq]', body).forEach((inp) => (inp.onchange = () => {
       const z = plZeilen.find((y) => y.key === inp.dataset.pq), q = num(inp.value), alt = plPos(z.key);
       if (alt && !(q > 0)) A.positionen = A.positionen.filter((y) => y !== alt);
       else if (alt) alt.menge = q;
-      else if (q > 0) A.positionen.push({ nr: 'FREI-' + uid(), frei: { text: z.text, einheit: z.einheit }, raum: raumName, menge: q, bem: '', epFix: r2(z.ep), sub: { partnerId: plP.id, firma: plP.firma || plP.inhaber || '', ep: r2(z.ep), zuschlag: 0, key: z.key, stufe: plQ?.stufe || '' } });
+      else if (q > 0) A.positionen.push({ nr: 'FREI-' + uid(), frei: { text: z.text, einheit: z.einheit }, raum: raumName, menge: q, bem: '', sub: { partnerId: plP.id, firma: plP.firma || plP.inhaber || '', ep: r2(z.ep), key: z.key, stufe: plQ?.stufe || '' } }); // P8: Partnerpreis = Einkauf, Zuschlag Lohn kommt dazu
       A.geaendert = true; neu();
     }));
     // Menge eintippen: eine Zeile je Position (Raum = dieser Raum, Allgemeines ohne Raum)
@@ -1714,6 +1761,6 @@ Gib Länge (längere Seite) und Breite der Grundfläche, Raumhöhe, Anzahl und G
     $('#vReset').onclick = async () => { if (!loeschFrage('Alle Paket-Vorlagen zurücksetzen?')) return; await kvDel('angebotVorlagen'); VORL = null; vorlagenView(pkgId, grp); };
   }
 
-  return { projektKarte, ansicht, einstellungenKarte, _intern: { planEinfuegen, firmaSetzen, FIRMA_KEYS, kontextFuer, passt, giltText, zahlungsplanText, privatArt, skontoVon, posDetails, preisHinweis, artText, NICHT_SUMME, init, gruppe, materialliste, uebernimmSchaetzung, masse, rechne, erzeuge, summen, bauzeit, ep, lohnEp, preisliste, vorlagen, neuerRaum, baueAngebotPdf, importExcel, naechsteNummer, mailText, bausteine, textEditor, texteAuftrag, texteEinstellungen, subUebernehmen, ansprechpartner, ansprVon, einePerson, texteFuer, anredeDefault, einstellungen: () => PL.einstellungen, kalkSetzen, kalkNorm, kalkWert, kalkFeld, satz } };
+  return { projektKarte, ansicht, einstellungenKarte, _intern: { ekVon, vkVon, gewerkVon, planEinfuegen, firmaSetzen, FIRMA_KEYS, kontextFuer, passt, giltText, zahlungsplanText, privatArt, skontoVon, posDetails, preisHinweis, artText, NICHT_SUMME, init, gruppe, materialliste, uebernimmSchaetzung, masse, rechne, erzeuge, summen, bauzeit, ep, lohnEp, preisliste, vorlagen, neuerRaum, baueAngebotPdf, importExcel, naechsteNummer, mailText, bausteine, textEditor, texteAuftrag, texteEinstellungen, subUebernehmen, ansprechpartner, ansprVon, einePerson, texteFuer, anredeDefault, einstellungen: () => PL.einstellungen, kalkSetzen, kalkNorm, kalkWert, kalkFeld, satz } };
 })();
 window.Angebot = Angebot;
