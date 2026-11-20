@@ -303,8 +303,35 @@ const Angebot = (() => {
     return Math.abs(d) >= g ? `${Math.round(Math.abs(d))} % ${d > 0 ? 'über' : 'unter'} der Preisliste (${fmtEur(std)})` : '';
   }
   /** Position bearbeiten: Art, Langtext (steht im PDF unter der Leistung), interne Notiz (nie im PDF). Gibt true zurück, wenn geändert. */
-  function posDetails(x, titel = '') {
+  // ---------- Bilder an Positionen (Runde 15, B4): x.bilder = [{ id, imPdf }] mit id aus den Bildern des Objekts ----------
+  const bildFmt = (d) => (/^data:image\/png/.test(d) ? 'PNG' : 'JPEG');
+  async function bilderDesVorgangs(w) {
+    if (!w?.kundeId || !window.Bilder) return [];
+    const d = await window.Bilder.laden(w.kundeId, w.objektId || '');
+    return [...d.bilder].sort((a, b) => (b.projektId === w.id) - (a.projektId === w.id) || (b.t || 0) - (a.t || 0));
+  }
+  async function bildWaehlen(w, schon = []) {
+    const l = (await bilderDesVorgangs(w)).filter((b) => !schon.includes(b.id));
+    if (!l.length) { toast('Zu diesem Kunden gibt es noch keine Fotos.', 4000); return null; }
     return new Promise((res) => {
+      const bg = document.createElement('div'); bg.className = 'sheet-bg';
+      bg.innerHTML = `<div class="sheet"><div class="sheet-h"><b>Bild zur Position</b><button class="icon-btn" data-zu aria-label="Schließen">${icon('x')}</button></div>
+        <div class="pb-wahl">${l.slice(0, 120).map((b) => `<button type="button" data-pbw="${esc(b.id)}"><img src="${b.thumb}" alt=""></button>`).join('')}</div></div>`;
+      document.body.appendChild(bg); requestAnimationFrame(() => bg.classList.add('on'));
+      bg.onclick = (e) => { const t = e.target.closest('[data-pbw]'); if (t) { bg.remove(); return res(t.dataset.pbw); } if (e.target === bg || e.target.closest('[data-zu]')) { bg.remove(); res(null); } };
+    });
+  }
+  async function bildThumbs(ids) {
+    const out = new Map(); if (!ids.length || !state.wohnung?.kundeId) return out;
+    const d = await window.Bilder.laden(state.wohnung.kundeId, state.wohnung.objektId || '');
+    for (const b of d.bilder) if (ids.includes(b.id)) out.set(b.id, b.thumb);
+    return out;
+  }
+  function posDetails(x, titel = '') {
+    return new Promise(async (res) => {
+      const bilder = (x.bilder || []).map((b) => ({ ...b })), th = await bildThumbs(bilder.map((b) => b.id));
+      const bilderHtml = () => `${bilder.map((b, i) => `<div class="pb-z"><img src="${th.get(b.id) || ''}" alt=""><label><input type="checkbox" data-pbpdf="${i}" ${b.imPdf ? 'checked' : ''}> im PDF zeigen</label><button type="button" class="icon-btn" data-pbweg="${i}" aria-label="Bild entfernen">${icon('x')}</button></div>`).join('')}
+        <button type="button" class="link-add" id="pdBild">${icon('camera')} Bild hinzufügen</button>`;
       const bg = document.createElement('div');
       bg.className = 'sheet-bg';
       bg.innerHTML = `<div class="sheet sub-sheet"><div class="sheet-h"><b>${esc(titel || x.frei?.text || pos(x.nr)?.text || 'Position')}</b><button class="icon-btn" data-zu aria-label="Schließen">${icon('x')}</button></div>
@@ -316,19 +343,28 @@ const Angebot = (() => {
         <label>Lohnanteil in % (für § 35a)</label>
         <input type="text" id="pdLohn" inputmode="decimal" value="${esc(x.lohnP ?? '')}" placeholder="leer = aus der Preisliste bzw. geschätzt nach Gewerk">
         <p class="hint" style="margin:4px 0 0">Bei Positionen ohne Preisliste schätzt DOM den Lohnanteil je Gewerk (Einstellungen › Kalkulation). Mit einem Wert hier gilt er als bestätigt.</p>
+        <label>Bilder zur Position</label><div id="pdBilder" class="pb-l">${bilderHtml()}</div>
         <label>Interne Notiz (nie im Angebot)</label>
         <textarea id="pdNotiz" data-frei rows="2" placeholder="z. B. Preis mit Kaya abgestimmt">${esc(x.notiz || '')}</textarea>
         <button class="btn block" data-ok style="margin-top:12px">Übernehmen</button></div>`;
       $('[data-ok]', bg).onclick = () => {
         const art = $('#pdArt', bg).value, lang = $('#pdLang', bg).value.trim(), notiz = $('#pdNotiz', bg).value.trim();
         const lohn = $('#pdLohn', bg).value.trim().replace('%', '').trim();
-        const neu = art !== (x.art || '') || lang !== (x.lang || '') || notiz !== (x.notiz || '') || lohn !== String(x.lohnP ?? '');
+        const bNeu = JSON.stringify(bilder) !== JSON.stringify(x.bilder || []);
+        const neu = bNeu || art !== (x.art || '') || lang !== (x.lang || '') || notiz !== (x.notiz || '') || lohn !== String(x.lohnP ?? '');
+        if (bilder.length) x.bilder = bilder; else delete x.bilder;
         if (lohn !== '' && Number.isFinite(parseFloat(lohn.replace(',', '.')))) x.lohnP = lohn; else delete x.lohnP;
         if (art) x.art = art; else delete x.art;
         if (lang) x.lang = lang; else delete x.lang;
         if (notiz) x.notiz = notiz; else delete x.notiz;
         bg.remove(); res(neu);
       };
+      const pb = () => $('#pdBilder', bg);
+      pb().onclick = async (e) => {
+        const weg = e.target.closest('[data-pbweg]'); if (weg) { bilder.splice(+weg.dataset.pbweg, 1); pb().innerHTML = bilderHtml(); return; }
+        if (e.target.closest('#pdBild')) { const id = await bildWaehlen(state.wohnung, bilder.map((b) => b.id)); if (!id) return; bilder.push({ id, imPdf: true }); for (const [k, v] of await bildThumbs([id])) th.set(k, v); pb().innerHTML = bilderHtml(); }
+      };
+      pb().onchange = (e) => { const c = e.target.closest('[data-pbpdf]'); if (c) bilder[+c.dataset.pbpdf].imPdf = c.checked; };
       bg.onclick = (e) => { if (e.target === bg || e.target.closest('[data-zu]')) { bg.remove(); res(false); } };
       document.body.appendChild(bg);
       requestAnimationFrame(() => bg.classList.add('on'));
@@ -1252,7 +1288,20 @@ Gib Länge (längere Seite) und Breite der Grundfläche, Raumhöhe, Anzahl und G
         else if (z.art === 'kostenlos') t('kostenlos', C.gp, y, { align: 'right' });
         let yy = y + 4.3 * lines.length;
         if (lang.length || art.length) { doc.setFontSize(8); doc.setTextColor(90); if (lang.length) { t(lang, C.txt, yy); yy += 3.6 * lang.length; } if (art.length) { doc.setFont('helvetica', 'italic'); t(art, C.txt, yy); doc.setFont('helvetica', 'normal'); } doc.setTextColor(30); doc.setFontSize(9); }
-        y += h; doc.setDrawColor(230); doc.line(M - 1, y - 3.2, R + 1, y - 3.2);
+        y += h;
+        const pb = (z.bilder || []).filter((b) => b.imPdf);
+        if (pb.length) {
+          const bw = 42, bh = 30;
+          for (let k = 0; k < pb.length; k += 3) {
+            await platz(bh + 3, true);
+            for (const [j, b] of pb.slice(k, k + 3).entries()) {
+              const data = (await kvGet('bild:' + b.id)) || null;
+              if (data) { try { await addFit(doc, data, C.txt + j * (bw + 3), y - 2, bw, bh, bildFmt(data)); } catch (e) { console.warn('Bild', e); } }
+            }
+            y += bh + 2;
+          }
+        }
+        doc.setDrawColor(230); doc.line(M - 1, y - 3.2, R + 1, y - 3.2);
       }
       if (dar === 'inhalt' && raeume.length === 1) { await platz(7); doc.setFont('helvetica', 'bold'); doc.setFontSize(8.5); t('Paketpreis für die oben genannten Leistungen', C.txt, y); t(fmtEur(titelSumme(rn)), C.gp, y, { align: 'right' }); doc.setFont('helvetica', 'normal'); y += 6; }
       if (raeume.length > 1) { await platz(7); doc.setFont('helvetica', 'bold'); doc.setFontSize(8.5); t(`${dar === 'inhalt' ? 'Paketpreis' : 'Summe'} ${ti} ${rn || 'Allgemein'}`, C.txt, y); t(fmtEur(titelSumme(rn)), C.gp, y, { align: 'right' }); doc.setFont('helvetica', 'normal'); y += 6; }
@@ -1841,6 +1890,6 @@ Gib Länge (längere Seite) und Breite der Grundfläche, Raumhöhe, Anzahl und G
     $('#vReset').onclick = async () => { if (!loeschFrage('Alle Paket-Vorlagen zurücksetzen?')) return; await kvDel('angebotVorlagen'); VORL = null; vorlagenView(pkgId, grp); };
   }
 
-  return { projektKarte, ansicht, einstellungenKarte, _intern: { texteEigen, texteSpeichern, versandMeta, DARST, darstAngebot, darstOptionen, darstSetzen, lohnSchaetzung, ekVon, vkVon, gewerkVon, planEinfuegen, firmaSetzen, FIRMA_KEYS, kontextFuer, passt, giltText, zahlungsplanText, privatArt, skontoVon, posDetails, preisHinweis, artText, NICHT_SUMME, init, gruppe, materialliste, uebernimmSchaetzung, masse, rechne, erzeuge, summen, bauzeit, ep, lohnEp, preisliste, vorlagen, neuerRaum, baueAngebotPdf, importExcel, naechsteNummer, mailText, bausteine, textEditor, texteAuftrag, texteEinstellungen, subUebernehmen, ansprechpartner, ansprVon, einePerson, texteFuer, anredeDefault, einstellungen: () => PL.einstellungen, kalkSetzen, kalkNorm, kalkWert, kalkFeld, satz } };
+  return { projektKarte, ansicht, einstellungenKarte, _intern: { bildWaehlen, texteEigen, texteSpeichern, versandMeta, DARST, darstAngebot, darstOptionen, darstSetzen, lohnSchaetzung, ekVon, vkVon, gewerkVon, planEinfuegen, firmaSetzen, FIRMA_KEYS, kontextFuer, passt, giltText, zahlungsplanText, privatArt, skontoVon, posDetails, preisHinweis, artText, NICHT_SUMME, init, gruppe, materialliste, uebernimmSchaetzung, masse, rechne, erzeuge, summen, bauzeit, ep, lohnEp, preisliste, vorlagen, neuerRaum, baueAngebotPdf, importExcel, naechsteNummer, mailText, bausteine, textEditor, texteAuftrag, texteEinstellungen, subUebernehmen, ansprechpartner, ansprVon, einePerson, texteFuer, anredeDefault, einstellungen: () => PL.einstellungen, kalkSetzen, kalkNorm, kalkWert, kalkFeld, satz } };
 })();
 window.Angebot = Angebot;

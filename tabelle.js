@@ -94,7 +94,7 @@ window.Tabelle = (() => {
               : `<tr class="xt-titel"><td class="xt-nr">${g > 1 && tn ? tn : ''}</td><td colspan="${4 + kc}"><b>${esc(titel(r))}</b></td><td class="r" data-zs="${r.id}">${zs.length ? zahl(zs.reduce((a, z) => a + z.gp, 0)) : ''}</td>${ks ? '<td></td>' : ''}</tr>`)
             + `
             ${zs.map((z) => { nrIn[z.ri] = (nrIn[z.ri] || 0) + 1; return `<tr data-r="${z.r.id}" data-i="${z.i}" class="${z.x.frei ? 'frei' : ''} ${z.zaehlt ? '' : 'nz'} ${z.x.art === 'kostenlos' ? 'kl' : ''}">
-            <td class="xt-nr">${g > 1 ? `${gNr[z.ri]}.` : ''}${nrIn[z.ri]}${marke(z.x)}${{ bedarf: '<span class="xt-m b" title="Bedarfsposition, nicht in der Summe">B</span>', alternativ: '<span class="xt-m a" title="Alternativposition, nicht in der Summe">A</span>', kostenlos: '<span class="xt-m k" title="Kostenlos">0</span>' }[z.x.art] || ''}<button type="button" class="xt-d ${z.x.lang || z.x.notiz ? 'hat' : ''}" data-xd title="${esc(z.x.notiz ? 'Notiz: ' + z.x.notiz : 'Art, Langtext, interne Notiz')}" aria-label="Details">…</button></td>
+            <td class="xt-nr">${g > 1 ? `${gNr[z.ri]}.` : ''}${nrIn[z.ri]}${marke(z.x)}${{ bedarf: '<span class="xt-m b" title="Bedarfsposition, nicht in der Summe">B</span>', alternativ: '<span class="xt-m a" title="Alternativposition, nicht in der Summe">A</span>', kostenlos: '<span class="xt-m k" title="Kostenlos">0</span>' }[z.x.art] || ''}${z.x.bilder?.length ? `<span class="xt-m bi" title="${z.x.bilder.length} ${z.x.bilder.length === 1 ? 'Bild' : 'Bilder'} an der Position${z.x.bilder.some((b) => b.imPdf) ? ', im PDF' : ''}">${icon('camera')}</span>` : ''}<button type="button" class="xt-d ${z.x.lang || z.x.notiz || z.x.bilder?.length ? 'hat' : ''}" data-xd title="${esc(z.x.notiz ? 'Notiz: ' + z.x.notiz : 'Art, Langtext, interne Notiz')}" aria-label="Details">…</button></td>
             <td><input data-c="text" value="${esc(z.text)}" list="xtPL" title="${esc(z.x.frei ? 'Eigene Position' : `${z.x.nr} aus der Preisliste`)}" autocomplete="off"></td>
             <td><input data-c="menge" class="r" value="${esc(mengeText(z.x.menge))}" autocomplete="off"></td>
             <td><input data-c="einheit" value="${esc(z.einheit)}" list="xtEh" autocomplete="off"></td>${kalkZellen(z)}
@@ -354,9 +354,19 @@ window.Tabelle = (() => {
         if (e.target.matches('input') && !tr?.dataset.neu) e.target.select();
       };
       // Positionen aus der Seitenleiste (Preislisten) hineinziehen: landet im Titel der Zeile, auf die man loslässt
-      box.ondragover = (e) => { if (e.dataTransfer?.types?.includes('application/x-dom-pos')) { e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; $$('tr.drop', box).forEach((t) => t.classList.remove('drop')); e.target.closest?.('tbody tr')?.classList.add('drop'); } };
+      box.ondragover = (e) => { if (e.dataTransfer?.types?.includes('application/x-dom-bild')) { e.preventDefault(); e.dataTransfer.dropEffect = 'link'; $$('tr.drop', box).forEach((t) => t.classList.remove('drop')); e.target.closest?.('tbody tr[data-i]')?.classList.add('drop'); return; }
+        if (e.dataTransfer?.types?.includes('application/x-dom-pos')) { e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; $$('tr.drop', box).forEach((t) => t.classList.remove('drop')); e.target.closest?.('tbody tr')?.classList.add('drop'); } };
       box.ondragleave = (e) => { if (!box.contains(e.relatedTarget)) $$('tr.drop', box).forEach((t) => t.classList.remove('drop')); };
       box.ondrop = (e) => {
+        const bid = e.dataTransfer?.getData('application/x-dom-bild');
+        if (bid) {
+          e.preventDefault(); e.stopPropagation(); $$('tr.drop', box).forEach((t) => t.classList.remove('drop'));
+          const tr = e.target.closest?.('tbody tr[data-i]'); if (!tr) return toast('Bild auf eine Position ziehen.', 3000);
+          const r = list.find((x) => x.id === tr.dataset.r), x = r?.angebot?.positionen?.[+tr.dataset.i]; if (!x) return;
+          if (!(x.bilder ||= []).some((b) => b.id === bid)) x.bilder.push({ id: bid, imPdf: true });
+          r.angebot.geaendert = true; sichern(r).then(() => { zeichnen(); toast('Bild hängt an der Position und steht im PDF. Ändern über „…“.', 3500); });
+          return;
+        }
         const d = e.dataTransfer?.getData('application/x-dom-pos'); if (!d) return;
         e.preventDefault(); e.stopPropagation(); $$('tr.drop', box).forEach((t) => t.classList.remove('drop'));
         const tr = e.target.closest?.('tbody tr');

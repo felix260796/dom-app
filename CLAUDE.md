@@ -284,6 +284,10 @@ Betreff: Vorgabe `mailAngebotBetreff` (`{nr}`, `{betreff}` = Projektname, `{kund
 
 Texte je Angebot: `Angebot._intern.texteEigen(w)` liest die eigenen Texte des aktiven Angebots (`a.inhalt.texte`, leere Liste = Standard), sonst wie bisher `w.angebotTexte` des Vorgangs. Geschrieben wird nur noch über `texteSpeichern(w, liste | null)` ans Angebot (Text-Editor, Häkchen, KI-Satz, Planung/Statik). Neue Angebote mit `von` (Alternative) erben die Texte (`AngebotDaten.neu`). Kopf: Anrede und Verfasser lagen schon je Angebot (`r.angebot` ist der Teil des aktiven Angebots); der Betreff bleibt der Projektname (Regel aus v100), `w.angebotKopf` gilt weiter nur, solange es noch keinen Bereich gibt.
 
+## Neuerungen aus Version 134 (Runde 15: Bilder an Positionen)
+
+Bilder an Positionen: `x.bilder = [{ id, imPdf }]` (id aus `bilder:<kunde>:<objekt>`, Bild in `bild:<id>`). PC: Bild aus dem Reiter Bilder rechts (`.apb-b` ist `draggable`, Typ `application/x-dom-bild`) auf eine Zeile der Tabelle ziehen (`box.ondrop` in `tabelle.js`), Kennzeichen `.xt-m.bi`. Überall: Positionsdetails (`posDetails`) mit Bildern, Haken „im PDF zeigen“, Entfernen, „Bild hinzufügen“ (`bildWaehlen`, Bilder des Objekts, eigene des Vorgangs zuerst). PDF: bis zu drei Bilder nebeneinander unter der Position (42 × 30 mm).
+
 ## Bereiche
 
 | Bereich | Dateien | Inhalt |
