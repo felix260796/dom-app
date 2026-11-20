@@ -63,6 +63,9 @@ const VORGABEN = {
   ablauf: [
     ['Vor-Ort-Termin', [
       { k: 'aufnahmeEinverstaendnis', l: 'Vor der Gesprächsaufnahme fragen, ob der Kunde einverstanden ist', t: 'janein', d: 'ja', h: 'Einmal je Vorgang. „Ja“ wird mit Uhrzeit und Namen vermerkt, ohne „Ja“ startet keine Aufnahme.' },
+      { k: 'audioAblage', l: 'Gesprächsaufnahmen in der Cloud ablegen (zum Nachhören auf jedem Gerät)', t: 'janein', d: 'ja', h: 'Nur mit Cloud-Abgleich. Auf der Seite „Aufnahme prüfen“ gibt es dann an jeder Zeile „Ab hier anhören“.' },
+      { k: 'audioBehaltenMonate', l: 'Abgelegte Aufnahmen nach so vielen Monaten löschen', t: 'zahl', d: 6 },
+      { k: 'auswertungCloud', l: 'Gespräch in der Cloud auswerten (Supabase-Funktion „auswertung“)', t: 'janein', d: 'ja', h: 'Braucht den Gemini-Schlüssel als Secret GEMINI_API_KEY in Supabase (Anleitung AUSWERTUNG_EINRICHTEN.md). Klappt es nicht, wertet das Gerät wie bisher selbst aus.' },
       { k: 'aufnahmeTeilMin', l: 'Lange Aufnahmen in Stücke teilen, alle so viele Minuten', t: 'zahl', d: 30, h: 'Die Aufnahme läuft ohne Grenze weiter. Jedes Stück wird gleich ausgewertet und hinten ans Gespräch gehängt.' },
       { k: 'spaeterMinuten', l: '„Ich komme später“: Auswahl in Minuten (eine Zeile je Wert)', t: 'liste', d: ['10', '15', '20', '30'] },
       { k: 'textSpaeter', l: 'Nachricht „Ich komme später“', t: 'text', d: '{anrede}\nich bin etwas später bei Ihnen, in etwa {minuten} Minuten. Bitte entschuldigen Sie.\nViele Grüße\n{name}', h: '{anrede} = Briefanrede des Kunden, {minuten}, {name} = wer das Gerät hat, {firma}. Geht per SMS, WhatsApp oder Mail, du tippst nur noch „Senden“.' },

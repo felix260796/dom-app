@@ -404,6 +404,20 @@ window.Sync = (() => {
   setInterval(() => { if (document.visibilityState === 'visible') run(); }, 60000);
   setTimeout(() => run(), 1500);
 
+  // ---------- Dateien (Runde 15, B8: Audio-Ablage) unter team/<pfad>, nicht Teil des Abgleichs (der liest nur team/*.json) ----------
+  const pfadTeile = (p) => String(p).split('/').map(encodeURIComponent).join('/');
+  async function dateiHoch(pfad, blob) {
+    if (!active()) throw new Error('Cloud-Abgleich ist nicht eingerichtet.');
+    await api(`object/${BUCKET}/${SPACE}/${pfadTeile(pfad)}`, { method: 'POST', headers: { 'Content-Type': blob.type || 'application/octet-stream', 'x-upsert': 'true' }, body: blob });
+    return `${SPACE}/${pfad}`;
+  }
+  const dateiLaden = async (key) => (await api(`object/authenticated/${BUCKET}/${pfadTeile(key)}`)).blob();
+  async function dateiListe(ordner) {
+    const r = await api(`object/list/${BUCKET}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ prefix: `${SPACE}/${ordner}`, limit: 1000, offset: 0, sortBy: { column: 'created_at', order: 'asc' } }) });
+    return (await r.json()).filter((x) => x.id).map((x) => ({ ...x, key: `${SPACE}/${ordner}/${x.name}` }));
+  }
+  const dateiWeg = (keys) => (keys.length ? api(`object/${BUCKET}`, { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ prefixes: keys }) }) : null);
+
   /** Supabase Edge Function aufrufen (z. B. 'termin-mail'), angemeldet als der App-Benutzer. */
   async function funktion(name, body) {
     if (!active()) throw new Error('Bitte zuerst den Cloud-Abgleich einrichten.');
@@ -416,5 +430,5 @@ window.Sync = (() => {
     if (!r.ok) throw new Error(j.fehler || j.message || j.msg || `Fehler ${r.status}`);
     return j;
   }
-  return { changed, deleted, run, active, pending, einstellungenKarte, funktion, fest, status: () => status, email: () => cfg?.email || '' };
+  return { changed, deleted, run, active, pending, einstellungenKarte, funktion, dateiHoch, dateiLaden, dateiListe, dateiWeg, fest, status: () => status, email: () => cfg?.email || '' };
 })();

@@ -307,8 +307,10 @@ window.Transkript = (() => {
         out.aufnahmen.push(auf);
         continue;
       }
-      const s = SPR.exec(z);
-      out.zeilen.push({ id: uid(), aufnahmeId: auf?.id || '', sprecher: s ? s[1].trim() : '', text: s ? s[2] : z, bereichId: '' });
+      // Zeitmarke [mm:ss] bzw. [h:mm:ss] am Anfang (Runde 15, B8) → ab = Sekunden ab Beginn der Aufnahme
+      const zm = /^\[(?:(\d{1,2}):)?(\d{1,3}):(\d{2})\]\s*/.exec(z), ab = zm ? (+zm[1] || 0) * 3600 + +zm[2] * 60 + +zm[3] : null, zr = zm ? z.slice(zm[0].length) : z;
+      const s = SPR.exec(zr);
+      out.zeilen.push({ id: uid(), aufnahmeId: auf?.id || '', sprecher: s ? s[1].trim() : '', text: s ? s[2] : zr, bereichId: '', ...(ab != null ? { ab } : {}) });
     }
     return out;
   }
@@ -330,9 +332,9 @@ window.Transkript = (() => {
     return g;
   }
   /** Neue Aufnahme anhängen (Text der KI mit „Name: …“ je Zeile). */
-  function anhaengen(g, { art, dabei, text: t }) {
+  function anhaengen(g, { art, dabei, text: t, audio }) {
     sicher(g);
-    const a = { id: uid(), art: art || 'Gespräch', t: Date.now(), dabei: dabei || [] };
+    const a = { id: uid(), art: art || 'Gespräch', t: Date.now(), dabei: dabei || [], ...(audio ? { audio } : {}) };
     g.aufnahmen.push(a);
     for (const z of zerlegen(t).zeilen) g.zeilen.push({ ...z, aufnahmeId: a.id });
     g.transcript = text(g);
@@ -344,7 +346,7 @@ window.Transkript = (() => {
     const alt = new Map(g.zeilen.map((z) => [zeile(z), z]));
     const neu = zerlegen(t, g.aufnahmen);
     g.aufnahmen = neu.aufnahmen;
-    g.zeilen = neu.zeilen.map((z) => { const a = alt.get(zeile(z)); return a ? { ...z, id: a.id, bereichId: a.bereichId || '' } : z; });
+    g.zeilen = neu.zeilen.map((z) => { const a = alt.get(zeile(z)); return a ? { ...z, id: a.id, bereichId: a.bereichId || '', ...(a.ab != null ? { ab: a.ab } : {}) } : z; });
     g.transcript = t;
   }
   return { zerlegen, text, sicher, anhaengen, ausText };

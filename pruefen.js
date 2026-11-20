@@ -147,7 +147,7 @@ window.Pruefen = (() => {
     const rechts = `
         <h3 class="pr-h">Gespräch</h3>
         <input type="search" id="prSuche" value="${esc(such)}" placeholder="Im Gespräch suchen">
-        <div class="pr-gespr">${zeilenG.slice(0, 600).map((z) => `<p><b class="sp${sprecher.indexOf(z.sprecher) % 4}">${esc(z.sprecher || '')}</b> ${esc(z.text)}</p>`).join('') || `<p class="hint">${g.transcript ? 'Nichts gefunden.' : 'Noch kein Gespräch.'}</p>`}</div>`;
+        <div class="pr-gespr">${zeilenG.slice(0, 600).map((z) => { const au = z.ab != null && (g.aufnahmen || []).find((a) => a.id === z.aufnahmeId)?.audio; return `<p>${au ? `<button type="button" class="pr-hoer" data-hoer="${esc(z.id)}" title="Ab hier anhören">${icon('play')}${Audioablage.zeit(z.ab)}</button> ` : ''}<b class="sp${sprecher.indexOf(z.sprecher) % 4}">${esc(z.sprecher || '')}</b> ${esc(z.text)}</p>`; }).join('') || `<p class="hint">${g.transcript ? 'Nichts gefunden.' : 'Noch kein Gespräch.'}</p>`}</div>`;
 
     main().innerHTML = `
       <div class="pr-kopf">
@@ -209,6 +209,7 @@ window.Pruefen = (() => {
       await speichern(); toast(`${O.aufgaben.length} To-dos angelegt`); neu();
     };
     // Gespräch
+    $$('[data-hoer]').forEach((b) => (b.onclick = () => { const z = (g.zeilen || []).find((x) => x.id === b.dataset.hoer), a = z && (g.aufnahmen || []).find((x) => x.id === z.aufnahmeId); if (a) Audioablage.abspielen(a.audio, z.ab, `${a.art || 'Gespräch'} ${new Date(a.t).toLocaleDateString('de-DE')}`); }));
     if ($('#prSuche')) $('#prSuche').oninput = debounce((e) => { suche.set(w.id, e.target.value); const y = window.scrollY; view(w.id).then(() => { window.scrollTo(0, y); const s = $('#prSuche'); if (s) { s.focus(); s.setSelectionRange(s.value.length, s.value.length); } }); }, 350);
     // Kopf
     $('#prAlle').onclick = async () => { okSetzen(w, P.map((p) => p.text)); await speichern(); toast('Alle Punkte übernommen'); neu(); };

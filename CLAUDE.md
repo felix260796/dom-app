@@ -309,6 +309,12 @@ Zeichnen in der App aus TestFlight (iPad, iPhone) läuft über PencilKit: `Gerae
 
 Nur in der App aus TestFlight (nativ in `DomGeraet.swift`). Fahrzeit: `Geraet.fahrzeit(adresse)` → `DomFahrt` (Standort „beim Verwenden“, `CLGeocoder`, `MKDirections.calculateETA` mit Abfahrt jetzt, also mit Verkehr, kostenlos, ohne Schlüssel), 10 Minuten je Anschrift gemerkt. Steht im Reiter Vor Ort unter der Leiste (`#beFahrt`, `fahrtZeigen` in `besuch.js`, nicht mehr nach „Termin abschließen“), mit Route-Link. Neuer Eintrag `NSLocationWhenInUseUsageDescription` in `info-zusatz.plist`. Mediathek: `Geraet.mediathek(max)` (PHPicker, mehrere, ohne Erlaubnis für die ganze Mediathek, verkleinert über `domVerkleinern`) → `Bilder.ausMediathek({ … wie fotosMachen, bereichId })`, Knopf „Aus der Mediathek“ (`#wMediathek`) im Reiter Vor Ort, landet im Ordner des gewählten Bereichs (Vorgabe `ordnerBereich`). Im Browser Dateiauswahl, am PC ausgeblendet (Hineinziehen gibt es dort).
 
+## Neuerungen aus Version 140 (Runde 15: Audio-Ablage, Auswertung in der Cloud, Nachhören)
+
+Audio-Ablage: Jedes Stück einer Gesprächsaufnahme im Vorgang wird über `Audioablage.ablegen` (`voice.js`) im Firmenspeicher abgelegt (`Sync.dateiHoch/dateiLaden/dateiListe/dateiWeg`, Pfad `team/audio/<vorgang>--<id>.m4a`, nicht Teil des Abgleichs, der liest nur `team/*.json`). Vorgaben `audioAblage`, `audioBehaltenMonate` (6, Aufräumen einmal am Tag). Die Aufnahme merkt sich ihr Audio (`w.gespraech.aufnahmen[].audio`).
+Auswertung in der Cloud: Supabase-Funktion `supabase/functions/auswertung` (`{ key, mime, prompt }` → `{ text }`, Gemini-Datei-Schnittstelle, Secret `GEMINI_API_KEY`, optional `GEMINI_MODELL`, Verify JWT aus, Anleitung `AUSWERTUNG_EINRICHTEN.md`), Vorgabe `auswertungCloud`. Klappt sie nicht (Secret fehlt, 150 s), wertet das Gerät wie bisher selbst aus (`transcribeAudio`). Zuordnung und Zusammenfassung laufen weiter in der App. Kein Cron und keine Warteschlange: jedes Stück (höchstens `aufnahmeTeilMin`) ist ein eigener Aufruf. Felix muss die Funktion in Supabase anlegen.
+Zeitmarken: `TRANSCRIBE_PROMPT` verlangt `[mm:ss]` je Zeile, bei 5-Minuten-Stücken verschoben (`zeitVersetzt`), `Transkript.zerlegen` legt sie als `zeile.ab` (Sekunden ab Beginn der Aufnahme) ab und nimmt sie aus dem Text; im Raum-Transkript ohne Marken (`ohneZeit`). Nachhören: Seite „Aufnahme prüfen“, Knopf an jeder Zeile (`[data-hoer]`) → `Audioablage.abspielen(key, ab)` (Leiste `#hoerLeiste` unten, 2 Sekunden vorher).
+
 ## Bereiche
 
 | Bereich | Dateien | Inhalt |
