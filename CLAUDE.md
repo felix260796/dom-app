@@ -301,6 +301,10 @@ Lernende Vorlagen: Beim Versand (`angebotVersendet`) merkt `Angebot._intern.vorl
 
 Kundenunterschrift am iPad: Reiter Angebote (verschickt, nicht am PC) Knopf `#wUnterschrift` → `kundeUnterschreibt(w, list)` in `projekt.js`: Vollbild mit Auftragserteilung, Kästchen vorzeitiger Beginn (`#kuVz`, nur Privat/WEG und wenn `textVorzeitig` eingetragen ist), Ort/Datum, Unterschriftsfeld mit `stiftLinien` wie im Abnahmeprotokoll. Danach baut `angebotDateien(w, list, { final, unterschrift: { bild, ortDatum, vorzeitig }, datum: w.versendetAm })` das Angebot mit Kreuz, Ort/Datum und Unterschrift (`baueAngebotPdf` `opt.unterschrift`, `opt.datum` = Datum des Angebots). Abgelegt als `Angebot_unterschrieben_…` in `w.dokumente` (`art: 'angebot-unterschrieben'`), als unterschriebenes Angebot (`auftrag:<id>`, `w.auftrag`), am PC im Kundenordner; an der Fassung `fassung.unterschrieben = { t, vorzeitig, dokKey }`, angekreuzt setzt `w.vorzeitig`. Danach Frage „Jetzt als zugesagt markieren“.
 
+## Neuerungen aus Version 138 (Runde 15: Zeichnen mit PencilKit, Maß-Werkzeug)
+
+Zeichnen in der App aus TestFlight (iPad, iPhone) läuft über PencilKit: `Geraet.zeichnen` → `DomZeichnen` in `DomGeraet.swift` (Apples Werkzeugleiste, am iPad zeichnet nur der Stift, wenn das in iOS so eingestellt ist). Gilt für Skizze, Foto übermalen und Grundriss reinzeichnen (alle über `Zeichnen.oeffnen`). Gespeichert wird `striche = { nativ: true, pk, masse }` (PKDrawing Base64, Maße `[x1, y1, x2, y2]` in Blatt-Einheiten); der Hintergrund wird dafür immer auf 1200…1600 Pixel gebracht (`oeffnenNativ`), damit Weiterzeichnen passt. Maß-Werkzeug (nur mit Maßstab aus dem Raumscan): Knopf „Maß“, zwei Punkte antippen oder ziehen → Länge in m, „Maß löschen“ nimmt das letzte. Das Browser-Werkzeug in `zeichnen.js` bleibt nur für den Browser; am PC wird nicht gezeichnet (`#gSkizze`, `[data-zeichnen]` in `buero.css` ausgeblendet). Alte Zeichnungen aus dem Browser-Werkzeug werden beim Weiterzeichnen Teil des Hintergrunds.
+
 ## Bereiche
 
 | Bereich | Dateien | Inhalt |

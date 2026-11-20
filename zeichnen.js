@@ -16,7 +16,12 @@
  *
  * Apple Pencil: Der Stift zeichnet immer. Sobald einmal ein Stift benutzt wurde, verschiebt der Finger nur noch
  * (Handballen-Schutz). Zwei Finger verschieben und zoomen immer. Ohne Stift zeichnet ein Finger.
- * Einstellbar (Einstellungen, bei den Bilder-Ordnern): Farben `zeichnenFarben`, Strichstärke `zeichnenStaerke`. */
+ * Einstellbar (Einstellungen, bei den Bilder-Ordnern): Farben `zeichnenFarben`, Strichstärke `zeichnenStaerke`.
+ *
+ * Runde 15 (B1): In der App aus TestFlight (iPad, iPhone) zeichnet PencilKit (`Geraet.zeichnen`, DomZeichnen in
+ * DomGeraet.swift) mit Apples Werkzeugleiste. Dann sind `striche` = { nativ: true, pk, masse } (PKDrawing als Base64,
+ * Maße [x1, y1, x2, y2] in Blatt-Einheiten des Hintergrunds, der dafür auf 1200…1600 Pixel gebracht wird).
+ * Diese Werkzeug-Seite hier bleibt nur für den Browser. Am PC wird nicht gezeichnet (Knöpfe in buero.css ausgeblendet). */
 window.Zeichnen = (() => {
   const WERKZEUGE = [['stift', 'Stift'], ['linie', 'Linie'], ['pfeil', 'Pfeil'], ['kreis', 'Kreis'], ['text', 'Text'], ['mass', 'Maß'], ['radierer', 'Radierer']];
   const FARBEN = { rot: '#e02424', orange: '#f97316', gelb: '#f5b400', grün: '#16a34a', blau: '#1d4ed8', schwarz: '#111111', weiß: '#ffffff' };
@@ -119,7 +124,27 @@ window.Zeichnen = (() => {
     return c.toDataURL('image/jpeg', 0.88);
   }
 
+  /** Hintergrund für PencilKit: längere Seite 1200…1600 Pixel (immer gleich, damit Weiterzeichnen passt). */
+  async function oeffnenNativ(hintergrund, opt) {
+    const B = await blatt(hintergrund), alt = Array.isArray(opt.striche) ? opt.striche : [], m0 = Number(opt.masstab) || 0;
+    const m = Math.max(B.breite, B.hoehe), k = m > 1600 ? 1600 / m : m < 1200 ? 1200 / m : 1;
+    const c = document.createElement('canvas'); c.width = Math.round(B.breite * k); c.height = Math.round(B.hoehe * k);
+    const x = c.getContext('2d'); x.fillStyle = '#fff'; x.fillRect(0, 0, c.width, c.height); x.scale(k, k);
+    x.save(); B.zeichne(x); x.restore();
+    for (const s of alt) { x.save(); strich(x, s, m0); x.restore(); } // alte Zeichnungen (Browser-Werkzeug) werden Teil des Hintergrunds
+    const n = !Array.isArray(opt.striche) && opt.striche?.nativ ? opt.striche : null;
+    let r;
+    try { r = await Geraet.zeichnen({ bild: c.toDataURL('image/jpeg', 0.9), titel: opt.titel || 'Zeichnen', masstab: m0 * k, pk: n?.pk || '', masse: n?.masse || [] }); }
+    catch (e) { toast('Zeichnen ging nicht: ' + (e?.message || e), 5000); return null; }
+    if (!r || r.abgebrochen || !r.bild) return null;
+    const striche = { nativ: true, pk: r.pk || '', masse: r.masse || [] };
+    try { await opt.onSave?.(striche, r.bild); } catch (e) { console.warn('Zeichnung nicht gespeichert', e); toast('Speichern hat nicht geklappt. Bitte nochmal zeichnen.', 5000); return null; }
+    return { striche, bild: r.bild };
+  }
+
   async function oeffnen(hintergrund, opt = {}) {
+    if (window.Geraet?.zeichnenNativ?.()) return oeffnenNativ(hintergrund, opt);
+    if (opt.striche && !Array.isArray(opt.striche)) { toast('Diese Zeichnung lässt sich nur in der App auf iPad oder iPhone weiterzeichnen.', 4500); return null; }
     const B = await blatt(hintergrund);
     const masstab = Number(opt.masstab) || 0;
     const farben = opt.farben || farbenVorgabe();

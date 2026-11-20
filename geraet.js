@@ -223,5 +223,9 @@ window.Geraet = (() => {
   /** Nach einer Aufnahme: Audio abgeben, damit vorher laufende Musik von selbst weiterspielt (nur iPhone-App). */
   const audioFreigeben = () => (nativ() ? P().audioFreigeben().catch(() => {}) : Promise.resolve());
 
-  return { nativ, an, kann, faehigkeiten, aufnahme, audioFreigeben, scannen, raumScannen, wohnungMoeglich, kontaktWaehlen, kontaktSpeichern, kalenderAbgleich, karte, start };
+  // ---------- Zeichnen mit PencilKit (Runde 15, B1; zeichnen.js) ----------
+  const zeichnenNativ = () => nativ();
+  const zeichnen = (o) => P().zeichnen(o);
+
+  return { nativ, zeichnenNativ, zeichnen, an, kann, faehigkeiten, aufnahme, audioFreigeben, scannen, raumScannen, wohnungMoeglich, kontaktWaehlen, kontaktSpeichern, kalenderAbgleich, karte, start };
 })();

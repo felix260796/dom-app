@@ -229,7 +229,7 @@ html.buero .aw-mon .ltab tbody tr:last-child td { font-weight: 700; background: 
 /* ---------- Am PC weglassen: Kamera, Scanner, LiDAR, Gesprächsaufnahme (Diktieren in Textfeldern bleibt) ---------- */
 .nur-pc { display: none; }
 html.buero .nur-pc { display: inline-flex; }
-html.buero #camBtn, html.buero #vrec, html.buero #vpause, html.buero #wFotos, html.buero #vPlan, html.buero #vScan, html.buero .vo-sammel [data-bilder] { display: none !important; }
+html.buero #camBtn, html.buero #vrec, html.buero #vpause, html.buero #wFotos, html.buero #vPlan, html.buero #vScan, html.buero .vo-sammel [data-bilder], html.buero #gSkizze, html.buero [data-zeichnen] { display: none !important; }
 
 /* ---------- Drucken: nur das Druckblatt ---------- */
 #druckBlatt { display: none; }

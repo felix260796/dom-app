@@ -20,6 +20,7 @@ import UniformTypeIdentifiers
 import RoomPlan
 import simd
 import AVFoundation
+import PencilKit
 
 /// Nicht in Gebrauch: Das Plugin wird über packageClassList in capacitor.config.json angemeldet (siehe Bau). Bleibt als Rückweg.
 class DomBridgeViewController: CAPBridgeViewController {
@@ -62,6 +63,7 @@ public class DomGeraetPlugin: CAPPlugin, CAPBridgedPlugin, VNDocumentCameraViewC
         CAPPluginMethod(name: "aufnahmeStatus", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "aufnahmeAbbrechen", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "audioFreigeben", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "zeichnen", returnType: CAPPluginReturnPromise),
     ]
 
     private var scanCall: CAPPluginCall?
@@ -456,6 +458,36 @@ public class DomGeraetPlugin: CAPPlugin, CAPBridgedPlugin, VNDocumentCameraViewC
         }
         call.resolve(["data": "data:audio/mp4;base64," + d.base64EncodedString()])
     }
+
+    // MARK: Zeichnen mit PencilKit (Runde 15)
+
+    @objc func zeichnen(_ call: CAPPluginCall) {
+        DispatchQueue.main.async {
+            guard let s = call.getString("bild"), let img = DomZeichnen.bildAus(s) else {
+                call.reject("Kein Bild zum Zeichnen.")
+                return
+            }
+            let vc = DomZeichnen()
+            vc.bild = img
+            vc.titel = call.getString("titel") ?? "Zeichnen"
+            vc.masstab = call.getDouble("masstab") ?? 0
+            if let pk = call.getString("pk"), !pk.isEmpty { vc.pkDaten = Data(base64Encoded: pk) }
+            vc.masse = (call.getArray("masse") ?? []).compactMap { e -> [CGFloat]? in
+                guard let a = e as? JSArray else { return nil }
+                let z = a.compactMap { v -> CGFloat? in
+                    if let n = v as? NSNumber { return CGFloat(n.doubleValue) }
+                    if let d = v as? Double { return CGFloat(d) }
+                    return nil
+                }
+                return z.count == 4 ? z : nil
+            }
+            vc.fertig = { r in call.resolve(r ?? ["abgebrochen": true]) }
+            let nav = UINavigationController(rootViewController: vc)
+            nav.modalPresentationStyle = .fullScreen
+            nav.overrideUserInterfaceStyle = .light
+            self.zeigen(nav)
+        }
+    }
 }
 
 /// Gesprächsaufnahme vor Ort, die durchläuft (Wunsch Felix): bei Bildschirmsperre, in anderen Apps, beim Fotografieren.
@@ -848,5 +880,314 @@ final class DomRaumScan: UIViewController, RoomCaptureViewDelegate {
             }
         }
         return ["waende": waende, "oeffnungen": oeffnungen, "objekte": objekte, "boden": boeden.first ?? [], "boeden": boeden]
+    }
+}
+
+/// Zeichnen mit PencilKit (Runde 15, B1): Skizze, Foto übermalen, Grundriss. Hintergrund kommt als Bild (DataURL) aus zeichnen.js,
+/// die Striche bleiben als PKDrawing (Base64) für späteres Weiterzeichnen, dazu ein fertiges JPEG.
+/// Maß-Werkzeug (nur mit Maßstab aus dem Raumscan): zwei Punkte antippen oder ziehen → Linie mit Länge in m.
+/// Maße liegen als [x1, y1, x2, y2] in Blatt-Einheiten (= Pixel des Hintergrunds), masstab = Blatt-Einheiten je Meter.
+final class DomZeichnen: UIViewController, PKCanvasViewDelegate {
+    var bild: UIImage = UIImage()
+    var titel = "Zeichnen"
+    var masstab: Double = 0
+    var pkDaten: Data?
+    var masse: [[CGFloat]] = []
+    var fertig: (([String: Any]?) -> Void)?
+
+    private let canvas = PKCanvasView()
+    private let hinten = UIImageView()
+    private let oben = DomMassAnsicht()
+    private var picker: PKToolPicker?
+    private var massModus = false
+    private var massStart: CGPoint?
+    private var geaendert = false
+    private var eingepasst = false
+    private var panMin = 1
+    private lazy var massZug = UIPanGestureRecognizer(target: self, action: #selector(massZiehen(_:)))
+    private lazy var massTipp = UITapGestureRecognizer(target: self, action: #selector(massTippen(_:)))
+    private var massKnopf: UIBarButtonItem?
+    private var massWegKnopf: UIBarButtonItem?
+
+    private var breite: CGFloat { max(bild.size.width, 1) }
+    private var hoehe: CGFloat { max(bild.size.height, 1) }
+    /// Strichstärke der Maße in Blatt-Einheiten (wie zeichnen.js: etwa 1/400 der längeren Seite)
+    private var massB: CGFloat { max(breite, hoehe) / 400 }
+
+    static func bildAus(_ s: String) -> UIImage? {
+        let teil = s.components(separatedBy: ",").last ?? s
+        guard let d = Data(base64Encoded: teil, options: .ignoreUnknownCharacters) else { return nil }
+        return UIImage(data: d)
+    }
+
+    override func viewDidLoad() {
+        super.viewDidLoad()
+        title = titel
+        view.backgroundColor = UIColor(white: 0.2, alpha: 1)
+        navigationItem.leftBarButtonItem = UIBarButtonItem(title: "Abbrechen", style: .plain, target: self, action: #selector(abbrechen))
+        let ok = UIBarButtonItem(title: "Fertig", style: .done, target: self, action: #selector(fertigTippen))
+        var rechts: [UIBarButtonItem] = [ok]
+        if masstab > 0 {
+            let m = UIBarButtonItem(title: "Maß", style: .plain, target: self, action: #selector(massUmschalten))
+            let weg = UIBarButtonItem(title: "Maß löschen", style: .plain, target: self, action: #selector(massLoeschen))
+            massKnopf = m; massWegKnopf = weg
+            rechts.append(m); rechts.append(weg)
+        }
+        navigationItem.rightBarButtonItems = rechts
+
+        canvas.translatesAutoresizingMaskIntoConstraints = false
+        canvas.backgroundColor = .clear
+        canvas.isOpaque = false
+        canvas.delegate = self
+        canvas.drawingPolicy = UIDevice.current.userInterfaceIdiom == .pad ? .default : .anyInput
+        canvas.minimumZoomScale = 0.02
+        canvas.maximumZoomScale = 6
+        canvas.contentInsetAdjustmentBehavior = .never
+        canvas.showsVerticalScrollIndicator = false
+        canvas.showsHorizontalScrollIndicator = false
+        view.addSubview(canvas)
+        NSLayoutConstraint.activate([
+            canvas.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
+            canvas.bottomAnchor.constraint(equalTo: view.bottomAnchor),
+            canvas.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            canvas.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+        ])
+        hinten.image = bild
+        hinten.contentMode = .scaleToFill
+        canvas.insertSubview(hinten, at: 0)
+        oben.isUserInteractionEnabled = false
+        oben.backgroundColor = .clear
+        oben.isOpaque = false
+        oben.masstab = masstab
+        oben.b = massB
+        oben.masse = masse
+        canvas.addSubview(oben)
+        if let d = pkDaten, let dr = try? PKDrawing(data: d) { canvas.drawing = dr }
+        canvas.tool = PKInkingTool(.pen, color: .systemRed, width: 5)
+
+        massZug.maximumNumberOfTouches = 1
+        massZug.isEnabled = false
+        massTipp.isEnabled = false
+        canvas.addGestureRecognizer(massZug)
+        canvas.addGestureRecognizer(massTipp)
+        panMin = canvas.panGestureRecognizer.minimumNumberOfTouches
+        knoepfe()
+    }
+
+    override func viewDidAppear(_ animated: Bool) {
+        super.viewDidAppear(animated)
+        if picker == nil {
+            let p = PKToolPicker()
+            p.colorUserInterfaceStyle = .light
+            p.selectedTool = PKInkingTool(.pen, color: .systemRed, width: 5)
+            p.addObserver(canvas)
+            picker = p
+        }
+        picker?.setVisible(!massModus, forFirstResponder: canvas)
+        canvas.becomeFirstResponder()
+    }
+
+    override func viewDidLayoutSubviews() {
+        super.viewDidLayoutSubviews()
+        guard canvas.bounds.width > 0 else { return }
+        if !eingepasst {
+            eingepasst = true
+            let z = min(canvas.bounds.width / breite, canvas.bounds.height / hoehe)
+            canvas.minimumZoomScale = z * 0.5
+            canvas.zoomScale = z
+        }
+        anpassen()
+    }
+
+    /// Hintergrund und Maße folgen dem Zoom (PencilKit zoomt nur die eigenen Striche), Blatt in der Mitte.
+    private func anpassen() {
+        let z = canvas.zoomScale
+        let r = CGRect(x: 0, y: 0, width: breite * z, height: hoehe * z)
+        hinten.frame = r
+        oben.frame = r
+        oben.zoom = z
+        oben.setNeedsDisplay()
+        canvas.contentSize = r.size
+        let dx = max(0, (canvas.bounds.width - r.width) / 2), dy = max(0, (canvas.bounds.height - r.height) / 2)
+        canvas.contentInset = UIEdgeInsets(top: dy, left: dx, bottom: dy, right: dx)
+    }
+
+    func scrollViewDidZoom(_ scrollView: UIScrollView) { anpassen() }
+
+    func canvasViewDrawingDidChange(_ canvasView: PKCanvasView) { geaendert = true }
+
+    private func knoepfe() {
+        massKnopf?.title = massModus ? "Stift" : "Maß"
+        massWegKnopf?.isEnabled = !masse.isEmpty
+    }
+
+    @objc private func massUmschalten() {
+        massModus.toggle()
+        massStart = nil
+        oben.vorschau = nil
+        oben.setNeedsDisplay()
+        canvas.drawingGestureRecognizer.isEnabled = !massModus
+        massZug.isEnabled = massModus
+        massTipp.isEnabled = massModus
+        canvas.panGestureRecognizer.minimumNumberOfTouches = massModus ? 2 : panMin
+        picker?.setVisible(!massModus, forFirstResponder: canvas)
+        knoepfe()
+    }
+
+    @objc private func massLoeschen() {
+        guard !masse.isEmpty else { return }
+        masse.removeLast()
+        oben.masse = masse
+        oben.setNeedsDisplay()
+        geaendert = true
+        knoepfe()
+    }
+
+    private func blattPunkt(_ g: UIGestureRecognizer) -> CGPoint {
+        let p = g.location(in: canvas), z = max(canvas.zoomScale, 0.0001)
+        return CGPoint(x: min(max(p.x / z, 0), breite), y: min(max(p.y / z, 0), hoehe))
+    }
+
+    private func massDazu(_ a: CGPoint, _ e: CGPoint) {
+        guard hypot(e.x - a.x, e.y - a.y) > massB * 2 else { return }
+        masse.append([a.x, a.y, e.x, e.y])
+        oben.masse = masse
+        oben.vorschau = nil
+        oben.setNeedsDisplay()
+        geaendert = true
+        knoepfe()
+    }
+
+    /// Ziehen: vom ersten zum zweiten Punkt
+    @objc private func massZiehen(_ g: UIPanGestureRecognizer) {
+        let p = blattPunkt(g)
+        switch g.state {
+        case .began:
+            massStart = p
+        case .changed:
+            if let a = massStart { oben.vorschau = [a.x, a.y, p.x, p.y]; oben.setNeedsDisplay() }
+        case .ended:
+            if let a = massStart { massDazu(a, p) }
+            massStart = nil
+        default:
+            massStart = nil
+            oben.vorschau = nil
+            oben.setNeedsDisplay()
+        }
+    }
+
+    /// Antippen: erster Tipp setzt den Anfang, zweiter Tipp das Ende
+    @objc private func massTippen(_ g: UITapGestureRecognizer) {
+        let p = blattPunkt(g)
+        if let a = massStart {
+            massStart = nil
+            massDazu(a, p)
+        } else {
+            massStart = p
+            oben.vorschau = [p.x, p.y, p.x, p.y]
+            oben.setNeedsDisplay()
+        }
+    }
+
+    @objc private func abbrechen() {
+        guard geaendert else { schliessen(nil); return }
+        let a = UIAlertController(title: "Zeichnung verwerfen?", message: nil, preferredStyle: .alert)
+        a.addAction(UIAlertAction(title: "Weiterzeichnen", style: .cancel))
+        a.addAction(UIAlertAction(title: "Verwerfen", style: .destructive) { _ in self.schliessen(nil) })
+        present(a, animated: true)
+    }
+
+    @objc private func fertigTippen() {
+        let s = min(1.5, 2400 / max(breite, hoehe))
+        let groesse = CGSize(width: (breite * s).rounded(), height: (hoehe * s).rounded())
+        let fmt = UIGraphicsImageRendererFormat()
+        fmt.scale = 1
+        fmt.opaque = true
+        var striche = UIImage()
+        // Ohne das würde Schwarz im Dunkelmodus als Weiß ins Bild kommen
+        UITraitCollection(userInterfaceStyle: .light).performAsCurrent {
+            striche = canvas.drawing.image(from: CGRect(x: 0, y: 0, width: breite, height: hoehe), scale: s)
+        }
+        let r = UIGraphicsImageRenderer(size: groesse, format: fmt)
+        let mass = masse, mst = masstab, b = massB
+        let ausgabe = r.image { c in
+            UIColor.white.setFill()
+            c.fill(CGRect(origin: .zero, size: groesse))
+            bild.draw(in: CGRect(origin: .zero, size: groesse))
+            striche.draw(in: CGRect(origin: .zero, size: groesse))
+            DomMassAnsicht.zeichne(c.cgContext, mass, f: s, b: b, masstab: mst)
+        }
+        guard let jpg = ausgabe.jpegData(compressionQuality: 0.88) else { schliessen(nil); return }
+        schliessen([
+            "bild": "data:image/jpeg;base64," + jpg.base64EncodedString(),
+            "pk": canvas.drawing.dataRepresentation().base64EncodedString(),
+            "masse": masse.map { $0.map { Double($0) } },
+        ])
+    }
+
+    private func schliessen(_ r: [String: Any]?) {
+        picker?.setVisible(false, forFirstResponder: canvas)
+        picker?.removeObserver(canvas)
+        canvas.resignFirstResponder()
+        let f = fertig
+        fertig = nil
+        let vc: UIViewController = navigationController ?? self
+        vc.dismiss(animated: true) { f?(r) }
+    }
+}
+
+/// Maße über der Zeichnung (folgt dem Zoom) und im fertigen Bild.
+final class DomMassAnsicht: UIView {
+    var masse: [[CGFloat]] = []
+    var vorschau: [CGFloat]?
+    var zoom: CGFloat = 1
+    var b: CGFloat = 4
+    var masstab: Double = 0
+
+    override func draw(_ rect: CGRect) {
+        guard let c = UIGraphicsGetCurrentContext() else { return }
+        var l = masse
+        if let v = vorschau { l.append(v) }
+        DomMassAnsicht.zeichne(c, l, f: zoom, b: b, masstab: masstab)
+    }
+
+    /// Maßlinien mit Endstrichen und Länge in m. f = Blatt-Einheiten → Bildpunkte.
+    static func zeichne(_ c: CGContext, _ l: [[CGFloat]], f: CGFloat, b: CGFloat, masstab: Double) {
+        let farbe = UIColor(red: 0.88, green: 0.14, blue: 0.14, alpha: 1)
+        for m in l where m.count == 4 {
+            let a = CGPoint(x: m[0] * f, y: m[1] * f), e = CGPoint(x: m[2] * f, y: m[3] * f)
+            let bw = max(b * f, 1.5), len = hypot(e.x - a.x, e.y - a.y)
+            c.saveGState()
+            c.setStrokeColor(farbe.cgColor)
+            c.setLineWidth(bw)
+            c.setLineCap(.round)
+            if len < 0.5 {
+                c.setFillColor(farbe.cgColor)
+                c.fillEllipse(in: CGRect(x: a.x - bw * 1.5, y: a.y - bw * 1.5, width: bw * 3, height: bw * 3))
+                c.restoreGState()
+                continue
+            }
+            let w = atan2(e.y - a.y, e.x - a.x), q = bw * 2.5, nx = sin(w) * q, ny = -cos(w) * q
+            c.move(to: a); c.addLine(to: e)
+            for z in [a, e] { c.move(to: CGPoint(x: z.x - nx, y: z.y - ny)); c.addLine(to: CGPoint(x: z.x + nx, y: z.y + ny)) }
+            c.strokePath()
+            if masstab > 0 {
+                let meter = Double(hypot(m[2] - m[0], m[3] - m[1])) / masstab
+                let text = String(format: "%.2f m", meter).replacingOccurrences(of: ".", with: ",")
+                let attr: [NSAttributedString.Key: Any] = [
+                    .font: UIFont.systemFont(ofSize: bw * 5, weight: .semibold),
+                    .foregroundColor: farbe,
+                    .strokeColor: UIColor.white,
+                    .strokeWidth: -3.0,
+                ]
+                let s = NSAttributedString(string: text, attributes: attr), g = s.size()
+                c.translateBy(x: (a.x + e.x) / 2, y: (a.y + e.y) / 2)
+                c.rotate(by: abs(w) > .pi / 2 ? w + .pi : w)
+                UIGraphicsPushContext(c)
+                s.draw(at: CGPoint(x: -g.width / 2, y: -g.height - bw * 1.5))
+                UIGraphicsPopContext()
+            }
+            c.restoreGState()
+        }
     }
 }
