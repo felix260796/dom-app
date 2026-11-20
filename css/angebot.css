@@ -311,3 +311,34 @@ tr.xt-titel.ed:hover .xt-tdel, .xt-tdel:focus { opacity: 1; }
 .ki-satz .ki-m { display: inline-block; font-size: 11.5px; font-weight: 700; letter-spacing: .03em; text-transform: uppercase; color: var(--brass); }
 .ki-satz .ki-t { margin: 6px 0 10px; font-style: italic; }
 .ki-satz .ki-k { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+
+/* ---------- Kalkulation im Angebot (P8) ---------- */
+.kz .kz-hinw { margin: 0 0 8px; padding: 8px 10px 8px 26px; background: #fff6e6; border-radius: 8px; color: #8a5a00; font-size: 13px; }
+.kz .kz-zahlen { display: grid; gap: 2px; }
+.kz .kz-z { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 3px 0; font-size: 14px; }
+.kz .kz-z b { font-variant-numeric: tabular-nums; white-space: nowrap; }
+.kz .kz-z.kz-klein { color: var(--muted, #6b7280); padding-top: 0; }
+.kz .kz-z.kz-gross { border-top: 1px solid var(--line, #e5e7eb); margin-top: 4px; padding-top: 6px; font-size: 15px; }
+.kz .warn, .kz .warn b { color: #b45309; }
+.kz .kz-in { display: inline-flex; align-items: center; gap: 4px; }
+.kz .kz-in input, .kz .kz-r input { width: 70px; min-width: 0; text-align: right; padding: 4px 6px; flex: none; }
+.kz select.kz-art { width: auto; padding: 4px 4px; flex: none; }
+.kz .kz-in.eigen input, .kz .kz-r.eigen input { background: #eef4ff; border-color: #6b8fd6; }
+.kz .kz-auf { margin-top: 10px; display: grid; gap: 4px; }
+.kz .kz-auf small { color: var(--muted, #6b7280); }
+.kz .kz-r { display: flex; align-items: center; gap: 6px; }
+.kz .kz-r span { flex: 1; }
+.kz .kz-tw { overflow-x: auto; margin-top: 10px; }
+.kz table.kz-t { width: 100%; border-collapse: collapse; font-size: 13px; }
+.kz .kz-t th, .kz .kz-t td { padding: 4px 4px; border-bottom: 1px solid var(--line, #e5e7eb); text-align: left; vertical-align: top; }
+.kz .kz-t .r { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.kz .kz-ms { display: flex; align-items: center; gap: 4px; font-size: 12px; color: var(--muted, #6b7280); margin-top: 2px; }
+.kz .kz-ms input { width: auto; flex: none; margin: 0; }
+.kz select.kz-art { min-width: 50px; }
+.kz .kz-z.kz-klein > span { flex: none; }
+.kz .kz-z.kz-klein { flex-wrap: wrap; }
+.kz .kz-z.kz-klein b { white-space: normal; }
+
+.kz .kz-ziel { border-top: 1px dashed var(--line, #e5e7eb); margin-top: 4px; padding-top: 6px; }
+.kz .kz-zs { justify-content: flex-end; gap: 10px; }
+.kz .kz-ok { color: #047857; } .kz .kz-w { color: #b45309; }

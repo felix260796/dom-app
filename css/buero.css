@@ -374,3 +374,19 @@ html.buero .pp-kond { display: flex; gap: 12px; background: var(--card); border:
 html.buero .pp-tab { table-layout: fixed; }
 .vo-los .btn.small { white-space: nowrap; }
 html.buero .akte-objl .olist .row .add-room { flex: 0 0 auto; }
+
+/* ---------- Kalkulationsansicht der Angebots-Tabelle (P8) ---------- */
+.xt-sicht { display: inline-flex; border: 1px solid var(--line, #d6dbe3); border-radius: 8px; overflow: hidden; }
+.xt-sicht button { border: 0; background: transparent; padding: 5px 10px; font: inherit; font-size: 13px; cursor: pointer; color: inherit; }
+.xt-sicht button.an { background: var(--navy, #1e3550); color: #fff; }
+.xtab.kalk col.c-k { width: 74px; }
+.xtab.kalk { font-size: 12.5px; }
+.xtab input.lv-angebot { color: #6b7280; }
+.xtab input.lv-gewerk { color: #1d4ed8; background: #eef4ff; }
+.xtab input.lv-zeile { color: #047857; background: #ecfdf5; }
+.xtab input.lv-fix { color: #b45309; background: #fff7ed; }
+.xtab td.xt-mg { color: #374151; white-space: nowrap; }
+.xtab.kalk { min-width: 1060px; }
+.xtab.kalk col.c-t { width: 240px; }
+.xtab.kalk col.c-m { width: 64px; } .xtab.kalk col.c-e { width: 72px; } .xtab.kalk col.c-ep { width: 90px; } .xtab.kalk col.c-gp { width: 96px; } .xtab.kalk col.c-nr { width: 58px; }
+.xtab input.lv-ziel { color: #6d28d9; background: #f5f3ff; }

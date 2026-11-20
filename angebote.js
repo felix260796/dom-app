@@ -19,11 +19,12 @@ window.Angebote = (() => {
     const w = await kvGet('wohnung:' + x.id);
     if (!w?.rooms?.length) return 0;
     const A = window.Angebot._intern;
-    let s = 0;
+    let s = 0; const list = [];
     for (const id of w.rooms) {
       const r = await AngebotDaten.raum(id, w);
-      if (r?.angebot?.positionen?.length) { try { s += A.summen(r.angebot.positionen, r.angebot.kalk).brutto; } catch {} }
+      if (r?.angebot?.positionen?.length) { list.push(r); try { s += A.summen(r.angebot.positionen, r.angebot.kalk).brutto; } catch {} }
     }
+    if (window.Kalk && list.length) { try { return Kalk.gesamt(w, list).brutto; } catch {} } // mit Nachlass (P8)
     return s;
   }
 

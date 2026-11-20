@@ -238,7 +238,7 @@ window.VorOrt = (() => {
         } else {
           if (r.angebot.positionen.some((y) => y.frei && gleich(y.frei.text, x.text))) continue;
           r.angebot.positionen.push({ nr: 'FREI-' + uid(), frei: { text: x.text.trim(), einheit: x.einheit }, raum, menge: x.menge, bem: '', epFix: x.preis > 0 ? x.preis : 0, ki,
-            ...(x.partner ? { sub: { partnerId: '', firma: '', ep: 0, zuschlag: +vorgabe('subZuschlag') || 0 } } : {}) });
+            ...(x.partner ? { sub: { partnerId: '', firma: '', ep: 0, zuschlag: Math.round((+window.Angebot?._intern?.einstellungen?.()?.aufPausch || 0) * 10000) / 100 } } : {}) });
         }
         k++;
       }
@@ -253,7 +253,7 @@ window.VorOrt = (() => {
   function offenListe(w, list) {
     const out = (w.entwurf?.offen || []).filter((o) => !o.erledigt).map((o) => ({ id: o.id, text: o.text }));
     for (const r of list) for (const x of r.angebot?.positionen || []) {
-      if (x.frei && !(x.epFix > 0)) out.push({ text: `Preis fehlt: ${raumName(r)} – ${x.frei.text}${x.ki?.partner ? ' (kommt von Partner)' : ''}` });
+      if (x.frei && !(x.epFix > 0) && !(+x.sub?.ep > 0) && !(x.ek && (+x.ek.lohn || +x.ek.mat || +x.ek.pausch))) out.push({ text: `Preis fehlt: ${raumName(r)} – ${x.frei.text}${x.ki?.partner ? ' (kommt von Partner)' : ''}` });
       else if (x.ki?.sicher === 'geschaetzt') out.push({ text: `Menge geschätzt: ${raumName(r)} – ${x.frei?.text || x.nr}, bitte prüfen` });
     }
     return out;

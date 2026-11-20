@@ -98,8 +98,8 @@ const VORGABEN = {
       { k: 'textAuftragWiderruf', l: 'Sätze zum Widerruf in der Auftragserteilung (nur Privatkunden und WEG)', t: 'text', d: '', h: 'Rechtstext, bitte vom Anwalt oder Verband prüfen lassen und dann hier eintragen. Leer = nichts.' },
       { k: 'textWiderrufAnlage', l: 'Anlage zum Angebot: Widerrufsbelehrung und Muster-Widerrufsformular (nur Privatkunden und WEG)', t: 'text', d: '', h: 'Rechtstext, bitte prüfen lassen und dann hier eintragen. Steht als eigene Seite hinter dem Angebot. Platzhalter: {firma}, {anschrift}, {email}, {telefon}. Leer = keine Anlage.' },
       { k: 'kiSatzAuto', l: 'Angebot: persönlichen Satz für die Einleitung von selbst vorschlagen (KI, einmal je Angebot)', t: 'janein', d: 'ja', h: 'Steht als „KI-Vorschlag“ unter dem Anfangstext, erst „Übernehmen“ schreibt ihn ins Angebot.' },
-      { k: 'skontoProzent', l: 'Skonto im Angebot in % (0 = kein Skonto)', t: 'zahl', d: 0, h: 'Steht unter der Gesamtsumme mit Betrag und Zahlbetrag, berechnet vom Zahlbetrag brutto (ohne Bedarfs- und Alternativpositionen). Je Angebot änderbar. Platzhalter in Texten: {skonto}, {skontobetrag}, {zahlbetrag}.' },
-      { k: 'skontoTage', l: 'Skonto bei Zahlung innerhalb von … Tagen', t: 'zahl', d: 10 },
+      { k: 'skontoProzent', l: 'Skonto im Angebot in % (0 = kein Skonto)', t: 'zahl', d: 2, h: 'Steht unter der Gesamtsumme mit Betrag und Zahlbetrag, berechnet vom Zahlbetrag brutto (ohne Bedarfs- und Alternativpositionen). Je Angebot änderbar. Platzhalter in Texten: {skonto}, {skontobetrag}, {zahlbetrag}.' },
+      { k: 'skontoTage', l: 'Skonto bei Zahlung innerhalb von … Tagen', t: 'zahl', d: 7 },
       { k: 'textVorzeitig', l: 'Kästchen „vorzeitiger Beginn“ über der Unterschrift des Kunden (nur Privatkunden und WEG)', t: 'text', d: '', h: 'Rechtstext, bitte vom Anwalt oder Verband prüfen lassen und dann hier eintragen. Leer = kein Kästchen im Angebot.' },
       { k: 'widerrufTage', l: 'Widerrufsfrist in Tagen ab Zusage (für den Hinweis beim Einplanen)', t: 'zahl', d: 14, h: 'Liegt der Baustart in dieser Frist und hat der Kunde den vorzeitigen Beginn nicht angekreuzt, zeigt das Projekt einen Hinweis. Nichts wird gesperrt.' },
       { k: 'ansprechProjekt', l: 'Ansprechpartner im Projekt nach der Zusage (Standard, eine Person)', t: 'zeile', d: 'Deniel Kovacic' },
@@ -127,9 +127,9 @@ const VORGABEN = {
       { k: 'firmaDokWarnTage', l: 'Auf „Heute“ warnen, so viele Tage bevor ein Dokument abläuft', t: 'zahl', d: 30 },
     ]],
     ['Kalkulation', [
-      { k: 'ampelGut', l: 'Marge grün ab %', t: 'zahl', d: 20 },
-      { k: 'ampelKnapp', l: 'Marge gelb ab % (darunter rot)', t: 'zahl', d: 10 },
-      { k: 'subZuschlag', l: 'Zuschlag auf Positionen aus Partner-Angeboten in %', t: 'zahl', d: 0, h: '0 = kein Zuschlag, du kalkulierst selbst im Angebot. Sonst wird der Wert vorgeschlagen, wenn du ein Angebot eines Subunternehmers übernimmst. Preise aus der Preisliste eines Partners kommen immer ohne Zuschlag.' },
+      { k: 'mindestMarge', l: 'Mindestmarge in % vom Verkaufspreis netto', t: 'zahl', d: 15, h: 'Liegt ein Angebot oder ein Gewerk darunter, zeigt DOM einen stillen Hinweis. Es wird nichts gesperrt.' },
+      { k: 'ampelGut', l: 'Soll/Ist: Marge grün ab %', t: 'zahl', d: 20 },
+      { k: 'ampelKnapp', l: 'Soll/Ist: Marge gelb („knapp“) ab %, darunter rot', t: 'zahl', d: 15, h: 'Standard wie die Mindestmarge.' },
     ]],
     ['Kalender und Geburtstage', [
       { k: 'kalKW', l: 'Kalenderwoche (KW) im Kalender links anzeigen', t: 'janein', d: 'ja' },
@@ -439,7 +439,8 @@ window.Vorgaben = (() => {
   }
 
   // ---------- Preisliste & Angebot: Aufschläge, Texte, Firmendaten, Positionen ----------
-  const PL_ZAHLEN = [['aufLohn', 'Aufschlag auf Lohn (Subunternehmer) in %', true], ['aufMat', 'Aufschlag auf Material in %', true], ['wagnis', 'Wagnis und Gewinn in %', true], ['mwst', 'Mehrwertsteuer in %', true], ['spanne', 'Spanne der Preisrichtung vor Ort ± %', true]];
+  // P8: eigene Einstellung state.settings.kalk (Angebot._intern.kalkSetzen), nicht mehr Teil der Preisliste. Kein Wagnis mehr.
+  const PL_ZAHLEN = [['aufLohn', 'Zuschlag Lohn in %', true], ['aufMat', 'Zuschlag Material in %', true], ['aufPausch', 'Zuschlag Pauschal und Sub-Angebote in %', true], ['mwst', 'Mehrwertsteuer in %', true], ['spanne', 'Spanne der Preisrichtung vor Ort ± %', true]];
   // Die Textfelder vor und nach den Positionen haben seit Version 75 eine eigene Seite (Angebot._intern.texteEinstellungen).
   // Seit Version 100 sind auch Schlusssatz (Gruß) und Auftragserteilung Textfelder dort (feste Bausteine am Schluss).
   const PL_TEXTE = [];
@@ -450,13 +451,13 @@ window.Vorgaben = (() => {
     const sichern = async () => { await kvSet('preisliste', PL); toast('Gespeichert'); };
     box.innerHTML = `
       <div class="sec-h"><h2>Aufschläge</h2></div>
-      <div class="card kform vg">${PL_ZAHLEN.map(([k, l, pr]) => `<label>${esc(l)}</label><input type="text" inputmode="decimal" data-ple="${k}" data-pr="${pr ? 1 : 0}" value="${esc(String(pr ? Math.round((E[k] || 0) * 1000) / 10 : E[k] ?? '').replace('.', ','))}">`).join('')}
-        <p class="hint" style="margin:6px 0 0">Gilt für alle neuen Berechnungen. Im einzelnen Angebot kannst du unter „Nachkalkulation“ abweichen.</p></div>
+      <div class="card kform vg">${PL_ZAHLEN.map(([k, l, pr]) => `<label>${esc(l)}</label><input type="text" inputmode="decimal" data-ple="${k}" data-pr="${pr ? 1 : 0}" value="${esc(String(pr ? Math.round((E[k] || 0) * 10000) / 100 : E[k] ?? '').replace('.', ','))}">`).join('')}
+        <p class="hint" style="margin:6px 0 0">Gilt für alle Angebote ohne eigene Werte. Im einzelnen Angebot kannst du unter „Aufschläge“ abweichen. Ein Wagnis gibt es nicht mehr, es steckt seit Version 125 in den Zuschlägen auf Lohn und Material (die Preise sind dadurch gleich geblieben). Das Einlesen einer Excel-Preisliste ändert die Zuschläge nicht.</p></div>
       <div class="sec-h"><h2>Texte im Angebot</h2></div>
       <div class="docs" style="margin-bottom:10px"><button class="doc" id="plTexte"><span class="d-ico navy">${icon('edit')}</span><span class="d-t"><b>Textbausteine (eigene Seite)</b><span>${(window.Angebot._intern.bausteine() || []).length} Textfelder, z. B. ${esc((window.Angebot._intern.bausteine() || []).map((b) => b.titel).filter(Boolean).slice(0, 3).join(', '))}</span></span>${icon('chevron', 'pc-chev')}</button></div>
       `;
     $('#plTexte', box).onclick = () => { const zur = { y: window.scrollY, h: $('#title').textContent }; window.Angebot._intern.texteEinstellungen(() => { einstellungSeite(window.__plSeite || 'kalkulation'); setTimeout(() => window.scrollTo(0, zur.y), 50); }); };
-    $$('[data-ple]', box).forEach((el) => (el.onchange = async () => { const v = parseFloat(el.value.replace(',', '.')); if (!Number.isFinite(v)) return toast('Bitte eine Zahl eintragen.'); E[el.dataset.ple] = el.dataset.pr === '1' ? v / 100 : v; await sichern(); }));
+    $$('[data-ple]', box).forEach((el) => (el.onchange = async () => { const v = parseFloat(el.value.replace(',', '.')); if (!Number.isFinite(v)) return toast('Bitte eine Zahl eintragen.'); await window.Angebot._intern.kalkSetzen(el.dataset.ple, el.dataset.pr === '1' ? v / 100 : v); toast('Gespeichert'); }));
     $$('[data-plt]', box).forEach((el) => (el.onchange = async () => { const k = el.dataset.plt; E[k] = k === 'hinweise' ? el.value.split('\n').map((x) => x.trim()).filter(Boolean) : el.value.trim(); await sichern(); }));
   }
   /** Firmendaten, die auf Angeboten, Rechnungen und Protokollen stehen (seit P7 eigene Einstellung state.settings.firma). */

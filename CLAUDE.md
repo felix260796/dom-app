@@ -241,6 +241,29 @@ Firmendaten: eigene Einstellung `state.settings.firma` (`FIRMA_KEYS`, `firmaAnwe
 
 Ein KI-Aufruf beim Anlegen des Angebots (`kiSatzHolen` in `projekt.js`, einmal je Vorgang, nur Entwurf, mit KI-Schlüssel, Vorgabe `kiSatzAuto`, Prompt `promptKiSatz`): ein Satz aus den Wünschen (`kiSatzStoff`: `r.wishes` je Bereich, `w.gespraech.allgemein.bild`, `w.vorOrt.notiz`). Steht als „KI-Vorschlag“ unter dem Anfangstext (`kiSatzHtml`, `#kiSatz`), Übernehmen / Neu vorschlagen / Löschen inline. Übernehmen hängt ihn als Absatz an die Einleitung in `w.angebotTexte` (danach normaler Text, wird nie überschrieben). Status `w.kiSatz = { status: vorschlag|uebernommen|geloescht, text, t }`. Ein Vorschlag steht nie im PDF.
 
+## Neuerungen aus Version 125 (P8 Teil 1: Aufschläge, kein Wagnis)
+
+Aufschläge sind eine eigene Einstellung `state.settings.kalk` (`aufLohn`, `aufMat`, `aufPausch`, `mwst`, `spanne`), getrennt von der Preisliste: `kalkAnwenden(E)` spiegelt sie beim Laden in `PL.einstellungen` (alte Leser bleiben), `kalkSetzen(k, v)` aus Einstellungen › Aufschläge; das Einlesen einer Excel-Preisliste ändert sie nicht. Wagnis ist weg (Felix 20.11.): beim ersten Start eingerechnet, (1 + a) × (1 + w) − 1, Standard 31,25 % / 20,75 %, Pauschal 20 %; alte Werte in `settings.kalk.alt`. Aufschläge je Angebot (`r.angebot.kalk`) ohne `v: 2` rechnet `kalkNorm` beim Rechnen genauso um; ändern nur über `kalkWert(kalk, n, v)` (setzt `v: 2`), Anzeige `kalkFeld`. `ep/lohnEp` ohne Wagnis (`r6` gegen Rundungsfehler). Sub-Angebote übernehmen mit Zuschlag Pauschal (Vorgabe `subZuschlag` entfällt). Vorgaben `mindestMarge` 15, `ampelKnapp` 15, `skontoProzent` 2, `skontoTage` 7.
+Baustein „Planung und Statik“ (`id 'plan'`, Standard aus, `planEinfuegen`; in eigene Listen einmal eingefügt, `settings.bausteinPlan`). `planHtml/planBind` in `projekt.js`: Stichworte in der Aufnahme (`PLAN_WORT`: Wanddurchbruch, tragende Wand, Statik …) → Vorschlag bei den Schlusstexten, „Nicht nötig“ = `w.planHinweis = 'nein'`.
+
+## Neuerungen aus Version 126 (P8 Teil 2: Einkauf, Zuschläge, Kennzahlen)
+
+Je Zeile in `summen()` (`angebot.js`): `z.kalk = { lohn, mat, pausch, ekEp, quelle, g, ebene, zuEp, vorl, ohne, matSub }` aus `ekVon(x, it, k)` (Quelle `vorlage` = Preisliste, `subpreisliste` = `x.sub.key` 'p:<nr>'/'e:<id>' als Lohn plus unser Material, `subangebot` = Pauschal, `angefragt` = Sub ohne Preis, `frei` = `x.ek = { lohn, mat, pausch }` oder ohne Einkauf) und Verkauf `vkVon` nach Ebene: `x.epFix` > Zeile `x.zu = { art: '%'|'€', wert }` (€ je Einheit) > Gewerk `kalk.gewerke[g] = { art, wert, p }` > Angebot (`aufLohn/aufMat/aufPausch`). Vorlage-Zeilen ohne Abweichung rechnen weiter über `ep()` (Preise unverändert). Gewerk `gewerkVon` (Preisliste, sonst Partner-Gewerk bzw. Firma). Material vom Sub: `kalk.matSub[g]` (true/false), sonst Partnerprofil `material: 'sub'`.
+`kalk.js` (`Kalk`, nach `angebot.js`): `kennzahlen(w, list)` (Einkauf, VK, Nachlass `a.nachlass = { art, wert }` am Angebot-Eintrag, Rohertrag, Aufschlag %, Marge %, Kunden-Skonto, Sub-Skonto aus `p.skonto`, je Gewerk und Titel, Mindestmarge `unter`), `karte/binden` (Karte „Kalkulation“ `#kalkKarte`, ersetzt die alte Aufschläge-Karte; PC rechts offen, iPhone/iPad Schritt 3 zu), Setzer `angebotSetzen` (€ in `kalk.eur[n]`), `gewerkSetzen`, `matSubSetzen`, `nachlassSetzen`, `abgleichen` (€ → Satz p, läuft nach jedem Zeichnen). Partner-Preislisten (PC rechts, iPhone `data-pq`) legen jetzt Zeilen mit `x.sub` ohne festen Preis an: Partnerpreis = Einkauf, Zuschlag Lohn kommt dazu (alte Zeilen behalten ihren festen Preis).
+
+## Neuerungen aus Version 127 (P8 Teil 3: Kalkulationsansicht, Nachlass)
+
+`tabelle.js`: Umschalter „Kundenansicht | Kalkulation“ (`.xt-sicht`, `kalkSicht`, localStorage `dom:xtKalk`, `SPALTEN_KALK`), Spalten EK Lohn/Mat./Pausch. (`data-c="ekl|ekm|ekp"` → `x.ek`), Zuschlag (`data-c="zu"` → `x.zu`, Farbe `lv-<ebene>`), Marge. EP von Hand löscht `x.zu`, Zuschlag löscht `x.epFix`. Kunde sieht davon nichts (Excel-Export nur Kundenspalten).
+Nachlass: `Kalk.gesamt(w, list)` (`vor`, `nachlass`, `netto`, `mwst`, `brutto`) für Tabelle (Fußzeile), Angebotsliste, Projektsumme (`summeVon(list, w)`); PDF „Summe Positionen netto“, `Kalk.nachlassText`, dann netto/MwSt./brutto, Lohnanteil und Skonto vom Betrag nach Nachlass; `Rechnung.auftrag` hängt eine Zeile `nachlass: true` an (Baufortschritt lässt sie weg). Gesamtangebot (`gesamtAngebot`) übernimmt den Verkaufspreis je Zeile aus ihrem Bereich.
+
+## Neuerungen aus Version 128 (P8 Teil 4: Zielpreis)
+
+`Kalk.zielSetzen(w, list, wert, 'netto'|'brutto')`: Ziel = netto nach Nachlass, vor Kunden-Skonto (brutto ÷ (1 + MwSt.), § 13b = netto). `zielRechnen`: frei sind nur zählende Zeilen ohne `epFix`, ohne `x.zu`, ohne Gewerk-Zuschlag, mit Einkauf; m = (T − F − E) / Z auf den Zuschlag-Betrag (Basis ohne Ziel), Z = 0 → gleichmäßig nach Einkauf; 10 Cent, Rest auf die größte Position. Preise in `x.ziel` (Ebene `ziel` in `vkVon`, nach Gewerk, vor Angebot; Lohnanteil = VK × Lohn-EK / EK), Ziel am Angebot `a.zielpreis = { wert, art, netto, t }`. `zielStand` → „nicht mehr erreicht (+… €)“ mit „neu verteilen“, `zielEntfernen`. Unter Einkauf oder ohne freie Zeilen: Meldung, nichts verteilt. „Allgemeines verteilen“ gibt es noch nicht (käme danach).
+
+## Neuerungen aus Version 129 (P8 Teil 5: Soll/Ist)
+
+`Finanzen.soll(w)`: nur das gewählte Angebot (über `AngebotDaten.raum`, aktiv bzw. zugesagt), netto nach Nachlass (`soll.nachlass`), Gewerk aus `z.kalk.g`, geplante Kosten = Einkauf der Kalkulation (`z.kalk.ekEp`, kostenlose Zeilen zählen als Kosten), nur ohne Einkauf der günstigste Partnerpreis. `ist(pid)`: Eingangsrechnung netto minus `b.skonto` (Feld „Skonto gezogen“ `#bSkonto`, nur wenn wirklich abgezogen), `ist.skonto`. Ampel `ampelKnapp` Standard 15 (= Mindestmarge).
+
 ## Bereiche
 
 | Bereich | Dateien | Inhalt |

@@ -37,8 +37,53 @@ const Angebot = (() => {
     }
     gewaehrNeu(PL.einstellungen);
     firmaAnwenden(PL.einstellungen);
+    kalkAnwenden(PL.einstellungen);
     return PL;
   }
+  // ---------- Aufschläge (P8, Runde 14) ----------
+  // Eigene Einstellung state.settings.kalk, getrennt von der Preisliste: Lohn, Material, Pauschal (Sub-Angebote), MwSt., Spanne.
+  // Wagnis gibt es nicht mehr (Felix 20.11.): beim ersten Start wird es in Lohn und Material eingerechnet, (1 + a) × (1 + w) − 1,
+  // damit die Preise gleich bleiben (25 % / 15 % + 5 % Wagnis = 31,25 % / 20,75 %). Alte Werte je Angebot (kalk ohne v: 2)
+  // rechnet kalkNorm genauso um. Das Einlesen einer Excel-Preisliste ändert die Aufschläge nicht mehr.
+  const KALK_KEYS = ['aufLohn', 'aufMat', 'aufPausch', 'mwst', 'spanne'];
+  const r4 = (x) => Math.round(x * 10000) / 10000;
+  const gesetzt = (k, n) => !!k && k[n] !== null && k[n] !== undefined && k[n] !== '';
+  function kalkAnwenden(E) {
+    const S = state.settings;
+    if (!S.kalk || typeof S.kalk !== 'object') {
+      const w = +E.wagnis || 0, l = E.aufLohn ?? 0.25, m = E.aufMat ?? 0.15;
+      S.kalk = { aufLohn: r4((1 + l) * (1 + w) - 1), aufMat: r4((1 + m) * (1 + w) - 1), aufPausch: 0.2, mwst: E.mwst ?? 0.19, spanne: E.spanne ?? 0.15, alt: { aufLohn: l, aufMat: m, wagnis: w } };
+      saveSettings();
+    }
+    if (!gesetzt(S.kalk, 'aufPausch')) S.kalk.aufPausch = 0.2;
+    for (const k of KALK_KEYS) if (gesetzt(S.kalk, k)) E[k] = S.kalk[k];
+    E.wagnis = 0;
+  }
+  /** Aufschlag in den Einstellungen ändern (Einstellungen › Aufschläge). */
+  async function kalkSetzen(k, v) {
+    await preisliste();
+    (state.settings.kalk ??= {})[k] = v; PL.einstellungen[k] = v;
+    await saveSettings();
+  }
+  /** Aufschläge eines Angebots ohne Wagnis (alte Werte umgerechnet). */
+  function kalkNorm(k) {
+    if (!k || k.v === 2) return k;
+    if (!gesetzt(k, 'aufLohn') && !gesetzt(k, 'aufMat') && !gesetzt(k, 'wagnis')) return k;
+    const alt = state.settings.kalk?.alt || { aufLohn: 0.25, aufMat: 0.15, wagnis: 0.05 };
+    const w = gesetzt(k, 'wagnis') ? +k.wagnis : alt.wagnis;
+    const out = { ...k, v: 2 }; delete out.wagnis;
+    if (gesetzt(k, 'aufLohn') || gesetzt(k, 'wagnis')) out.aufLohn = r4((1 + (gesetzt(k, 'aufLohn') ? +k.aufLohn : alt.aufLohn)) * (1 + w) - 1);
+    if (gesetzt(k, 'aufMat') || gesetzt(k, 'wagnis')) out.aufMat = r4((1 + (gesetzt(k, 'aufMat') ? +k.aufMat : alt.aufMat)) * (1 + w) - 1);
+    return out;
+  }
+  /** Einen Aufschlag im Angebot setzen (v = null: wieder Standard). Gibt das neue kalk-Objekt zurück. */
+  function kalkWert(k, n, v) {
+    const out = { ...(kalkNorm(k) || {}), v: 2 };
+    if (v === null || v === undefined || v === '') delete out[n]; else out[n] = v;
+    return out;
+  }
+  /** Wert für die Anzeige im Feld eines Angebots ('' = Standard). */
+  const kalkFeld = (k, n) => { const x = kalkNorm(k); return gesetzt(x, n) ? x[n] : ''; }
   // Firmendaten (P7): eigene Einstellung state.settings.firma, nicht mehr Teil der Preisliste. Beim ersten Start werden die
   // vorhandenen Werte übernommen. Das Einlesen einer Preisliste überschreibt sie nie mit Musterwerten.
   const FIRMA_KEYS = ['firma', 'strasse', 'ort', 'telefon', 'email', 'ustid', 'sitz', 'hrb', 'gf', 'bank', 'iban', 'bic'];
@@ -68,16 +113,17 @@ const Angebot = (() => {
   }
   const pos = (nr) => PL.positionen.find((x) => x.nr === nr);
   /** Einheitspreis Kunde netto wie im Excel (Preisliste Spalte H). */
-  // k = Nachkalkulation eines Angebots { aufLohn, aufMat, wagnis } (leer = Standard aus den Einstellungen)
-  const satz = (k, n) => (k && k[n] !== null && k[n] !== undefined && k[n] !== '' ? k[n] : PL.einstellungen[n]);
+  // k = Aufschläge eines Angebots { aufLohn, aufMat, aufPausch, v: 2 } (leer = Standard aus den Einstellungen). Kein Wagnis mehr (P8).
+  const r6 = (x) => Math.round(x * 1e6) / 1e6; // Rundungsfehler vor dem Runden auf Cent wegnehmen (60,375 bleibt 60,38)
+  const satz = (k, n) => { const x = kalkNorm(k); return gesetzt(x, n) ? +x[n] : +PL.einstellungen[n] || 0; };
   function ep(it, k) {
     const eigen = it.auf !== null && it.auf !== undefined;
-    return r2((it.lohn * (1 + (eigen ? it.auf : satz(k, 'aufLohn'))) + it.mat * (1 + satz(k, 'aufMat'))) * (1 + (eigen ? 0 : satz(k, 'wagnis'))));
+    return r2(r6(it.lohn * (1 + (eigen ? it.auf : satz(k, 'aufLohn'))) + it.mat * (1 + satz(k, 'aufMat'))));
   }
   /** Lohnanteil je Einheit netto (Preisliste Spalte L, für § 35a EStG). */
   function lohnEp(it, k) {
     const eigen = it.auf !== null && it.auf !== undefined;
-    return r2(it.lohn * (1 + (eigen ? it.auf : satz(k, 'aufLohn'))) * (1 + (eigen ? 0 : satz(k, 'wagnis'))));
+    return r2(r6(it.lohn * (1 + (eigen ? it.auf : satz(k, 'aufLohn')))));
   }
 
   // Excel-Angebotstool einlesen (Blätter „Preisliste“ und „Einstellungen“)
@@ -284,17 +330,67 @@ const Angebot = (() => {
     });
   }
   /** Summen eines Angebots. k = Nachkalkulation; x.epFix = von Hand gesetzter Einzelpreis (Lohnanteil anteilig). */
+  // ---------- Einkauf und Verkauf je Zeile (P8 Teil 2, Runde 14) ----------
+  // Einkauf je Einheit getrennt nach Lohn, Material und Pauschal, je nach Quelle:
+  //   vorlage        Preisliste: Sub-Lohn + Material (Material vom Sub: alles als Lohn des Subs)
+  //   subpreisliste  Preisliste eines Partners (x.sub.key): sein Preis als Lohn, bei einer Vorlage-Zeile plus unser Material
+  //   subangebot     übernommenes Angebot eines Subs (x.sub ohne key): Pauschal
+  //   angefragt      Sub angefragt, noch ohne Preis (x.sub.ep = 0): vorläufig
+  //   frei           eigene Zeile mit Einkauf x.ek = { lohn, mat, pausch }, ohne x.ek „ohne Einkauf“
+  // Verkauf: eigener Preis (x.epFix) > Zeile (x.zu = { art: '%' | '€', wert }, € = je Einheit) > Gewerk (kalk.gewerke[g].p)
+  // > Angebot (kalk.aufLohn/aufMat/aufPausch). Die tiefere Ebene gewinnt.
+  // Preisliste-Position, zu der eine Zeile gehört: die Zeile selbst oder der Preis eines Partners zu dieser Position (sub.key 'p:<nr>')
+  const basisVon = (x, it) => (!x.frei && it && it.nr === x.nr ? it : /^p:/.test(x.sub?.key || '') ? pos(x.sub.key.slice(2)) : null);
+  const subPartner = (x) => (x.sub?.partnerId ? window.Partner?.byId?.(x.sub.partnerId) : null);
+  const gewerkVon = (x, it) => String(x.frei?.gewerk || basisVon(x, it)?.gewerk || (x.frei && x.sub ? subPartner(x)?.gewerke?.[0]?.name || x.sub.firma : '') || it?.gewerk || 'Eigene Positionen');
+  /** Material vom Sub? Einstellung am Angebot je Gewerk, sonst wie im Profil des Partners (Gewerk „Material: Sub“). */
+  function matVomSub(x, k, g) {
+    const m = kalkNorm(k)?.matSub?.[g];
+    if (m !== undefined) return !!m;
+    const p = subPartner(x); return !!p && (p.gewerke || []).some((y) => y.name === g && y.material === 'sub');
+  }
+  function ekVon(x, it, k) {
+    const g = gewerkVon(x, it), matSub = matVomSub(x, k, g), b = basisVon(x, it), vorl = !x.frei && !!it && it.nr === x.nr;
+    if (x.ek && typeof x.ek === 'object') return { lohn: +x.ek.lohn || 0, mat: +x.ek.mat || 0, pausch: +x.ek.pausch || 0, quelle: 'frei', g };
+    if (x.sub && +x.sub.ep > 0) {
+      if (x.sub.key) return { lohn: +x.sub.ep, mat: b && !matSub ? +b.mat || 0 : 0, pausch: 0, quelle: 'subpreisliste', g, matSub };
+      return { lohn: 0, mat: 0, pausch: +x.sub.ep, quelle: 'subangebot', g };
+    }
+    if (x.sub && !vorl) return { lohn: 0, mat: 0, pausch: 0, quelle: 'angefragt', g, vorl: true, ohne: true };
+    if (vorl) {
+      const o = matSub ? { lohn: (+it.lohn || 0) + (+it.mat || 0), mat: 0 } : { lohn: +it.lohn || 0, mat: +it.mat || 0 };
+      return { ...o, pausch: 0, quelle: 'vorlage', g, matSub, vorl: !!x.ki?.partner };
+    }
+    return { lohn: 0, mat: 0, pausch: 0, quelle: 'frei', g, ohne: true };
+  }
+  const zuGesetzt = (z) => !!z && z.wert !== '' && z.wert !== null && z.wert !== undefined && Number.isFinite(+z.wert);
+  function vkVon(x, it, k, E) {
+    if (x.epFix > 0) return { ep: +x.epFix, ebene: 'fix' };
+    const ek = E.lohn + E.mat + E.pausch;
+    if (zuGesetzt(x.zu) && ek > 0) return { ep: r2(r6(x.zu.art === '€' ? ek + +x.zu.wert : ek * (1 + +x.zu.wert / 100))), ebene: 'zeile' };
+    const gz = kalkNorm(k)?.gewerke?.[E.g];
+    if (gz && Number.isFinite(+gz.p) && ek > 0) return { ep: r2(r6(ek * (1 + +gz.p))), ebene: 'gewerk' };
+    if (+x.ziel > 0 && ek > 0) return { ep: +x.ziel, ebene: 'ziel' }; // Preis aus „Zielpreis verteilen“ (P8 Teil 4)
+    if (E.quelle === 'vorlage' && !E.matSub) return { ep: ep(it, k), ebene: 'angebot' };
+    if (ek > 0) return { ep: r2(r6(E.lohn * (1 + satz(k, 'aufLohn')) + E.mat * (1 + satz(k, 'aufMat')) + E.pausch * (1 + satz(k, 'aufPausch')))), ebene: 'angebot' };
+    return { ep: 0, ebene: 'ohne' };
+  }
   function summen(positionen, k) {
     const S = PL.einstellungen;
     const zeilen = positionen.map((x, i) => {
       // Eigene Position (nicht in der Preisliste): Text, Einheit und Preis stehen in der Position selbst
       const it = pos(x.nr) || (x.frei ? { nr: x.nr, text: x.frei.text || 'Eigene Position', einheit: x.frei.einheit || 'Stück', gewerk: 'Eigene Positionen', lohn: 0, mat: 0, auf: 0 } : null);
       if (!it) return null;
-      const std = ep(it, k), e = x.epFix > 0 ? x.epFix : std, l = lohnEp(it, k) * (std ? e / std : 1);
+      // P8: Einkauf je Quelle und Verkauf nach der tiefsten Ebene (eigener Preis, Zeile, Gewerk, Angebot)
+      const EK = ekVon(x, it, k), V = vkVon(x, it, k, EK);
+      const std = ep(it, k), e = V.ep, ekS = EK.lohn + EK.mat + EK.pausch;
+      // Lohnanteil: beim Zielpreis Lohn im Verkauf = Verkauf × Lohn-Einkauf / Einkauf, sonst wie bisher
+      const l = V.ebene === 'ziel' && ekS > 0 ? e * EK.lohn / ekS : lohnEp(it, k) * (std ? e / std : 1);
       // Positionsart (v120): Bedarfs- und Alternativpositionen stehen mit Preis im Angebot, zählen aber nicht zur Summe;
       // „kostenlos“ zeigt den Wert und kostet 0 €. gpAnzeige = Betrag, der neben der Position steht.
       const zaehlt = !NICHT_SUMME.includes(x.art), gpA = r2(x.menge * e);
-      return { ...x, i, it, ep: e, fix: x.epFix > 0, gp: zaehlt && x.art !== 'kostenlos' ? gpA : 0, gpAnzeige: gpA, zaehlt, lohn: zaehlt && x.art !== 'kostenlos' ? r2(x.menge * l) : 0 };
+      return { ...x, i, it, ep: e, fix: x.epFix > 0, gp: zaehlt && x.art !== 'kostenlos' ? gpA : 0, gpAnzeige: gpA, zaehlt, lohn: zaehlt && x.art !== 'kostenlos' ? r2(x.menge * l) : 0,
+        kalk: { ...EK, ekEp: r2(EK.lohn + EK.mat + EK.pausch), ebene: V.ebene, zuEp: r2(e - (EK.lohn + EK.mat + EK.pausch)) } };
     }).filter(Boolean);
     const netto = r2(zeilen.reduce((s, z) => s + z.gp, 0));
     const mwst = r2(netto * S.mwst), brutto = r2(netto + mwst);
@@ -688,7 +784,7 @@ Gib Länge (längere Seite) und Breite der Grundfläche, Raumhöhe, Anzahl und G
         <label>Betreff (= Projektname)</label><input type="text" id="aTitel" value="${esc(betreffWert(p))}" placeholder="${esc(titelDefault(p, pk))}">
         <label>Anrede</label><input type="text" id="aAnrede" value="${esc(A.anrede)}" placeholder="${esc(anredeDefault(p))}">
         <label>Aufschläge nur für dieses Angebot (leer = Standard)</label>
-        <div class="row">${[['aufLohn', 'Lohn %'], ['aufMat', 'Material %'], ['wagnis', 'Wagnis %']].map(([n, l]) => `<div><label>${l}</label><input type="text" inputmode="decimal" data-nk="${n}" value="${A.kalk?.[n] !== undefined && A.kalk?.[n] !== null && A.kalk?.[n] !== '' ? String(Math.round(A.kalk[n] * 1000) / 10).replace('.', ',') : ''}" placeholder="${String(Math.round(PL.einstellungen[n] * 1000) / 10).replace('.', ',')}"></div>`).join('')}</div>
+        <div class="row">${[['aufLohn', 'Lohn %'], ['aufMat', 'Material %'], ['aufPausch', 'Pauschal %']].map(([n, l]) => `<div><label>${l}</label><input type="text" inputmode="decimal" data-nk="${n}" value="${kalkFeld(A.kalk, n) !== '' ? String(Math.round(kalkFeld(A.kalk, n) * 10000) / 100).replace('.', ',') : ''}" placeholder="${String(Math.round(PL.einstellungen[n] * 10000) / 100).replace('.', ',')}"></div>`).join('')}</div>
         ${A.kalk && Object.values(A.kalk).some((v) => v !== null && v !== '') || A.positionen.some((x) => x.epFix > 0) ? '<button class="btn secondary block" id="nkReset" style="margin-top:10px">Alles auf Standard zurück</button>' : ''}
         </div>
         <h3>Preisrichtung je Paket</h3>
@@ -720,8 +816,8 @@ Gib Länge (längere Seite) und Breite der Grundfläche, Raumhöhe, Anzahl und G
     if ($('#aWunsch')) $('#aWunsch').onclick = () => wunschVorschlaege(p, re).catch((e) => toast('Vorschläge gingen nicht: ' + e.message, 5000));
     $('#aNeuBerechnen').onclick = () => { if (A.geaendert && !confirm('Eigene Änderungen an den Positionen gehen verloren. Neu berechnen?')) return; A.positionen = null; A.geaendert = false; re(); };
     $$('[data-nk]').forEach((el) => (el.onchange = () => {
-      const v = el.value.trim(); A.kalk ??= {};
-      if (v === '') delete A.kalk[el.dataset.nk]; else { const n = num(v); if (!Number.isFinite(n)) return toast('Bitte eine Zahl eintragen.'); A.kalk[el.dataset.nk] = n / 100; }
+      const v = el.value.trim();
+      if (v === '') A.kalk = kalkWert(A.kalk, el.dataset.nk, null); else { const n = num(v); if (!Number.isFinite(n)) return toast('Bitte eine Zahl eintragen.'); A.kalk = kalkWert(A.kalk, el.dataset.nk, n / 100); }
       re();
     }));
     if ($('#nkReset')) $('#nkReset').onclick = () => { delete A.kalk; A.positionen.forEach((x) => delete x.epFix); re(); };
@@ -835,7 +931,7 @@ Gib Länge (längere Seite) und Breite der Grundfläche, Raumhöhe, Anzahl und G
         <label>Betreff (= Projektname)</label><input type="text" id="aTitel" value="${esc(betreffWert(p))}" placeholder="${esc(titelDefault(p, pk))}">
         <label>Anrede</label><input type="text" id="aAnrede" value="${esc(A.anrede)}" placeholder="${esc(anredeDefault(p))}">
         <label>Aufschläge nur für dieses Angebot (leer = Standard)</label>
-        <div class="row">${[['aufLohn', 'Lohn %'], ['aufMat', 'Material %'], ['wagnis', 'Wagnis %']].map(([n, l]) => `<div><label>${l}</label><input type="text" inputmode="decimal" data-nk="${n}" value="${A.kalk?.[n] !== undefined && A.kalk?.[n] !== null && A.kalk?.[n] !== '' ? String(Math.round(A.kalk[n] * 1000) / 10).replace('.', ',') : ''}" placeholder="${String(Math.round(PL.einstellungen[n] * 1000) / 10).replace('.', ',')}"></div>`).join('')}</div>
+        <div class="row">${[['aufLohn', 'Lohn %'], ['aufMat', 'Material %'], ['aufPausch', 'Pauschal %']].map(([n, l]) => `<div><label>${l}</label><input type="text" inputmode="decimal" data-nk="${n}" value="${kalkFeld(A.kalk, n) !== '' ? String(Math.round(kalkFeld(A.kalk, n) * 10000) / 100).replace('.', ',') : ''}" placeholder="${String(Math.round(PL.einstellungen[n] * 10000) / 100).replace('.', ',')}"></div>`).join('')}</div>
         </div>`}
         <button class="btn secondary block" id="tbLeeren" style="margin-top:12px">${icon('x')} Alle Mengen auf 0</button>
         <button class="btn secondary block" id="aExcel" style="margin-top:10px">Positionen fürs Excel-Tool kopieren</button>
@@ -861,12 +957,12 @@ Gib Länge (längere Seite) und Breite der Grundfläche, Raumhöhe, Anzahl und G
       if (p && window.Sperre && !(await Sperre.pruefen(p, 'Preisliste im Angebot', (x) => Partner.speichern(x)))) { e.target.value = plWahl; return; }
       plWahl = e.target.value; neu();
     };
-    // Menge aus der Preisliste eines Partners: wird eine eigene Position zum Einkaufspreis, ohne Zuschlag
+    // Menge aus der Preisliste eines Partners: wird eine eigene Position, Partnerpreis = Einkauf, darauf der Zuschlag Lohn (P8)
     $$('[data-pq]', body).forEach((inp) => (inp.onchange = () => {
       const z = plZeilen.find((y) => y.key === inp.dataset.pq), q = num(inp.value), alt = plPos(z.key);
       if (alt && !(q > 0)) A.positionen = A.positionen.filter((y) => y !== alt);
       else if (alt) alt.menge = q;
-      else if (q > 0) A.positionen.push({ nr: 'FREI-' + uid(), frei: { text: z.text, einheit: z.einheit }, raum: raumName, menge: q, bem: '', epFix: r2(z.ep), sub: { partnerId: plP.id, firma: plP.firma || plP.inhaber || '', ep: r2(z.ep), zuschlag: 0, key: z.key, stufe: plQ?.stufe || '' } });
+      else if (q > 0) A.positionen.push({ nr: 'FREI-' + uid(), frei: { text: z.text, einheit: z.einheit }, raum: raumName, menge: q, bem: '', sub: { partnerId: plP.id, firma: plP.firma || plP.inhaber || '', ep: r2(z.ep), key: z.key, stufe: plQ?.stufe || '' } }); // P8: Partnerpreis = Einkauf, Zuschlag Lohn kommt dazu
       A.geaendert = true; neu();
     }));
     // Menge eintippen: eine Zeile je Position (Raum = dieser Raum, Allgemeines ohne Raum)
@@ -935,8 +1031,8 @@ Gib Länge (längere Seite) und Breite der Grundfläche, Raumhöhe, Anzahl und G
     betreffBinden(p);
     if ($('#aAnspr')) $('#aAnspr').onchange = (e) => { A.anspr = e.target.value; persist(p); };
     $$('[data-nk]', body).forEach((el) => (el.onchange = () => {
-      const v = el.value.trim(); A.kalk ??= {};
-      if (v === '') delete A.kalk[el.dataset.nk]; else { const n = num(v); if (!Number.isFinite(n)) return toast('Bitte eine Zahl eintragen.'); A.kalk[el.dataset.nk] = n / 100; }
+      const v = el.value.trim();
+      if (v === '') A.kalk = kalkWert(A.kalk, el.dataset.nk, null); else { const n = num(v); if (!Number.isFinite(n)) return toast('Bitte eine Zahl eintragen.'); A.kalk = kalkWert(A.kalk, el.dataset.nk, n / 100); }
       neu();
     }));
     $('#tbLeeren').onclick = () => { if (!confirm('Alle Mengen auf 0 setzen? Eigene Positionen bleiben.')) return; A.positionen = A.positionen.filter((x) => x.frei); A.geaendert = true; neu(); };
@@ -1010,6 +1106,9 @@ Gib Länge (längere Seite) und Breite der Grundfläche, Raumhöhe, Anzahl und G
     // Seit v110 hat das Angebot am Vorgang seine Nummer (1001-01-01A) ab dem Anlegen; ohne Kunde gilt die alte Jahresnummer
     const ent = p[window.AngebotDaten?.REF] || null;
     const entwurf = !!ent && !ab && !opt.final && ent.status === 'entwurf';
+    // Kunden-Nachlass am Angebot (P8): mindert netto, MwSt., brutto und den Lohnanteil anteilig
+    const NL = window.Kalk ? Kalk.nachlassVon(ent, S.netto) : 0;
+    if (NL) { const f = (S.netto - NL) / S.netto; S.vorNachlass = S.netto; S.nachlass = NL; S.netto = r2(S.netto - NL); S.mwst = r2(S.netto * E.mwst); S.brutto = r2(S.netto + S.mwst); S.lohnBrutto = r2(S.lohnBrutto * f); }
     if (!A.nr) { A.nr = await naechsteNummer(); if (!p._gesamt) await saveProject(p); }
     // Versionen (B8): jede geänderte Fassung bekommt „Änderung n“, damit man sieht, was der Kunde bekommen hat
     const sig = JSON.stringify(A.positionen.map((x) => [x.nr, x.raum, x.menge]));
@@ -1119,6 +1218,7 @@ Gib Länge (längere Seite) und Breite der Grundfläche, Raumhöhe, Anzahl und G
     await platz(30);
     y += 3; doc.setFontSize(10);
     const sumZ = (k, v, fett) => { doc.setFont('helvetica', fett ? 'bold' : 'normal'); t(k, C.txt, y); t(v, C.gp, y, { align: 'right' }); y += 5.5; };
+    if (S.nachlass) { sumZ('Summe Positionen netto', fmtEur(S.vorNachlass)); sumZ(Kalk.nachlassText(ent), '- ' + fmtEur(S.nachlass)); }
     sumZ('Summe netto', fmtEur(S.netto));
     sumZ(`zzgl. ${Math.round(E.mwst * 100)} % MwSt.`, fmtEur(S.mwst));
     doc.setDrawColor(...NAVY); doc.line(C.txt, y - 3.8, R, y - 3.8);
@@ -1285,9 +1385,11 @@ Gib Länge (längere Seite) und Breite der Grundfläche, Raumhöhe, Anzahl und G
   // 5 Preisbindung, 6 Zahlungsbedingungen, 7 Gewährleistung, 8 Gruß, 9 Auftragserteilung, 10 Anlage Widerruf.
   // b.gilt = { kunde: ['privat'|'firma'|'weg'] (leer = alle), preis: '' | 'ep' | 'pauschale' }: DOM wählt danach selbst aus.
   // Rechtstexte (Widerruf) bleiben leer, bis Felix sie geprüft einträgt; leere Bausteine stehen nicht im PDF.
+  const PLAN_TEXT = 'Planungs- und Statikleistungen sowie Genehmigungen sind nicht enthalten.';
   const BAUSTEIN_STD = (E) => [
     { id: 'einl', wo: 'vor', titel: '', text: 'vielen Dank für das angenehme Gespräch. Gerne bieten wir Ihnen folgende Leistungen an:' },
     { id: 'nicht', wo: 'nach', titel: 'Nicht enthalten', text: [E.textLeistung, E.textBauseits].filter(Boolean).join('\n\n') },
+    { id: 'plan', wo: 'nach', titel: 'Planung und Statik', aus: true, text: PLAN_TEXT },
     { id: 'ausf', wo: 'nach', titel: 'Ausführung', text: 'Ausführungszeitraum: {zeitraum}.' },
     { id: 'preisb', wo: 'nach', titel: 'Preisbindung', text: 'An dieses Angebot halten wir uns bis zum {gueltig} gebunden.' },
     { id: 'abr', wo: 'nach', titel: 'Abrechnung', gilt: { kunde: [], preis: 'ep' }, text: ['Alle Preise verstehen sich als Festpreise je Einheit; abgerechnet wird nach tatsächlichem Aufmaß.', 'Nicht vorhersehbare Mehrarbeiten (z. B. schlechter Untergrund, Schadstoffe) werden nach Absprache gesondert berechnet.'].join('\n\n') },
@@ -1354,9 +1456,24 @@ Gib Länge (längere Seite) und Breite der Grundfläche, Raumhöhe, Anzahl und G
    *  Selbst geänderte Texte aus der Preisliste werden einmal übernommen. */
   function stdListe() {
     const S = state.settings, E = PL.einstellungen;
-    if (Array.isArray(S.textbausteine) && S.textbausteine.length) return S.textbausteine;
+    if (Array.isArray(S.textbausteine) && S.textbausteine.length) {
+      // P8: neuer Baustein „Planung und Statik“ (aus) einmal in eigene Listen einfügen, hinter „Nicht enthalten“
+      if (!S.bausteinPlan) { S.bausteinPlan = 1; planEinfuegen(S.textbausteine, true); saveSettings(); }
+      return S.textbausteine;
+    }
     if (Array.isArray(E.bausteine) && E.bausteine.length) { S.textbausteine = E.bausteine; saveSettings(); return S.textbausteine; }
     return BAUSTEIN_STD(E);
+  }
+  /** Baustein „Planung und Statik“ in eine Liste einfügen (falls er fehlt) bzw. an- oder ausschalten. */
+  function planEinfuegen(l, aus) {
+    let b = l.find((x) => x.id === 'plan');
+    if (!b) {
+      b = { id: 'plan', wo: 'nach', titel: 'Planung und Statik', text: PLAN_TEXT };
+      const i = l.findIndex((x) => x.id === 'nicht');
+      if (i >= 0) l.splice(i + 1, 0, b); else { const j = l.findIndex((x) => x.fest); if (j >= 0) l.splice(j, 0, b); else l.push(b); }
+    }
+    if (aus) b.aus = true; else delete b.aus;
+    return b;
   }
   const bausteine = () => mitFest(stdListe());
   /** Texte eines Angebots (w): eigene Fassung oder Kopie des Standards. Wird erst beim Ändern als w.angebotTexte gespeichert. */
@@ -1528,7 +1645,7 @@ Gib Länge (längere Seite) und Breite der Grundfläche, Raumhöhe, Anzahl und G
     }
     if (!zeilen.length) return toast('Keine Positionen gefunden.', 4000);
     // Prüfen: anhaken, Menge und Text ändern, Zuschlag setzen
-    let z = +vorgabe('subZuschlag') || 0;
+    let z = r2(satz(p?.angebot?.kalk, 'aufPausch') * 100);
     const bg = document.createElement('div');
     bg.className = 'sheet-bg';
     bg.innerHTML = `<div class="sheet sub-sheet"><div class="sheet-h"><b>Positionen übernehmen</b><button class="icon-btn" data-zu aria-label="Schließen">${icon('x')}</button></div>
@@ -1593,13 +1710,13 @@ Gib Länge (längere Seite) und Breite der Grundfläche, Raumhöhe, Anzahl und G
   async function einstellungenKarte() {
     const el = $('#angebot-settings'); if (!el) return;
     await preisliste();
-    const E = PL.einstellungen, pct = (x) => Math.round(x * 100) + ' %';
+    const E = PL.einstellungen, pct = (x) => fmtNum((+x || 0) * 100, 2) + ' %';
     el.innerHTML = `<div class="card"><h2>Preisliste & Angebot</h2>
       <p class="muted">Du kannst dein <b>Excel-Angebotstool</b> laden. Einzelne Preise, Aufschläge und Texte änderst du danach direkt in der App (Einstellungen › Preisliste und › Aufschläge bzw. Textbausteine).</p>
       <div class="tot"><span class="muted">Quelle</span><span>${esc(PL.quelle || '')}</span></div>
       <div class="tot"><span class="muted">Stand</span><span>${esc(PL.stand || '')}</span></div>
       <div class="tot"><span class="muted">Positionen</span><span>${PL.positionen.length}${PL.positionen.some((x) => x.status === 'geschätzt') ? ` (${PL.positionen.filter((x) => x.status === 'geschätzt').length} geschätzt)` : ''}</span></div>
-      <div class="tot"><span class="muted">Aufschlag Lohn / Material / Wagnis</span><span>${pct(E.aufLohn)} / ${pct(E.aufMat)} / ${pct(E.wagnis)}</span></div>
+      <div class="tot"><span class="muted">Aufschlag Lohn / Material / Pauschal</span><span>${pct(E.aufLohn)} / ${pct(E.aufMat)} / ${pct(E.aufPausch)}</span></div>
       <div class="tot"><span class="muted">Firma</span><span style="text-align:right">${esc(E.firma)}<br>${esc(E.strasse)}, ${esc(E.ort)}</span></div>
       ${/0000|Muster/.test(E.telefon + E.strasse) ? '<p class="muted">Adresse und Telefon sind noch Platzhalter. Unter Einstellungen › Firma & Logo ändern.</p>' : ''}
       <button class="btn block" id="plImport" style="margin-top:10px">Excel-Angebotstool laden</button>
@@ -1651,6 +1768,6 @@ Gib Länge (längere Seite) und Breite der Grundfläche, Raumhöhe, Anzahl und G
     $('#vReset').onclick = async () => { if (!loeschFrage('Alle Paket-Vorlagen zurücksetzen?')) return; await kvDel('angebotVorlagen'); VORL = null; vorlagenView(pkgId, grp); };
   }
 
-  return { projektKarte, ansicht, einstellungenKarte, _intern: { firmaSetzen, FIRMA_KEYS, kontextFuer, passt, giltText, zahlungsplanText, privatArt, skontoVon, posDetails, preisHinweis, artText, NICHT_SUMME, init, gruppe, materialliste, uebernimmSchaetzung, masse, rechne, erzeuge, summen, bauzeit, ep, lohnEp, preisliste, vorlagen, neuerRaum, baueAngebotPdf, importExcel, naechsteNummer, mailText, bausteine, textEditor, texteAuftrag, texteEinstellungen, subUebernehmen, ansprechpartner, ansprVon, einePerson, texteFuer, anredeDefault, einstellungen: () => PL.einstellungen } };
+  return { projektKarte, ansicht, einstellungenKarte, _intern: { ekVon, vkVon, gewerkVon, planEinfuegen, firmaSetzen, FIRMA_KEYS, kontextFuer, passt, giltText, zahlungsplanText, privatArt, skontoVon, posDetails, preisHinweis, artText, NICHT_SUMME, init, gruppe, materialliste, uebernimmSchaetzung, masse, rechne, erzeuge, summen, bauzeit, ep, lohnEp, preisliste, vorlagen, neuerRaum, baueAngebotPdf, importExcel, naechsteNummer, mailText, bausteine, textEditor, texteAuftrag, texteEinstellungen, subUebernehmen, ansprechpartner, ansprVon, einePerson, texteFuer, anredeDefault, einstellungen: () => PL.einstellungen, kalkSetzen, kalkNorm, kalkWert, kalkFeld, satz } };
 })();
 window.Angebot = Angebot;

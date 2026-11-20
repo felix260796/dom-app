@@ -10,7 +10,13 @@ window.Tabelle = (() => {
   const r2 = (x) => Math.round((x + Number.EPSILON) * 100) / 100;
   const zahl = (x, d = 2) => (+x || 0).toLocaleString('de-DE', { minimumFractionDigits: d, maximumFractionDigits: d });
   const mengeText = (x) => (x || x === 0 ? (+x).toLocaleString('de-DE', { maximumFractionDigits: 3 }) : '');
-  const SPALTEN = ['text', 'menge', 'einheit', 'ep'];
+  const SPALTEN_K = ['text', 'menge', 'einheit', 'ep'];
+  const SPALTEN_KALK = ['text', 'menge', 'einheit', 'ekl', 'ekm', 'ekp', 'zu', 'ep'];
+  // Kalkulationsansicht (P8): dieselbe Tabelle mit Einkauf Lohn/Material/Pauschal, Zuschlag und Marge je Zeile. Nur am PC, gemerkt.
+  let kalkSicht = (() => { try { return localStorage.getItem('dom:xtKalk') === '1'; } catch { return false; } })();
+  let SPALTEN = kalkSicht ? SPALTEN_KALK : SPALTEN_K;
+  const EBENE = { ziel: 'Preis aus dem Zielpreis', fix: 'Eigener Preis', zeile: 'Zuschlag nur für diese Zeile', gewerk: 'Zuschlag des Gewerks', angebot: 'Zuschlag des Angebots', ohne: 'Ohne Einkauf' };
+  const QUELLE = { vorlage: 'Preisliste', subpreisliste: 'Preisliste Partner', subangebot: 'Angebot Sub', angefragt: 'Sub angefragt', frei: 'Eigene Zeile' };
 
   /** Am Computer? (Windows-Programm, oder breiter Bildschirm mit Maus; nicht am iPad mit Finger oder Stift) */
   // iPad nie Büro-Ansicht, auch nicht mit Tastatur und Trackpad (Runde 13: drei Ansichten iPhone, iPad, PC)
@@ -46,11 +52,21 @@ window.Tabelle = (() => {
         gesNetto += S.netto;
         P.forEach((x, i) => {
           const z = S.zeilen.find((y) => y.i === i);
-          zeilen.push({ r, ri, x, i, text: z?.it.text || x.frei?.text || '', einheit: z?.it.einheit || x.frei?.einheit || '', ep: z?.ep || 0, gp: z?.gp || 0, gpA: z?.gpAnzeige || 0, zaehlt: z?.zaehlt !== false, fix: !!z?.fix, ph: A.preisHinweis(x, r.angebot.kalk) });
+          zeilen.push({ r, ri, x, i, text: z?.it.text || x.frei?.text || '', einheit: z?.it.einheit || x.frei?.einheit || '', ep: z?.ep || 0, gp: z?.gp || 0, gpA: z?.gpAnzeige || 0, zaehlt: z?.zaehlt !== false, fix: !!z?.fix, ph: A.preisHinweis(x, r.angebot.kalk), k: z?.kalk || null });
         });
       });
-      const mwst = r2(gesNetto * (A.einstellungen().mwst || 0.19));
+      const G = window.Kalk ? Kalk.gesamt(w, list) : null, nl = G?.nachlass || 0;
+      const mwst = r2((gesNetto - nl) * (A.einstellungen().mwst || 0.19));
       const nrIn = {}, gNr = {}; let g = 0;
+      const ks = kalkSicht, kc = ks ? 4 : 0; // zusätzliche Spalten vor EP (Lohn, Material, Pauschal, Zuschlag) und Marge am Ende
+      const zuText = (z) => { const k = z.k; if (!k) return ''; if (z.x.zu && k.ebene === 'zeile' && z.x.zu.art === '€') return zahl(z.x.zu.wert) + ' €'; return k.ekEp > 0 ? zahl((k.zuEp / k.ekEp) * 100, 1) + ' %' : ''; };
+      const margeZ = (z) => (z.k && z.ep > 0 && z.zaehlt && z.x.art !== 'kostenlos' ? zahl(((z.ep - z.k.ekEp) / z.ep) * 100, 1) + ' %' : '');
+      const kalkZellen = (z) => !ks ? '' : `
+            <td><input data-c="ekl" class="r" value="${z.k?.lohn ? esc(zahl(z.k.lohn)) : ''}" placeholder="–" title="Einkauf Lohn je Einheit (${esc(QUELLE[z.k?.quelle] || '')})" autocomplete="off"></td>
+            <td><input data-c="ekm" class="r" value="${z.k?.mat ? esc(zahl(z.k.mat)) : ''}" placeholder="–" title="Einkauf Material je Einheit" autocomplete="off"></td>
+            <td><input data-c="ekp" class="r" value="${z.k?.pausch ? esc(zahl(z.k.pausch)) : ''}" placeholder="–" title="Einkauf Pauschal je Einheit (z. B. Angebot eines Subs)" autocomplete="off"></td>
+            <td><input data-c="zu" class="r lv-${z.k?.ebene || 'ohne'}" value="${esc(zuText(z))}" placeholder="–" title="${esc(EBENE[z.k?.ebene] || '')}. Eintragen z. B. 25 % oder 12 € (je Einheit), leer = wieder Gewerk bzw. Angebot" autocomplete="off"></td>`;
+      const leerK = ks ? '<td></td><td></td><td></td><td></td>' : '';
       list.forEach((r, ri) => { if ((r.angebot.positionen || []).length) gNr[ri] = ++g; });
       const marke = (x) => x.ki?.partner && !(x.sub?.ep > 0) ? '<span class="xt-m p" title="Preis kommt vom Partner">P</span>' : x.ki?.sicher === 'geschaetzt' ? '<span class="xt-m g" title="Menge geschätzt, bitte prüfen">?</span>' : x.sub ? '<span class="xt-m s" title="Vom Partner übernommen">S</span>' : '';
       box.innerHTML = `
@@ -59,41 +75,43 @@ window.Tabelle = (() => {
           <button type="button" class="btn secondary small" data-xa="weg">${icon('trash')} Zeile löschen</button>
           ${opt.mehrere ? `<button type="button" class="btn secondary small" data-xa="mehr">${icon('list')} Räume übernehmen</button>` : ''}
           <span class="xt-sp"></span>
+          <span class="xt-sicht" role="group" aria-label="Ansicht"><button type="button" class="${ks ? '' : 'an'}" data-xa="kunde">Kundenansicht</button><button type="button" class="${ks ? 'an' : ''}" data-xa="kalk">Kalkulation</button></span>
           <button type="button" class="btn secondary small" data-xa="xlsein">${icon('upload')} Excel einlesen</button>
           <button type="button" class="btn secondary small" data-xa="xlsaus">${icon('download')} Als Excel speichern</button>
         </div>
-        <div class="xt-wrap"><table class="xtab">
-          <colgroup><col class="c-nr"><col class="c-t"><col class="c-m"><col class="c-e"><col class="c-ep"><col class="c-gp"></colgroup>
-          <thead><tr><th>Pos.</th><th>Leistung</th><th class="r">Menge</th><th>Einheit</th><th class="r">EP netto</th><th class="r">GP netto</th></tr></thead>
+        <div class="xt-wrap"><table class="xtab ${ks ? 'kalk' : ''}">
+          <colgroup><col class="c-nr"><col class="c-t"><col class="c-m"><col class="c-e">${ks ? '<col class="c-k"><col class="c-k"><col class="c-k"><col class="c-k">' : ''}<col class="c-ep"><col class="c-gp">${ks ? '<col class="c-k">' : ''}</colgroup>
+          <thead><tr><th>Pos.</th><th>Leistung</th><th class="r">Menge</th><th>Einheit</th>${ks ? '<th class="r">EK Lohn</th><th class="r">EK Mat.</th><th class="r">EK Pausch.</th><th class="r">Zuschlag</th>' : ''}<th class="r">${ks ? 'Verkauf' : 'EP netto'}</th><th class="r">GP netto</th>${ks ? '<th class="r">Marge</th>' : ''}</tr></thead>
           <tbody>${list.map((r, ri) => {
             const zs = zeilen.filter((z) => z.r === r), tn = gNr[ri] || '';
             const m = masse(r);
             return (opt.titelNeu ? `<tr class="xt-titel ed" data-tr="${r.id}"><td class="xt-nr">${g > 1 && tn ? tn : ''}</td>
-              <td colspan="4"><div class="xt-tn"><input data-t="name" value="${esc(titel(r))}" title="Titel (Bereich) umbenennen" autocomplete="off">
+              <td colspan="${4 + kc}"><div class="xt-tn"><input data-t="name" value="${esc(titel(r))}" title="Titel (Bereich) umbenennen" autocomplete="off">
                 ${ohneMasse(r) ? '' : `<span class="xt-masse" title="Raummaße in Metern, für Mengen aus dem Aufmaß. Dürfen leer bleiben.">${[['l', 'L'], ['b', 'B'], ['h', 'H']].map(([f, k]) => `<label>${k}<input data-t="${f}" class="r xt-mass" value="${esc(m[f])}" placeholder="–" autocomplete="off" aria-label="${{ l: 'Länge', b: 'Breite', h: 'Höhe' }[f]} in m"></label>`).join('')}<span>m</span></span>`}
                 <button type="button" class="xt-tdel" data-t="del" title="Titel mit seinen Positionen löschen" aria-label="Titel löschen">${icon('trash')}</button></div></td>
-              <td class="r" data-zs="${r.id}">${zs.length ? zahl(zs.reduce((a, z) => a + z.gp, 0)) : ''}</td></tr>`
-              : `<tr class="xt-titel"><td class="xt-nr">${g > 1 && tn ? tn : ''}</td><td colspan="4"><b>${esc(titel(r))}</b></td><td class="r" data-zs="${r.id}">${zs.length ? zahl(zs.reduce((a, z) => a + z.gp, 0)) : ''}</td></tr>`)
+              <td class="r" data-zs="${r.id}">${zs.length ? zahl(zs.reduce((a, z) => a + z.gp, 0)) : ''}</td>${ks ? '<td></td>' : ''}</tr>`
+              : `<tr class="xt-titel"><td class="xt-nr">${g > 1 && tn ? tn : ''}</td><td colspan="${4 + kc}"><b>${esc(titel(r))}</b></td><td class="r" data-zs="${r.id}">${zs.length ? zahl(zs.reduce((a, z) => a + z.gp, 0)) : ''}</td>${ks ? '<td></td>' : ''}</tr>`)
             + `
             ${zs.map((z) => { nrIn[z.ri] = (nrIn[z.ri] || 0) + 1; return `<tr data-r="${z.r.id}" data-i="${z.i}" class="${z.x.frei ? 'frei' : ''} ${z.zaehlt ? '' : 'nz'} ${z.x.art === 'kostenlos' ? 'kl' : ''}">
             <td class="xt-nr">${g > 1 ? `${gNr[z.ri]}.` : ''}${nrIn[z.ri]}${marke(z.x)}${{ bedarf: '<span class="xt-m b" title="Bedarfsposition, nicht in der Summe">B</span>', alternativ: '<span class="xt-m a" title="Alternativposition, nicht in der Summe">A</span>', kostenlos: '<span class="xt-m k" title="Kostenlos">0</span>' }[z.x.art] || ''}<button type="button" class="xt-d ${z.x.lang || z.x.notiz ? 'hat' : ''}" data-xd title="${esc(z.x.notiz ? 'Notiz: ' + z.x.notiz : 'Art, Langtext, interne Notiz')}" aria-label="Details">…</button></td>
             <td><input data-c="text" value="${esc(z.text)}" list="xtPL" title="${esc(z.x.frei ? 'Eigene Position' : `${z.x.nr} aus der Preisliste`)}" autocomplete="off"></td>
             <td><input data-c="menge" class="r" value="${esc(mengeText(z.x.menge))}" autocomplete="off"></td>
-            <td><input data-c="einheit" value="${esc(z.einheit)}" list="xtEh" autocomplete="off"></td>
+            <td><input data-c="einheit" value="${esc(z.einheit)}" list="xtEh" autocomplete="off"></td>${kalkZellen(z)}
             <td><input data-c="ep" class="r ${z.fix ? 'fix' : ''} ${z.ph ? 'warn' : ''}" value="${esc(zahl(z.ep))}" title="${esc(z.ph ? 'Hinweis: ' + z.ph : z.fix ? 'Eigener Preis' : 'Preis aus der Preisliste')}" autocomplete="off"></td>
-            <td class="r xt-gp">${z.x.art === 'kostenlos' ? 'kostenlos' : z.zaehlt ? zahl(z.gp) : `(${zahl(z.gpA)})`}</td></tr>`; }).join('')}
+            <td class="r xt-gp">${z.x.art === 'kostenlos' ? 'kostenlos' : z.zaehlt ? zahl(z.gp) : `(${zahl(z.gpA)})`}</td>${ks ? `<td class="r xt-mg">${margeZ(z)}</td>` : ''}</tr>`; }).join('')}
             <tr class="xt-neu" data-neu="1" data-nr="${r.id}"><td class="xt-nr">${icon('plus')}</td>
               <td><input data-c="text" list="xtPL" placeholder="Neue Position in „${esc(titel(r))}“: eintippen oder aus der Preisliste wählen" autocomplete="off"></td>
-              <td><input data-c="menge" class="r" placeholder="1" autocomplete="off"></td><td><input data-c="einheit" list="xtEh" autocomplete="off"></td><td><input data-c="ep" class="r" autocomplete="off"></td><td></td></tr>`;
+              <td><input data-c="menge" class="r" placeholder="1" autocomplete="off"></td><td><input data-c="einheit" list="xtEh" autocomplete="off"></td>${leerK}<td><input data-c="ep" class="r" autocomplete="off"></td><td></td>${ks ? '<td></td>' : ''}</tr>`;
           }).join('')}
           ${opt.titelNeu && !list.length ? `<tr class="xt-neu" data-neu="1" data-nr="__auto"><td class="xt-nr">${icon('plus')}</td>
               <td><input data-c="text" list="xtPL" placeholder="Erste Position: eintippen oder aus der Preisliste wählen" autocomplete="off"></td>
-              <td><input data-c="menge" class="r" placeholder="1" autocomplete="off"></td><td><input data-c="einheit" list="xtEh" autocomplete="off"></td><td><input data-c="ep" class="r" autocomplete="off"></td><td></td></tr>` : ''}
-          ${opt.titelNeu ? `<tr class="xt-titelneu"><td class="xt-nr">${icon('plus')}</td><td colspan="5"><input data-t="neu" placeholder="Neuer Titel, z. B. Bad, Küche, Malerarbeiten, Elektro (Enter)" autocomplete="off"></td></tr>` : ''}
+              <td><input data-c="menge" class="r" placeholder="1" autocomplete="off"></td><td><input data-c="einheit" list="xtEh" autocomplete="off"></td>${leerK}<td><input data-c="ep" class="r" autocomplete="off"></td><td></td>${ks ? '<td></td>' : ''}</tr>` : ''}
+          ${opt.titelNeu ? `<tr class="xt-titelneu"><td class="xt-nr">${icon('plus')}</td><td colspan="${5 + kc + (ks ? 1 : 0)}"><input data-t="neu" placeholder="Neuer Titel, z. B. Bad, Küche, Malerarbeiten, Elektro (Enter)" autocomplete="off"></td></tr>` : ''}
           </tbody>
-          <tfoot><tr><td colspan="5">Summe netto</td><td class="r">${zahl(gesNetto)}</td></tr>
-            <tr><td colspan="5">MwSt.</td><td class="r">${zahl(mwst)}</td></tr>
-            <tr class="xt-brutto"><td colspan="5">Gesamt brutto</td><td class="r">${zahl(r2(gesNetto + mwst))} €</td></tr></tfoot>
+          <tfoot>${nl ? `<tr><td colspan="${5 + kc}">Summe Positionen netto</td><td class="r">${zahl(gesNetto)}</td>${ks ? '<td></td>' : ''}</tr><tr><td colspan="${5 + kc}">${esc(Kalk.nachlassText(Kalk.angebotVon(w, list)))}</td><td class="r">- ${zahl(nl)}</td>${ks ? '<td></td>' : ''}</tr>` : ''}
+            <tr><td colspan="${5 + kc}">Summe netto</td><td class="r">${zahl(gesNetto - nl)}</td>${ks ? '<td></td>' : ''}</tr>
+            <tr><td colspan="${5 + kc}">MwSt.</td><td class="r">${zahl(mwst)}</td>${ks ? '<td></td>' : ''}</tr>
+            <tr class="xt-brutto"><td colspan="${5 + kc}">Gesamt brutto</td><td class="r">${zahl(r2(gesNetto - nl + mwst))} €</td>${ks ? '<td></td>' : ''}</tr></tfoot>
         </table></div>
         <p class="hint xt-hilfe">Pfeiltasten, Tab und Enter wie in Excel. Strg+Enter neue Zeile, Strg+Entf Zeile löschen. Zeilen aus Excel markieren, kopieren und hier mit Strg+V einfügen (Spalten Leistung, Menge, Einheit, Preis).</p>
         <datalist id="xtPL">${PL.positionen.map((it) => `<option value="${esc(it.text)}">${esc(it.nr)} · ${esc(it.gewerk)} · ${zahl(A.ep(it, list[0]?.angebot?.kalk))} € je ${esc(it.einheit)}</option>`).join('')}</datalist>
@@ -112,9 +130,12 @@ window.Tabelle = (() => {
     /** Text aus der Preisliste? Dann deren Nummer. Auch „FL-03“ direkt. */
     const ausKatalog = (t) => { const s = String(t || '').trim().toLowerCase(); return s ? PL.positionen.find((it) => it.text.toLowerCase() === s || it.nr.toLowerCase() === s) : null; };
     /** Neue Position in Raum r. Gibt den Index zurück. */
-    function anlegen(r, { text, menge, einheit, ep }) {
+    function anlegen(r, { text, menge, einheit, ep, sub }) {
       r.angebot.positionen ??= [];
       const it = ausKatalog(text), m = menge > 0 ? menge : 1;
+      // Aus der Preisliste eines Partners (P8): Partnerpreis = Einkauf, Verkauf mit Zuschlag Lohn, kein fester Preis
+      if (sub && it && /^p:/.test(sub.key || '')) { r.angebot.positionen.push({ nr: it.nr, raum: it.gewerk === 'Allgemein' ? '' : raumName(r), menge: m, bem: '', sub: { ...sub } }); r.angebot.geaendert = true; return r.angebot.positionen.length - 1; }
+      if (sub) { r.angebot.positionen.push({ nr: 'FREI-' + uid(), frei: { text: String(text || '').trim(), einheit: einheit || 'Stück' }, raum: raumName(r), menge: m, bem: '', epFix: 0, sub: { ...sub } }); r.angebot.geaendert = true; return r.angebot.positionen.length - 1; }
       if (it) {
         const x = { nr: it.nr, raum: it.gewerk === 'Allgemein' ? '' : raumName(r), menge: m, bem: '' };
         if (ep > 0 && Math.abs(ep - A.ep(it, r.angebot.kalk)) > 0.005) x.epFix = r2(ep);
@@ -131,10 +152,19 @@ window.Tabelle = (() => {
         const zsEl = $(`[data-zs="${r.id}"]`, box); if (zsEl) zsEl.textContent = S.zeilen.length ? zahl(S.netto) : '';
         S.zeilen.forEach((z) => { const tr = $(`tr[data-r="${r.id}"][data-i="${z.i}"]`, box); if (!tr) return; $('.xt-gp', tr).textContent = z.art === 'kostenlos' ? 'kostenlos' : z.zaehlt === false ? `(${zahl(z.gpAnzeige)})` : zahl(z.gp); const e = $('[data-c="ep"]', tr); if (document.activeElement !== e) { e.value = zahl(z.ep); e.classList.toggle('fix', z.fix); } });
       });
-      const mwst = r2(ges * (A.einstellungen().mwst || 0.19)), f = $$('tfoot td.r', box);
-      f[0].textContent = zahl(ges); f[1].textContent = zahl(mwst); f[2].textContent = zahl(r2(ges + mwst)) + ' €';
+      const nl = window.Kalk ? Kalk.gesamt(w, list).nachlass : 0, mwst = r2((ges - nl) * (A.einstellungen().mwst || 0.19)), f = $$('tfoot td.r', box);
+      if (nl && f.length >= 5) { f[0].textContent = zahl(ges); f[1].textContent = '- ' + zahl(nl); }
+      const o = f.length - 3; f[o].textContent = zahl(ges - nl); f[o + 1].textContent = zahl(mwst); f[o + 2].textContent = zahl(r2(ges - nl + mwst)) + ' €';
       opt.geaendert?.(list.some((r) => (r.angebot.positionen || []).length));
+      kalkNeu();
     }
+    /** Karte „Kalkulation“ rechts mitrechnen (P8), ohne die Seite neu zu zeichnen. */
+    const kalkNeu = debounce(async () => {
+      const el = $('#kalkKarte'); if (!el || !window.Kalk) return;
+      await Kalk.abgleichen(w, list);
+      const neu = document.createElement('div'); neu.innerHTML = Kalk.karte(w, list, { offen: el.open, gesperrt: !!el.querySelector('input[disabled]') });
+      if (neu.firstElementChild) { el.replaceWith(neu.firstElementChild); Kalk.binden(w, list, neuZeichnen); }
+    }, 400);
 
     async function aendern(el) {
       const c = el.dataset.c;
@@ -160,8 +190,23 @@ window.Tabelle = (() => {
       if (c === 'menge') { x.menge = num(el.value); if (x.ki) x.ki.sicher = ''; el.value = mengeText(x.menge); }
       if (c === 'ep') {
         const v = el.value.trim(), it = !x.frei && kat(x.nr);
-        if (v === '' && it) delete x.epFix; // leer = wieder Preis aus der Preisliste
-        else { const n = r2(num(v)); if (it && Math.abs(n - A.ep(it, kalk)) < 0.005) delete x.epFix; else x.epFix = n; }
+        if (v === '' && (it || x.sub || x.ek)) delete x.epFix; // leer = wieder Preis aus Preisliste bzw. Einkauf + Zuschlag
+        else { const n = r2(num(v)); if (it && !x.sub && !x.ek && !x.zu && Math.abs(n - A.ep(it, kalk)) < 0.005) delete x.epFix; else { x.epFix = n; delete x.zu; } }
+        if (kalkSicht) { r.angebot.geaendert = true; await sichern(r); return neuMitFokus(); }
+      }
+      if (c === 'ekl' || c === 'ekm' || c === 'ekp') {
+        // Einkauf je Einheit von Hand: gilt für diese Zeile (x.ek), alle drei Teile zusammen
+        const S = A.summen(r.angebot.positionen, kalk).zeilen.find((y) => y.i === z.i)?.kalk || {};
+        const e = { lohn: S.lohn || 0, mat: S.mat || 0, pausch: S.pausch || 0 };
+        e[{ ekl: 'lohn', ekm: 'mat', ekp: 'pausch' }[c]] = r2(num(el.value));
+        x.ek = { ...e, von: 'hand' };
+        r.angebot.geaendert = true; await sichern(r); return neuMitFokus();
+      }
+      if (c === 'zu') {
+        const v = el.value.trim();
+        if (v === '') delete x.zu;
+        else { x.zu = { art: /€/.test(v) ? '€' : '%', wert: num(v.replace('%', '')) }; delete x.epFix; }
+        r.angebot.geaendert = true; await sichern(r); return neuMitFokus();
       }
       if (c === 'text' || c === 'einheit') {
         const v = el.value.trim();
@@ -186,6 +231,12 @@ window.Tabelle = (() => {
       r.angebot.geaendert = true; rechnen(); await sichern(r);
     }
 
+    function sicht(an) { kalkSicht = an; SPALTEN = an ? SPALTEN_KALK : SPALTEN_K; try { localStorage.setItem('dom:xtKalk', an ? '1' : '0'); } catch {} letzteZelle = null; zeichnen(); }
+    /** Neu zeichnen und im selben Feld bleiben (Kalkulationsansicht). */
+    function neuMitFokus() {
+      letzteZelle = null; const akt = document.activeElement; const pos = akt && $$('input, select', box).indexOf(akt);
+      zeichnen(); if (pos >= 0) $$('input, select', box)[pos]?.focus(); kalkNeu();
+    }
     /** Position von außen (Seitenleiste Preislisten): { text, einheit, ep } in den Titel tid, sonst in den zuletzt benutzten. */
     async function einfuegen(pos, tid) {
       let r = list.find((x) => x.id === tid) || list.find((x) => x.id === box.dataset.aktTitel) || list[list.length - 1];
@@ -193,7 +244,7 @@ window.Tabelle = (() => {
       if (!r) return;
       const it = !pos.ep && ausKatalog(pos.text);
       if (it && (r.angebot.positionen || []).some((x) => x.nr === it.nr)) return toast(`Steht in „${titel(r)}“ schon drin.`, 3500);
-      const i = anlegen(r, { text: pos.text, menge: 0, einheit: pos.einheit || '', ep: +pos.ep || 0 });
+      const i = anlegen(r, { text: pos.text, menge: 0, einheit: pos.einheit || '', ep: +pos.ep || 0, sub: pos.sub });
       await sichern(r);
       box.dataset.aktTitel = r.id; letzteZelle = { r: r.id, i, c: 'menge' };
       zeichnen(); toast(`In „${titel(r)}“ übernommen. Menge eintragen.`, 2500);
@@ -338,6 +389,7 @@ window.Tabelle = (() => {
         ({ neu: () => ($(`[data-nr="${aktTr?.dataset.r || aktTr?.dataset.nr}"] [data-c="text"]`, box) || $('[data-neu] [data-c="text"]', box)).focus(),
           weg: () => loeschen(akt),
           mehr: () => opt.mehrere?.(),
+          kunde: () => sicht(false), kalk: () => sicht(true),
           xlsaus: () => excelSpeichern().catch((err) => toast('Excel ging nicht: ' + err.message, 5000)),
           xlsein: async () => { const tr = $('tbody tr.akt', box), r = list.find((x) => x.id === (tr?.dataset.r || tr?.dataset.nr)) || list[list.length - 1]; excelEinlesen(r).catch((err) => toast('Excel lesen ging nicht: ' + err.message, 5000)); },
         })[b.dataset.xa]();
