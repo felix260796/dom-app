@@ -256,6 +256,10 @@ Je Zeile in `summen()` (`angebot.js`): `z.kalk = { lohn, mat, pausch, ekEp, quel
 `tabelle.js`: Umschalter „Kundenansicht | Kalkulation“ (`.xt-sicht`, `kalkSicht`, localStorage `dom:xtKalk`, `SPALTEN_KALK`), Spalten EK Lohn/Mat./Pausch. (`data-c="ekl|ekm|ekp"` → `x.ek`), Zuschlag (`data-c="zu"` → `x.zu`, Farbe `lv-<ebene>`), Marge. EP von Hand löscht `x.zu`, Zuschlag löscht `x.epFix`. Kunde sieht davon nichts (Excel-Export nur Kundenspalten).
 Nachlass: `Kalk.gesamt(w, list)` (`vor`, `nachlass`, `netto`, `mwst`, `brutto`) für Tabelle (Fußzeile), Angebotsliste, Projektsumme (`summeVon(list, w)`); PDF „Summe Positionen netto“, `Kalk.nachlassText`, dann netto/MwSt./brutto, Lohnanteil und Skonto vom Betrag nach Nachlass; `Rechnung.auftrag` hängt eine Zeile `nachlass: true` an (Baufortschritt lässt sie weg). Gesamtangebot (`gesamtAngebot`) übernimmt den Verkaufspreis je Zeile aus ihrem Bereich.
 
+## Neuerungen aus Version 128 (P8 Teil 4: Zielpreis)
+
+`Kalk.zielSetzen(w, list, wert, 'netto'|'brutto')`: Ziel = netto nach Nachlass, vor Kunden-Skonto (brutto ÷ (1 + MwSt.), § 13b = netto). `zielRechnen`: frei sind nur zählende Zeilen ohne `epFix`, ohne `x.zu`, ohne Gewerk-Zuschlag, mit Einkauf; m = (T − F − E) / Z auf den Zuschlag-Betrag (Basis ohne Ziel), Z = 0 → gleichmäßig nach Einkauf; 10 Cent, Rest auf die größte Position. Preise in `x.ziel` (Ebene `ziel` in `vkVon`, nach Gewerk, vor Angebot; Lohnanteil = VK × Lohn-EK / EK), Ziel am Angebot `a.zielpreis = { wert, art, netto, t }`. `zielStand` → „nicht mehr erreicht (+… €)“ mit „neu verteilen“, `zielEntfernen`. Unter Einkauf oder ohne freie Zeilen: Meldung, nichts verteilt. „Allgemeines verteilen“ gibt es noch nicht (käme danach).
+
 ## Bereiche
 
 | Bereich | Dateien | Inhalt |

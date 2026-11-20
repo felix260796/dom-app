@@ -370,6 +370,7 @@ const Angebot = (() => {
     if (zuGesetzt(x.zu) && ek > 0) return { ep: r2(r6(x.zu.art === '€' ? ek + +x.zu.wert : ek * (1 + +x.zu.wert / 100))), ebene: 'zeile' };
     const gz = kalkNorm(k)?.gewerke?.[E.g];
     if (gz && Number.isFinite(+gz.p) && ek > 0) return { ep: r2(r6(ek * (1 + +gz.p))), ebene: 'gewerk' };
+    if (+x.ziel > 0 && ek > 0) return { ep: +x.ziel, ebene: 'ziel' }; // Preis aus „Zielpreis verteilen“ (P8 Teil 4)
     if (E.quelle === 'vorlage' && !E.matSub) return { ep: ep(it, k), ebene: 'angebot' };
     if (ek > 0) return { ep: r2(r6(E.lohn * (1 + satz(k, 'aufLohn')) + E.mat * (1 + satz(k, 'aufMat')) + E.pausch * (1 + satz(k, 'aufPausch')))), ebene: 'angebot' };
     return { ep: 0, ebene: 'ohne' };
@@ -382,7 +383,9 @@ const Angebot = (() => {
       if (!it) return null;
       // P8: Einkauf je Quelle und Verkauf nach der tiefsten Ebene (eigener Preis, Zeile, Gewerk, Angebot)
       const EK = ekVon(x, it, k), V = vkVon(x, it, k, EK);
-      const std = ep(it, k), e = V.ep, l = lohnEp(it, k) * (std ? e / std : 1);
+      const std = ep(it, k), e = V.ep, ekS = EK.lohn + EK.mat + EK.pausch;
+      // Lohnanteil: beim Zielpreis Lohn im Verkauf = Verkauf × Lohn-Einkauf / Einkauf, sonst wie bisher
+      const l = V.ebene === 'ziel' && ekS > 0 ? e * EK.lohn / ekS : lohnEp(it, k) * (std ? e / std : 1);
       // Positionsart (v120): Bedarfs- und Alternativpositionen stehen mit Preis im Angebot, zählen aber nicht zur Summe;
       // „kostenlos“ zeigt den Wert und kostet 0 €. gpAnzeige = Betrag, der neben der Position steht.
       const zaehlt = !NICHT_SUMME.includes(x.art), gpA = r2(x.menge * e);

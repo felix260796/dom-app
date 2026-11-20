@@ -338,3 +338,7 @@ tr.xt-titel.ed:hover .xt-tdel, .xt-tdel:focus { opacity: 1; }
 .kz .kz-z.kz-klein > span { flex: none; }
 .kz .kz-z.kz-klein { flex-wrap: wrap; }
 .kz .kz-z.kz-klein b { white-space: normal; }
+
+.kz .kz-ziel { border-top: 1px dashed var(--line, #e5e7eb); margin-top: 4px; padding-top: 6px; }
+.kz .kz-zs { justify-content: flex-end; gap: 10px; }
+.kz .kz-ok { color: #047857; } .kz .kz-w { color: #b45309; }

@@ -15,7 +15,7 @@ window.Tabelle = (() => {
   // Kalkulationsansicht (P8): dieselbe Tabelle mit Einkauf Lohn/Material/Pauschal, Zuschlag und Marge je Zeile. Nur am PC, gemerkt.
   let kalkSicht = (() => { try { return localStorage.getItem('dom:xtKalk') === '1'; } catch { return false; } })();
   let SPALTEN = kalkSicht ? SPALTEN_KALK : SPALTEN_K;
-  const EBENE = { fix: 'Eigener Preis', zeile: 'Zuschlag nur für diese Zeile', gewerk: 'Zuschlag des Gewerks', angebot: 'Zuschlag des Angebots', ohne: 'Ohne Einkauf' };
+  const EBENE = { ziel: 'Preis aus dem Zielpreis', fix: 'Eigener Preis', zeile: 'Zuschlag nur für diese Zeile', gewerk: 'Zuschlag des Gewerks', angebot: 'Zuschlag des Angebots', ohne: 'Ohne Einkauf' };
   const QUELLE = { vorlage: 'Preisliste', subpreisliste: 'Preisliste Partner', subangebot: 'Angebot Sub', angefragt: 'Sub angefragt', frei: 'Eigene Zeile' };
 
   /** Am Computer? (Windows-Programm, oder breiter Bildschirm mit Maus; nicht am iPad mit Finger oder Stift) */

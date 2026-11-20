@@ -145,6 +145,69 @@ window.Kalk = (() => {
     });
     return true;
   }
+  // ---------- Zielpreis (P8 Teil 4, Entscheidung Felix 20.11.) ----------
+  // Der Zielpreis ist der Angebotspreis netto nach Nachlass und vor Kunden-Skonto (Eingabe netto, Umschalter brutto).
+  // Er verteilt sich nur auf Zeilen ohne eigenen Preis oder Zuschlag (auch nicht am Gewerk). Einkauf bleibt fest, nur der
+  // Zuschlag-Betrag wird mit m = (T − F − E) / Z malgenommen. Einzelpreise auf 10 Cent, der Rest auf die größte Position.
+  // Die neuen Preise stehen in x.ziel (Ebene „ziel“, angebot.js vkVon), der Zielpreis am Angebot a.zielpreis = { wert, art, netto, t }.
+  const zuGes = (z) => !!z && z.wert !== '' && z.wert !== null && z.wert !== undefined && Number.isFinite(+z.wert);
+  function zielRechnen(w, list, T) {
+    const A = I(), k0 = kalkVon(list), a = angebotVon(w, list);
+    // Nachlass wird vom Positionspreis abgezogen: Positionen müssen T + Nachlass ergeben
+    const n = a?.nachlass, Tp = !n || !(+n.wert > 0) ? T : n.art === '€' ? T + +n.wert : T / (1 - +n.wert / 100);
+    let F = 0, E = 0, Z = 0, ekAlle = 0; const frei = [], festG = new Set();
+    for (const r of mitPos(list)) {
+      const k = r.angebot.kalk, kk = A.kalkNorm(k) || {};
+      for (const z of A.summen(r.angebot.positionen, k).zeilen) {
+        if (z.zaehlt === false) continue;
+        const x = r.angebot.positionen[z.i], m = +z.menge || 0, e = z.kalk || {};
+        ekAlle += m * (e.ekEp || 0);
+        if (z.art === 'kostenlos') continue;
+        const eigenG = !!kk.gewerke?.[e.g];
+        if (!(x.epFix > 0) && !zuGes(x.zu) && !eigenG && e.ekEp > 0 && m > 0) {
+          const base = A.vkVon({ ...x, ziel: 0 }, z.it, k, A.ekVon(x, z.it, k)).ep;
+          E += m * e.ekEp; Z += m * (base - e.ekEp); frei.push({ x, r, m, ek: e.ekEp, base });
+        } else { F += z.gp; if (eigenG || zuGes(x.zu) || x.epFix > 0) festG.add(eigenG ? e.g : (z.it?.text || 'Position')); }
+      }
+    }
+    F = r2(F); E = r2(E);
+    if (!frei.length) return { fehler: 'keine', festG: [...festG] };
+    if (Tp < F + E - 0.005) return { fehler: Tp < ekAlle ? 'unterEk' : 'fest', festG: [...festG], F, E, Tp };
+    const neu = frei.map((f) => { const v = Z > 0.005 ? f.ek + (f.base - f.ek) * ((Tp - F - E) / Z) : f.ek * ((Tp - F) / E); return { ...f, ep: Math.round(v * 10) / 10 }; });
+    const summe = F + neu.reduce((s, f) => s + r2(f.m * f.ep), 0), rest = r2(Tp - summe);
+    const gr = neu.reduce((x, y) => (y.m * y.ep > x.m * x.ep ? y : x));
+    if (Math.abs(rest) >= 0.005) gr.ep = r2(gr.ep + rest / gr.m);
+    return { neu, Tp, F, E, Z, faktor: Z > 0.005 ? (Tp - F - E) / Z : null };
+  }
+  /** Zielpreis T (Betrag, art 'netto' | 'brutto') verteilen. Gibt eine Meldung zurück ('' = erreicht). */
+  async function zielSetzen(w, list, wert, art = 'netto') {
+    const A = I(), E = A.einstellungen(), a = angebotVon(w, list);
+    const kd = w?.kundeId ? window.Kunden?.byId?.(w.kundeId) : null, ohneMwst = !!kd?.p13b;
+    const T = r2(art === 'brutto' && !ohneMwst ? +wert / (1 + (E.mwst ?? 0.19)) : +wert);
+    if (!(T > 0)) return 'Bitte einen Zielpreis eintragen.';
+    // vorher verteilte Preise zurücknehmen, dann neu rechnen
+    for (const r of mitPos(list)) for (const x of r.angebot.positionen) delete x.ziel;
+    const R = zielRechnen(w, list, T);
+    if (R.fehler) {
+      for (const r of mitPos(list)) await saveProject(r);
+      if (R.fehler === 'unterEk') return 'Zielpreis liegt unter dem Einkauf. Es wurde nichts verteilt.';
+      return R.festG?.length ? `Zielpreis nur erreichbar, wenn der Zuschlag bzw. Preis bei ${R.festG.slice(0, 4).join(', ')} geändert wird.` : 'Keine Position ohne eigenen Preis, auf die sich der Zielpreis verteilen lässt.';
+    }
+    for (const f of R.neu) f.x.ziel = f.ep;
+    for (const r of mitPos(list)) { r.angebot.geaendert = true; await saveProject(r); }
+    if (a) { a.zielpreis = { wert: +wert, art, netto: T, t: Date.now() }; await window.AngebotDaten.speichern(a); }
+    const ist = gesamt(w, list).netto;
+    return Math.abs(ist - T) >= 0.01 ? `Zielpreis verteilt, Abweichung ${eur(ist - T)} durch Rundung.` : '';
+  }
+  async function zielEntfernen(w, list) {
+    for (const r of mitPos(list)) { let n = 0; for (const x of r.angebot.positionen) if (x.ziel !== undefined) { delete x.ziel; n++; } if (n) await saveProject(r); }
+    const a = angebotVon(w, list); if (a?.zielpreis) { delete a.zielpreis; await window.AngebotDaten.speichern(a); }
+  }
+  /** Stand des Zielpreises: null oder { T, ist, diff } (diff > 0 = Angebot teurer als Ziel). */
+  function zielStand(w, list) {
+    const z = angebotVon(w, list)?.zielpreis; if (!z?.netto) return null;
+    const ist = gesamt(w, list).netto; return { ...z, ist, diff: r2(ist - z.netto) };
+  }
   async function nachlassSetzen(w, list, art, wert) {
     const a = angebotVon(w, list); if (!a) return;
     if (wert === '' || wert === null || !(+wert > 0)) delete a.nachlass; else a.nachlass = { art, wert: +wert };
@@ -154,6 +217,14 @@ window.Kalk = (() => {
   // ---------- Karte „Kalkulation“ (nur intern, im Büro) ----------
   const artWahl = (attr, art) => `<select ${attr} class="kz-art" aria-label="Prozent oder Euro"><option value="%" ${art !== '€' ? 'selected' : ''}>%</option><option value="€" ${art === '€' ? 'selected' : ''}>€</option></select>`;
   const z = (l, v, cls = '') => `<div class="kz-z ${cls}"><span>${l}</span><b>${v}</b></div>`;
+  function zielHtml(w, list, gesp) {
+    const s = zielStand(w, list), wert = s ? s.wert : '';
+    const stand = !s ? '' : Math.abs(s.diff) < 0.05 ? `<small class="kz-ok">erreicht</small>`
+      : `<small class="kz-w">nicht mehr erreicht (${s.diff > 0 ? '+' : '-'}${eur(Math.abs(s.diff))})</small>${gesp ? '' : '<button type="button" class="link-add" data-kzz="neu">neu verteilen</button>'}`;
+    return `<div class="kz-z kz-ziel"><span>Zielpreis <small>vor Skonto</small></span><span class="kz-in"><input type="text" inputmode="decimal" data-kzzw value="${esc(zahlIn(wert))}" placeholder="–" ${gesp ? 'disabled' : ''} aria-label="Zielpreis">
+      <select data-kzza class="kz-art" ${gesp ? 'disabled' : ''} aria-label="netto oder brutto"><option value="netto" ${s?.art !== 'brutto' ? 'selected' : ''}>netto</option><option value="brutto" ${s?.art === 'brutto' ? 'selected' : ''}>brutto</option></select></span></div>
+      ${s ? `<div class="kz-z kz-zs">${stand}${gesp ? '' : '<button type="button" class="link-danger" data-kzz="weg">Zielpreis entfernen</button>'}</div>` : ''}`;
+  }
   /** HTML der Karte. opt.offen: aufgeklappt (PC), sonst zu (iPhone/iPad). */
   function karte(w, list, opt = {}) {
     if (!mitPos(list).length) return '';
@@ -180,6 +251,7 @@ window.Kalk = (() => {
         <div class="kz-z kz-nl"><span>Nachlass</span><span class="kz-in"><input type="text" inputmode="decimal" data-kzn value="${esc(zahlIn(n.wert))}" placeholder="0" ${gesp ? 'disabled' : ''} aria-label="Nachlass">${artWahl(`data-kzna ${gesp ? 'disabled' : ''}`, n.art)}<b>${K.nachlass ? '- ' + eur(K.nachlass) : ''}</b></span></div>
         ${K.nachlass ? z('Verkauf netto nach Nachlass', eur(K.netto)) : ''}
         ${z('Verkauf brutto', eur(K.brutto))}
+        ${zielHtml(w, list, gesp)}
         ${z('Rohertrag', eur(K.re), 'kz-gross' + (K.unter ? ' warn' : ''))}
         ${z('Aufschlag (vom Einkauf)', pz(K.aufschlag))}
         ${z('Marge (vom Verkauf)', pz(K.marge), K.unter ? 'warn' : '')}
@@ -212,6 +284,14 @@ window.Kalk = (() => {
     $$('[data-kza]', box).forEach((el) => { const n = el.dataset.kza; const f = async () => { const v = wert(el); if (v === null) return fehler(); await angebotSetzen(w, list, n, $(`[data-kzaa="${n}"]`, box).value, v); nach(); }; el.onchange = f; $(`[data-kzaa="${n}"]`, box).onchange = f; });
     $$('[data-kzg]', box).forEach((el) => { const g = el.dataset.kzg; const f = async () => { const v = wert(el); if (v === null) return fehler(); await gewerkSetzen(w, list, g, $(`[data-kzga="${CSS.escape(g)}"]`, box).value, v); nach(); }; el.onchange = f; $(`[data-kzga="${CSS.escape(g)}"]`, box).onchange = f; });
     $$('[data-kzms]', box).forEach((el) => (el.onchange = async () => { await matSubSetzen(w, list, el.dataset.kzms, el.checked); nach(); }));
+    const ziel = async () => {
+      const v = wert($('[data-kzzw]', box)); if (v === null) return fehler();
+      if (v === '') { await zielEntfernen(w, list); return nach(); }
+      const msg = await zielSetzen(w, list, v, $('[data-kzza]', box).value);
+      if (msg) toast(msg, 6000); nach();
+    };
+    if ($('[data-kzzw]', box)) { $('[data-kzzw]', box).onchange = ziel; $('[data-kzza]', box).onchange = () => { if ($('[data-kzzw]', box).value.trim()) ziel(); }; }
+    $$('[data-kzz]', box).forEach((b) => (b.onclick = async () => { if (b.dataset.kzz === 'weg') await zielEntfernen(w, list); else { const s = zielStand(w, list); if (s) { const msg = await zielSetzen(w, list, s.wert, s.art); if (msg) toast(msg, 6000); } } nach(); }));
   }
-  return { gesamt, nachlassText, kennzahlen, karte, binden, abgleichen, angebotSetzen, gewerkSetzen, matSubSetzen, nachlassSetzen, nachlassVon, angebotVon };
+  return { zielSetzen, zielEntfernen, zielStand, zielRechnen, gesamt, nachlassText, kennzahlen, karte, binden, abgleichen, angebotSetzen, gewerkSetzen, matSubSetzen, nachlassSetzen, nachlassVon, angebotVon };
 })();
