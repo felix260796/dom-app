@@ -428,6 +428,7 @@ window.Projekt = (() => {
     $$('[data-allg]').forEach((c) => (c.onchange = async () => { const a = window.AngebotDaten.aktivSync(w); if (!a) return; a.allgemeinVerteilt = c.checked; await window.AngebotDaten.speichern(a); toast(c.checked ? 'Allgemeines steckt jetzt anteilig in den Einzelpreisen (nur im PDF).' : 'Allgemeines steht wieder als eigener Titel im PDF.', 3500); }));
     if ($('#wSenden')) $('#wSenden').onclick = async () => { const b = $('#wSenden'); b.disabled = true; try { await sendenMitMappe(w, list); } catch (e) { console.error(e); toast('PDF-Fehler: ' + e.message, 6000); } b.disabled = false; };
     if ($('#wSpeichern')) $('#wSpeichern').onclick = async () => { const b = $('#wSpeichern'); b.disabled = true; try { await angebotSpeichern(w, list); } catch (e) { console.error(e); toast('PDF-Fehler: ' + e.message, 6000); } if (b.isConnected) b.disabled = false; };
+    if ($('#wUnterschrift')) $('#wUnterschrift').onclick = () => kundeUnterschreibt(w, list).catch((e) => { console.error(e); toast('Ging nicht: ' + e.message, 5000); });
     if ($('#wAnpassen')) $('#wAnpassen').onclick = () => { if (gesperrt(w) || norm(w.status) === 'abgesagt') return angebotKopieren(w); reiterSetzen(w, 'buero'); view(); window.scrollTo(0, 0); };
     if ($('#wKopie')) $('#wKopie').onclick = () => angebotKopieren(w);
     if ($('#wTexte')) $('#wTexte').onclick = () => {
@@ -1016,6 +1017,7 @@ window.Projekt = (() => {
         ${st === 'angebot' || st === 'abgesagt' ? `
           ${w.angebotPdf ? `<div class="stk-2"><button class="btn secondary" id="wAngAnsehen">${icon('eye')} Ansehen</button><button class="btn secondary" id="wNochmal">${icon('mail')} Nochmal senden</button></div>` : ''}
           ${st === 'angebot' ? `<div class="stk-2" style="margin-top:10px"><button class="btn" data-st="geplant" style="--c:#2f8a57">${icon('check')} Zugesagt</button><button class="btn" data-st="abgesagt" style="--c:#c0392b">${icon('x')} Abgesagt</button></div>` : ''}
+          ${st === 'angebot' && !window.Tabelle?.istBuero() ? `<button class="btn block" id="wUnterschrift" style="margin-top:8px">${icon('edit')} Vom Kunden unterschreiben lassen</button>` : ''}
           <button class="btn secondary block" id="wAnpassen" style="margin-top:8px">${icon('edit')} Angebot ändern</button>
           <p class="hint center" style="margin-bottom:0">„Angebot ändern“ legt eine Kopie mit neuer Nummer und neuem Datum an. Dieses Angebot bleibt unverändert.</p>`
         : `
@@ -1458,6 +1460,55 @@ window.Projekt = (() => {
       $('#dfOk', bg).onclick = () => { const d = $('#dfD', bg).value || heuteIso(); zu(mitWeg ? { datum: d, weg: $('#dfW', bg).value } : d); };
     });
   }
+  // ---------- Kundenunterschrift am iPad für die Auftragserteilung (Runde 15, B3) ----------
+  // Vollbild mit Auftragserteilung, Kästchen „vorzeitiger Beginn“ (nur Privat/WEG und wenn der Text eingetragen ist),
+  // Ort, Datum und Unterschriftsfeld wie im Abnahmeprotokoll (stiftLinien). Ergebnis: das Angebot mit Unterschrift als
+  // eigenes PDF in den Dokumenten und als „unterschriebenes Angebot“ (auftrag:<id>), an der Fassung vermerkt (fassung.unterschrieben).
+  async function kundeUnterschreibt(w, list) {
+    const A = window.Angebot._intern, kd = w.kundeId ? Kunden.byId(w.kundeId) : null;
+    await A.preisliste();
+    const fa = A.texteFuer(w).find((b) => b.fest === 'auftrag'), vzText = String(vorgabe('textVorzeitig') || '').trim(), mitVz = !!vzText && A.privatArt(kd);
+    const brutto = window.Kalk ? Kalk.gesamt(w, list).brutto : 0, ort = String((kd && Kunden.ort?.(kd)) || '').match(/\b\d{5}\s+([^,]+)/)?.[1]?.trim() || '';
+    const bg = document.createElement('div'); bg.className = 'sheet-bg ku-voll';
+    bg.innerHTML = `<div class="sheet ku-sheet" role="dialog" aria-label="Auftragserteilung"><div class="sheet-h"><b>${esc(String(fa?.titel || '').trim() || 'Auftragserteilung')}</b><button class="icon-btn" data-zu aria-label="Schließen">${icon('x')}</button></div>
+      <div class="ku-in"><p>${esc(String(fa?.text || '').replace(/\{\w+\}/g, '').trim())}</p>
+      <p class="ku-sum">Angebot Nr. ${esc(AngebotDaten.aktivSync(w) ? AngebotDaten.nr(AngebotDaten.aktivSync(w), w) : '')}${brutto ? ` · ${brutto.toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} € brutto` : ''}</p>
+      ${mitVz ? `<label class="ku-vz"><input type="checkbox" id="kuVz"> ${esc(vzText.replace(/\{\w+\}/g, ''))}</label>` : ''}
+      <label>Ort, Datum</label><input type="text" id="kuOrt" value="${esc([ort, new Date().toLocaleDateString('de-DE')].filter(Boolean).join(', '))}">
+      <label>Unterschrift Auftraggeber${kd ? ` (${esc(Kunden.name(kd))})` : ''}</label><canvas class="sig ku-sig" id="kuSig"></canvas>
+      <button type="button" class="link-add" id="kuNeu">Neu unterschreiben</button>
+      <button class="btn big block" id="kuOk" style="margin-top:12px">${icon('check')} Unterschrieben, ablegen</button></div></div>`;
+    document.body.appendChild(bg); requestAnimationFrame(() => bg.classList.add('on'));
+    const cv = $('#kuSig', bg), ctx = cv.getContext('2d');
+    const fit = () => { const r = cv.getBoundingClientRect(); cv.width = r.width * 2; cv.height = r.height * 2; ctx.scale(2, 2); ctx.lineWidth = 2.2; ctx.lineCap = 'round'; ctx.lineJoin = 'round'; ctx.strokeStyle = '#1e3550'; };
+    requestAnimationFrame(fit);
+    let leer = true; stiftLinien(cv, ctx, () => { leer = false; });
+    $('#kuNeu', bg).onclick = () => { ctx.clearRect(0, 0, cv.width, cv.height); leer = true; };
+    const ergebnis = await new Promise((res) => {
+      bg.onclick = (e) => { if (e.target.closest('[data-zu]')) { bg.remove(); res(null); } };
+      $('#kuOk', bg).onclick = () => { if (leer) return toast('Bitte unterschreiben lassen.', 3000); const r = { bild: cv.toDataURL('image/png'), ortDatum: $('#kuOrt', bg).value.trim(), vorzeitig: !!$('#kuVz', bg)?.checked }; bg.remove(); res(r); };
+    });
+    if (!ergebnis) return;
+    toast('Unterschriebenes Angebot wird erstellt …', 10000);
+    const r = await angebotDateien(w, list, { final: true, unterschrift: ergebnis, datum: w.versendetAm || '' });
+    if (!r) return;
+    const name = r.ang.name.replace(/^Angebot_/, 'Angebot_unterschrieben_'), uri = r.ang.doc.output('datauristring');
+    const dk = 'wdok:' + w.id + ':' + name.replace(/[^\wäöüÄÖÜß.-]+/g, '_');
+    await kvSet(dk, uri); await kvSet('auftrag:' + w.id, uri);
+    w.dokumente = [...(w.dokumente || []).filter((x) => x.key !== dk), { key: dk, name, t: Date.now(), art: 'angebot-unterschrieben' }];
+    w.auftrag = { name, typ: 'application/pdf', t: Date.now() };
+    if (ergebnis.vorzeitig) w.vorzeitig = { t: Date.now(), wer: window.Kalender?.wer?.() || '' };
+    const a = AngebotDaten.aktivSync(w), f = a?.fassungen?.find((x) => x.buchstabe === a.buchstabe);
+    if (f) { f.unterschrieben = { t: Date.now(), vorzeitig: ergebnis.vorzeitig, dokKey: dk }; await AngebotDaten.speichern(a); }
+    await save(w);
+    window.Buero?.ablage(w, name, r.ang.doc.output('blob'));
+    $('#toast').hidden = true;
+    await neuZeichnen(w);
+    if (norm(w.status) === 'angebot') {
+      const v = await sheet('Auftrag ist unterschrieben', [{ label: 'Jetzt als zugesagt markieren', sub: 'Weiter mit Auftragsbestätigung und Einplanen', icon: icon('check'), value: 'ja' }, { label: 'Später', icon: icon('x'), value: '' }]);
+      if (v === 'ja') $('[data-st="geplant"]')?.click();
+    }
+  }
   // ---------- Versandweg (Runde 15, A5): an der Fassung (fassung.weg) und im Verlauf, für die Zeitleiste ----------
   const WEGE = [['mail', 'per Mail'], ['whatsapp', 'per WhatsApp'], ['druck', 'ausgedruckt'], ['persoenlich', 'persönlich oder mündlich']];
   const wegText = (v) => WEGE.find(([k]) => k === v)?.[1] || '';
@@ -1630,12 +1681,13 @@ window.Projekt = (() => {
     if (!mitPos.length) { toast('Bitte zuerst das Angebot ausarbeiten.'); return null; }
     toast('Angebot wird erstellt …', 15000);
     let ang;
-    if (mitPos.length > 1) ang = await gesamtDoc(w, mitPos, { final: opt.final });
+    const po = { final: opt.final, ...(opt.unterschrift ? { unterschrift: opt.unterschrift } : {}), ...(opt.datum ? { datum: opt.datum } : {}) };
+    if (mitPos.length > 1) ang = await gesamtDoc(w, mitPos, po);
     else {
       const r = mitPos[0];
       Object.assign(r, { customer: w.customer, address: w.address, kundeId: w.kundeId, projektNr: w.nr || '' });
       A.init(r);
-      const doc = await A.baueAngebotPdf(r, { final: opt.final });
+      const doc = await A.baueAngebotPdf(r, po);
       await saveProject(r);
       ang = { doc, syn: r, name: `Angebot_${r.angebot.nr}_${(w.customer || 'Kunde').replace(/[^\wäöüÄÖÜß-]+/g, '_')}.pdf` };
     }
@@ -1865,7 +1917,7 @@ window.Projekt = (() => {
   }
 
   const forget = (id) => rooms.delete(id);
-  return { automatik, anlegen, angebotVersendet, gesperrt, gesperrtFrage, angebotKopieren, dateiZeigen, nachfassen, seitTagen, STATUS, ANGEBOT, ALLE, PHASEN, phase, farbe, pill, norm, zugesagt, statusName, statusKurz, raumAngebot, angebotMerken, forget, neu, neuDirekt, neuFuer, kundeUebernehmen, oeffnen, view, mappeView, moodboardView, migrate, raum, raeume, raumGespeichert, raumEntfernt, save, wahl, PKG_IDS, _intern: { wegFragen, wegText, versandStand, versandPruefen, sendenMitMappe, alsVersendet, angebotSpeichern, titel, addRoom, raumAusScan, raumAnlegen, reiterSetzen, auftragsbestaetigung } };
+  return { automatik, anlegen, angebotVersendet, gesperrt, gesperrtFrage, angebotKopieren, dateiZeigen, nachfassen, seitTagen, STATUS, ANGEBOT, ALLE, PHASEN, phase, farbe, pill, norm, zugesagt, statusName, statusKurz, raumAngebot, angebotMerken, forget, neu, neuDirekt, neuFuer, kundeUebernehmen, oeffnen, view, mappeView, moodboardView, migrate, raum, raeume, raumGespeichert, raumEntfernt, save, wahl, PKG_IDS, _intern: { kundeUnterschreibt, wegFragen, wegText, versandStand, versandPruefen, sendenMitMappe, alsVersendet, angebotSpeichern, titel, addRoom, raumAusScan, raumAnlegen, reiterSetzen, auftragsbestaetigung } };
 })();
 // Ältere Aufrufe (PR „Wohnungen“) laufen weiter
 window.Wohnung = { neu: () => Projekt.neu(), oeffnen: (id) => Projekt.oeffnen(id), view: () => Projekt.view(), raumGespeichert: (p) => Projekt.raumGespeichert(p), raumEntfernt: (p) => Projekt.raumEntfernt(p) };

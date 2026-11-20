@@ -1188,7 +1188,7 @@ Gib Länge (längere Seite) und Breite der Grundfläche, Raumhöhe, Anzahl und G
     const W = 210, H = 297, M = 20, R = W - 18;
     const NAVY = [30, 53, 80], BRASS = [184, 134, 47];
     const logo = state.settings.logo, logoFmt = logo ? (mimeOf(logo) === 'image/png' ? 'PNG' : 'JPEG') : null;
-    const heute = new Date(), gueltig = new Date(heute); gueltig.setDate(gueltig.getDate() + (+vorgabe('angebotGueltigTage') || 28)); // P7: 4 Wochen, Einstellung nicht mehr bei der Preisliste
+    const heute = opt.datum ? new Date(String(opt.datum).slice(0, 10) + 'T12:00') : new Date(), gueltig = new Date(heute); gueltig.setDate(gueltig.getDate() + (+vorgabe('angebotGueltigTage') || 28)); // P7: 4 Wochen, Einstellung nicht mehr bei der Preisliste
     const bz = bauzeit(A.positionen, startDatum(p), mitInst(p));
     const t = (s, x, y, o) => doc.text(Array.isArray(s) ? s : String(s ?? ''), x, y, o);
 
@@ -1386,9 +1386,14 @@ Gib Länge (längere Seite) und Breite der Grundfläche, Raumhöhe, Anzahl und G
       const vzText = String(vorgabe('textVorzeitig') || '').trim();
       if (vzText && privatArt(kd)) {
         const vz = doc.splitTextToSize(platzh(vzText), R - M - 7);
-        doc.setDrawColor(90); doc.rect(M, y - 3, 3.6, 3.6); t(vz, M + 6, y); y += 4.3 * vz.length;
+        doc.setDrawColor(90); doc.rect(M, y - 3, 3.6, 3.6); t(vz, M + 6, y);
+        if (opt.unterschrift?.vorzeitig) { doc.setLineWidth(0.5); doc.setDrawColor(30); doc.line(M + 0.5, y - 2.5, M + 3.1, y + 0.1); doc.line(M + 3.1, y - 2.5, M + 0.5, y + 0.1); doc.setLineWidth(0.2); }
+        y += 4.3 * vz.length;
       }
       y += 11;
+      // Runde 15 (B3): am iPad unterschriebenes Exemplar: Ort, Datum und Unterschrift des Kunden auf den Linien
+      const U = opt.unterschrift;
+      if (U?.bild) { await platz(26); y += 8; try { await addFit(doc, U.bild, M + 82, y - 17, R - M - 84, 16, 'PNG'); } catch (e) { console.warn('Unterschrift', e); } doc.setFontSize(10); doc.setTextColor(30); t(U.ortDatum || '', M + 1, y - 2); }
       doc.setDrawColor(120); doc.line(M, y, M + 60, y); doc.line(M + 80, y, R, y);
       doc.setFontSize(8); doc.setTextColor(120); t('Ort, Datum', M, y + 4); t('Unterschrift Auftraggeber', M + 80, y + 4);
       y += 14;

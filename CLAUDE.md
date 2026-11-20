@@ -297,6 +297,10 @@ Preis-Plausibilität (`Kalk.plausi(w, list)`, `plausiLaden`): je Bereich netto (
 
 Lernende Vorlagen: Beim Versand (`angebotVersendet`) merkt `Angebot._intern.vorlageMerken(raeume)` je Bereich mit Paket, welche Preisliste-Positionen gegenüber der Vorlage ergänzt (plus) oder gelöscht (minus) wurden (kv `vorlageLernen` `{ log, nein }`, Raumgruppe über `gruppe(typ)`). `vorlageVorschlaege()`: dieselbe Position in mindestens `vorlageLernenAb` (3) der letzten `vorlageLernenAus` (5) Fälle gleichen Pakets und gleicher Raumgruppe, in beide Richtungen. Vorschläge oben in Einstellungen › Paket-Vorlagen (`#vLern`, Aufnehmen/Herausnehmen/Nein) und als To-do (`schluessel vlern:<key>`, Priorität niedrig). Nach Ja oder Nein wird dieselbe Frage erst nach 5 weiteren Fällen wieder gestellt (`nein[key]`). Neue Positionen bekommen eine einfache Mengenformel (m² = boden, lfm = umfang, sonst 1).
 
+## Neuerungen aus Version 137 (Runde 15: Kundenunterschrift am iPad)
+
+Kundenunterschrift am iPad: Reiter Angebote (verschickt, nicht am PC) Knopf `#wUnterschrift` → `kundeUnterschreibt(w, list)` in `projekt.js`: Vollbild mit Auftragserteilung, Kästchen vorzeitiger Beginn (`#kuVz`, nur Privat/WEG und wenn `textVorzeitig` eingetragen ist), Ort/Datum, Unterschriftsfeld mit `stiftLinien` wie im Abnahmeprotokoll. Danach baut `angebotDateien(w, list, { final, unterschrift: { bild, ortDatum, vorzeitig }, datum: w.versendetAm })` das Angebot mit Kreuz, Ort/Datum und Unterschrift (`baueAngebotPdf` `opt.unterschrift`, `opt.datum` = Datum des Angebots). Abgelegt als `Angebot_unterschrieben_…` in `w.dokumente` (`art: 'angebot-unterschrieben'`), als unterschriebenes Angebot (`auftrag:<id>`, `w.auftrag`), am PC im Kundenordner; an der Fassung `fassung.unterschrieben = { t, vorzeitig, dokKey }`, angekreuzt setzt `w.vorzeitig`. Danach Frage „Jetzt als zugesagt markieren“.
+
 ## Bereiche
 
 | Bereich | Dateien | Inhalt |
