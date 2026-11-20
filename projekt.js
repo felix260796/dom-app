@@ -261,7 +261,7 @@ window.Projekt = (() => {
       return `<span class="dots">${fertig.map((id) => `<i style="--c:${pkgOf(r, id)?.color || PKG_META[id][1]}" title="${esc(pkgOf(r, id)?.name || '')}"></i>`).join('')}</span><span class="st">${fertig.map((id) => esc(pkgOf(r, id)?.name || PKG_META[id][0])).join(', ')}</span>`;
     };
     let summe = 0;
-    if (phase(w) === 'angebot') { try { await window.Angebot._intern.preisliste(); await kopfAnwenden(w, list); summe = summeVon(list); } catch (e) { console.warn(e); } if (state.wohnung !== w || state.project) return; }
+    if (phase(w) === 'angebot') { try { await window.Angebot._intern.preisliste(); await kopfAnwenden(w, list); summe = summeVon(list, w); } catch (e) { console.warn(e); } if (state.wohnung !== w || state.project) return; }
     const pc = !!window.Tabelle?.istBuero();
     main().innerHTML = phase(w) === 'angebot' ? (pc ? angebotPc : angebotSeite)({ w, list, k, nFotos, anyResult, withPhotos, nBilder, stand, summe }) : auftragSeite({ w, list, k, nFotos, stand });
     if ($('#wKosten')) window.Finanzen?.projektAbschnitt($('#wKosten'), w);
@@ -711,10 +711,11 @@ window.Projekt = (() => {
   // Auftragserteilung und Gruß mit Unterschrift sind seit Version 100 Bausteine am Schluss (b.fest, angebot.js texteFuer).
   const texteVon = (w) => window.Angebot._intern.texteFuer(w);
   /** Summe brutto über alle Räume (für die Anzeige). */
-  function summeVon(list) {
+  function summeVon(list, w = null) {
     const A = window.Angebot._intern;
     let s = 0;
     for (const r of mitPosVon(list)) { try { s += A.summen(r.angebot.positionen, r.angebot.kalk).brutto || 0; } catch {} }
+    if (w && window.Kalk) { try { return Kalk.gesamt(w, list).brutto; } catch {} } // mit Nachlass (P8)
     return s;
   }
 
@@ -1602,9 +1603,10 @@ window.Projekt = (() => {
     const allg = new Map(), pos = [];
     const PL = await A.preisliste();
     // Preise je Raum (Nachkalkulation, eigene Einzelpreise) ins Gesamtangebot übernehmen
-    const mitPreis = (x, r) => { const it = PL.positionen.find((y) => y.nr === x.nr); return it && !(x.epFix > 0) && r.angebot.kalk ? { ...x, epFix: A.ep(it, r.angebot.kalk) } : x; };
-    for (const r of raeume) for (const x0 of r.angebot.positionen) {
-      const x = mitPreis(x0, r);
+    // P8: Verkaufspreis je Zeile aus ihrem Bereich (Aufschläge, Gewerk, Zeile, Partner) fest übernehmen
+    const mitPreis = (x, r, z) => (z && z.ep > 0 && !(x.epFix > 0) ? { ...x, epFix: z.ep } : x);
+    for (const r of raeume) for (const [i, x0] of r.angebot.positionen.entries()) {
+      const x = mitPreis(x0, r, A.summen(r.angebot.positionen, r.angebot.kalk).zeilen.find((z) => z.i === i));
       if (!x.raum) { const v = allg.get(x.nr); if (!v || v.menge < x.menge) allg.set(x.nr, { ...x }); continue; } // Allgemeines (z. B. Baustelleneinrichtung) nur einmal
       pos.push({ ...x, raum: mehrere ? `${r.room || 'Raum'}: ${x.raum}` : x.raum });
     }

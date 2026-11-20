@@ -336,3 +336,5 @@ tr.xt-titel.ed:hover .xt-tdel, .xt-tdel:focus { opacity: 1; }
 .kz .kz-ms input { width: auto; flex: none; margin: 0; }
 .kz select.kz-art { min-width: 50px; }
 .kz .kz-z.kz-klein > span { flex: none; }
+.kz .kz-z.kz-klein { flex-wrap: wrap; }
+.kz .kz-z.kz-klein b { white-space: normal; }

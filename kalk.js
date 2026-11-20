@@ -27,6 +27,16 @@ window.Kalk = (() => {
     return r2(Math.min(netto, n.art === '€' ? +n.wert : netto * +n.wert / 100));
   }
 
+  /** Summen des Angebots für den Kunden: Positionen netto, Nachlass, netto, MwSt., brutto. */
+  function gesamt(w, list) {
+    const A = I(), E = A.einstellungen(); let vor = 0;
+    for (const r of mitPos(list)) { try { vor += A.summen(r.angebot.positionen, r.angebot.kalk).netto || 0; } catch {} }
+    vor = r2(vor);
+    const nachlass = nachlassVon(angebotVon(w, list), vor), netto = r2(vor - nachlass), mwst = r2(netto * (E.mwst ?? 0.19));
+    return { vor, nachlass, netto, mwst, brutto: r2(netto + mwst) };
+  }
+  /** Text für den Nachlass im PDF, z. B. „Nachlass 5 %“. */
+  const nachlassText = (a) => (a?.nachlass?.art === '€' || !a?.nachlass ? 'Nachlass' : `Nachlass ${String(a.nachlass.wert).replace('.', ',')} %`);
   /** Alle Kennzahlen des Angebots. */
   function kennzahlen(w, list) {
     const A = I(), E = A.einstellungen(), a = angebotVon(w, list), min = +vorgabe('mindestMarge') || 0;
@@ -203,5 +213,5 @@ window.Kalk = (() => {
     $$('[data-kzg]', box).forEach((el) => { const g = el.dataset.kzg; const f = async () => { const v = wert(el); if (v === null) return fehler(); await gewerkSetzen(w, list, g, $(`[data-kzga="${CSS.escape(g)}"]`, box).value, v); nach(); }; el.onchange = f; $(`[data-kzga="${CSS.escape(g)}"]`, box).onchange = f; });
     $$('[data-kzms]', box).forEach((el) => (el.onchange = async () => { await matSubSetzen(w, list, el.dataset.kzms, el.checked); nach(); }));
   }
-  return { kennzahlen, karte, binden, abgleichen, angebotSetzen, gewerkSetzen, matSubSetzen, nachlassSetzen, nachlassVon, angebotVon };
+  return { gesamt, nachlassText, kennzahlen, karte, binden, abgleichen, angebotSetzen, gewerkSetzen, matSubSetzen, nachlassSetzen, nachlassVon, angebotVon };
 })();

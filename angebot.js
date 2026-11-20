@@ -1103,6 +1103,9 @@ Gib Länge (längere Seite) und Breite der Grundfläche, Raumhöhe, Anzahl und G
     // Seit v110 hat das Angebot am Vorgang seine Nummer (1001-01-01A) ab dem Anlegen; ohne Kunde gilt die alte Jahresnummer
     const ent = p[window.AngebotDaten?.REF] || null;
     const entwurf = !!ent && !ab && !opt.final && ent.status === 'entwurf';
+    // Kunden-Nachlass am Angebot (P8): mindert netto, MwSt., brutto und den Lohnanteil anteilig
+    const NL = window.Kalk ? Kalk.nachlassVon(ent, S.netto) : 0;
+    if (NL) { const f = (S.netto - NL) / S.netto; S.vorNachlass = S.netto; S.nachlass = NL; S.netto = r2(S.netto - NL); S.mwst = r2(S.netto * E.mwst); S.brutto = r2(S.netto + S.mwst); S.lohnBrutto = r2(S.lohnBrutto * f); }
     if (!A.nr) { A.nr = await naechsteNummer(); if (!p._gesamt) await saveProject(p); }
     // Versionen (B8): jede geänderte Fassung bekommt „Änderung n“, damit man sieht, was der Kunde bekommen hat
     const sig = JSON.stringify(A.positionen.map((x) => [x.nr, x.raum, x.menge]));
@@ -1212,6 +1215,7 @@ Gib Länge (längere Seite) und Breite der Grundfläche, Raumhöhe, Anzahl und G
     await platz(30);
     y += 3; doc.setFontSize(10);
     const sumZ = (k, v, fett) => { doc.setFont('helvetica', fett ? 'bold' : 'normal'); t(k, C.txt, y); t(v, C.gp, y, { align: 'right' }); y += 5.5; };
+    if (S.nachlass) { sumZ('Summe Positionen netto', fmtEur(S.vorNachlass)); sumZ(Kalk.nachlassText(ent), '- ' + fmtEur(S.nachlass)); }
     sumZ('Summe netto', fmtEur(S.netto));
     sumZ(`zzgl. ${Math.round(E.mwst * 100)} % MwSt.`, fmtEur(S.mwst));
     doc.setDrawColor(...NAVY); doc.line(C.txt, y - 3.8, R, y - 3.8);

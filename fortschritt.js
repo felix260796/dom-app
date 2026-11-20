@@ -55,7 +55,7 @@ window.Fortschritt = (() => {
       $$('[data-vl]', el).forEach((b) => (b.onclick = async () => {
         if (b.dataset.vl === 'angebot') {
           const a = await window.Rechnung.auftrag(w);
-          const l = [...a.zeilen.map((z) => ({ name: z.text, raum: z.raum || '', menge: z.menge, einheit: z.einheit })), ...a.nachtraege.map((n) => ({ name: n.text || 'Nachtrag', raum: 'Nachträge', menge: n.menge, einheit: n.einheit }))];
+          const l = [...a.zeilen.filter((z) => !z.nachlass).map((z) => ({ name: z.text, raum: z.raum || '', menge: z.menge, einheit: z.einheit })), ...a.nachtraege.map((n) => ({ name: n.text || 'Nachtrag', raum: 'Nachträge', menge: n.menge, einheit: n.einheit }))];
           if (!l.length) return toast('Im Angebot stehen noch keine Positionen.');
           const mengeText = (x) => (x.menge && !(x.menge === 1 && /pausch/i.test(x.einheit || '')) ? `${String(x.menge).replace('.', ',')} ${x.einheit || ''}`.trim() : '');
           w.schritte = l.map((x) => ({ id: uid(), name: x.name, raum: x.raum, fertig: 0, wer: '', notiz: mengeText(x) }));

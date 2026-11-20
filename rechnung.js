@@ -65,6 +65,10 @@ window.Rechnung = (() => {
       for (const z of S.zeilen) if (z.zaehlt !== false) zeilen.push({ raum: z.raum || r.room || '', text: z.it.text + (z.bem ? ' – ' + z.bem : ''), menge: z.menge, einheit: z.it.einheit, ep: z.ep, gp: z.gp, gewerk: z.it.gewerk });
       lohn += S.zeilen.reduce((s, z) => s + z.lohn, 0);
     }
+    // Kunden-Nachlass aus dem Angebot (P8) als eigene Zeile, Lohnanteil anteilig weniger
+    const ang = window.AngebotDaten?.aktivSync?.(w), summeZ = r2(zeilen.reduce((s, z) => s + z.gp, 0));
+    const nl = window.Kalk && summeZ > 0 ? Kalk.nachlassVon(ang, summeZ) : 0;
+    if (nl) { lohn = lohn * (summeZ - nl) / summeZ; zeilen.push({ raum: '', text: Kalk.nachlassText(ang), menge: 1, einheit: 'pauschal', ep: -nl, gp: -nl, gewerk: 'Nachlass', nachlass: true }); }
     const nachtraege = (w.nachtraege || []).map((n) => ({ ...n, gp: r2(n.menge * n.ep) }));
     const netto = r2(zeilen.reduce((s, z) => s + z.gp, 0) + nachtraege.reduce((s, n) => s + n.gp, 0));
     return { zeilen, nachtraege, netto, lohn: r2(lohn + nachtraege.reduce((s, n) => s + (n.lohnBetrag ?? (n.lohn ? n.gp : 0)), 0)) };
