@@ -303,8 +303,35 @@ const Angebot = (() => {
     return Math.abs(d) >= g ? `${Math.round(Math.abs(d))} % ${d > 0 ? 'über' : 'unter'} der Preisliste (${fmtEur(std)})` : '';
   }
   /** Position bearbeiten: Art, Langtext (steht im PDF unter der Leistung), interne Notiz (nie im PDF). Gibt true zurück, wenn geändert. */
-  function posDetails(x, titel = '') {
+  // ---------- Bilder an Positionen (Runde 15, B4): x.bilder = [{ id, imPdf }] mit id aus den Bildern des Objekts ----------
+  const bildFmt = (d) => (/^data:image\/png/.test(d) ? 'PNG' : 'JPEG');
+  async function bilderDesVorgangs(w) {
+    if (!w?.kundeId || !window.Bilder) return [];
+    const d = await window.Bilder.laden(w.kundeId, w.objektId || '');
+    return [...d.bilder].sort((a, b) => (b.projektId === w.id) - (a.projektId === w.id) || (b.t || 0) - (a.t || 0));
+  }
+  async function bildWaehlen(w, schon = []) {
+    const l = (await bilderDesVorgangs(w)).filter((b) => !schon.includes(b.id));
+    if (!l.length) { toast('Zu diesem Kunden gibt es noch keine Fotos.', 4000); return null; }
     return new Promise((res) => {
+      const bg = document.createElement('div'); bg.className = 'sheet-bg';
+      bg.innerHTML = `<div class="sheet"><div class="sheet-h"><b>Bild zur Position</b><button class="icon-btn" data-zu aria-label="Schließen">${icon('x')}</button></div>
+        <div class="pb-wahl">${l.slice(0, 120).map((b) => `<button type="button" data-pbw="${esc(b.id)}"><img src="${b.thumb}" alt=""></button>`).join('')}</div></div>`;
+      document.body.appendChild(bg); requestAnimationFrame(() => bg.classList.add('on'));
+      bg.onclick = (e) => { const t = e.target.closest('[data-pbw]'); if (t) { bg.remove(); return res(t.dataset.pbw); } if (e.target === bg || e.target.closest('[data-zu]')) { bg.remove(); res(null); } };
+    });
+  }
+  async function bildThumbs(ids) {
+    const out = new Map(); if (!ids.length || !state.wohnung?.kundeId) return out;
+    const d = await window.Bilder.laden(state.wohnung.kundeId, state.wohnung.objektId || '');
+    for (const b of d.bilder) if (ids.includes(b.id)) out.set(b.id, b.thumb);
+    return out;
+  }
+  function posDetails(x, titel = '') {
+    return new Promise(async (res) => {
+      const bilder = (x.bilder || []).map((b) => ({ ...b })), th = await bildThumbs(bilder.map((b) => b.id));
+      const bilderHtml = () => `${bilder.map((b, i) => `<div class="pb-z"><img src="${th.get(b.id) || ''}" alt=""><label><input type="checkbox" data-pbpdf="${i}" ${b.imPdf ? 'checked' : ''}> im PDF zeigen</label><button type="button" class="icon-btn" data-pbweg="${i}" aria-label="Bild entfernen">${icon('x')}</button></div>`).join('')}
+        <button type="button" class="link-add" id="pdBild">${icon('camera')} Bild hinzufügen</button>`;
       const bg = document.createElement('div');
       bg.className = 'sheet-bg';
       bg.innerHTML = `<div class="sheet sub-sheet"><div class="sheet-h"><b>${esc(titel || x.frei?.text || pos(x.nr)?.text || 'Position')}</b><button class="icon-btn" data-zu aria-label="Schließen">${icon('x')}</button></div>
@@ -313,17 +340,31 @@ const Angebot = (() => {
         <p class="hint" style="margin:4px 0 0">Bedarfs- und Alternativpositionen stehen mit Preis im Angebot, zählen aber nicht zur Summe.</p>
         <label>Langtext (steht im Angebot unter der Leistung)</label>
         <textarea id="pdLang" data-frei rows="4" placeholder="Genaue Beschreibung, z. B. Fabrikat, Ausführung">${esc(x.lang || '')}</textarea>
+        <label>Lohnanteil in % (für § 35a)</label>
+        <input type="text" id="pdLohn" inputmode="decimal" value="${esc(x.lohnP ?? '')}" placeholder="leer = aus der Preisliste bzw. geschätzt nach Gewerk">
+        <p class="hint" style="margin:4px 0 0">Bei Positionen ohne Preisliste schätzt DOM den Lohnanteil je Gewerk (Einstellungen › Kalkulation). Mit einem Wert hier gilt er als bestätigt.</p>
+        <label>Bilder zur Position</label><div id="pdBilder" class="pb-l">${bilderHtml()}</div>
         <label>Interne Notiz (nie im Angebot)</label>
         <textarea id="pdNotiz" data-frei rows="2" placeholder="z. B. Preis mit Kaya abgestimmt">${esc(x.notiz || '')}</textarea>
         <button class="btn block" data-ok style="margin-top:12px">Übernehmen</button></div>`;
       $('[data-ok]', bg).onclick = () => {
         const art = $('#pdArt', bg).value, lang = $('#pdLang', bg).value.trim(), notiz = $('#pdNotiz', bg).value.trim();
-        const neu = art !== (x.art || '') || lang !== (x.lang || '') || notiz !== (x.notiz || '');
+        const lohn = $('#pdLohn', bg).value.trim().replace('%', '').trim();
+        const bNeu = JSON.stringify(bilder) !== JSON.stringify(x.bilder || []);
+        const neu = bNeu || art !== (x.art || '') || lang !== (x.lang || '') || notiz !== (x.notiz || '') || lohn !== String(x.lohnP ?? '');
+        if (bilder.length) x.bilder = bilder; else delete x.bilder;
+        if (lohn !== '' && Number.isFinite(parseFloat(lohn.replace(',', '.')))) x.lohnP = lohn; else delete x.lohnP;
         if (art) x.art = art; else delete x.art;
         if (lang) x.lang = lang; else delete x.lang;
         if (notiz) x.notiz = notiz; else delete x.notiz;
         bg.remove(); res(neu);
       };
+      const pb = () => $('#pdBilder', bg);
+      pb().onclick = async (e) => {
+        const weg = e.target.closest('[data-pbweg]'); if (weg) { bilder.splice(+weg.dataset.pbweg, 1); pb().innerHTML = bilderHtml(); return; }
+        if (e.target.closest('#pdBild')) { const id = await bildWaehlen(state.wohnung, bilder.map((b) => b.id)); if (!id) return; bilder.push({ id, imPdf: true }); for (const [k, v] of await bildThumbs([id])) th.set(k, v); pb().innerHTML = bilderHtml(); }
+      };
+      pb().onchange = (e) => { const c = e.target.closest('[data-pbpdf]'); if (c) bilder[+c.dataset.pbpdf].imPdf = c.checked; };
       bg.onclick = (e) => { if (e.target === bg || e.target.closest('[data-zu]')) { bg.remove(); res(false); } };
       document.body.appendChild(bg);
       requestAnimationFrame(() => bg.classList.add('on'));
@@ -375,6 +416,20 @@ const Angebot = (() => {
     if (ek > 0) return { ep: r2(r6(E.lohn * (1 + satz(k, 'aufLohn')) + E.mat * (1 + satz(k, 'aufMat')) + E.pausch * (1 + satz(k, 'aufPausch')))), ebene: 'angebot' };
     return { ep: 0, ebene: 'ohne' };
   }
+  // ---------- Preisdarstellung im PDF (Runde 15, A2; Runde 9 B4) ----------
+  // 'einzel' = Einzelpreise, 'inhalt' = Paketpreis mit Inhalt (Positionen ohne Preise), 'paket' = nur Paketpreis.
+  // Standard Vorgabe angebotDarstellung, je Angebot a.darstellung, je Titel (Bereich) r.angebot.darstellung.
+  // Bedarfs- und Alternativpositionen stehen immer mit eigenem Preis da.
+  const DARST = [['einzel', 'Einzelpreise'], ['inhalt', 'Paketpreis mit Inhalt'], ['paket', 'Nur Paketpreis']];
+  const darstAngebot = (w) => window.AngebotDaten?.aktivSync?.(w)?.darstellung || vorgabe('angebotDarstellung') || 'einzel';
+  const darstOptionen = (wert, mitWie) => (mitWie ? `<option value="">wie im Angebot</option>` : '') + DARST.map(([v, n]) => `<option value="${v}" ${wert === v ? 'selected' : ''}>${n}</option>`).join('');
+  async function darstSetzen(w, v) { const a = window.AngebotDaten?.aktivSync?.(w); if (!a) return; if (v) a.darstellung = v; else delete a.darstellung; await window.AngebotDaten.speichern(a); }
+  /** Geschätzter Lohnanteil in % für ein Gewerk (Vorgabe lohnSchaetzung, Zeilen „Gewerk: %“, „Sonstige“ für den Rest). */
+  function lohnSchaetzung(g) {
+    const m = {}; for (const z of [].concat(vorgabe('lohnSchaetzung') || [])) { const t = String(z).match(/^\s*(.+?)\s*[:=]\s*([\d.,]+)/); if (t) m[t[1].toLowerCase()] = parseFloat(t[2].replace(',', '.')); }
+    const k = String(g || '').toLowerCase();
+    return m[k] ?? Object.entries(m).find(([n]) => n !== 'sonstige' && (k.includes(n) || n.includes(k)))?.[1] ?? m.sonstige ?? 0;
+  }
   function summen(positionen, k) {
     const S = PL.einstellungen;
     const zeilen = positionen.map((x, i) => {
@@ -385,11 +440,20 @@ const Angebot = (() => {
       const EK = ekVon(x, it, k), V = vkVon(x, it, k, EK);
       const std = ep(it, k), e = V.ep, ekS = EK.lohn + EK.mat + EK.pausch;
       // Lohnanteil: beim Zielpreis Lohn im Verkauf = Verkauf × Lohn-Einkauf / Einkauf, sonst wie bisher
-      const l = V.ebene === 'ziel' && ekS > 0 ? e * EK.lohn / ekS : lohnEp(it, k) * (std ? e / std : 1);
+      // Runde 15 (A4): Zeilen ohne Preisliste und ohne bekannten Lohn (Sub-Angebot pauschal, eigene Zeile ohne Einkauf)
+      // bekommen einen geschätzten Lohnanteil je Gewerk (Vorgabe lohnSchaetzung), markiert als „geschätzt“, bis er von Hand
+      // bestätigt ist (x.lohnP in %, Positionsdetails).
+      const ohnePL = !pos(x.nr), lp = String(x.lohnP ?? '').trim();
+      let l, lohnG = false;
+      if (lp !== '' && Number.isFinite(parseFloat(lp.replace(',', '.')))) l = e * parseFloat(lp.replace(',', '.')) / 100;
+      else if (!ohnePL) l = V.ebene === 'ziel' && ekS > 0 ? e * EK.lohn / ekS : lohnEp(it, k) * (std ? e / std : 1);
+      else if (ekS > 0 && (EK.quelle === 'subpreisliste' || (x.ek && typeof x.ek === 'object'))) l = e * EK.lohn / ekS;
+      else { l = e * lohnSchaetzung(EK.g) / 100; lohnG = e > 0; }
       // Positionsart (v120): Bedarfs- und Alternativpositionen stehen mit Preis im Angebot, zählen aber nicht zur Summe;
       // „kostenlos“ zeigt den Wert und kostet 0 €. gpAnzeige = Betrag, der neben der Position steht.
       const zaehlt = !NICHT_SUMME.includes(x.art), gpA = r2(x.menge * e);
       return { ...x, i, it, ep: e, fix: x.epFix > 0, gp: zaehlt && x.art !== 'kostenlos' ? gpA : 0, gpAnzeige: gpA, zaehlt, lohn: zaehlt && x.art !== 'kostenlos' ? r2(x.menge * l) : 0,
+        lohnG: lohnG && zaehlt && x.art !== 'kostenlos',
         kalk: { ...EK, ekEp: r2(EK.lohn + EK.mat + EK.pausch), ebene: V.ebene, zuEp: r2(e - (EK.lohn + EK.mat + EK.pausch)) } };
     }).filter(Boolean);
     const netto = r2(zeilen.reduce((s, z) => s + z.gp, 0));
@@ -917,7 +981,8 @@ Gib Länge (längere Seite) und Breite der Grundfläche, Raumhöhe, Anzahl und G
         <button type="button" class="btn secondary block" id="tbSub" style="margin-top:8px">${icon('wrench')} Partnerangebot übernehmen (Scan, Foto, PDF) oder Preisliste</button>
       </div>
 
-      ${ausPrj ? `<div class="card"><button class="btn big block" id="aFertig">${icon('check')} Fertig</button>
+      ${ausPrj ? `<div class="card"><label style="margin-top:0">Preise im Angebot für diesen Bereich</label><select id="aDar">${darstOptionen(A.darstellung || '', true)}</select>
+        <button class="btn big block" id="aFertig" style="margin-top:12px">${icon('check')} Fertig</button>
         <p class="hint center" style="margin:6px 0 0">Nummer, Betreff, Texte, Speichern und Senden stehen eine Seite zurück im Büro.</p></div>` : `<div class="card">
         <button class="btn secondary big block" id="aSpeichern">${icon('download')} Speichern und ansehen</button>
         <button class="btn big block" id="aPdf" style="margin-top:8px">${icon('mail')} Senden</button>
@@ -1037,8 +1102,11 @@ Gib Länge (längere Seite) und Breite der Grundfläche, Raumhöhe, Anzahl und G
     }));
     $('#tbLeeren').onclick = () => { if (!confirm('Alle Mengen auf 0 setzen? Eigene Positionen bleiben.')) return; A.positionen = A.positionen.filter((x) => x.frei); A.geaendert = true; neu(); };
     if ($('#aWunsch')) $('#aWunsch').onclick = () => wunschVorschlaege(p, neu).catch((e) => toast('Vorschläge gingen nicht: ' + e.message, 5000));
+    if ($('#aDar')) $('#aDar').onchange = async (e) => { if (e.target.value) A.darstellung = e.target.value; else delete A.darstellung; await saveProject(p); };
     if ($('#aFertig')) $('#aFertig').onclick = async () => { await saveProject(p); state.angebotAusProjekt = false; state.project = null; Projekt.view(); window.scrollTo(0, 0); };
-    if ($('#aPdf')) $('#aPdf').onclick = () => { if (!summen(A.positionen, A.kalk).zeilen.length) return toast('Bitte zuerst Mengen eintragen.'); teilePdf(p).catch((e) => toast('PDF-Fehler: ' + e.message, 5000)); };
+    if ($('#aPdf')) $('#aPdf').onclick = async () => { if (!summen(A.positionen, A.kalk).zeilen.length) return toast('Bitte zuerst Mengen eintragen.');
+      const W0 = p.wohnungId && (state.wohnung?.id === p.wohnungId ? state.wohnung : await kvGet('wohnung:' + p.wohnungId));
+      if (W0 && window.Projekt?._intern?.versandPruefen && !(await Projekt._intern.versandPruefen(W0, [p]))) return; teilePdf(p).catch((e) => toast('PDF-Fehler: ' + e.message, 5000)); };
     if ($('#aSpeichern')) $('#aSpeichern').onclick = () => { if (!summen(A.positionen, A.kalk).zeilen.length) return toast('Bitte zuerst Mengen eintragen.'); speicherePdf(p).catch((e) => toast('PDF-Fehler: ' + e.message, 5000)); };
     $('#tbSub').onclick = () => subUebernehmen(p, neu).catch((e) => toast('Übernehmen ging nicht: ' + e.message, 5000));
     $('#aExcel').onclick = async () => {
@@ -1120,7 +1188,7 @@ Gib Länge (längere Seite) und Breite der Grundfläche, Raumhöhe, Anzahl und G
     const W = 210, H = 297, M = 20, R = W - 18;
     const NAVY = [30, 53, 80], BRASS = [184, 134, 47];
     const logo = state.settings.logo, logoFmt = logo ? (mimeOf(logo) === 'image/png' ? 'PNG' : 'JPEG') : null;
-    const heute = new Date(), gueltig = new Date(heute); gueltig.setDate(gueltig.getDate() + (+vorgabe('angebotGueltigTage') || 28)); // P7: 4 Wochen, Einstellung nicht mehr bei der Preisliste
+    const heute = opt.datum ? new Date(String(opt.datum).slice(0, 10) + 'T12:00') : new Date(), gueltig = new Date(heute); gueltig.setDate(gueltig.getDate() + (+vorgabe('angebotGueltigTage') || 28)); // P7: 4 Wochen, Einstellung nicht mehr bei der Preisliste
     const bz = bauzeit(A.positionen, startDatum(p), mitInst(p));
     const t = (s, x, y, o) => doc.text(Array.isArray(s) ? s : String(s ?? ''), x, y, o);
 
@@ -1151,6 +1219,10 @@ Gib Länge (längere Seite) und Breite der Grundfläche, Raumhöhe, Anzahl und G
     doc.setFont('helvetica', 'bold'); doc.setFontSize(13); doc.setTextColor(...NAVY);
     const titel = doc.splitTextToSize((ab ? 'Auftragsbestätigung: ' : 'Angebot: ') + (String(WA?.titel || '').trim() || A.titel || titelDefault(p, pk)), R - M); t(titel, M, y); y += 6 * titel.length + 3;
     if (bauvorhaben) { doc.setFont('helvetica', 'normal'); doc.setFontSize(9.5); doc.setTextColor(110); t('Bauvorhaben: ' + bauvorhaben, M, y - 1); y += 5; }
+    // Runde 15 (A3): neue Fassung „Ersetzt Angebot … vom …“, Alternative „Alternative zu Angebot …“
+    const bezug = ab || !ent ? '' : ent.ersetzt?.nr ? (() => { const f = (ent.fassungen || []).find((x) => x.nr === ent.ersetzt.nr); const d = f?.gesendetAm ? new Date(f.gesendetAm + 'T12:00') : ent.ersetzt.t ? new Date(ent.ersetzt.t) : null; return `Ersetzt Angebot ${ent.ersetzt.nr}${d ? ' vom ' + fmtDate(d) : ''}`; })()
+      : ent.art === 'alternative' && ent.zuId ? (() => { const z = window.AngebotDaten.listeSync(WA).find((x) => x.id === ent.zuId); return z ? `Alternative zu Angebot ${window.AngebotDaten.nr(z, WA)}` : ''; })() : '';
+    if (bezug) { doc.setFont('helvetica', 'normal'); doc.setFontSize(9.5); doc.setTextColor(110); t(bezug, M, y - 1); y += 5; }
     doc.setFont('helvetica', 'normal'); doc.setFontSize(10); doc.setTextColor(30);
     t(A.anrede || anredeDefault(p), M, y); y += 5;
     // Textfelder (Wunsch Felix): frei festlegbar in den Einstellungen, je Auftrag anpassbar (w.angebotTexte)
@@ -1182,14 +1254,47 @@ Gib Länge (längere Seite) und Breite der Grundfläche, Raumhöhe, Anzahl und G
     const neueSeite = async () => { doc.addPage(); await kopf(false); y = 34; };
     const platz = async (h, mitKopf) => { if (y + h > H - 28) { await neueSeite(); if (mitKopf) tabKopf(); } };
     tabKopf();
-    const raeume = [...new Set(S.zeilen.map((z) => z.raum))];
+    // Runde 15 (B6): „Allgemeines“ (Positionen ohne Bereich, z. B. Baustelleneinrichtung) ist der erste Titel.
+    // Schalter je Angebot a.allgemeinVerteilt (Standard Vorgabe allgemeinVerteilen): dann stehen die Positionen nicht im PDF,
+    // ihr Betrag G geht anteilig auf alle zählenden Positionen (Faktor (S + G) / S, Einzelpreise auf 10 Cent, Rest auf die
+    // größte Position), der Lohnanteil des Titels getrennt nach GP-Anteil. Summen bleiben genau gleich. Intern (Kalkulation) bleibt er ein Titel.
+    const istAllg = (z) => !z.raum;
+    let allgSatz = '';
+    const verteilt = !ab && (ent?.allgemeinVerteilt ?? (vorgabe('allgemeinVerteilen') === 'ja'));
+    if (verteilt) {
+      const AL = S.zeilen.filter((z) => istAllg(z) && z.zaehlt !== false), REST = S.zeilen.filter((z) => !istAllg(z) && z.zaehlt !== false && z.art !== 'kostenlos' && z.gp > 0);
+      const G = r2(AL.reduce((s, z) => s + z.gp, 0)), LG = AL.reduce((s, z) => s + z.lohn, 0), Ssum = r2(REST.reduce((s, z) => s + z.gp, 0));
+      if (G > 0 && Ssum > 0) {
+        const f = (Ssum + G) / Ssum;
+        for (const z of REST) { const gpAlt = z.gp; z.ep = Math.round(z.ep * f * 10) / 10; z.gp = r2(z.menge * z.ep); z.gpAnzeige = z.gp; z.lohn = r2(z.lohn + LG * gpAlt / Ssum); }
+        const rest = r2(Ssum + G - REST.reduce((s, z) => s + z.gp, 0));
+        if (Math.abs(rest) >= 0.005) { const ein = REST.filter((z) => +z.menge === 1), gr = (ein.length ? ein : REST).reduce((x, y) => (y.gp > x.gp ? y : x)); /* Rest möglichst auf eine Position mit Menge 1, damit EP × Menge = GP bleibt */ gr.ep = r2(gr.ep + rest / gr.menge); gr.gp = r2(gr.gp + rest); gr.gpAnzeige = gr.gp; }
+        const texte = [...new Set(AL.filter((z) => z.art !== 'kostenlos').map((z) => String(z.it?.text || '').trim()).filter(Boolean))];
+        const leist = texte.length > 1 ? texte.slice(0, -1).join(', ') + ' und ' + texte[texte.length - 1] : texte[0] || '';
+        allgSatz = vorgabeText('textAllgemeinVerteilt', { leistungen: leist });
+        S.zeilen = S.zeilen.filter((z) => !(istAllg(z) && z.zaehlt !== false));
+      }
+    }
+    const raeume = [...new Set(S.zeilen.map((z) => z.raum))].sort((x, y) => (!x ? 0 : 1) - (!y ? 0 : 1));
     let n = 0, ti = 0;
     const titelSumme = (rn) => r2(S.zeilen.filter((x) => x.raum === rn).reduce((a, x) => a + x.gp, 0));
+    // Preisdarstellung je Titel (Runde 15): Titel-Wert (im Gesamtangebot an der Zeile als _dar) > Angebot > Vorgabe
+    const darA = WA ? darstAngebot(WA) : (vorgabe('angebotDarstellung') || 'einzel');
+    const darVon = (rn) => S.zeilen.find((x) => x.raum === rn && x._dar)?._dar || (p._gesamt ? '' : A.darstellung) || darA;
+    const immerPreis = (z) => z.zaehlt === false; // Bedarf und Alternative: immer mit eigenem Preis
     for (const rn of raeume) {
       // Titel mit Nummer (1, 2 …), Positionen darunter 1.1, 1.2 … wie in der Tabelle am PC (v121)
       ti++; n = raeume.length > 1 ? 0 : n;
       if (raeume.length > 1) { await platz(12, true); doc.setFont('helvetica', 'bold'); doc.setFontSize(9); doc.setTextColor(...BRASS); t(String(ti), C.pos + 3, y + 1, { align: 'center' }); t(rn || 'Allgemein', C.txt, y + 1); doc.setFont('helvetica', 'normal'); doc.setTextColor(30); y += 6; }
-      for (const z of S.zeilen.filter((x) => x.raum === rn)) {
+      const dar = ab ? 'einzel' : darVon(rn);
+      if (dar === 'paket') { // nur Paketpreis: eine Zeile für den Titel, darunter Bedarf/Alternative mit Preis
+        doc.setFontSize(9); const txt = doc.splitTextToSize(raeume.length > 1 ? `${rn || 'Allgemein'}, Leistungen pauschal` : `${String(WA?.titel || '').trim() || A.titel || 'Leistungen'}, pauschal`, C.menge - C.txt - 14);
+        await platz(4.3 * txt.length + 1.6, true); n++;
+        t(raeume.length > 1 ? `${ti}.${n}` : String(n), C.pos + 3, y, { align: 'center' }); t(txt, C.txt, y); t('1', C.menge, y, { align: 'right' }); t('psch.', C.einh, y); t(fmtEur(titelSumme(rn)), C.gp, y, { align: 'right' });
+        y += 4.3 * txt.length + 1.6; doc.setDrawColor(230); doc.line(M - 1, y - 3.2, R + 1, y - 3.2);
+      }
+      for (const z of S.zeilen.filter((x) => x.raum === rn && (dar !== 'paket' || immerPreis(x)))) {
+        const ohnePreis = dar !== 'einzel' && !immerPreis(z);
         doc.setFontSize(9);
         const lines = doc.splitTextToSize(z.it.text + (z.bem ? ' – ' + z.bem : ''), C.menge - C.txt - 14);
         doc.setFontSize(8);
@@ -1200,12 +1305,27 @@ Gib Länge (längere Seite) und Breite der Grundfläche, Raumhöhe, Anzahl und G
         n++;
         t(raeume.length > 1 ? `${ti}.${n}` : String(n), C.pos + 3, y, { align: 'center' }); t(lines, C.txt, y);
         t(fmtNum(z.menge, STUECK.test(z.it.einheit) ? 0 : 1), C.menge, y, { align: 'right' }); t(z.it.einheit, C.einh, y);
-        t(fmtEur(z.ep), C.ep, y, { align: 'right' }); t(z.art === 'kostenlos' ? 'kostenlos' : z.zaehlt === false ? `(${fmtEur(z.gpAnzeige)})` : fmtEur(z.gp), C.gp, y, { align: 'right' });
+        if (!ohnePreis) { t(fmtEur(z.ep), C.ep, y, { align: 'right' }); t(z.art === 'kostenlos' ? 'kostenlos' : z.zaehlt === false ? `(${fmtEur(z.gpAnzeige)})` : fmtEur(z.gp), C.gp, y, { align: 'right' }); }
+        else if (z.art === 'kostenlos') t('kostenlos', C.gp, y, { align: 'right' });
         let yy = y + 4.3 * lines.length;
         if (lang.length || art.length) { doc.setFontSize(8); doc.setTextColor(90); if (lang.length) { t(lang, C.txt, yy); yy += 3.6 * lang.length; } if (art.length) { doc.setFont('helvetica', 'italic'); t(art, C.txt, yy); doc.setFont('helvetica', 'normal'); } doc.setTextColor(30); doc.setFontSize(9); }
-        y += h; doc.setDrawColor(230); doc.line(M - 1, y - 3.2, R + 1, y - 3.2);
+        y += h;
+        const pb = (z.bilder || []).filter((b) => b.imPdf);
+        if (pb.length) {
+          const bw = 42, bh = 30;
+          for (let k = 0; k < pb.length; k += 3) {
+            await platz(bh + 3, true);
+            for (const [j, b] of pb.slice(k, k + 3).entries()) {
+              const data = (await kvGet('bild:' + b.id)) || null;
+              if (data) { try { await addFit(doc, data, C.txt + j * (bw + 3), y - 2, bw, bh, bildFmt(data)); } catch (e) { console.warn('Bild', e); } }
+            }
+            y += bh + 2;
+          }
+        }
+        doc.setDrawColor(230); doc.line(M - 1, y - 3.2, R + 1, y - 3.2);
       }
-      if (raeume.length > 1) { await platz(7); doc.setFont('helvetica', 'bold'); doc.setFontSize(8.5); t(`Summe ${ti} ${rn || 'Allgemein'}`, C.txt, y); t(fmtEur(titelSumme(rn)), C.gp, y, { align: 'right' }); doc.setFont('helvetica', 'normal'); y += 6; }
+      if (dar === 'inhalt' && raeume.length === 1) { await platz(7); doc.setFont('helvetica', 'bold'); doc.setFontSize(8.5); t('Paketpreis für die oben genannten Leistungen', C.txt, y); t(fmtEur(titelSumme(rn)), C.gp, y, { align: 'right' }); doc.setFont('helvetica', 'normal'); y += 6; }
+      if (raeume.length > 1) { await platz(7); doc.setFont('helvetica', 'bold'); doc.setFontSize(8.5); t(`${dar === 'inhalt' ? 'Paketpreis' : 'Summe'} ${ti} ${rn || 'Allgemein'}`, C.txt, y); t(fmtEur(titelSumme(rn)), C.gp, y, { align: 'right' }); doc.setFont('helvetica', 'normal'); y += 6; }
     }
     // Zusammenstellung: Summe je Titel, dann die Gesamtsumme (v121)
     if (raeume.length > 1 && vorgabe('angebotZusammenstellung') !== 'nein') {
@@ -1214,6 +1334,7 @@ Gib Länge (längere Seite) und Breite der Grundfläche, Raumhöhe, Anzahl und G
       doc.setFont('helvetica', 'normal'); doc.setFontSize(9); doc.setTextColor(30);
       raeume.forEach((rn, k) => { t(`${k + 1}  ${rn || 'Allgemein'}`, C.txt, y); t(fmtEur(titelSumme(rn)), C.gp, y, { align: 'right' }); y += 4.8; });
     }
+    if (allgSatz) { await platz(8); doc.setFont('helvetica', 'italic'); doc.setFontSize(9); doc.setTextColor(60); const ls = doc.splitTextToSize(allgSatz, R - C.txt); t(ls, C.txt, y + 1); y += 4.4 * ls.length + 1; doc.setFont('helvetica', 'normal'); doc.setTextColor(30); }
     // Summen
     await platz(30);
     y += 3; doc.setFontSize(10);
@@ -1265,9 +1386,14 @@ Gib Länge (längere Seite) und Breite der Grundfläche, Raumhöhe, Anzahl und G
       const vzText = String(vorgabe('textVorzeitig') || '').trim();
       if (vzText && privatArt(kd)) {
         const vz = doc.splitTextToSize(platzh(vzText), R - M - 7);
-        doc.setDrawColor(90); doc.rect(M, y - 3, 3.6, 3.6); t(vz, M + 6, y); y += 4.3 * vz.length;
+        doc.setDrawColor(90); doc.rect(M, y - 3, 3.6, 3.6); t(vz, M + 6, y);
+        if (opt.unterschrift?.vorzeitig) { doc.setLineWidth(0.5); doc.setDrawColor(30); doc.line(M + 0.5, y - 2.5, M + 3.1, y + 0.1); doc.line(M + 3.1, y - 2.5, M + 0.5, y + 0.1); doc.setLineWidth(0.2); }
+        y += 4.3 * vz.length;
       }
       y += 11;
+      // Runde 15 (B3): am iPad unterschriebenes Exemplar: Ort, Datum und Unterschrift des Kunden auf den Linien
+      const U = opt.unterschrift;
+      if (U?.bild) { await platz(26); y += 8; try { await addFit(doc, U.bild, M + 82, y - 17, R - M - 84, 16, 'PNG'); } catch (e) { console.warn('Unterschrift', e); } doc.setFontSize(10); doc.setTextColor(30); t(U.ortDatum || '', M + 1, y - 2); }
       doc.setDrawColor(120); doc.line(M, y, M + 60, y); doc.line(M + 80, y, R, y);
       doc.setFontSize(8); doc.setTextColor(120); t('Ort, Datum', M, y + 4); t('Unterschrift Auftraggeber', M + 80, y + 4);
       y += 14;
@@ -1346,6 +1472,14 @@ Gib Länge (längere Seite) und Breite der Grundfläche, Raumhöhe, Anzahl und G
     };
   }
   const mailText = (p) => vorgabeText('mailAngebot', { anrede: p.angebot.anrede || anredeDefault(p), nr: p.angebot.nr, firma: PL.einstellungen.firma || '' });
+  /** Runde 15 (A6): Betreff aus Vorgabe mailAngebotBetreff ({nr}, {betreff} = Projektname, {kunde}). Am iPhone/iPad
+   *  steht er auch als erste Zeile im Text, damit die Nummer bei WhatsApp (ohne Betreff) oben steht. */
+  function versandMeta(p, w) {
+    const kd = window.Kunden?.zu?.(p);
+    const betreff = vorgabeText('mailAngebotBetreff', { nr: p.angebot.nr || '', betreff: String(w?.titel || p.angebot.titel || '').trim(), kunde: (kd && Kunden.name(kd)) || p.customer || '' }).replace(/\s*[–-]\s*$/, '').trim();
+    const text = mailText(p);
+    return { betreff, text: window.DomDesktop ? text : `${betreff}\n\n${text}` };
+  }
   async function pdfDatei(p) {
     toast('Angebot wird erstellt …', 8000);
     const doc = await baueAngebotPdf(p);
@@ -1367,12 +1501,13 @@ Gib Länge (längere Seite) und Breite der Grundfläche, Raumhöhe, Anzahl und G
     const { doc, name, file } = await pdfDatei(p);
     const blob = file;
     // Erst nach dem Senden: „wie verschickt“ merken und sperren, dann zurück in den Auftrag
-    const fertig = async () => {
+    const fertig = async (weg = '') => {
       await window.Projekt?.angebotMerken?.(p.wohnungId, doc, name);
-      await window.Projekt?.angebotVersendet?.(p.wohnungId);
+      await window.Projekt?.angebotVersendet?.(p.wohnungId, '', weg);
       if (state.wohnung?.id === p.wohnungId) { state.angebotAusProjekt = false; state.project = null; state.wohnung = (await kvGet('wohnung:' + p.wohnungId)) || state.wohnung; state.wohnung.mappe ??= {}; Projekt.view(); window.scrollTo(0, 0); }
     };
-    if (navigator.canShare?.({ files: [file] })) { try { await navigator.share({ files: [file], title: name, text: mailText(p) }); return fertig(); } catch (e) { if (e.name === 'AbortError') return; } }
+    const VM = versandMeta(p, state.wohnung?.id === p.wohnungId ? state.wohnung : null);
+    if (navigator.canShare?.({ files: [file] })) { try { const erg = await navigator.share({ files: [file], title: VM.betreff, text: VM.text }); return fertig(await window.Projekt?._intern?.wegFragen?.(erg)); } catch (e) { if (e.name === 'AbortError') return; } }
     const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name; a.click();
     setTimeout(() => URL.revokeObjectURL(a.href), 60000);
     fertig();
@@ -1476,9 +1611,23 @@ Gib Länge (längere Seite) und Breite der Grundfläche, Raumhöhe, Anzahl und G
     return b;
   }
   const bausteine = () => mitFest(stdListe());
-  /** Texte eines Angebots (w): eigene Fassung oder Kopie des Standards. Wird erst beim Ändern als w.angebotTexte gespeichert. */
+  // Runde 15 (B2): Texte je Angebot statt je Vorgang. Eigene Texte liegen am Angebot (a.inhalt.texte, [] = Standard),
+  // ältere Vorgänge lesen weiter w.angebotTexte, bis das Angebot eigene Texte bekommt. Alternativen erben die Texte ihres Angebots.
+  function texteEigen(w) {
+    const a = window.AngebotDaten?.aktivSync?.(w);
+    if (a?.inhalt && Object.prototype.hasOwnProperty.call(a.inhalt, 'texte')) return Array.isArray(a.inhalt.texte) && a.inhalt.texte.length ? a.inhalt.texte : null;
+    return Array.isArray(w?.angebotTexte) && w.angebotTexte.length ? w.angebotTexte : null;
+  }
+  async function texteSpeichern(w, l) {
+    const a = window.AngebotDaten?.aktivSync?.(w);
+    if (a) { (a.inhalt ??= {}).texte = l || []; await window.AngebotDaten.speichern(a); }
+    else if (l) w.angebotTexte = l; else delete w.angebotTexte;
+    if (!w.isNew) await Projekt.save(w);
+  }
+  /** Texte eines Angebots: eigene Fassung oder Kopie des Standards. Wird erst beim Ändern gespeichert (texteSpeichern). */
   function texteFuer(w) {
-    if (Array.isArray(w?.angebotTexte) && w.angebotTexte.length) return mitFest(w.angebotTexte, w.angebotOpt);
+    const eig = texteEigen(w);
+    if (eig) return mitFest(eig, w.angebotOpt);
     const l = bausteine().map((b) => ({ ...b }));
     for (const b of l) if (b.fest && w?.angebotOpt?.[b.fest] !== undefined) { if (w.angebotOpt[b.fest]) delete b.aus; else b.aus = true; }
     return l;
@@ -1559,11 +1708,11 @@ Gib Länge (längere Seite) und Breite der Grundfläche, Raumhöhe, Anzahl und G
   /** Texte für dieses eine Angebot (gilt für alle Räume des Auftrags). Erst beim ersten Ändern wird eine eigene Fassung gespeichert. */
   async function texteAuftrag(w, zurueck) {
     await preisliste();
-    const eigen = Array.isArray(w.angebotTexte) && w.angebotTexte.length;
+    const eigen = !!texteEigen(w);
     const liste = eigen ? texteFuer(w) : kopieB(texteFuer(w));
     textEditor({ titel: 'Texte im Angebot', sub: w.customer || '', liste, vorlagen: bausteine().filter((b) => !b.fest), zurueck, gilt: true,
-      speichern: async () => { w.angebotTexte = liste; if (!w.isNew) await Projekt.save(w); },
-      std: eigen ? { label: 'Wieder die Standardtexte aus den Einstellungen', fn: async () => { if (!confirm('Die angepassten Texte dieses Angebots verwerfen und wieder die Standardtexte nehmen?')) return; delete w.angebotTexte; if (!w.isNew) await Projekt.save(w); texteAuftrag(w, zurueck); } } : null });
+      speichern: async () => { await texteSpeichern(w, liste); },
+      std: eigen ? { label: 'Wieder die Standardtexte aus den Einstellungen', fn: async () => { if (!confirm('Die angepassten Texte dieses Angebots verwerfen und wieder die Standardtexte nehmen?')) return; await texteSpeichern(w, null); if (!w.isNew) await Projekt.save(w); texteAuftrag(w, zurueck); } } : null });
   }
   /** Standard-Textfelder in den Einstellungen. */
   async function texteEinstellungen(zurueck) {
@@ -1733,6 +1882,59 @@ Gib Länge (längere Seite) und Breite der Grundfläche, Raumhöhe, Anzahl und G
     $('#plVorl').onclick = () => vorlagenView();
   }
 
+  // ---------- Lernende Vorlagen (Runde 15, B5; Runde 10 B16) ----------
+  // Beim Versand merkt DOM je Bereich mit Paket, was gegenüber der Vorlage von Hand ergänzt (plus) oder gelöscht (minus) wurde
+  // (kv 'vorlageLernen' = { log: [{ t, pkg, grp, plus, minus }], nein: { key: Anzahl Fälle bei der Ablehnung } }).
+  // Vorschlag, wenn dieselbe Position in mindestens Vorgabe vorlageLernenAb (3) der letzten vorlageLernenAus (5) Fälle
+  // gleicher Raumgruppe und gleichen Pakets ergänzt bzw. gelöscht wurde. Abgelehnt: erst nach 5 weiteren Fällen wieder.
+  const VL_KEY = 'vorlageLernen';
+  async function vlLaden() { const v = (await kvGet(VL_KEY)) || {}; v.log ??= []; v.nein ??= {}; return v; }
+  async function vorlageMerken(raeume) {
+    await preisliste(); await vorlagen();
+    const v = await vlLaden(); let neu = 0;
+    for (const r of raeume) {
+      const pkg = r.angebot?.paket, typ = r.aufmass?.raeume?.[0]?.typ || r.roomType || '';
+      if (!pkg || !r.angebot?.positionen?.length) continue;
+      const grp = gruppe(typ), vor = new Set(vorlageFuer(pkg, grp).map((x) => x.nr));
+      const ist = new Set(r.angebot.positionen.filter((x) => !x.frei && pos(x.nr) && (+x.menge || 0) > 0).map((x) => x.nr));
+      v.log.push({ t: Date.now(), pkg, grp, plus: [...ist].filter((n) => !vor.has(n)), minus: [...vor].filter((n) => !ist.has(n)), r: r.id }); neu++;
+    }
+    if (!neu) return;
+    v.log = v.log.slice(-300); await kvSet(VL_KEY, v);
+    for (const s of await vorlageVorschlaege()) await window.Todos?.anlegen({ text: `Vorlage prüfen: ${s.text}`, prio: 'niedrig', schluessel: 'vlern:' + s.key, art: 'vorlage' }).catch(() => {});
+  }
+  async function vorlageVorschlaege() {
+    await preisliste(); await vorlagen();
+    const v = await vlLaden(), ab = +vorgabe('vorlageLernenAb') || 3, aus = +vorgabe('vorlageLernenAus') || 5, out = [];
+    const gruppen = new Map(); for (const e of v.log) { const k = e.pkg + '|' + e.grp; if (!gruppen.has(k)) gruppen.set(k, []); gruppen.get(k).push(e); }
+    for (const [k, l] of gruppen) {
+      const [pkg, grp] = k.split('|'), letzte = l.slice(-aus), vor = new Set(vorlageFuer(pkg, grp).map((x) => x.nr));
+      for (const art of ['plus', 'minus']) {
+        const z = new Map(); for (const e of letzte) for (const n of e[art] || []) z.set(n, (z.get(n) || 0) + 1);
+        for (const [nr, c] of z) {
+          if (c < ab || (art === 'plus' ? vor.has(nr) : !vor.has(nr))) continue;
+          const key = `${k}|${art}|${nr}`;
+          if (v.nein[key] !== undefined && l.length - v.nein[key] < aus) continue;
+          const it = pos(nr), pk = PAKETE_STD().find((x) => x.id === pkg)?.name || pkg, gn = GRUPPEN[grp] || grp;
+          out.push({ key, pkg, grp, art, nr, c, n: letzte.length,
+            text: art === 'plus' ? `„${it?.text || nr}“ wurde in ${c} der letzten ${letzte.length} Angebote (${gn}, ${pk}) ergänzt. In die Vorlage aufnehmen?` : `„${it?.text || nr}“ wurde in ${c} der letzten ${letzte.length} Angebote (${gn}, ${pk}) aus der Vorlage gelöscht. Aus der Vorlage nehmen?` });
+        }
+      }
+    }
+    return out;
+  }
+  async function vorlageAntwort(s, ja) {
+    const v = await vlLaden();
+    if (ja) {
+      await vorlagen(); VORL[s.pkg] ??= structuredClone(VORL.standard || {}); const rows = (VORL[s.pkg][s.grp] ??= []);
+      if (s.art === 'plus') { const e = pos(s.nr)?.einheit || ''; rows.push({ nr: s.nr, menge: /m²|m2/.test(e) ? 'boden' : /lfm|m$/.test(e) ? 'umfang' : '1', bem: '' }); }
+      else { const i = rows.findIndex((x) => x.nr === s.nr); if (i >= 0) rows.splice(i, 1); }
+      await kvSet('angebotVorlagen', VORL);
+    }
+    v.nein[s.key] = v.log.filter((e) => e.pkg + '|' + e.grp === s.pkg + '|' + s.grp).length; // nach Ja wie nach Nein: erst nach 5 weiteren Fällen wieder prüfen
+    await kvSet(VL_KEY, v);
+    try { await window.Todos?.laden?.(); for (const t of window.Todos?.liste?.() || []) if (t.schluessel === 'vlern:' + s.key && !t.erledigt) { t.erledigt = Date.now(); await kvSet('todo:' + t.id, t); } } catch {}
+  }
   async function vorlagenView(pkgId = 'basic', grp = 'nass') {
     await preisliste(); await vorlagen();
     setTitle('Paket-Vorlagen');
@@ -1747,6 +1949,7 @@ Gib Länge (längere Seite) und Breite der Grundfläche, Raumhöhe, Anzahl und G
         <div class="row"><select id="vPkg">${PAKETE_STD().map((x) => `<option value="${x.id}" ${x.id === pkgId ? 'selected' : ''}>${esc(x.name)}</option>`).join('')}</select>
           <select id="vGrp">${Object.entries(GRUPPEN).map(([k, l]) => `<option value="${k}" ${k === grp ? 'selected' : ''}>${l}</option>`).join('')}</select></div>
       </div>
+      <div id="vLern"></div>
       <div class="card">${rows.map((v, i) => { const it = pos(v.nr); return `<div class="vrow">
         <div class="vt"><b>${esc(v.nr)}</b> ${it ? esc(it.text) + ` <span class="muted">(${esc(it.einheit)})</span>` : '<span style="color:var(--danger)">nicht in Preisliste</span>'}</div>
         <input type="text" data-vm="${i}" value="${esc(v.menge)}" placeholder="Menge/Formel" autocapitalize="off" autocorrect="off" spellcheck="false">
@@ -1757,6 +1960,12 @@ Gib Länge (längere Seite) und Breite der Grundfläche, Raumhöhe, Anzahl und G
       </div>
       <div class="card"><button class="btn danger block" id="vReset">Alle Vorlagen auf Standard zurücksetzen</button></div>`;
     const save = debounce(() => kvSet('angebotVorlagen', VORL), 300);
+    vorlageVorschlaege().then((l) => {
+      const el = $('#vLern'); if (!el || !l.length) return;
+      el.innerHTML = `<div class="card vl-karte"><h3 style="margin-top:0">Aus deinen Angeboten gelernt</h3>${l.map((s, i) => `<div class="vl-z"><p>${esc(s.text)}</p><div class="row"><button class="btn small" data-vlja="${i}">${s.art === 'plus' ? 'Aufnehmen' : 'Herausnehmen'}</button><button class="btn small secondary" data-vlnein="${i}">Nein</button></div></div>`).join('')}
+        <p class="hint" style="margin-bottom:0">Neue Positionen kommen mit einer einfachen Mengenformel (Fläche, Umfang oder 1). Bitte unten prüfen.</p></div>`;
+      $$('[data-vlja],[data-vlnein]', el).forEach((b) => (b.onclick = async () => { const s = l[+(b.dataset.vlja ?? b.dataset.vlnein)]; await vorlageAntwort(s, b.dataset.vlja !== undefined); toast(b.dataset.vlja !== undefined ? 'Vorlage geändert.' : 'Ich frage erst nach 5 weiteren Angeboten wieder.', 3500); vorlagenView(s.pkg, s.grp); }));
+    }).catch((e) => console.warn(e));
     $('#vBack').onclick = () => (window.einstellungSeite ? einstellungSeite('preise') : switchTab('einstellungen'));
     $('#vPkg').onchange = (e) => vorlagenView(e.target.value, grp);
     $('#vGrp').onchange = (e) => vorlagenView(pkgId, e.target.value);
@@ -1768,6 +1977,6 @@ Gib Länge (längere Seite) und Breite der Grundfläche, Raumhöhe, Anzahl und G
     $('#vReset').onclick = async () => { if (!loeschFrage('Alle Paket-Vorlagen zurücksetzen?')) return; await kvDel('angebotVorlagen'); VORL = null; vorlagenView(pkgId, grp); };
   }
 
-  return { projektKarte, ansicht, einstellungenKarte, _intern: { ekVon, vkVon, gewerkVon, planEinfuegen, firmaSetzen, FIRMA_KEYS, kontextFuer, passt, giltText, zahlungsplanText, privatArt, skontoVon, posDetails, preisHinweis, artText, NICHT_SUMME, init, gruppe, materialliste, uebernimmSchaetzung, masse, rechne, erzeuge, summen, bauzeit, ep, lohnEp, preisliste, vorlagen, neuerRaum, baueAngebotPdf, importExcel, naechsteNummer, mailText, bausteine, textEditor, texteAuftrag, texteEinstellungen, subUebernehmen, ansprechpartner, ansprVon, einePerson, texteFuer, anredeDefault, einstellungen: () => PL.einstellungen, kalkSetzen, kalkNorm, kalkWert, kalkFeld, satz } };
+  return { projektKarte, ansicht, einstellungenKarte, _intern: { vorlageMerken, vorlageVorschlaege, vorlageAntwort, bildWaehlen, texteEigen, texteSpeichern, versandMeta, DARST, darstAngebot, darstOptionen, darstSetzen, lohnSchaetzung, ekVon, vkVon, gewerkVon, planEinfuegen, firmaSetzen, FIRMA_KEYS, kontextFuer, passt, giltText, zahlungsplanText, privatArt, skontoVon, posDetails, preisHinweis, artText, NICHT_SUMME, init, gruppe, materialliste, uebernimmSchaetzung, masse, rechne, erzeuge, summen, bauzeit, ep, lohnEp, preisliste, vorlagen, neuerRaum, baueAngebotPdf, importExcel, naechsteNummer, mailText, bausteine, textEditor, texteAuftrag, texteEinstellungen, subUebernehmen, ansprechpartner, ansprVon, einePerson, texteFuer, anredeDefault, einstellungen: () => PL.einstellungen, kalkSetzen, kalkNorm, kalkWert, kalkFeld, satz } };
 })();
 window.Angebot = Angebot;

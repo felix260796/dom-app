@@ -9,6 +9,8 @@
 	<string>DOM trägt deine Termine in einen eigenen Kalender „DOM“ auf diesem iPhone ein, wenn du das für dieses Gerät eingeschaltet hast.</string>
 	<key>NSCalendarsUsageDescription</key>
 	<string>DOM trägt deine Termine in einen eigenen Kalender „DOM“ auf diesem iPhone ein, wenn du das für dieses Gerät eingeschaltet hast.</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>DOM zeigt vor einem Termin, wie lange die Fahrt von hier mit aktuellem Verkehr dauert.</string>
 	<key>NSContactsUsageDescription</key>
 	<string>DOM übernimmt Kunden aus deinen Kontakten und speichert Kunden dort, wenn du das für dieses Gerät eingeschaltet hast.</string>
 	<key>UIBackgroundModes</key>

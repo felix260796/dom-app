@@ -114,7 +114,8 @@ window.AngebotDaten = (() => {
     const vorh = await liste(w);
     const n = Math.max(+w.angebotZaehler || 0, ...vorh.map((a) => a.n || 0)) + 1;
     const a = normal({ id: uid(), vorgangId: w.id, n, art, zuId, buchstabe: 'A', status: 'entwurf', created: Date.now(),
-      inhalt: { bereiche: von ? JSON.parse(JSON.stringify(von.inhalt?.bereiche || {})) : {} } });
+      inhalt: { bereiche: von ? JSON.parse(JSON.stringify(von.inhalt?.bereiche || {})) : {},
+        ...(von?.inhalt && Object.prototype.hasOwnProperty.call(von.inhalt, 'texte') ? { texte: JSON.parse(JSON.stringify(von.inhalt.texte || [])) } : {}) } });
     if (!vorh.length && !von) standAus(a, w);
     a.vorgangNr = w.nr || '';
     cache.set(a.id, a);
@@ -210,13 +211,13 @@ window.AngebotDaten = (() => {
   // ---------- Versand, Fassungen, Zusage ----------
   const offenBearb = (a) => !!a && a.status === 'entwurf';
   /** Angebot ist verschickt: Fassung festhalten, ab jetzt gesperrt. */
-  async function versendet(w, { datum = '', name = '', brutto = 0 } = {}) {
+  async function versendet(w, { datum = '', name = '', brutto = 0, weg = '' } = {}) {
     const a = await aktiv(w);
     if (!a) return null;
     const n = nr(a, w);
     const f = a.fassungen.find((x) => x.buchstabe === a.buchstabe);
-    if (f) Object.assign(f, { gesendetAm: datum || f.gesendetAm, name: name || f.name, brutto: brutto || f.brutto });
-    else a.fassungen.push({ buchstabe: a.buchstabe, nr: n, t: Date.now(), gesendetAm: datum, name, brutto });
+    if (f) Object.assign(f, { gesendetAm: datum || f.gesendetAm, name: name || f.name, brutto: brutto || f.brutto, ...(weg ? { weg } : {}) });
+    else a.fassungen.push({ buchstabe: a.buchstabe, nr: n, t: Date.now(), gesendetAm: datum, name, brutto, ...(weg ? { weg } : {}) });
     if (a.status === 'entwurf') a.status = 'versendet';
     a.versendetAm = datum || a.versendetAm;
     await speichern(a);
@@ -306,8 +307,10 @@ window.Transkript = (() => {
         out.aufnahmen.push(auf);
         continue;
       }
-      const s = SPR.exec(z);
-      out.zeilen.push({ id: uid(), aufnahmeId: auf?.id || '', sprecher: s ? s[1].trim() : '', text: s ? s[2] : z, bereichId: '' });
+      // Zeitmarke [mm:ss] bzw. [h:mm:ss] am Anfang (Runde 15, B8) → ab = Sekunden ab Beginn der Aufnahme
+      const zm = /^\[(?:(\d{1,2}):)?(\d{1,3}):(\d{2})\]\s*/.exec(z), ab = zm ? (+zm[1] || 0) * 3600 + +zm[2] * 60 + +zm[3] : null, zr = zm ? z.slice(zm[0].length) : z;
+      const s = SPR.exec(zr);
+      out.zeilen.push({ id: uid(), aufnahmeId: auf?.id || '', sprecher: s ? s[1].trim() : '', text: s ? s[2] : zr, bereichId: '', ...(ab != null ? { ab } : {}) });
     }
     return out;
   }
@@ -329,9 +332,9 @@ window.Transkript = (() => {
     return g;
   }
   /** Neue Aufnahme anhängen (Text der KI mit „Name: …“ je Zeile). */
-  function anhaengen(g, { art, dabei, text: t }) {
+  function anhaengen(g, { art, dabei, text: t, audio }) {
     sicher(g);
-    const a = { id: uid(), art: art || 'Gespräch', t: Date.now(), dabei: dabei || [] };
+    const a = { id: uid(), art: art || 'Gespräch', t: Date.now(), dabei: dabei || [], ...(audio ? { audio } : {}) };
     g.aufnahmen.push(a);
     for (const z of zerlegen(t).zeilen) g.zeilen.push({ ...z, aufnahmeId: a.id });
     g.transcript = text(g);
@@ -343,7 +346,7 @@ window.Transkript = (() => {
     const alt = new Map(g.zeilen.map((z) => [zeile(z), z]));
     const neu = zerlegen(t, g.aufnahmen);
     g.aufnahmen = neu.aufnahmen;
-    g.zeilen = neu.zeilen.map((z) => { const a = alt.get(zeile(z)); return a ? { ...z, id: a.id, bereichId: a.bereichId || '' } : z; });
+    g.zeilen = neu.zeilen.map((z) => { const a = alt.get(zeile(z)); return a ? { ...z, id: a.id, bereichId: a.bereichId || '', ...(a.ab != null ? { ab: a.ab } : {}) } : z; });
     g.transcript = t;
   }
   return { zerlegen, text, sicher, anhaengen, ausText };

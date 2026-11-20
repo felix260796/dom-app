@@ -41,12 +41,13 @@ window.Buero = (() => {
     const eigene = d.bilder.filter((b) => b.projektId === w.id), andere = d.bilder.filter((b) => b.projektId !== w.id);
     const gruppe = (bilder) => {
       const g = new Map(); for (const b of [...bilder].sort((a, c) => (c.t || 0) - (a.t || 0))) { const n = ordner(b.ordner); if (!g.has(n)) g.set(n, []); g.get(n).push(b); }
-      return [...g].map(([n, l]) => `<div class="apb-o"><b>${esc(n)}</b><span class="muted">${l.length}</span></div><div class="apb-g">${l.map((b) => `<button type="button" class="apb-b" data-bid="${esc(b.id)}" title="${esc([b.text, tag(b.t)].filter(Boolean).join(' · '))}"><img src="${b.thumb}" alt="" loading="lazy" draggable="false"></button>`).join('')}</div>`).join('');
+      return [...g].map(([n, l]) => `<div class="apb-o"><b>${esc(n)}</b><span class="muted">${l.length}</span></div><div class="apb-g">${l.map((b) => `<button type="button" class="apb-b" draggable="true" data-bid="${esc(b.id)}" title="${esc([b.text, tag(b.t)].filter(Boolean).join(' · '))}"><img src="${b.thumb}" alt="" loading="lazy" draggable="false"></button>`).join('')}</div>`).join('');
     };
     const docs = (w.dokumente || []).filter((x) => x.key);
     el.innerHTML = `${eigene.length ? gruppe(eigene) : '<p class="hint">Zu diesem Angebot gibt es noch keine Fotos. Fotos vom iPad oder iPhone landen über den Cloud-Abgleich von selbst hier. Am PC: Bilder einfach auf dieses Fenster ziehen.</p>'}
       ${andere.length ? `<details class="apb-mehr"${eigene.length ? '' : ' open'}><summary>Weitere Fotos am Objekt (${andere.length})</summary>${gruppe(andere)}</details>` : ''}
       ${docs.length ? `<div class="apb-o"><b>Dokumente</b><span class="muted">${docs.length}</span></div><div class="apb-d">${docs.map((x, i) => `<button type="button" class="apb-dok" data-dok="${i}">${icon('file')}<span>${esc(x.name)}</span></button>`).join('')}</div>` : ''}`;
+    $$('[data-bid]', el).forEach((b) => (b.ondragstart = (e) => { e.dataTransfer.setData('application/x-dom-bild', b.dataset.bid); e.dataTransfer.effectAllowed = 'link'; }));
     $$('[data-bid]', el).forEach((b) => (b.onclick = async () => {
       const bild = d.bilder.find((x) => x.id === b.dataset.bid);
       pdfAnsicht((await kvGet('bild:' + bild.id)) || bild.thumb, bild.text || ordner(bild.ordner));
@@ -750,7 +751,7 @@ window.Buero = (() => {
     for (const w of ws) {
       const n = w.titel || 'Projekt';
       dazu(w.created, 'file', `Angebot angelegt: ${n}`, w.nr || '', 'p:' + w.id);
-      for (const v of w.verlauf || []) if (v.t && v.st !== undefined) dazu(v.t, 'sliders', `${n}: ${Projekt.statusName(v.st)}`, '', 'p:' + w.id);
+      for (const v of w.verlauf || []) if (v.t && v.st !== undefined) dazu(v.t, v.st === 'angebot' ? 'mail' : 'sliders', `${n}: ${Projekt.statusName(v.st)}`, v.weg ? Projekt._intern.wegText(v.weg) : '', 'p:' + w.id);
       if (w.versendetAm && !(w.verlauf || []).some((v) => v.st === 'angebot')) dazu(w.versendetAm, 'mail', `Angebot verschickt: ${n}`, '', 'p:' + w.id);
       if (w.absage?.t) dazu(w.absage.t, 'x', `Abgesagt: ${n}`, w.absage.grund ? 'Grund: ' + w.absage.grund : '', 'p:' + w.id);
       if (w.auftragsbestaetigung?.t) dazu(w.auftragsbestaetigung.t, 'check', `Auftragsbestätigung: ${n}`, w.auftragsbestaetigung.gesendetAm ? 'gesendet ' + tag(w.auftragsbestaetigung.gesendetAm) : '', 'p:' + w.id);

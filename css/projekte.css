@@ -360,3 +360,19 @@ details.bs .tot span:last-child { color: var(--muted); }
   .pr-rechts { position: sticky; top: 12px; }
   .pr-gespr { max-height: calc(100vh - 220px); }
 }
+
+/* ---------- Kundenunterschrift am iPad (Runde 15) ---------- */
+.ku-voll .ku-sheet { max-height: 96vh; }
+.ku-in { padding: 0 16px 16px; }
+.ku-in p { margin: 0 0 8px; white-space: pre-line; }
+.ku-sum { font-weight: 600; }
+.ku-vz { display: flex; gap: 10px; align-items: flex-start; font-size: 14px; margin: 8px 0; }
+.ku-vz input { margin-top: 3px; }
+.ku-sig { width: 100%; height: 180px; touch-action: none; }
+
+/* ---------- Nachhören (Runde 15) ---------- */
+.pr-hoer { display: inline-flex; align-items: center; gap: 3px; border: 1px solid var(--line, #d9d4ca); background: #fff; border-radius: 999px; padding: 1px 8px 1px 5px; font-size: 12px; color: var(--ink-2, #475569); cursor: pointer; vertical-align: 1px; }
+.pr-hoer svg { width: 12px; height: 12px; fill: currentColor; stroke: none; }
+.hoer-leiste { position: fixed; left: 12px; right: 12px; bottom: calc(env(safe-area-inset-bottom, 0px) + 74px); z-index: 900; background: #fff; border-radius: 14px; box-shadow: 0 6px 24px rgba(0,0,0,.18); padding: 8px 10px; max-width: 560px; margin: 0 auto; }
+.hoer-leiste .hoer-k { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 13px; }
+.hoer-leiste audio { width: 100%; margin-top: 4px; }

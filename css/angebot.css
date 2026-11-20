@@ -342,3 +342,12 @@ tr.xt-titel.ed:hover .xt-tdel, .xt-tdel:focus { opacity: 1; }
 .kz .kz-ziel { border-top: 1px dashed var(--line, #e5e7eb); margin-top: 4px; padding-top: 6px; }
 .kz .kz-zs { justify-content: flex-end; gap: 10px; }
 .kz .kz-ok { color: #047857; } .kz .kz-w { color: #b45309; }
+
+/* ---------- Bilder an Positionen (Runde 15) ---------- */
+.pb-l { display: flex; flex-direction: column; gap: 6px; }
+.pb-z { display: flex; align-items: center; gap: 10px; }
+.pb-z img { width: 56px; height: 42px; object-fit: cover; border-radius: 6px; background: #eee; }
+.pb-z label { margin: 0; display: flex; gap: 6px; align-items: center; font-size: 14px; flex: 1; }
+.pb-wahl { display: grid; grid-template-columns: repeat(auto-fill, minmax(88px, 1fr)); gap: 6px; padding: 0 16px 16px; max-height: 60vh; overflow: auto; }
+.pb-wahl button { padding: 0; border: 0; background: none; } .pb-wahl img { width: 100%; aspect-ratio: 4/3; object-fit: cover; border-radius: 6px; }
+.vl-z { border-top: 1px solid var(--line, #e5e7eb); padding: 8px 0; } .vl-z p { margin: 0 0 6px; }

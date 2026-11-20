@@ -223,5 +223,21 @@ window.Geraet = (() => {
   /** Nach einer Aufnahme: Audio abgeben, damit vorher laufende Musik von selbst weiterspielt (nur iPhone-App). */
   const audioFreigeben = () => (nativ() ? P().audioFreigeben().catch(() => {}) : Promise.resolve());
 
-  return { nativ, an, kann, faehigkeiten, aufnahme, audioFreigeben, scannen, raumScannen, wohnungMoeglich, kontaktWaehlen, kontaktSpeichern, kalenderAbgleich, karte, start };
+  // ---------- Zeichnen mit PencilKit (Runde 15, B1; zeichnen.js) ----------
+  const zeichnenNativ = () => nativ();
+  const zeichnen = (o) => P().zeichnen(o);
+  // ---------- Mediathek und Fahrzeit (Runde 15, B7) ----------
+  /** Fotos aus der Mediathek (Apples Auswahl), verkleinert: [DataURL]. */
+  const mediathek = async (max = 1600) => ((await P().mediathek({ max })).bilder || []);
+  /** Fahrzeit mit Verkehr von hier: { min, km } oder null. Merkt das Ergebnis 10 Minuten je Anschrift. */
+  const fahrtCache = new Map();
+  async function fahrzeit(adresse) {
+    if (!nativ() || !adresse) return null;
+    const c = fahrtCache.get(adresse); if (c && Date.now() - c.t < 6e5) return c.r;
+    const x = await P().fahrzeit({ adresse });
+    const r = { min: Math.max(1, Math.round((+x.sekunden || 0) / 60)), km: Math.round((+x.km || 0) * 10) / 10 };
+    fahrtCache.set(adresse, { t: Date.now(), r }); return r;
+  }
+
+  return { nativ, zeichnenNativ, zeichnen, mediathek, fahrzeit, an, kann, faehigkeiten, aufnahme, audioFreigeben, scannen, raumScannen, wohnungMoeglich, kontaktWaehlen, kontaktSpeichern, kalenderAbgleich, karte, start };
 })();

@@ -210,19 +210,32 @@ window.Besuch = (() => {
   }
   const einverstandenText = (w) => { const e = w.gespraech?.einverstanden; return e?.t ? `Kunde mit Aufnahme einverstanden: ${new Date(e.t).toLocaleString('de-DE', { day: 'numeric', month: 'numeric', hour: '2-digit', minute: '2-digit' })}${e.wer ? ` (gefragt von ${e.wer})` : ''}` : ''; };
 
+  // ---------- Fahrzeit mit Verkehr von hier (Runde 15, B7; nur in der App, Apple Karten) ----------
+  async function fahrtZeigen(w) {
+    const el = $('#beFahrt'); if (!el || !window.Geraet?.nativ?.() || w.vorOrt?.abschluss) return;
+    const k = kundeVon(w), o = objektVon(w, k), adr = (o ? Kunden.objektText(o) : w.address) || '';
+    if (!adr.trim()) return;
+    try {
+      const r = await Geraet.fahrzeit(adr); if (!r || !el.isConnected) return;
+      el.innerHTML = `${icon('pin')} ${r.min} Min. Fahrt von hier mit aktuellem Verkehr (${String(r.km).replace('.', ',')} km) · <a href="${esc(routeLink(adr))}" target="_blank" rel="noopener">Route</a>`;
+      el.hidden = false;
+    } catch (e) { console.warn('Fahrzeit', e); }
+  }
+
   // ---------- Reiter „Vor Ort“: Bausteine und Bindung ----------
   function leiste(w) {
     return `<div class="be-leiste">
       <button type="button" class="qchip" id="beBrief">${icon('mic')}<span>Briefing anhören</span></button>
       <button type="button" class="qchip" id="beSpaet">${icon('calendar')}<span>Ich komme später</span></button>
       ${String(vorgabe('soArbeitenWir') || '').trim() ? `<button type="button" class="qchip" id="beSo">${icon('book')}<span>So arbeiten wir</span></button>` : ''}
-    </div>${abgleichZeile()}`;
+    </div><p class="hint be-fahrt" id="beFahrt" hidden></p>${abgleichZeile()}`;
   }
   function bind(w, neu) {
     const speichern = async () => { if (w.isNew) delete w.isNew; await window.Projekt.save(w); };
     if ($('#beBrief')) $('#beBrief').onclick = () => briefing(w);
     if ($('#beSpaet')) $('#beSpaet').onclick = () => spaeter(w);
     if ($('#beSo')) $('#beSo').onclick = () => soArbeiten();
+    fahrtZeigen(w);
     $$('[data-verk]').forEach((i) => (i.onchange = async () => { const f = verkaufFelder()[+i.dataset.verk]; w.verkauf = { ...(w.verkauf || {}), [f]: i.value.trim() }; await speichern(); }));
     const vd = $('.be-verk'); if (vd) vd.ontoggle = () => (vd.open ? verkOffen.add(w.id) : verkOffen.delete(w.id));
     if ($('#beAb')) $('#beAb').onclick = async () => { await abschliessen(w, speichern); neu?.(); };

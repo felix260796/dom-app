@@ -30,6 +30,7 @@ const VORGABEN = {
       { k: 'textMahnSchluss', l: 'Schlusssatz', t: 'text', d: 'Sollte sich Ihre Zahlung mit diesem Schreiben überschnitten haben, betrachten Sie es bitte als gegenstandslos.' },
     ]],
     ['Begleittext beim Senden (Mail, WhatsApp)', [
+      { k: 'mailAngebotBetreff', l: 'Angebot: Betreff der Mail ({nr}, {betreff} = Projektname, {kunde})', t: 'zeile', d: 'Angebot {nr} – {betreff}', h: 'Am iPhone und iPad steht der Betreff auch als erste Zeile im Text, damit die Nummer bei WhatsApp oben steht.' },
       { k: 'mailAngebot', l: 'Angebot', t: 'text', d: '{anrede}\n\nvielen Dank für das angenehme Gespräch. Anbei erhalten Sie unser Angebot Nr. {nr}. Bei Fragen melden Sie sich gerne.\n\nFreundliche Grüße\n{firma}' },
       { k: 'mailRechnung', l: 'Rechnung', t: 'text', d: '{anrede}\n\nanbei erhalten Sie unsere {art} Nr. {nr} über {betrag}. Bitte überweisen Sie den Betrag bis zum {faellig}.\n\nVielen Dank und freundliche Grüße\n{firma}' },
       { k: 'mailMahnung', l: 'Erinnerung und Mahnung', t: 'text', d: '{anrede}\n\nzu unserer Rechnung Nr. {nr} vom {datum} konnten wir noch keinen Zahlungseingang feststellen. Anbei unsere {stufe}.\n\nFreundliche Grüße\n{firma}' },
@@ -62,12 +63,22 @@ const VORGABEN = {
   ablauf: [
     ['Vor-Ort-Termin', [
       { k: 'aufnahmeEinverstaendnis', l: 'Vor der Gesprächsaufnahme fragen, ob der Kunde einverstanden ist', t: 'janein', d: 'ja', h: 'Einmal je Vorgang. „Ja“ wird mit Uhrzeit und Namen vermerkt, ohne „Ja“ startet keine Aufnahme.' },
+      { k: 'audioAblage', l: 'Gesprächsaufnahmen in der Cloud ablegen (zum Nachhören auf jedem Gerät)', t: 'janein', d: 'ja', h: 'Nur mit Cloud-Abgleich. Auf der Seite „Aufnahme prüfen“ gibt es dann an jeder Zeile „Ab hier anhören“.' },
+      { k: 'audioBehaltenMonate', l: 'Abgelegte Aufnahmen nach so vielen Monaten löschen', t: 'zahl', d: 6 },
+      { k: 'auswertungCloud', l: 'Gespräch in der Cloud auswerten (Supabase-Funktion „auswertung“)', t: 'janein', d: 'ja', h: 'Braucht den Gemini-Schlüssel als Secret GEMINI_API_KEY in Supabase (Anleitung AUSWERTUNG_EINRICHTEN.md). Klappt es nicht, wertet das Gerät wie bisher selbst aus.' },
       { k: 'aufnahmeTeilMin', l: 'Lange Aufnahmen in Stücke teilen, alle so viele Minuten', t: 'zahl', d: 30, h: 'Die Aufnahme läuft ohne Grenze weiter. Jedes Stück wird gleich ausgewertet und hinten ans Gespräch gehängt.' },
       { k: 'spaeterMinuten', l: '„Ich komme später“: Auswahl in Minuten (eine Zeile je Wert)', t: 'liste', d: ['10', '15', '20', '30'] },
       { k: 'textSpaeter', l: 'Nachricht „Ich komme später“', t: 'text', d: '{anrede}\nich bin etwas später bei Ihnen, in etwa {minuten} Minuten. Bitte entschuldigen Sie.\nViele Grüße\n{name}', h: '{anrede} = Briefanrede des Kunden, {minuten}, {name} = wer das Gerät hat, {firma}. Geht per SMS, WhatsApp oder Mail, du tippst nur noch „Senden“.' },
       { k: 'ordnerBereich', l: 'Bilder-Ordner, wenn vor Ort ein Bereich gewählt ist', t: 'zeile', d: '{bereich}', h: '{bereich} = Name des Bereichs (z. B. Bad), {datum} = heute. Ohne gewählten Bereich gilt der Ordner für „Fotos machen“.' },
       { k: 'briefingTempo', l: 'Briefing: Sprechtempo (1 = normal, 0,8 langsamer, 1,2 schneller)', t: 'zahl', d: 1 },
       { k: 'verkaufFelder', l: 'Verkaufsinfos (intern) im Vor-Ort-Termin (eine Zeile je Feld)', t: 'liste', d: ['Wer entscheidet?', 'Budget', 'Zeitrahmen', 'Holt noch andere Angebote ein?', 'Zuschuss oder Förderung möglich?', 'Weitere Wünsche für später'], h: 'Nur für euch, steht nie im Angebot. Das Briefing liest sie mit vor.' },
+      { k: 'angebotDarstellung', l: 'Angebot: Preise im PDF (Standard, je Angebot und je Titel änderbar)', t: 'wahl', d: 'einzel', o: [['einzel', 'Einzelpreise'], ['inhalt', 'Paketpreis mit Inhalt'], ['paket', 'Nur Paketpreis']], h: 'Bedarfs- und Alternativpositionen stehen immer mit eigenem Preis im Angebot.' },
+      { k: 'allgemeinVerteilen', l: 'Angebot: „Allgemeines“ (Baustelleneinrichtung, Schutz, Reinigung) auf die Positionen verteilen', t: 'janein', d: 'nein', h: 'Standard für neue Angebote, je Angebot umschaltbar. Verteilt: Die Positionen stehen nicht im PDF, ihr Betrag steckt anteilig in den Einzelpreisen, darunter steht der Satz unten.' },
+      { k: 'textAllgemeinVerteilt', l: 'Angebot: Satz, wenn „Allgemeines“ verteilt ist ({leistungen})', t: 'zeile', d: 'Die Einzelpreise enthalten anteilig: {leistungen}.' },
+      { k: 'vorlageLernenAb', l: 'Lernende Vorlagen: Vorschlag, wenn eine Position so oft von Hand ergänzt oder gelöscht wurde …', t: 'zahl', d: 3 },
+      { k: 'vorlageLernenAus', l: '… in den letzten so vielen Angeboten mit gleichem Paket und gleicher Raumgruppe', t: 'zahl', d: 5, h: 'Ein abgelehnter Vorschlag kommt erst nach so vielen weiteren Angeboten wieder.' },
+      { k: 'plausiMin', l: 'Preis-Plausibilität: ab so vielen vergleichbaren Bereichen (verschickte Angebote)', t: 'zahl', d: 5, h: 'Darunter vergleicht DOM mit der Paket-Vorlage.' },
+      { k: 'plausiMonate', l: 'Preis-Plausibilität: nur Angebote der letzten Monate', t: 'zahl', d: 24 },
       { k: 'angebotZusammenstellung', l: 'Angebot mit mehreren Titeln: Zusammenstellung (Summe je Titel) vor der Gesamtsumme', t: 'janein', d: 'ja' },
       { k: 'preisAbweichung', l: 'Angebot: Hinweis, wenn ein eigener Preis so viel % von der Preisliste abweicht (0 = aus)', t: 'zahl', d: 30, h: 'Nur ein Hinweis an der Position, nichts wird geändert.' },
       { k: 'anrufArt', l: 'Bezeichnung für notierte Anrufe im Gespräch', t: 'zeile', d: 'Telefonat' },
@@ -129,6 +140,7 @@ const VORGABEN = {
     ['Kalkulation', [
       { k: 'mindestMarge', l: 'Mindestmarge in % vom Verkaufspreis netto', t: 'zahl', d: 15, h: 'Liegt ein Angebot oder ein Gewerk darunter, zeigt DOM einen stillen Hinweis. Es wird nichts gesperrt.' },
       { k: 'ampelGut', l: 'Soll/Ist: Marge grün ab %', t: 'zahl', d: 20 },
+      { k: 'lohnSchaetzung', l: 'Geschätzter Lohnanteil je Gewerk in % (eine Zeile je Gewerk, „Gewerk: %“)', t: 'liste', d: ['Fliesen: 60', 'Maler: 80', 'Sonstige: 50'], h: 'Gilt nur für Positionen ohne Preisliste und ohne bekannten Lohn (z. B. Sub-Angebot pauschal). Sie sind als „geschätzt“ markiert und stehen in der Prüfung vor dem Versand, bis du den Anteil in der Position bestätigst.' },
       { k: 'ampelKnapp', l: 'Soll/Ist: Marge gelb („knapp“) ab %, darunter rot', t: 'zahl', d: 15, h: 'Standard wie die Mindestmarge.' },
     ]],
     ['Kalender und Geburtstage', [

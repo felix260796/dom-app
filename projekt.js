@@ -388,6 +388,13 @@ window.Projekt = (() => {
     $$('[data-bilder]').forEach((b) => (b.onclick = () => $('#wBilder')?.click()));
     $$('[data-reiter]').forEach((b) => (b.onclick = () => { reiterSetzen(w, b.dataset.reiter); pcWahl.set(w.id, b.dataset.reiter === 'vorort' ? 'vorort' : 'angebot'); view(); window.scrollTo(0, 0); }));
     $$('[data-pcs]').forEach((b) => (b.onclick = () => { pcWahl.set(w.id, b.dataset.pcs); view(); window.scrollTo(0, 0); }));
+    if ($('#wMediathek')) $('#wMediathek').onclick = async () => {
+      if (!k) return toast('Bitte zuerst einen Kunden zuordnen.');
+      if (w.isNew) { delete w.isNew; await save(w); }
+      const br = bereichVon(w, list);
+      const n = await Bilder.ausMediathek({ kundeId: k.id, objektId: w.objektId, projektId: w.id, ...(br ? { ordnerName: vorgabeText('ordnerBereich', { bereich: raumTitel(br), datum: new Date().toLocaleDateString('de-DE') }) || raumTitel(br), bereichId: br.id } : {}) });
+      if (n) { const y = window.scrollY; await view(); window.scrollTo(0, y); }
+    };
     if ($('#wFotos')) $('#wFotos').onclick = async () => {
       if (!k) return toast('Bitte zuerst einen Kunden zuordnen.');
       if (w.isNew) { delete w.isNew; await save(w); }
@@ -424,8 +431,11 @@ window.Projekt = (() => {
     if ($('#wRechAdr')) $('#wRechAdr').onclick = () => Kunden.oeffnen(k.id);
     if ($('#wAlsVersendet')) $('#wAlsVersendet').onclick = async () => { const b = $('#wAlsVersendet'); b.disabled = true; try { await alsVersendet(w, list); } catch (e) { console.error(e); toast('PDF-Fehler: ' + e.message, 6000); } if (b.isConnected) b.disabled = false; };
     if ($('#wNochmal')) $('#wNochmal').onclick = () => angebotNochmal(w);
+    $$('[data-dar]').forEach((s) => (s.onchange = () => window.Angebot._intern.darstSetzen(w, s.value)));
+    $$('[data-allg]').forEach((c) => (c.onchange = async () => { const a = window.AngebotDaten.aktivSync(w); if (!a) return; a.allgemeinVerteilt = c.checked; await window.AngebotDaten.speichern(a); toast(c.checked ? 'Allgemeines steckt jetzt anteilig in den Einzelpreisen (nur im PDF).' : 'Allgemeines steht wieder als eigener Titel im PDF.', 3500); }));
     if ($('#wSenden')) $('#wSenden').onclick = async () => { const b = $('#wSenden'); b.disabled = true; try { await sendenMitMappe(w, list); } catch (e) { console.error(e); toast('PDF-Fehler: ' + e.message, 6000); } b.disabled = false; };
     if ($('#wSpeichern')) $('#wSpeichern').onclick = async () => { const b = $('#wSpeichern'); b.disabled = true; try { await angebotSpeichern(w, list); } catch (e) { console.error(e); toast('PDF-Fehler: ' + e.message, 6000); } if (b.isConnected) b.disabled = false; };
+    if ($('#wUnterschrift')) $('#wUnterschrift').onclick = () => kundeUnterschreibt(w, list).catch((e) => { console.error(e); toast('Ging nicht: ' + e.message, 5000); });
     if ($('#wAnpassen')) $('#wAnpassen').onclick = () => { if (gesperrt(w) || norm(w.status) === 'abgesagt') return angebotKopieren(w); reiterSetzen(w, 'buero'); view(); window.scrollTo(0, 0); };
     if ($('#wKopie')) $('#wKopie').onclick = () => angebotKopieren(w);
     if ($('#wTexte')) $('#wTexte').onclick = () => {
@@ -784,6 +794,8 @@ window.Projekt = (() => {
           <div class="ape-pane" data-apc="pl" hidden></div>
           <div class="ape-pane" data-apc="akt">
           <div class="card ape-akt">
+            <label class="ape-allg"><input type="checkbox" data-allg ${window.AngebotDaten.aktivSync(w)?.allgemeinVerteilt ?? vorgabe('allgemeinVerteilen') === 'ja' ? 'checked' : ''} ${gesperrt(w) ? 'disabled' : ''}> Allgemeines auf die Positionen verteilen</label>
+            <label class="ape-dar">Preise im PDF<select data-dar ${gesperrt(w) ? 'disabled' : ''}>${window.Angebot._intern.darstOptionen(window.Angebot._intern.darstAngebot(w))}</select></label>
             <button class="btn block" id="wSpeichern" ${mitPos.length ? '' : 'disabled'}>${icon('eye')} Ansehen (PDF)</button>
             <button class="btn block" id="wSenden" ${mitPos.length ? '' : 'disabled'}>${icon('mail')} Senden</button>
             <button class="btn secondary block" id="wAlsVersendet" ${mitPos.length ? '' : 'disabled'}>${icon('check')} Als versendet markieren</button>
@@ -847,6 +859,7 @@ window.Projekt = (() => {
       <div class="sec-h"><h2>Fotos</h2>${nFotos ? `<span class="count">${nFotos}</span>` : ''}</div>
       <div class="docs">
         ${punkt('id="wFotos"', 'camera', 'brass', 'Fotos machen', 'Mehrere hintereinander, sie liegen danach beim Projekt')}
+        ${punkt('id="wMediathek"', 'image', 'brass', 'Aus der Mediathek', 'Fotos, die schon auf dem Gerät sind')}
         ${nFotos ? punkt('data-bilder', 'image', 'grey', 'Fotos ansehen', `${nFotos} ${nFotos === 1 ? 'Bild' : 'Bilder'} in diesem Projekt`) : ''}
       </div>
 
@@ -1012,10 +1025,13 @@ window.Projekt = (() => {
         ${st === 'angebot' || st === 'abgesagt' ? `
           ${w.angebotPdf ? `<div class="stk-2"><button class="btn secondary" id="wAngAnsehen">${icon('eye')} Ansehen</button><button class="btn secondary" id="wNochmal">${icon('mail')} Nochmal senden</button></div>` : ''}
           ${st === 'angebot' ? `<div class="stk-2" style="margin-top:10px"><button class="btn" data-st="geplant" style="--c:#2f8a57">${icon('check')} Zugesagt</button><button class="btn" data-st="abgesagt" style="--c:#c0392b">${icon('x')} Abgesagt</button></div>` : ''}
+          ${st === 'angebot' && !window.Tabelle?.istBuero() ? `<button class="btn block" id="wUnterschrift" style="margin-top:8px">${icon('edit')} Vom Kunden unterschreiben lassen</button>` : ''}
           <button class="btn secondary block" id="wAnpassen" style="margin-top:8px">${icon('edit')} Angebot ändern</button>
           <p class="hint center" style="margin-bottom:0">„Angebot ändern“ legt eine Kopie mit neuer Nummer und neuem Datum an. Dieses Angebot bleibt unverändert.</p>`
         : `
-          <button class="btn secondary block" id="wSpeichern" ${mitPos.length ? '' : 'disabled'}>${icon('download')} Speichern und ansehen</button>
+          <label class="ape-allg" style="margin-top:0"><input type="checkbox" data-allg ${window.AngebotDaten.aktivSync(w)?.allgemeinVerteilt ?? vorgabe('allgemeinVerteilen') === 'ja' ? 'checked' : ''}> Allgemeines auf die Positionen verteilen</label>
+          <label>Preise im Angebot</label><select data-dar>${window.Angebot._intern.darstOptionen(window.Angebot._intern.darstAngebot(w))}</select>
+          <button class="btn secondary block" id="wSpeichern" style="margin-top:12px" ${mitPos.length ? '' : 'disabled'}>${icon('download')} Speichern und ansehen</button>
           <button class="btn big block" id="wSenden" style="margin-top:8px" ${mitPos.length ? '' : 'disabled'}>${icon('mail')} ${anyResult ? 'Senden mit Mappe' : 'Angebot senden'}</button>
           <button class="btn secondary block" id="wAlsVersendet" style="margin-top:8px" ${mitPos.length ? '' : 'disabled'}>${icon('check')} Als versendet markieren</button>
           <p class="hint center" style="margin-bottom:0">${mitPos.length ? '„Als versendet markieren“, wenn der Kunde das Angebot anders bekommen hat, z. B. ausgedruckt. Danach ist es gesperrt (Ändern über eine Kopie mit neuer Nummer), und das Nachfassen läuft.' : 'Zuerst im Reiter „Büro“ ausarbeiten.'}</p>`}
@@ -1074,10 +1090,10 @@ window.Projekt = (() => {
       if (was === 'weg') { w.kiSatz = { ...(w.kiSatz || {}), status: 'geloescht' }; await save(w); const el = $('#kiSatz'); if (el) el.remove(); return; }
       // Übernehmen: als eigener Absatz hinter die Einleitung, danach normaler Text
       const satz = w.kiSatz?.text; if (!satz) return;
-      const l = Array.isArray(w.angebotTexte) && w.angebotTexte.length ? w.angebotTexte : texteVon(w).map((x) => ({ ...x }));
+      const l = window.Angebot._intern.texteEigen(w) || texteVon(w).map((x) => ({ ...x }));
       const e = l.find((x) => x.id === 'einl' && x.wo === 'vor') || l.find((x) => x.wo === 'vor' && !x.fest);
       if (e) { e.text = [String(e.text || '').trim(), satz].filter(Boolean).join('\n\n'); delete e.aus; } else l.unshift({ id: uid(), wo: 'vor', titel: '', text: satz });
-      w.angebotTexte = l; w.kiSatz = { ...w.kiSatz, status: 'uebernommen', uebernommen: Date.now() };
+      await window.Angebot._intern.texteSpeichern(w, l); w.kiSatz = { ...w.kiSatz, status: 'uebernommen', uebernommen: Date.now() };
       await save(w); toast('Satz steht jetzt in der Einleitung.');
       const y = window.scrollY; await view(); window.scrollTo(0, y);
     }));
@@ -1103,9 +1119,9 @@ window.Projekt = (() => {
   function planBind(w) {
     $$('[data-plan]').forEach((b) => (b.onclick = async () => {
       if (b.dataset.plan === 'nein') { w.planHinweis = 'nein'; await save(w); $('#planHinw')?.remove(); return; }
-      const l = Array.isArray(w.angebotTexte) && w.angebotTexte.length ? w.angebotTexte : texteVon(w).map((x) => ({ ...x }));
+      const l = window.Angebot._intern.texteEigen(w) || texteVon(w).map((x) => ({ ...x }));
       window.Angebot._intern.planEinfuegen(l, false);
-      w.angebotTexte = l; await save(w); toast('Steht jetzt bei den Schlusstexten.');
+      await window.Angebot._intern.texteSpeichern(w, l); toast('Steht jetzt bei den Schlusstexten.');
       const y = window.scrollY; await view(); window.scrollTo(0, y);
     }));
   }
@@ -1162,7 +1178,7 @@ window.Projekt = (() => {
     // Texte: anhaken, was im Angebot steht. Erst beim ersten Ändern bekommt das Angebot eine eigene Fassung.
     const texte = texteVon(w);
     window.Bausteine.bind(main(), { liste: texte,
-      speichern: async () => { w.angebotTexte = texte; if (!w.isNew) await save(w); },
+      speichern: async () => { await window.Angebot._intern.texteSpeichern(w, texte); },
       bearbeiten: () => A.texteAuftrag(w, () => { view(); window.scrollTo(0, 0); }) });
   }
   /** Raum ohne Fotos und Visualisierung anlegen (fürs Angebot). Öffnet nichts. */
@@ -1317,13 +1333,15 @@ window.Projekt = (() => {
   /** Angebot (ein Raum oder Gesamtangebot) und Kundenmappe zusammen teilen. Danach Status „versendet“. */
   async function sendenMitMappe(w, list) {
     if (gesperrt(w)) return gesperrtFrage(w);
+    if (!(await versandPruefen(w, list))) return;
     const A = window.Angebot._intern;
     const r = await angebotDateien(w, list, { final: true }); // ohne Wasserzeichen „Entwurf“
     if (!r) return;
     const { ang, files } = r;
     // „Wie verschickt“ wird erst gemerkt, wenn wirklich gesendet wird
     if (navigator.canShare?.({ files })) {
-      try { await navigator.share({ files, title: ang.name.replace(/\.pdf$/i, '').replace(/_/g, ' '), text: A.mailText(ang.syn), an: Kunden.angebotMail(Kunden.byId(w.kundeId)) }); await angebotMerken(w.id, ang.doc, ang.name); await angebotVersendet(w.id); return neuZeichnen(w); }
+      const VM = A.versandMeta(ang.syn, w);
+      try { const erg = await navigator.share({ files, title: VM.betreff, text: VM.text, an: Kunden.angebotMail(Kunden.byId(w.kundeId)) }); const weg = await wegFragen(erg); await angebotMerken(w.id, ang.doc, ang.name); await angebotVersendet(w.id, '', weg); return neuZeichnen(w); }
       catch (e) { if (e.name === 'AbortError') return neuZeichnen(w); }
     }
     for (const f of files) { const a = document.createElement('a'); a.href = URL.createObjectURL(f); a.download = f.name; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 60000); }
@@ -1352,11 +1370,18 @@ window.Projekt = (() => {
   async function angebotMerken(wid, doc, name) {
     if (!wid) return;
     try {
-      await kvSet('angpdf:' + wid, doc.output('datauristring'));
+      const uri = doc.output('datauristring');
+      await kvSet('angpdf:' + wid, uri);
       const w = state.wohnung?.id === wid ? state.wohnung : await kvGet(key(wid));
       if (!w) return;
       w.angebotPdf = { name, typ: 'application/pdf', t: Date.now() };
+      // Runde 15: die verschickte Fassung (ohne „ENTWURF“) auch unter „Dokumente“ und im Kundenordner ablegen,
+      // gleich wie bei „Als versendet markieren“; ersetzt dort das Entwurfs-PDF mit gleichem Namen.
+      const dk = 'wdok:' + w.id + ':' + name.replace(/[^\wäöüÄÖÜß.-]+/g, '_');
+      await kvSet(dk, uri);
+      w.dokumente = [...(w.dokumente || []).filter((x) => x.key !== dk), { key: dk, name, t: Date.now() }];
       await save(w);
+      window.Buero?.ablage(w, name, doc.output('blob'));
     } catch (e) { console.warn('Angebot-PDF nicht gespeichert', e); }
   }
   /** Baustart als ganztägiger Baustellen-Termin im Kalender (ein Termin je Projekt, wird angepasst oder entfernt). */
@@ -1411,40 +1436,153 @@ window.Projekt = (() => {
       ${knoepfe}</div>`;
   }
   /** Angebot wurde gesendet (B6): Status auf „versendet“, Datum fürs Nachfassen merken. */
-  async function angebotVersendet(wid, datum) {
+  async function angebotVersendet(wid, datum, weg = '') {
     const w = wid && (await kvGet(key(wid)));
     if (!w || !['besichtigung', 'entwurf', 'angebot'].includes(norm(w.status))) return;
     // Auch beim erneuten Senden (angepasstes Angebot) beginnt das Nachfassen von vorn
-    if (norm(w.status) !== 'angebot') (w.verlauf ??= []).push({ st: 'angebot', t: Date.now() });
+    if (norm(w.status) !== 'angebot') (w.verlauf ??= []).push({ st: 'angebot', t: Date.now(), ...(weg ? { weg } : {}) });
     w.status = 'angebot'; w.versendetAm = datum || heuteIso();
     // Ab jetzt gesperrt (Wunsch Felix): Ändern geht nur noch über eine Kopie mit neuer Nummer
     w.angebotGesperrt = { t: Date.now(), nr: nrAusPdf(w) }; delete w.angebotFrei;
     await save(w);
-    await AngebotDaten.versendet(w, { datum: w.versendetAm, name: w.angebotPdf?.name || '' });
+    await AngebotDaten.versendet(w, { datum: w.versendetAm, name: w.angebotPdf?.name || '', weg });
+    try { await window.Angebot._intern.vorlageMerken(await raeume(w)); } catch (e) { console.warn('Vorlage lernen', e); } // Runde 15 (B5)
     if (state.wohnung?.id === w.id) Object.assign(state.wohnung, { status: w.status, versendetAm: w.versendetAm, verlauf: w.verlauf, angebotGesperrt: w.angebotGesperrt, angebotFrei: undefined });
-    toast(datum ? `Als versendet markiert (${datumText(w.versendetAm)}). Es ist jetzt gesperrt, das Nachfassen läuft.` : 'Angebot versendet. Es ist jetzt gesperrt, Änderungen gehen über eine Kopie.', 4500);
+    toast(datum ? `Als versendet markiert (${datumText(w.versendetAm)}${weg ? ', ' + wegText(weg) : ''}). Es ist jetzt gesperrt, das Nachfassen läuft.` : 'Angebot versendet. Es ist jetzt gesperrt, Änderungen gehen über eine Kopie.', 4500);
   }
   // ---------- Als versendet markieren und Nochmal senden (Wunsch Felix, Version 100) ----------
   /** Datum abfragen (Standard heute). Gibt 'JJJJ-MM-TT' oder null zurück. */
-  function datumFrage(titel, text, knopf = 'Als versendet markieren') {
+  function datumFrage(titel, text, knopf = 'Als versendet markieren', mitWeg = false) {
     return new Promise((res) => {
       const bg = document.createElement('div');
       bg.className = 'sheet-bg';
       bg.innerHTML = `<div class="sheet" role="dialog" aria-label="${esc(titel)}"><div class="sheet-h"><b>${esc(titel)}</b><button class="icon-btn" data-zu aria-label="Schließen">${icon('x')}</button></div>
         <div class="kform" style="padding:0 16px 16px"><p class="hint" style="margin-top:0">${esc(text)}</p>
           <label>Datum</label><input type="date" id="dfD" value="${heuteIso()}" max="${heuteIso()}">
+          ${mitWeg ? `<label>Wie hat der Kunde es bekommen?</label><select id="dfW">${WEGE.map(([k, n]) => `<option value="${k}" ${k === 'druck' ? 'selected' : ''}>${n.replace(/^per /, '')}</option>`).join('')}</select>` : ''}
           <button class="btn block" id="dfOk" style="margin-top:14px">${icon('check')} ${esc(knopf)}</button></div></div>`;
       document.body.appendChild(bg);
       requestAnimationFrame(() => bg.classList.add('on'));
       const zu = (v) => { bg.remove(); res(v); };
       bg.onclick = (e) => { if (e.target === bg || e.target.closest('[data-zu]')) zu(null); };
-      $('#dfOk', bg).onclick = () => zu($('#dfD', bg).value || heuteIso());
+      $('#dfOk', bg).onclick = () => { const d = $('#dfD', bg).value || heuteIso(); zu(mitWeg ? { datum: d, weg: $('#dfW', bg).value } : d); };
+    });
+  }
+  // ---------- Kundenunterschrift am iPad für die Auftragserteilung (Runde 15, B3) ----------
+  // Vollbild mit Auftragserteilung, Kästchen „vorzeitiger Beginn“ (nur Privat/WEG und wenn der Text eingetragen ist),
+  // Ort, Datum und Unterschriftsfeld wie im Abnahmeprotokoll (stiftLinien). Ergebnis: das Angebot mit Unterschrift als
+  // eigenes PDF in den Dokumenten und als „unterschriebenes Angebot“ (auftrag:<id>), an der Fassung vermerkt (fassung.unterschrieben).
+  async function kundeUnterschreibt(w, list) {
+    const A = window.Angebot._intern, kd = w.kundeId ? Kunden.byId(w.kundeId) : null;
+    await A.preisliste();
+    const fa = A.texteFuer(w).find((b) => b.fest === 'auftrag'), vzText = String(vorgabe('textVorzeitig') || '').trim(), mitVz = !!vzText && A.privatArt(kd);
+    const brutto = window.Kalk ? Kalk.gesamt(w, list).brutto : 0, ort = String((kd && Kunden.ort?.(kd)) || '').match(/\b\d{5}\s+([^,]+)/)?.[1]?.trim() || '';
+    const bg = document.createElement('div'); bg.className = 'sheet-bg ku-voll';
+    bg.innerHTML = `<div class="sheet ku-sheet" role="dialog" aria-label="Auftragserteilung"><div class="sheet-h"><b>${esc(String(fa?.titel || '').trim() || 'Auftragserteilung')}</b><button class="icon-btn" data-zu aria-label="Schließen">${icon('x')}</button></div>
+      <div class="ku-in"><p>${esc(String(fa?.text || '').replace(/\{\w+\}/g, '').trim())}</p>
+      <p class="ku-sum">Angebot Nr. ${esc(AngebotDaten.aktivSync(w) ? AngebotDaten.nr(AngebotDaten.aktivSync(w), w) : '')}${brutto ? ` · ${brutto.toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} € brutto` : ''}</p>
+      ${mitVz ? `<label class="ku-vz"><input type="checkbox" id="kuVz"> ${esc(vzText.replace(/\{\w+\}/g, ''))}</label>` : ''}
+      <label>Ort, Datum</label><input type="text" id="kuOrt" value="${esc([ort, new Date().toLocaleDateString('de-DE')].filter(Boolean).join(', '))}">
+      <label>Unterschrift Auftraggeber${kd ? ` (${esc(Kunden.name(kd))})` : ''}</label><canvas class="sig ku-sig" id="kuSig"></canvas>
+      <button type="button" class="link-add" id="kuNeu">Neu unterschreiben</button>
+      <button class="btn big block" id="kuOk" style="margin-top:12px">${icon('check')} Unterschrieben, ablegen</button></div></div>`;
+    document.body.appendChild(bg); requestAnimationFrame(() => bg.classList.add('on'));
+    const cv = $('#kuSig', bg), ctx = cv.getContext('2d');
+    const fit = () => { const r = cv.getBoundingClientRect(); cv.width = r.width * 2; cv.height = r.height * 2; ctx.scale(2, 2); ctx.lineWidth = 2.2; ctx.lineCap = 'round'; ctx.lineJoin = 'round'; ctx.strokeStyle = '#1e3550'; };
+    requestAnimationFrame(fit);
+    let leer = true; stiftLinien(cv, ctx, () => { leer = false; });
+    $('#kuNeu', bg).onclick = () => { ctx.clearRect(0, 0, cv.width, cv.height); leer = true; };
+    const ergebnis = await new Promise((res) => {
+      bg.onclick = (e) => { if (e.target.closest('[data-zu]')) { bg.remove(); res(null); } };
+      $('#kuOk', bg).onclick = () => { if (leer) return toast('Bitte unterschreiben lassen.', 3000); const r = { bild: cv.toDataURL('image/png'), ortDatum: $('#kuOrt', bg).value.trim(), vorzeitig: !!$('#kuVz', bg)?.checked }; bg.remove(); res(r); };
+    });
+    if (!ergebnis) return;
+    toast('Unterschriebenes Angebot wird erstellt …', 10000);
+    const r = await angebotDateien(w, list, { final: true, unterschrift: ergebnis, datum: w.versendetAm || '' });
+    if (!r) return;
+    const name = r.ang.name.replace(/^Angebot_/, 'Angebot_unterschrieben_'), uri = r.ang.doc.output('datauristring');
+    const dk = 'wdok:' + w.id + ':' + name.replace(/[^\wäöüÄÖÜß.-]+/g, '_');
+    await kvSet(dk, uri); await kvSet('auftrag:' + w.id, uri);
+    w.dokumente = [...(w.dokumente || []).filter((x) => x.key !== dk), { key: dk, name, t: Date.now(), art: 'angebot-unterschrieben' }];
+    w.auftrag = { name, typ: 'application/pdf', t: Date.now() };
+    if (ergebnis.vorzeitig) w.vorzeitig = { t: Date.now(), wer: window.Kalender?.wer?.() || '' };
+    const a = AngebotDaten.aktivSync(w), f = a?.fassungen?.find((x) => x.buchstabe === a.buchstabe);
+    if (f) { f.unterschrieben = { t: Date.now(), vorzeitig: ergebnis.vorzeitig, dokKey: dk }; await AngebotDaten.speichern(a); }
+    await save(w);
+    window.Buero?.ablage(w, name, r.ang.doc.output('blob'));
+    $('#toast').hidden = true;
+    await neuZeichnen(w);
+    if (norm(w.status) === 'angebot') {
+      const v = await sheet('Auftrag ist unterschrieben', [{ label: 'Jetzt als zugesagt markieren', sub: 'Weiter mit Auftragsbestätigung und Einplanen', icon: icon('check'), value: 'ja' }, { label: 'Später', icon: icon('x'), value: '' }]);
+      if (v === 'ja') $('[data-st="geplant"]')?.click();
+    }
+  }
+  // ---------- Versandweg (Runde 15, A5): an der Fassung (fassung.weg) und im Verlauf, für die Zeitleiste ----------
+  const WEGE = [['mail', 'per Mail'], ['whatsapp', 'per WhatsApp'], ['druck', 'ausgedruckt'], ['persoenlich', 'persönlich oder mündlich']];
+  const wegText = (v) => WEGE.find(([k]) => k === v)?.[1] || '';
+  /** Nach dem Teilen: Am PC ist der Weg bekannt (Mail), sonst einmal fragen. '' = nicht angegeben. */
+  async function wegFragen(erg) {
+    if (erg?.weg === 'mail') return 'mail';
+    const v = await sheet('Wie hat der Kunde das Angebot bekommen?', WEGE.map(([value, label]) => ({ label: label.replace(/^per /, ''), value, icon: icon({ mail: 'mail', whatsapp: 'phone', druck: 'file', persoenlich: 'user' }[value]) })));
+    return v || '';
+  }
+  // ---------- Prüfung vor dem Versand (Runde 15, A1) ----------
+  // Harte Sperre nur, solange eine zählende Position 0 € hat (Bedarf, Alternative und kostenlos ausgenommen).
+  // Alles andere ist eine stille Liste mit „Trotzdem senden“.
+  function versandStand(w, list, { mail = true } = {}) {
+    const A = window.Angebot._intern, kd = w.kundeId ? Kunden.byId(w.kundeId) : null;
+    const fmtNum = (x, d) => (+x || 0).toLocaleString('de-DE', { minimumFractionDigits: d, maximumFractionDigits: d });
+    const sperre = [], hinweise = [];
+    let geschaetzt = 0;
+    for (const r of list.filter((x) => x.angebot?.positionen?.length)) {
+      for (const z of A.summen(r.angebot.positionen, r.angebot.kalk).zeilen) {
+        if (z.zaehlt !== false && z.art !== 'kostenlos' && !(z.ep > 0)) sperre.push(`${raumTitel(r)}: ${z.it?.text || 'Position'}`);
+        if (z.lohnG) geschaetzt++;
+      }
+    }
+    const post = kd ? Kunden.postanschrift(kd) : null;
+    const adr = post || [w.customer, ...String(w.address || '').split(/\s*,\s*|\n/)];
+    if (!adr.some((l) => /\b\d{4,5}\b/.test(String(l || '')))) hinweise.push('Anschrift des Kunden fehlt (keine Postleitzahl).');
+    if (mail && !(kd && Kunden.angebotMail(kd))) hinweise.push('E-Mail-Adresse für das Angebot fehlt.');
+    if (window.Kalk) {
+      const K = Kalk.kennzahlen(w, list);
+      if (K.unter) hinweise.push(`Marge ${fmtNum(K.marge, 1)} % liegt unter der Mindestmarge von ${fmtNum(K.min, 0)} %.`);
+      for (const [g, o] of Object.entries(K.gewerke || {})) if (o.unter && !K.unter) hinweise.push(`${g}: Marge unter der Mindestmarge.`);
+      if (K.vorl > 0) hinweise.push(`${K.vorl} ${K.vorl === 1 ? 'Position hat' : 'Positionen haben'} nur einen vorläufigen Preis (Sub angefragt).`);
+      const zs = Kalk.zielStand(w, list);
+      if (zs && Math.abs(zs.diff) >= 0.05) hinweise.push(`Zielpreis nicht mehr erreicht (${zs.diff > 0 ? '+' : '-'}${fmtNum(Math.abs(zs.diff), 2)} €).`);
+    }
+    for (const h of window.Kalk?.plausi?.(w, list) || []) hinweise.push(h);
+    if (geschaetzt && A.privatArt(kd)) hinweise.push(`Lohnanteil bei ${geschaetzt} ${geschaetzt === 1 ? 'Position' : 'Positionen'} nur geschätzt (in der Position bestätigen).`);
+    return { sperre, hinweise };
+  }
+  /** Vor Senden, „Als versendet markieren“ und Gesamtangebot: true = weiter. */
+  function versandPruefen(w, list, opt = {}) {
+    const { sperre, hinweise } = versandStand(w, list, opt);
+    if (!sperre.length && !hinweise.length) return Promise.resolve(true);
+    return new Promise((res) => {
+      const bg = document.createElement('div');
+      bg.className = 'sheet-bg';
+      bg.innerHTML = `<div class="sheet vp-sheet" role="dialog" aria-label="Vor dem Versand"><div class="sheet-h"><b>${sperre.length ? 'Noch nicht versandbereit' : 'Vor dem Versand'}</b><button class="icon-btn" data-zu aria-label="Schließen">${icon('x')}</button></div>
+        <div style="padding:0 16px 16px">
+        ${sperre.length ? `<p class="hint" style="margin-top:0">Diese Positionen haben noch keinen Preis. Bitte Preis eintragen oder als Bedarf, Alternative oder kostenlos kennzeichnen:</p><ul class="wf-o vp-sperre">${sperre.slice(0, 12).map((s) => `<li>${esc(s)}</li>`).join('')}${sperre.length > 12 ? `<li>und ${sperre.length - 12} weitere</li>` : ''}</ul>` : ''}
+        ${hinweise.length ? `<p class="hint" ${sperre.length ? '' : 'style="margin-top:0"'}>${sperre.length ? 'Außerdem:' : 'Bitte kurz prüfen:'}</p><ul class="wf-o vp-hinweise">${hinweise.map((s) => `<li>${esc(s)}</li>`).join('')}</ul>` : ''}
+        ${sperre.length ? `<button class="btn block" data-zu style="margin-top:12px">Zurück zum Angebot</button>`
+        : `<button class="btn block" id="vpOk" style="margin-top:12px">${icon('mail')} Trotzdem senden</button><button class="btn secondary block" data-zu style="margin-top:8px">Zurück zum Angebot</button>`}
+        </div></div>`;
+      document.body.appendChild(bg);
+      requestAnimationFrame(() => bg.classList.add('on'));
+      const zu = (v) => { bg.remove(); res(v); };
+      bg.onclick = (e) => { if (e.target === bg || e.target.closest('[data-zu]')) zu(false); };
+      if ($('#vpOk', bg)) $('#vpOk', bg).onclick = () => zu(true);
     });
   }
   /** Angebot ohne Teilen-Menü als verschickt festhalten (z. B. ausgedruckt): PDF ablegen, sperren, Nachfassen läuft ab dem Datum. */
   async function alsVersendet(w, list) {
     if (gesperrt(w)) return gesperrtFrage(w);
-    const datum = await datumFrage('Als versendet markieren', 'Wann hat der Kunde das Angebot bekommen, z. B. ausgedruckt oder persönlich übergeben? Danach ist es gesperrt, und das Nachfassen läuft ab diesem Tag.');
+    if (!(await versandPruefen(w, list, { mail: false }))) return;
+    const dw = await datumFrage('Als versendet markieren', 'Wann hat der Kunde das Angebot bekommen, z. B. ausgedruckt oder persönlich übergeben? Danach ist es gesperrt, und das Nachfassen läuft ab diesem Tag.', 'Als versendet markieren', true);
+    const datum = dw?.datum;
     if (!datum) return;
     if (w.isNew) { delete w.isNew; await save(w); }
     const r = await angebotDateien(w, list, { final: true });
@@ -1452,7 +1590,7 @@ window.Projekt = (() => {
     state.wohnung = w;
     await dokMerken([r.files[0]]);
     await angebotMerken(w.id, r.ang.doc, r.ang.name);
-    await angebotVersendet(w.id, datum);
+    await angebotVersendet(w.id, datum, dw.weg);
     neuZeichnen(w);
   }
   /** Verschicktes Angebot nochmal senden: dasselbe PDF (gleiche Nummer, gleiches Datum). Ändert nichts am Stand. */
@@ -1551,12 +1689,13 @@ window.Projekt = (() => {
     if (!mitPos.length) { toast('Bitte zuerst das Angebot ausarbeiten.'); return null; }
     toast('Angebot wird erstellt …', 15000);
     let ang;
-    if (mitPos.length > 1) ang = await gesamtDoc(w, mitPos, { final: opt.final });
+    const po = { final: opt.final, ...(opt.unterschrift ? { unterschrift: opt.unterschrift } : {}), ...(opt.datum ? { datum: opt.datum } : {}) };
+    if (mitPos.length > 1) ang = await gesamtDoc(w, mitPos, po);
     else {
       const r = mitPos[0];
       Object.assign(r, { customer: w.customer, address: w.address, kundeId: w.kundeId, projektNr: w.nr || '' });
       A.init(r);
-      const doc = await A.baueAngebotPdf(r, { final: opt.final });
+      const doc = await A.baueAngebotPdf(r, po);
       await saveProject(r);
       ang = { doc, syn: r, name: `Angebot_${r.angebot.nr}_${(w.customer || 'Kunde').replace(/[^\wäöüÄÖÜß-]+/g, '_')}.pdf` };
     }
@@ -1585,12 +1724,14 @@ window.Projekt = (() => {
   /** B4: ein Angebot über alle Räume. Baut aus den Raum-Angeboten ein gemeinsames und nutzt das normale Angebots-PDF. */
   async function gesamtAngebot(w, raeume) {
     if (gesperrt(w)) return gesperrtFrage(w);
+    if (!(await versandPruefen(w, raeume))) return;
     toast('Gesamtangebot wird erstellt …', 8000);
     const { doc, name, syn } = await gesamtDoc(w, raeume, { final: true });
     const A = window.Angebot._intern;
     const blob = doc.output('blob'), file = new File([blob], name, { type: 'application/pdf' });
     $('#toast').hidden = true;
-    if (navigator.canShare?.({ files: [file] })) { try { await navigator.share({ files: [file], title: name, text: A.mailText(syn) }); await angebotMerken(w.id, doc, name); await angebotVersendet(w.id); return neuZeichnen(w); } catch (e) { if (e.name === 'AbortError') return neuZeichnen(w); } }
+    const VM = A.versandMeta(syn, w);
+    if (navigator.canShare?.({ files: [file] })) { try { const erg = await navigator.share({ files: [file], title: VM.betreff, text: VM.text }); const weg = await wegFragen(erg); await angebotMerken(w.id, doc, name); await angebotVersendet(w.id, '', weg); return neuZeichnen(w); } catch (e) { if (e.name === 'AbortError') return neuZeichnen(w); } }
     const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name; a.click();
     setTimeout(() => URL.revokeObjectURL(a.href), 60000);
     await angebotMerken(w.id, doc, name); await angebotVersendet(w.id); neuZeichnen(w);
@@ -1608,7 +1749,7 @@ window.Projekt = (() => {
     for (const r of raeume) for (const [i, x0] of r.angebot.positionen.entries()) {
       const x = mitPreis(x0, r, A.summen(r.angebot.positionen, r.angebot.kalk).zeilen.find((z) => z.i === i));
       if (!x.raum) { const v = allg.get(x.nr); if (!v || v.menge < x.menge) allg.set(x.nr, { ...x }); continue; } // Allgemeines (z. B. Baustelleneinrichtung) nur einmal
-      pos.push({ ...x, raum: mehrere ? `${r.room || 'Raum'}: ${x.raum}` : x.raum });
+      pos.push({ ...x, raum: mehrere ? `${r.room || 'Raum'}: ${x.raum}` : x.raum, _dar: r.angebot.darstellung || '' });
     }
     w.gesamtAngebot ??= {};
     w.gesamtAngebot.nr = angNr(w) || w.gesamtAngebot.nr || await A.naechsteNummer();
@@ -1784,7 +1925,7 @@ window.Projekt = (() => {
   }
 
   const forget = (id) => rooms.delete(id);
-  return { automatik, anlegen, angebotVersendet, gesperrt, gesperrtFrage, angebotKopieren, dateiZeigen, nachfassen, seitTagen, STATUS, ANGEBOT, ALLE, PHASEN, phase, farbe, pill, norm, zugesagt, statusName, statusKurz, raumAngebot, angebotMerken, forget, neu, neuDirekt, neuFuer, kundeUebernehmen, oeffnen, view, mappeView, moodboardView, migrate, raum, raeume, raumGespeichert, raumEntfernt, save, wahl, PKG_IDS, _intern: { titel, addRoom, raumAusScan, raumAnlegen, reiterSetzen, auftragsbestaetigung } };
+  return { automatik, anlegen, angebotVersendet, gesperrt, gesperrtFrage, angebotKopieren, dateiZeigen, nachfassen, seitTagen, STATUS, ANGEBOT, ALLE, PHASEN, phase, farbe, pill, norm, zugesagt, statusName, statusKurz, raumAngebot, angebotMerken, forget, neu, neuDirekt, neuFuer, kundeUebernehmen, oeffnen, view, mappeView, moodboardView, migrate, raum, raeume, raumGespeichert, raumEntfernt, save, wahl, PKG_IDS, _intern: { kundeUnterschreibt, wegFragen, wegText, versandStand, versandPruefen, sendenMitMappe, alsVersendet, angebotSpeichern, titel, addRoom, raumAusScan, raumAnlegen, reiterSetzen, auftragsbestaetigung } };
 })();
 // Ältere Aufrufe (PR „Wohnungen“) laufen weiter
 window.Wohnung = { neu: () => Projekt.neu(), oeffnen: (id) => Projekt.oeffnen(id), view: () => Projekt.view(), raumGespeichert: (p) => Projekt.raumGespeichert(p), raumEntfernt: (p) => Projekt.raumEntfernt(p) };

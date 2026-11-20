@@ -77,7 +77,17 @@ function bufToB64(buf) {
 const TRANSCRIBE_PROMPT = (k, n, dabei = []) => `Transkribiere dieses Gespräch auf Deutsch wortgetreu, aber ohne Füllwörter. Es ist ein Vor-Ort-Termin einer Sanierungsfirma mit Kunden${n > 1 ? ` (Teil ${k + 1} von ${n})` : ''}.
 ${dabei.length ? `Dabei waren: ${dabei.join(', ')}.` : 'Wer dabei war, ist nicht bekannt.'}
 Beginne bei jedem Sprecherwechsel eine neue Zeile und schreibe den Sprecher davor, z. B. „Felix: …“ oder „Kunde: …“. Nutze die Namen von oben. Erkenne die Sprecher an Stimme und Inhalt: Die Firma fragt nach, erklärt, nennt Maße, Abläufe und Preise; der Kunde erzählt seine Wünsche und fragt nach Kosten und Terminen. Bist du unsicher, wer von der Firma spricht, schreibe „Firma:“; bei Kundenseite „Kunde:“.
+Setze an den Anfang jeder Zeile die Zeitmarke, ab der dort gesprochen wird, als [mm:ss] ab Beginn dieser Aufnahme (ab einer Stunde [h:mm:ss]), z. B. „[03:12] Felix: …“.
 Gib nur das Transkript aus. Ist nichts Verständliches zu hören, antworte nur mit: (keine Sprache erkannt)`;
+/** Zeitmarken [mm:ss] am Zeilenanfang um `sek` verschieben (für die 5-Minuten-Stücke einer Aufnahme). */
+function zeitVersetzt(text, sek) {
+  if (!sek) return text;
+  return String(text).replace(/^\[(?:(\d{1,2}):)?(\d{1,3}):(\d{2})\]/gm, (_, h, m, s) => {
+    const t = Math.round((+h || 0) * 3600 + +m * 60 + +s + sek), hh = Math.floor(t / 3600), mm = Math.floor((t % 3600) / 60), ss = t % 60;
+    return `[${hh ? `${hh}:${String(mm).padStart(2, '0')}` : String(mm).padStart(2, '0')}:${String(ss).padStart(2, '0')}]`;
+  });
+}
+const ohneZeit = (t) => String(t || '').replace(/^\[(?:\d{1,2}:)?\d{1,3}:\d{2}\]\s*/gm, '');
 /** Dateityp so angeben, wie Gemini ihn kennt (iPhone nimmt als audio/mp4 bzw. m4a auf). */
 function geminiAudioMime(blob) {
   const t = (blob.type || '').split(';')[0].toLowerCase(), n = (blob.name || '').toLowerCase();
@@ -119,7 +129,7 @@ async function transcribeAudio(blob, onStep, dabei = []) {
   if (segments) {
     for (let k = 0; k < segments.length; k++) {
       onStep(`Transkribiere${segments.length > 1 ? ` Teil ${k + 1} von ${segments.length}` : ''} …`);
-      parts.push((await geminiText([{ text: TRANSCRIBE_PROMPT(k, segments.length, dabei) }, { inline_data: { mime_type: 'audio/wav', data: bufToB64(segments[k]) } }])).trim());
+      parts.push(zeitVersetzt((await geminiText([{ text: TRANSCRIBE_PROMPT(k, segments.length, dabei) }, { inline_data: { mime_type: 'audio/wav', data: bufToB64(segments[k]) } }])).trim(), k * VOICE_SEGMENT_SEC));
     }
   } else if (blob.size <= 12 * MB) {
     onStep('Transkribiere …');
@@ -421,19 +431,78 @@ ${g.transcript}` }], true, { temperature: 0.2 });
   await window.Projekt.save(w);
 }
 
+// ---------- Audio-Ablage, Auswertung in der Cloud, Nachhören (Runde 15, B8) ----------
+// Jedes Stück einer Gesprächsaufnahme im Vorgang wird im Firmenspeicher abgelegt (team/audio/<vorgang>--<id>.<endung>,
+// Vorgabe audioAblage), ältere als Vorgabe audioBehaltenMonate werden einmal am Tag gelöscht. Ist es abgelegt, transkribiert
+// die Supabase-Funktion „auswertung“ (Vorgabe auswertungCloud, Gemini-Schlüssel als Secret GEMINI_API_KEY in Supabase).
+// Klappt das nicht, wertet das Gerät wie bisher selbst aus. Das Transkript hat Zeitmarken ([mm:ss] → Zeile.ab), die Aufnahme
+// merkt sich ihr Audio (aufnahme.audio). Nachhören: Prüfseite, Knopf an der Zeile (Audioablage.abspielen).
+window.Audioablage = (() => {
+  const endung = (b) => (/webm/.test(b.type) ? 'webm' : /wav/.test(b.type) ? 'wav' : /mpeg|mp3/.test(b.type) ? 'mp3' : /ogg/.test(b.type) ? 'ogg' : 'm4a');
+  async function ablegen(wid, blob) {
+    if (vorgabe('audioAblage') === 'nein' || !window.Sync?.active?.() || !blob?.size) return '';
+    const key = await Sync.dateiHoch(`audio/${wid}--${uid()}.${endung(blob)}`, blob);
+    aufraeumen().catch((e) => console.warn('Audio aufräumen', e));
+    return key;
+  }
+  async function aufraeumen() {
+    const heute = new Date().toDateString();
+    try { if (localStorage.getItem('dom:audioAufger') === heute) return; localStorage.setItem('dom:audioAufger', heute); } catch {}
+    const mon = +vorgabe('audioBehaltenMonate') || 6, grenze = Date.now() - mon * 30.4 * 864e5;
+    const alt = (await Sync.dateiListe('audio')).filter((x) => new Date(x.created_at || x.updated_at || Date.now()).getTime() < grenze).map((x) => x.key);
+    if (alt.length) await Sync.dateiWeg(alt);
+  }
+  /** Transkript aus der Cloud; '' wenn es dort nicht geht (dann wertet das Gerät selbst aus). */
+  async function cloud(key, blob, dabei) {
+    if (!key || vorgabe('auswertungCloud') === 'nein') return '';
+    voiceStatus('Wird in der Cloud ausgewertet …');
+    const j = await Sync.funktion('auswertung', { key, mime: geminiAudioMime(blob), prompt: TRANSCRIBE_PROMPT(0, 1, dabei || []) });
+    const t = String(j.text || '').trim();
+    if (!t || /^\(keine Sprache erkannt\)$/i.test(t)) throw new Error('In der Aufnahme war keine Sprache zu hören. War das Mikrofon frei?');
+    return t;
+  }
+  // Nachhören: eine Leiste unten mit Wiedergabe, Audio wird einmal je Sitzung geladen
+  const urls = new Map();
+  const zeit = (s) => { s = Math.max(0, Math.round(s)); const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), x = s % 60; return `${h ? h + ':' + String(m).padStart(2, '0') : m}:${String(x).padStart(2, '0')}`; };
+  async function abspielen(key, ab = 0, titel = '') {
+    if (!key) return toast('Zu dieser Aufnahme gibt es kein Audio.', 3500);
+    let el = $('#hoerLeiste');
+    if (!el) {
+      el = document.createElement('div'); el.id = 'hoerLeiste'; el.className = 'hoer-leiste';
+      el.innerHTML = `<div class="hoer-k"><b data-hl></b><button type="button" class="icon-btn" data-hzu aria-label="Schließen">${icon('x')}</button></div><audio controls preload="auto"></audio>`;
+      document.body.appendChild(el);
+      $('[data-hzu]', el).onclick = () => { $('audio', el).pause(); el.remove(); };
+    }
+    const au = $('audio', el);
+    $('[data-hl]', el).textContent = `${titel ? titel + ' · ' : ''}ab ${zeit(ab)}`;
+    try {
+      if (!urls.has(key)) { $('[data-hl]', el).textContent = 'Audio wird geladen …'; urls.set(key, URL.createObjectURL(await Sync.dateiLaden(key))); $('[data-hl]', el).textContent = `${titel ? titel + ' · ' : ''}ab ${zeit(ab)}`; }
+      if (au.dataset.key !== key) { au.src = urls.get(key); au.dataset.key = key; await new Promise((r) => { au.onloadedmetadata = r; setTimeout(r, 4000); }); }
+      au.currentTime = Math.max(0, ab - 2); await au.play().catch(() => {});
+    } catch (e) { toast('Audio nicht geladen: ' + e.message, 5000); }
+  }
+  return { ablegen, cloud, abspielen, zeit };
+})();
+
 async function auswertenAudio(owner, blob, fromStore) {
   if (!fromStore) await audioStore(owner.id, blob); // Aufnahme sichern, damit sie bei einem Fehler nicht verloren ist
   const dabei = owner.projekt ? (await wohnungVon(owner.id))?.gespraech?.dabei || voice.dabei : voice.dabei;
-  const t = await transcribeAudio(blob, voiceStatus, dabei || []);
+  let audio = '', t = '';
+  if (owner.projekt) {
+    voiceStatus('Aufnahme wird abgelegt …');
+    audio = await Audioablage.ablegen(owner.id, blob).catch((e) => { console.warn('Audio-Ablage', e); return ''; });
+    t = await Audioablage.cloud(audio, blob, dabei).catch((e) => { console.warn('Auswertung in der Cloud', e); if (/keine Sprache/.test(e.message)) throw e; return ''; });
+  }
+  if (!t) t = await transcribeAudio(blob, voiceStatus, dabei || []);
   // Art des Gesprächs (Vor-Ort-Besichtigung, Abnahmegespräch …) als Überschrift über jeder Aufnahme
   const ueber = `--- ${voice.art || 'Gespräch'} · ${new Date().toLocaleDateString('de-DE')}${dabei?.length ? ` · dabei: ${dabei.join(', ')}` : ''} ---`;
-  const join = (a) => [a?.trim(), `${ueber}\n${t}`].filter(Boolean).join('\n\n');
+  const join = (a) => [a?.trim(), `${ueber}\n${ohneZeit(t)}`].filter(Boolean).join('\n\n');
   if (owner.projekt) {
     const w = await wohnungVon(owner.id);
     if (!w) throw new Error('Projekt nicht gefunden.');
     // Seit v110 als Zeilenliste (Transkript in angebotdaten.js), der Text daneben bleibt gleich aufgebaut
     w.gespraech = { ...(w.gespraech || {}), t: Date.now() };
-    Transkript.anhaengen(w.gespraech, { art: voice.art || 'Gespräch', dabei: dabei || [], text: t });
+    Transkript.anhaengen(w.gespraech, { art: voice.art || 'Gespräch', dabei: dabei || [], text: t, audio });
     await window.Projekt.save(w);
     if ((voice.rec && voice.recId === owner.id) || voice.teilt?.id === owner.id) { await audioStore(owner.id, null); return; } // Aufnahme läuft weiter: Rest nach dem letzten Stück
     await zuordnen(w);
