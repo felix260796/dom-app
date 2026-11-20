@@ -30,6 +30,7 @@ const VORGABEN = {
       { k: 'textMahnSchluss', l: 'Schlusssatz', t: 'text', d: 'Sollte sich Ihre Zahlung mit diesem Schreiben überschnitten haben, betrachten Sie es bitte als gegenstandslos.' },
     ]],
     ['Begleittext beim Senden (Mail, WhatsApp)', [
+      { k: 'mailAngebotBetreff', l: 'Angebot: Betreff der Mail ({nr}, {betreff} = Projektname, {kunde})', t: 'zeile', d: 'Angebot {nr} – {betreff}', h: 'Am iPhone und iPad steht der Betreff auch als erste Zeile im Text, damit die Nummer bei WhatsApp oben steht.' },
       { k: 'mailAngebot', l: 'Angebot', t: 'text', d: '{anrede}\n\nvielen Dank für das angenehme Gespräch. Anbei erhalten Sie unser Angebot Nr. {nr}. Bei Fragen melden Sie sich gerne.\n\nFreundliche Grüße\n{firma}' },
       { k: 'mailRechnung', l: 'Rechnung', t: 'text', d: '{anrede}\n\nanbei erhalten Sie unsere {art} Nr. {nr} über {betrag}. Bitte überweisen Sie den Betrag bis zum {faellig}.\n\nVielen Dank und freundliche Grüße\n{firma}' },
       { k: 'mailMahnung', l: 'Erinnerung und Mahnung', t: 'text', d: '{anrede}\n\nzu unserer Rechnung Nr. {nr} vom {datum} konnten wir noch keinen Zahlungseingang feststellen. Anbei unsere {stufe}.\n\nFreundliche Grüße\n{firma}' },

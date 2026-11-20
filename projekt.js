@@ -1327,7 +1327,8 @@ window.Projekt = (() => {
     const { ang, files } = r;
     // „Wie verschickt“ wird erst gemerkt, wenn wirklich gesendet wird
     if (navigator.canShare?.({ files })) {
-      try { await navigator.share({ files, title: ang.name.replace(/\.pdf$/i, '').replace(/_/g, ' '), text: A.mailText(ang.syn), an: Kunden.angebotMail(Kunden.byId(w.kundeId)) }); await angebotMerken(w.id, ang.doc, ang.name); await angebotVersendet(w.id); return neuZeichnen(w); }
+      const VM = A.versandMeta(ang.syn, w);
+      try { const erg = await navigator.share({ files, title: VM.betreff, text: VM.text, an: Kunden.angebotMail(Kunden.byId(w.kundeId)) }); const weg = await wegFragen(erg); await angebotMerken(w.id, ang.doc, ang.name); await angebotVersendet(w.id, '', weg); return neuZeichnen(w); }
       catch (e) { if (e.name === 'AbortError') return neuZeichnen(w); }
     }
     for (const f of files) { const a = document.createElement('a'); a.href = URL.createObjectURL(f); a.download = f.name; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 60000); }
@@ -1422,35 +1423,45 @@ window.Projekt = (() => {
       ${knoepfe}</div>`;
   }
   /** Angebot wurde gesendet (B6): Status auf „versendet“, Datum fürs Nachfassen merken. */
-  async function angebotVersendet(wid, datum) {
+  async function angebotVersendet(wid, datum, weg = '') {
     const w = wid && (await kvGet(key(wid)));
     if (!w || !['besichtigung', 'entwurf', 'angebot'].includes(norm(w.status))) return;
     // Auch beim erneuten Senden (angepasstes Angebot) beginnt das Nachfassen von vorn
-    if (norm(w.status) !== 'angebot') (w.verlauf ??= []).push({ st: 'angebot', t: Date.now() });
+    if (norm(w.status) !== 'angebot') (w.verlauf ??= []).push({ st: 'angebot', t: Date.now(), ...(weg ? { weg } : {}) });
     w.status = 'angebot'; w.versendetAm = datum || heuteIso();
     // Ab jetzt gesperrt (Wunsch Felix): Ändern geht nur noch über eine Kopie mit neuer Nummer
     w.angebotGesperrt = { t: Date.now(), nr: nrAusPdf(w) }; delete w.angebotFrei;
     await save(w);
-    await AngebotDaten.versendet(w, { datum: w.versendetAm, name: w.angebotPdf?.name || '' });
+    await AngebotDaten.versendet(w, { datum: w.versendetAm, name: w.angebotPdf?.name || '', weg });
     if (state.wohnung?.id === w.id) Object.assign(state.wohnung, { status: w.status, versendetAm: w.versendetAm, verlauf: w.verlauf, angebotGesperrt: w.angebotGesperrt, angebotFrei: undefined });
-    toast(datum ? `Als versendet markiert (${datumText(w.versendetAm)}). Es ist jetzt gesperrt, das Nachfassen läuft.` : 'Angebot versendet. Es ist jetzt gesperrt, Änderungen gehen über eine Kopie.', 4500);
+    toast(datum ? `Als versendet markiert (${datumText(w.versendetAm)}${weg ? ', ' + wegText(weg) : ''}). Es ist jetzt gesperrt, das Nachfassen läuft.` : 'Angebot versendet. Es ist jetzt gesperrt, Änderungen gehen über eine Kopie.', 4500);
   }
   // ---------- Als versendet markieren und Nochmal senden (Wunsch Felix, Version 100) ----------
   /** Datum abfragen (Standard heute). Gibt 'JJJJ-MM-TT' oder null zurück. */
-  function datumFrage(titel, text, knopf = 'Als versendet markieren') {
+  function datumFrage(titel, text, knopf = 'Als versendet markieren', mitWeg = false) {
     return new Promise((res) => {
       const bg = document.createElement('div');
       bg.className = 'sheet-bg';
       bg.innerHTML = `<div class="sheet" role="dialog" aria-label="${esc(titel)}"><div class="sheet-h"><b>${esc(titel)}</b><button class="icon-btn" data-zu aria-label="Schließen">${icon('x')}</button></div>
         <div class="kform" style="padding:0 16px 16px"><p class="hint" style="margin-top:0">${esc(text)}</p>
           <label>Datum</label><input type="date" id="dfD" value="${heuteIso()}" max="${heuteIso()}">
+          ${mitWeg ? `<label>Wie hat der Kunde es bekommen?</label><select id="dfW">${WEGE.map(([k, n]) => `<option value="${k}" ${k === 'druck' ? 'selected' : ''}>${n.replace(/^per /, '')}</option>`).join('')}</select>` : ''}
           <button class="btn block" id="dfOk" style="margin-top:14px">${icon('check')} ${esc(knopf)}</button></div></div>`;
       document.body.appendChild(bg);
       requestAnimationFrame(() => bg.classList.add('on'));
       const zu = (v) => { bg.remove(); res(v); };
       bg.onclick = (e) => { if (e.target === bg || e.target.closest('[data-zu]')) zu(null); };
-      $('#dfOk', bg).onclick = () => zu($('#dfD', bg).value || heuteIso());
+      $('#dfOk', bg).onclick = () => { const d = $('#dfD', bg).value || heuteIso(); zu(mitWeg ? { datum: d, weg: $('#dfW', bg).value } : d); };
     });
+  }
+  // ---------- Versandweg (Runde 15, A5): an der Fassung (fassung.weg) und im Verlauf, für die Zeitleiste ----------
+  const WEGE = [['mail', 'per Mail'], ['whatsapp', 'per WhatsApp'], ['druck', 'ausgedruckt'], ['persoenlich', 'persönlich oder mündlich']];
+  const wegText = (v) => WEGE.find(([k]) => k === v)?.[1] || '';
+  /** Nach dem Teilen: Am PC ist der Weg bekannt (Mail), sonst einmal fragen. '' = nicht angegeben. */
+  async function wegFragen(erg) {
+    if (erg?.weg === 'mail') return 'mail';
+    const v = await sheet('Wie hat der Kunde das Angebot bekommen?', WEGE.map(([value, label]) => ({ label: label.replace(/^per /, ''), value, icon: icon({ mail: 'mail', whatsapp: 'phone', druck: 'file', persoenlich: 'user' }[value]) })));
+    return v || '';
   }
   // ---------- Prüfung vor dem Versand (Runde 15, A1) ----------
   // Harte Sperre nur, solange eine zählende Position 0 € hat (Bedarf, Alternative und kostenlos ausgenommen).
@@ -1506,7 +1517,8 @@ window.Projekt = (() => {
   async function alsVersendet(w, list) {
     if (gesperrt(w)) return gesperrtFrage(w);
     if (!(await versandPruefen(w, list, { mail: false }))) return;
-    const datum = await datumFrage('Als versendet markieren', 'Wann hat der Kunde das Angebot bekommen, z. B. ausgedruckt oder persönlich übergeben? Danach ist es gesperrt, und das Nachfassen läuft ab diesem Tag.');
+    const dw = await datumFrage('Als versendet markieren', 'Wann hat der Kunde das Angebot bekommen, z. B. ausgedruckt oder persönlich übergeben? Danach ist es gesperrt, und das Nachfassen läuft ab diesem Tag.', 'Als versendet markieren', true);
+    const datum = dw?.datum;
     if (!datum) return;
     if (w.isNew) { delete w.isNew; await save(w); }
     const r = await angebotDateien(w, list, { final: true });
@@ -1514,7 +1526,7 @@ window.Projekt = (() => {
     state.wohnung = w;
     await dokMerken([r.files[0]]);
     await angebotMerken(w.id, r.ang.doc, r.ang.name);
-    await angebotVersendet(w.id, datum);
+    await angebotVersendet(w.id, datum, dw.weg);
     neuZeichnen(w);
   }
   /** Verschicktes Angebot nochmal senden: dasselbe PDF (gleiche Nummer, gleiches Datum). Ändert nichts am Stand. */
@@ -1653,7 +1665,8 @@ window.Projekt = (() => {
     const A = window.Angebot._intern;
     const blob = doc.output('blob'), file = new File([blob], name, { type: 'application/pdf' });
     $('#toast').hidden = true;
-    if (navigator.canShare?.({ files: [file] })) { try { await navigator.share({ files: [file], title: name, text: A.mailText(syn) }); await angebotMerken(w.id, doc, name); await angebotVersendet(w.id); return neuZeichnen(w); } catch (e) { if (e.name === 'AbortError') return neuZeichnen(w); } }
+    const VM = A.versandMeta(syn, w);
+    if (navigator.canShare?.({ files: [file] })) { try { const erg = await navigator.share({ files: [file], title: VM.betreff, text: VM.text }); const weg = await wegFragen(erg); await angebotMerken(w.id, doc, name); await angebotVersendet(w.id, '', weg); return neuZeichnen(w); } catch (e) { if (e.name === 'AbortError') return neuZeichnen(w); } }
     const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name; a.click();
     setTimeout(() => URL.revokeObjectURL(a.href), 60000);
     await angebotMerken(w.id, doc, name); await angebotVersendet(w.id); neuZeichnen(w);
@@ -1847,7 +1860,7 @@ window.Projekt = (() => {
   }
 
   const forget = (id) => rooms.delete(id);
-  return { automatik, anlegen, angebotVersendet, gesperrt, gesperrtFrage, angebotKopieren, dateiZeigen, nachfassen, seitTagen, STATUS, ANGEBOT, ALLE, PHASEN, phase, farbe, pill, norm, zugesagt, statusName, statusKurz, raumAngebot, angebotMerken, forget, neu, neuDirekt, neuFuer, kundeUebernehmen, oeffnen, view, mappeView, moodboardView, migrate, raum, raeume, raumGespeichert, raumEntfernt, save, wahl, PKG_IDS, _intern: { versandStand, versandPruefen, sendenMitMappe, alsVersendet, angebotSpeichern, titel, addRoom, raumAusScan, raumAnlegen, reiterSetzen, auftragsbestaetigung } };
+  return { automatik, anlegen, angebotVersendet, gesperrt, gesperrtFrage, angebotKopieren, dateiZeigen, nachfassen, seitTagen, STATUS, ANGEBOT, ALLE, PHASEN, phase, farbe, pill, norm, zugesagt, statusName, statusKurz, raumAngebot, angebotMerken, forget, neu, neuDirekt, neuFuer, kundeUebernehmen, oeffnen, view, mappeView, moodboardView, migrate, raum, raeume, raumGespeichert, raumEntfernt, save, wahl, PKG_IDS, _intern: { wegFragen, wegText, versandStand, versandPruefen, sendenMitMappe, alsVersendet, angebotSpeichern, titel, addRoom, raumAusScan, raumAnlegen, reiterSetzen, auftragsbestaetigung } };
 })();
 // Ältere Aufrufe (PR „Wohnungen“) laufen weiter
 window.Wohnung = { neu: () => Projekt.neu(), oeffnen: (id) => Projekt.oeffnen(id), view: () => Projekt.view(), raumGespeichert: (p) => Projekt.raumGespeichert(p), raumEntfernt: (p) => Projekt.raumEntfernt(p) };

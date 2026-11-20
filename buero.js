@@ -750,7 +750,7 @@ window.Buero = (() => {
     for (const w of ws) {
       const n = w.titel || 'Projekt';
       dazu(w.created, 'file', `Angebot angelegt: ${n}`, w.nr || '', 'p:' + w.id);
-      for (const v of w.verlauf || []) if (v.t && v.st !== undefined) dazu(v.t, 'sliders', `${n}: ${Projekt.statusName(v.st)}`, '', 'p:' + w.id);
+      for (const v of w.verlauf || []) if (v.t && v.st !== undefined) dazu(v.t, v.st === 'angebot' ? 'mail' : 'sliders', `${n}: ${Projekt.statusName(v.st)}`, v.weg ? Projekt._intern.wegText(v.weg) : '', 'p:' + w.id);
       if (w.versendetAm && !(w.verlauf || []).some((v) => v.st === 'angebot')) dazu(w.versendetAm, 'mail', `Angebot verschickt: ${n}`, '', 'p:' + w.id);
       if (w.absage?.t) dazu(w.absage.t, 'x', `Abgesagt: ${n}`, w.absage.grund ? 'Grund: ' + w.absage.grund : '', 'p:' + w.id);
       if (w.auftragsbestaetigung?.t) dazu(w.auftragsbestaetigung.t, 'check', `Auftragsbestätigung: ${n}`, w.auftragsbestaetigung.gesendetAm ? 'gesendet ' + tag(w.auftragsbestaetigung.gesendetAm) : '', 'p:' + w.id);

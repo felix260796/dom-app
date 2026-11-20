@@ -274,6 +274,12 @@ Lohnanteil geschätzt: In `summen()` bekommen Zeilen ohne Preisliste und ohne be
 
 Preisdarstellung im PDF: `einzel` (Einzelpreise), `inhalt` (Paketpreis mit Inhalt: Positionen mit Menge ohne Preise, „Paketpreis n Titel“ bzw. „Paketpreis für die oben genannten Leistungen“), `paket` (nur Paketpreis: eine Zeile „<Titel>, Leistungen pauschal“). Standard Vorgabe `angebotDarstellung`, je Angebot `a.darstellung` (`Angebot._intern.darstAngebot/darstSetzen`, Auswahl `[data-dar]` am PC rechts und im Reiter Angebote), je Titel `r.angebot.darstellung` ('' = wie im Angebot; PC Titelzeile `select[data-t="dar"]`, iPhone/iPad im Bereich `#aDar`; im Gesamtangebot an der Zeile als `_dar`). Bedarf und Alternative immer mit eigenem Preis, Auftragsbestätigung immer Einzelpreise. Untertitel gibt es in der Gliederung noch nicht, daher nur je Titel.
 
+## Neuerungen aus Version 132 (Runde 15: Briefkopf, Versandweg, Betreff)
+
+Briefkopf im PDF (`baueAngebotPdf`): neue Fassung „Ersetzt Angebot 1001-01-01A vom …“ (`a.ersetzt`, Datum = Versanddatum der Fassung), Alternative „Alternative zu Angebot …“ (`a.art === 'alternative'`, `a.zuId`). Nicht in der Auftragsbestätigung.
+Versandweg: `WEGE` mail/whatsapp/druck/persoenlich in `projekt.js` (`wegFragen`, `wegText` in `_intern`). Am PC kommt „Mail“ aus `desktopTeilen` (gibt `{ weg: 'mail' }` zurück), sonst fragt DOM nach dem Teilen einmal „Wie hat der Kunde das Angebot bekommen?“. „Als versendet markieren“ hat Datum und Weg (`datumFrage(…, mitWeg)`, Standard ausgedruckt). Gespeichert an der Fassung (`fassung.weg`, `AngebotDaten.versendet(w, { weg })`) und im Verlauf (`w.verlauf` `{ st: 'angebot', weg }`), Zeitleiste zeigt ihn.
+Betreff: Vorgabe `mailAngebotBetreff` (`{nr}`, `{betreff}` = Projektname, `{kunde}`), `Angebot._intern.versandMeta(p, w)`; am iPhone/iPad steht der Betreff auch als erste Zeile im Text (WhatsApp hat keinen Betreff). Fassungen heißen weiter 01B.
+
 ## Bereiche
 
 | Bereich | Dateien | Inhalt |

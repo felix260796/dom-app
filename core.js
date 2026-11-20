@@ -1031,7 +1031,7 @@ async function desktopTeilen(files, meta = {}) {
       if (r?.weg === 'mailto') toast(files.length > 1 ? 'Mail ist offen. Die Dateien liegen im geöffneten Ordner, bitte in die Mail ziehen.' : 'Mail ist offen. Die Datei liegt im geöffneten Ordner, bitte in die Mail ziehen.', 9000);
       const ok = await sheet('Ist die Mail verschickt?', [{ label: 'Ja, verschickt', icon: icon('check'), value: 'ja' }, { label: 'Noch nicht', sub: 'Dann bleibt es beim Entwurf', icon: icon('x'), value: 'nein' }]);
       if (ok !== 'ja') throw new DOMException('Abgebrochen', 'AbortError');
-      return;
+      return { weg: 'mail' }; // Versandweg fürs Angebot (Runde 15)
     }
     if (!v0) throw new DOMException('Abgebrochen', 'AbortError');
     for (const f of files) { if (v0 === 's') await desktopSpeichern(f, f.name); else await desktopOeffnen(f, f.name); }

@@ -1183,6 +1183,10 @@ Gib Länge (längere Seite) und Breite der Grundfläche, Raumhöhe, Anzahl und G
     doc.setFont('helvetica', 'bold'); doc.setFontSize(13); doc.setTextColor(...NAVY);
     const titel = doc.splitTextToSize((ab ? 'Auftragsbestätigung: ' : 'Angebot: ') + (String(WA?.titel || '').trim() || A.titel || titelDefault(p, pk)), R - M); t(titel, M, y); y += 6 * titel.length + 3;
     if (bauvorhaben) { doc.setFont('helvetica', 'normal'); doc.setFontSize(9.5); doc.setTextColor(110); t('Bauvorhaben: ' + bauvorhaben, M, y - 1); y += 5; }
+    // Runde 15 (A3): neue Fassung „Ersetzt Angebot … vom …“, Alternative „Alternative zu Angebot …“
+    const bezug = ab || !ent ? '' : ent.ersetzt?.nr ? (() => { const f = (ent.fassungen || []).find((x) => x.nr === ent.ersetzt.nr); const d = f?.gesendetAm ? new Date(f.gesendetAm + 'T12:00') : ent.ersetzt.t ? new Date(ent.ersetzt.t) : null; return `Ersetzt Angebot ${ent.ersetzt.nr}${d ? ' vom ' + fmtDate(d) : ''}`; })()
+      : ent.art === 'alternative' && ent.zuId ? (() => { const z = window.AngebotDaten.listeSync(WA).find((x) => x.id === ent.zuId); return z ? `Alternative zu Angebot ${window.AngebotDaten.nr(z, WA)}` : ''; })() : '';
+    if (bezug) { doc.setFont('helvetica', 'normal'); doc.setFontSize(9.5); doc.setTextColor(110); t(bezug, M, y - 1); y += 5; }
     doc.setFont('helvetica', 'normal'); doc.setFontSize(10); doc.setTextColor(30);
     t(A.anrede || anredeDefault(p), M, y); y += 5;
     // Textfelder (Wunsch Felix): frei festlegbar in den Einstellungen, je Auftrag anpassbar (w.angebotTexte)
@@ -1392,6 +1396,14 @@ Gib Länge (längere Seite) und Breite der Grundfläche, Raumhöhe, Anzahl und G
     };
   }
   const mailText = (p) => vorgabeText('mailAngebot', { anrede: p.angebot.anrede || anredeDefault(p), nr: p.angebot.nr, firma: PL.einstellungen.firma || '' });
+  /** Runde 15 (A6): Betreff aus Vorgabe mailAngebotBetreff ({nr}, {betreff} = Projektname, {kunde}). Am iPhone/iPad
+   *  steht er auch als erste Zeile im Text, damit die Nummer bei WhatsApp (ohne Betreff) oben steht. */
+  function versandMeta(p, w) {
+    const kd = window.Kunden?.zu?.(p);
+    const betreff = vorgabeText('mailAngebotBetreff', { nr: p.angebot.nr || '', betreff: String(w?.titel || p.angebot.titel || '').trim(), kunde: (kd && Kunden.name(kd)) || p.customer || '' }).replace(/\s*[–-]\s*$/, '').trim();
+    const text = mailText(p);
+    return { betreff, text: window.DomDesktop ? text : `${betreff}\n\n${text}` };
+  }
   async function pdfDatei(p) {
     toast('Angebot wird erstellt …', 8000);
     const doc = await baueAngebotPdf(p);
@@ -1413,12 +1425,13 @@ Gib Länge (längere Seite) und Breite der Grundfläche, Raumhöhe, Anzahl und G
     const { doc, name, file } = await pdfDatei(p);
     const blob = file;
     // Erst nach dem Senden: „wie verschickt“ merken und sperren, dann zurück in den Auftrag
-    const fertig = async () => {
+    const fertig = async (weg = '') => {
       await window.Projekt?.angebotMerken?.(p.wohnungId, doc, name);
-      await window.Projekt?.angebotVersendet?.(p.wohnungId);
+      await window.Projekt?.angebotVersendet?.(p.wohnungId, '', weg);
       if (state.wohnung?.id === p.wohnungId) { state.angebotAusProjekt = false; state.project = null; state.wohnung = (await kvGet('wohnung:' + p.wohnungId)) || state.wohnung; state.wohnung.mappe ??= {}; Projekt.view(); window.scrollTo(0, 0); }
     };
-    if (navigator.canShare?.({ files: [file] })) { try { await navigator.share({ files: [file], title: name, text: mailText(p) }); return fertig(); } catch (e) { if (e.name === 'AbortError') return; } }
+    const VM = versandMeta(p, state.wohnung?.id === p.wohnungId ? state.wohnung : null);
+    if (navigator.canShare?.({ files: [file] })) { try { const erg = await navigator.share({ files: [file], title: VM.betreff, text: VM.text }); return fertig(await window.Projekt?._intern?.wegFragen?.(erg)); } catch (e) { if (e.name === 'AbortError') return; } }
     const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name; a.click();
     setTimeout(() => URL.revokeObjectURL(a.href), 60000);
     fertig();
@@ -1814,6 +1827,6 @@ Gib Länge (längere Seite) und Breite der Grundfläche, Raumhöhe, Anzahl und G
     $('#vReset').onclick = async () => { if (!loeschFrage('Alle Paket-Vorlagen zurücksetzen?')) return; await kvDel('angebotVorlagen'); VORL = null; vorlagenView(pkgId, grp); };
   }
 
-  return { projektKarte, ansicht, einstellungenKarte, _intern: { DARST, darstAngebot, darstOptionen, darstSetzen, lohnSchaetzung, ekVon, vkVon, gewerkVon, planEinfuegen, firmaSetzen, FIRMA_KEYS, kontextFuer, passt, giltText, zahlungsplanText, privatArt, skontoVon, posDetails, preisHinweis, artText, NICHT_SUMME, init, gruppe, materialliste, uebernimmSchaetzung, masse, rechne, erzeuge, summen, bauzeit, ep, lohnEp, preisliste, vorlagen, neuerRaum, baueAngebotPdf, importExcel, naechsteNummer, mailText, bausteine, textEditor, texteAuftrag, texteEinstellungen, subUebernehmen, ansprechpartner, ansprVon, einePerson, texteFuer, anredeDefault, einstellungen: () => PL.einstellungen, kalkSetzen, kalkNorm, kalkWert, kalkFeld, satz } };
+  return { projektKarte, ansicht, einstellungenKarte, _intern: { versandMeta, DARST, darstAngebot, darstOptionen, darstSetzen, lohnSchaetzung, ekVon, vkVon, gewerkVon, planEinfuegen, firmaSetzen, FIRMA_KEYS, kontextFuer, passt, giltText, zahlungsplanText, privatArt, skontoVon, posDetails, preisHinweis, artText, NICHT_SUMME, init, gruppe, materialliste, uebernimmSchaetzung, masse, rechne, erzeuge, summen, bauzeit, ep, lohnEp, preisliste, vorlagen, neuerRaum, baueAngebotPdf, importExcel, naechsteNummer, mailText, bausteine, textEditor, texteAuftrag, texteEinstellungen, subUebernehmen, ansprechpartner, ansprVon, einePerson, texteFuer, anredeDefault, einstellungen: () => PL.einstellungen, kalkSetzen, kalkNorm, kalkWert, kalkFeld, satz } };
 })();
 window.Angebot = Angebot;

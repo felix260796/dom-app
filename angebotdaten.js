@@ -210,13 +210,13 @@ window.AngebotDaten = (() => {
   // ---------- Versand, Fassungen, Zusage ----------
   const offenBearb = (a) => !!a && a.status === 'entwurf';
   /** Angebot ist verschickt: Fassung festhalten, ab jetzt gesperrt. */
-  async function versendet(w, { datum = '', name = '', brutto = 0 } = {}) {
+  async function versendet(w, { datum = '', name = '', brutto = 0, weg = '' } = {}) {
     const a = await aktiv(w);
     if (!a) return null;
     const n = nr(a, w);
     const f = a.fassungen.find((x) => x.buchstabe === a.buchstabe);
-    if (f) Object.assign(f, { gesendetAm: datum || f.gesendetAm, name: name || f.name, brutto: brutto || f.brutto });
-    else a.fassungen.push({ buchstabe: a.buchstabe, nr: n, t: Date.now(), gesendetAm: datum, name, brutto });
+    if (f) Object.assign(f, { gesendetAm: datum || f.gesendetAm, name: name || f.name, brutto: brutto || f.brutto, ...(weg ? { weg } : {}) });
+    else a.fassungen.push({ buchstabe: a.buchstabe, nr: n, t: Date.now(), gesendetAm: datum, name, brutto, ...(weg ? { weg } : {}) });
     if (a.status === 'entwurf') a.status = 'versendet';
     a.versendetAm = datum || a.versendetAm;
     await speichern(a);
