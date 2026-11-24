@@ -153,5 +153,7 @@ window.Todos = (() => {
 
   /** To-do still erledigen (z. B. das alte Nachfass-To-do nach „Nachgefasst“, v142). */
   async function erledigen(id) { const t = alle.get(id); if (!t || t.erledigt) return; t.erledigt = Date.now(); await speichern(t); }
-  return { laden, anlegen, erledigen, offen, zeitraeume, zeile, binden, bearbeiten, view, liste: () => [...alle.values()] };
+  /** Felder eines To-dos ändern (z. B. wer, wenn der Projekt-Ansprechpartner wechselt). */
+  async function aendern(id, f) { const t = alle.get(id); if (!t) return; Object.assign(t, f); norm(t); await speichern(t); }
+  return { laden, anlegen, erledigen, aendern, offen, zeitraeume, zeile, binden, bearbeiten, view, liste: () => [...alle.values()] };
 })();

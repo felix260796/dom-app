@@ -280,9 +280,11 @@ window.Projekt = (() => {
     if ($('#dAb')) $('#dAb').onclick = () => abMenue(w, list);
     if ($('#wAnspr')) $('#wAnspr').onclick = async () => {
       const A = window.Angebot._intern; await A.preisliste();
-      const v = await sheet('Ansprechpartner im Projekt', A.ansprechpartner().map((n) => ({ label: n, icon: icon('user'), value: n })));
+      const team = (window.Kalender?.team?.() || []).map((p) => String(p.name || '').split(/\s+/)[0]).filter(Boolean);
+      const v = await sheet('Ansprechpartner im Projekt', [...A.ansprechpartner().map((n) => ({ label: n, icon: icon('user'), value: n })),
+        { label: 'Beide', sub: `${team.join(' und ')} bekommen die To-dos des Projekts, wer erledigt, hakt für beide ab`, icon: icon('users'), value: BEIDE }]);
       if (!v) return;
-      w.ansprechpartner = v; if (!w.isNew) await save(w);
+      w.ansprechpartner = v; if (!w.isNew) { await save(w); await einplanTodosWer(w); }
       const y = window.scrollY; await view(); window.scrollTo(0, y);
     };
     if ($('#wFort')) window.Fortschritt?.abschnitt($('#wFort'), w, list, () => save(w));
@@ -312,6 +314,7 @@ window.Projekt = (() => {
     $$('[data-nfg]').forEach((b) => (b.onclick = () => nachgefasst(w.id, async () => { const y = window.scrollY; await view(); window.scrollTo(0, y); })));
     $$('[data-nfmsg]').forEach((b) => (b.onclick = () => nachfassNachricht(w.id)));
     if ($('#wSubAbs')) subAbsageKarte($('#wSubAbs'), w).catch((e) => console.warn('Absage an Subs', e));
+    if ($('#wSubAuf')) subAuftragKarte($('#wSubAuf'), w).catch((e) => console.warn('Auftrag an Subs', e));
     $$('[data-nfabs]').forEach((b) => (b.onclick = () => setzen('abgesagt', { grund: vorgabe('nachfassAbsageGrund') || 'Keine Rückmeldung' })));
     $$('[data-vorlage]').forEach((b) => (b.onclick = () => alsVorlageKopieren(w)));
     $$('[data-nachf]').forEach((i) => (i.onchange = async () => {
@@ -569,7 +572,8 @@ window.Projekt = (() => {
     const ab = w.auftragsbestaetigung;
     const vorOrt = window.Gespraech?.karte(w, list) || '';
     // Ansprechpartner im Projekt (Version 100): eine Person, Standard aus Vorgabe ansprechProjekt, je Projekt wählbar (w.ansprechpartner)
-    const anspr = window.Angebot._intern.einePerson(w.ansprechpartner) || vorgabe('ansprechProjekt') || '';
+    // v147: auch „Beide“ (w.ansprechpartner = 'beide'), siehe ansprechName
+    const anspr = ansprechText(w);
     const kopf = `
       <div class="card kunde">
         ${k ? `<button class="kline" id="wKunde"><span class="av sm">${esc(Kunden.initialen(k))}</span><span class="kl-t"><b>${esc(Kunden.name(k) || 'Ohne Namen')}</b><small>${esc([k.telefon, k.email].filter(Boolean).join(' · ') || 'Kundenkarte öffnen')}</small></span>${icon('chevron', 'pc-chev')}</button>
@@ -599,6 +603,7 @@ window.Projekt = (() => {
       ${statusKarte(w)}
       <div id="wSubAbs"></div>
       ${norm(w.status) === 'geplant' ? '<div class="card pj-todo" id="wTodo"></div>' : ''}
+      <div id="wSubAuf"></div>
       <div id="wTermine"></div>
       <div class="sec-h"><h2>Hinweise zur Baustelle</h2></div>
       <div class="card kform"><textarea id="wHinweis" rows="3" placeholder="z. B. Schlüssel beim Nachbarn, Parken im Hof, Hund im Haus">${esc(w.hinweise || '')}</textarea></div>
@@ -2320,11 +2325,44 @@ window.Projekt = (() => {
     toast(r.art === 'telefon' ? 'Telefonische Zusage vermerkt' : 'Nachweis der Zusage abgelegt');
     neuZeichnen(w);
   }
-  /** Projekt-Ansprechpartner als Team-ID ('' = beide oder unbekannt). */
-  function projektWer(w) {
-    const n = String(w.ansprechpartner || vorgabe('ansprechProjekt') || '').trim();
-    if (!n || /^beide$/i.test(n) || !window.Angebot?._intern?.einePerson?.(n)) return '';
-    return teamIdVon(n);
+  // ---------- v147: Projekt-Ansprechpartner (eine Person oder beide) ----------
+  const BEIDE = 'beide';
+  /** Name des Projekt-Ansprechpartners oder 'beide'. Zwei Namen in einem Feld (alt) gelten als nicht gewählt → Vorgabe. */
+  function ansprechName(w) {
+    const A = window.Angebot?._intern;
+    for (const v of [w?.ansprechpartner, vorgabe('ansprechProjekt')]) {
+      const s = String(v || '').trim();
+      if (/^beide$/i.test(s)) return BEIDE;
+      const e = A?.einePerson ? A.einePerson(s) : s;
+      if (e) return e;
+    }
+    return '';
+  }
+  const vornamen = () => (window.Kalender?.team?.() || []).map((p) => String(p.name || '').split(/\s+/)[0]).filter(Boolean);
+  /** Anzeige: Name bzw. „Beide (Felix und Deniel)“. */
+  function ansprechText(w) { const n = ansprechName(w); return n === BEIDE ? `Beide (${vornamen().join(' und ')})` : n; }
+  /** Team-IDs des Projekt-Ansprechpartners: [] (unbekannt), [id] oder alle bei „beide“. */
+  function ansprechIds(w) {
+    const n = ansprechName(w);
+    if (n === BEIDE) return (window.Kalender?.team?.() || []).map((p) => p.id);
+    const id = teamIdVon(n); return id ? [id] : [];
+  }
+  /** Für To-dos: eine Team-ID, '' = beide (ein To-do, das beide sehen; wer es erledigt, hakt es für beide ab). */
+  function projektWer(w) { const ids = ansprechIds(w); return ids.length === 1 ? ids[0] : ''; }
+  /** Einplanungs-To-dos (gehen an den Projekt-Ansprechpartner). Spätere Versionen tragen ihre Arten hier ein. */
+  const EINPLAN_ARTEN = ['subBeauftragen', 'subBestaetigung'];
+  /** Ansprechpartner geändert: offene Einplanungs-To-dos des Vorgangs bekommen den neuen Empfänger. */
+  async function einplanTodosWer(w) {
+    if (!window.Todos?.aendern) return;
+    try {
+      await Todos.laden();
+      const wer = projektWer(w);
+      for (const t of Todos.liste()) {
+        if (t.erledigt || t.wer === wer) continue;
+        const s = String(t.schluessel || '');
+        if (EINPLAN_ARTEN.some((a) => t.art === a && t.bezug?.vorgangId === w.id) || EINPLAN_ARTEN.some((a) => s.startsWith(`${a}:${w.id}:`) || s === `${a}:${w.id}`)) await Todos.aendern(t.id, { wer });
+      }
+    } catch (e) { console.warn('To-dos', e); }
   }
   /** To-dos nach der Zusage: „Subunternehmer … beauftragen“ je Sub mit Preisen im gewählten Angebot (an den Projekt-Ansprechpartner),
    *  „Auftragsbestätigung an … schicken“ (an den Verfasser, solange sie nicht gesendet ist). Gleicher Schlüssel = nie doppelt. */
@@ -2349,6 +2387,245 @@ window.Projekt = (() => {
   async function todoZu(schluessel) {
     if (!window.Todos) return;
     try { await Todos.laden(); for (const t of Todos.liste()) if (!t.erledigt && t.schluessel === schluessel) await Todos.erledigen(t.id); } catch (e) { console.warn('To-do', e); }
+  }
+  // ---------- v147: Auftrag an Subunternehmer (Runde 17, B2) ----------
+  // w.subAuftraege = [{ partnerId, stand: 'angefragt'|'beauftragt'|'bestaetigt', dokKey, erstelltAm, termin, netto, beauftragtAm, weg, bestaetigtAm }]
+  // Subs = Partner mit Preisen im gewählten Angebot (wie zusageTodos). Preise im Auftrag = Einkauf (sein Preis), nie unser Verkaufspreis.
+  const SA_STAND = [['angefragt', 'angefragt'], ['beauftragt', 'beauftragt'], ['bestaetigt', 'bestätigt']];
+  const plusTage = (n) => { const d = new Date(); d.setDate(d.getDate() + (+n || 0)); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
+  async function subAuftragListe(w) {
+    if (!window.AngebotDaten) return [];
+    await AngebotDaten.liste(w);
+    const a = gewaehlt(w);
+    return [...subIdsVon(a)].filter((id) => window.Partner?.byId(id)).map((pid) => {
+      const e = (w.subAuftraege || []).find((x) => x.partnerId === pid) || null;
+      return { partnerId: pid, e, stand: e?.stand || 'angefragt' };
+    });
+  }
+  function subEintrag(w, pid) {
+    if (!Array.isArray(w.subAuftraege)) w.subAuftraege = [];
+    let e = w.subAuftraege.find((x) => x.partnerId === pid);
+    if (!e) { e = { partnerId: pid, stand: 'angefragt' }; w.subAuftraege.push(e); }
+    return e;
+  }
+  /** Freistellungsbescheinigung § 48b beim Partner: { ok, text, bis }. Fehlt oder abgelaufen = Hinweis, blockiert nichts. */
+  function frei48b(p) {
+    const art = String(vorgabe('nachweis48b') || '').trim();
+    const l = (p?.nachweise || []).filter((n) => (art && n.art === art) || /48\s*b/i.test(n.art || ''));
+    if (!l.length) return { ok: false, text: 'Freistellungsbescheinigung § 48b fehlt. Bitte vor Beauftragung anfordern.' };
+    const bis = l.map((n) => n.bis || '9999-12-31').sort().pop();
+    if (bis < heuteIso()) return { ok: false, bis, text: `Freistellungsbescheinigung § 48b abgelaufen am ${datumText(bis)}. Bitte vor Beauftragung anfordern.` };
+    return { ok: true, bis: bis === '9999-12-31' ? '' : bis };
+  }
+  /** Leistungen eines Subs im gewählten Angebot mit SEINEM Preis (Einkauf): Partner-Preisliste = sein Lohnpreis,
+   *  Sub-Angebot pauschal = sein Betrag, eigene Zeile mit Einkauf = dieser; sonst ohne Preis. Bedarf und Alternative nicht. */
+  async function subLeistungen(w, pid) {
+    const A = window.Angebot._intern; await A.preisliste();
+    await AngebotDaten.liste(w);
+    const out = { bereiche: [], summe: 0, ohnePreis: 0 };
+    for (const { r, A: T } of await AngebotDaten.teile(w, gewaehlt(w))) {
+      if (!T.positionen.some((x) => x?.sub?.partnerId === pid)) continue;
+      const S = A.summen(T.positionen, T.kalk);
+      const zeilen = [];
+      for (const z of S.zeilen) {
+        if (z.sub?.partnerId !== pid || ['bedarf', 'alternativ'].includes(z.art)) continue;
+        const K = z.kalk || {};
+        const ep = K.quelle === 'subpreisliste' ? +K.lohn || 0 : ['subangebot', 'frei'].includes(K.quelle) && !K.ohne ? +K.ekEp || 0 : 0;
+        const gp = Math.round(z.menge * ep * 100) / 100;
+        if (!(ep > 0)) out.ohnePreis++;
+        out.summe += gp;
+        zeilen.push({ text: String(z.it?.text || 'Leistung'), lang: String(z.lang || '').trim(), menge: z.menge, einheit: String(z.it?.einheit || ''), ep, gp });
+      }
+      if (zeilen.length) out.bereiche.push({ name: r.room || roomType(r.roomType)?.name || 'Leistungen', zeilen });
+    }
+    out.summe = Math.round(out.summe * 100) / 100;
+    return out;
+  }
+  const subWerte = (w, p) => {
+    const k = Kunden.byId(w.kundeId), o = k && w.objektId ? Kunden.objekt(k, w.objektId) : null;
+    return { anrede: String(p.inhaber || '').trim() ? `Hallo ${String(p.inhaber).trim()},` : 'Hallo,', projekt: w.titel || 'Projekt', objekt: Kunden.einzeilig(o?.adresse || w.address || ''),
+      termin: w.baustart ? datumText(w.baustart) : 'nach Absprache', sub: Partner.titel(p) || 'Partner', nr: w.nr || '' };
+  };
+  /** PDF „Auftrag an Subunternehmer“ (Briefkopf wie Besuch.brief). */
+  async function subAuftragPdf(w, p) {
+    const L = await subLeistungen(w, p.id);
+    const k = Kunden.byId(w.kundeId), o = k && w.objektId ? Kunden.objekt(k, w.objektId) : null;
+    const werte = subWerte(w, p);
+    const tel = (x) => (x ? (Kontakt.nummernVon(x, 'tel').find((n) => String(n.wert || '').trim())?.wert || '') : '');
+    const vorOrt = (o?.kontakte || []).filter((x) => x.name.trim() || x.telefon.trim()).map((x) => [x.name.trim(), x.rolle ? `(${x.rolle})` : '', x.telefon.trim()].filter(Boolean).join(' '));
+    if (!vorOrt.length && k) vorOrt.push([Kunden.name(k), tel(k)].filter(Boolean).join(', '));
+    let E = {}; try { E = (await window.Angebot._intern.preisliste()).einstellungen || {}; } catch {}
+    const team = window.Kalender?.team?.() || [];
+    const wir = ansprechIds(w).map((id) => team.find((t) => t.id === id)).filter(Boolean)
+      .map((t) => [t.name, String(t.telefon || t.mobil || E.telefon || '').trim()].filter(Boolean).join(', '));
+    if (!wir.length) { const n = ansprechName(w); if (n && n !== BEIDE) wir.push([n, E.telefon].filter(Boolean).join(', ')); }
+    const angaben = [
+      ['Bauvorhaben', [w.titel, w.nr ? `(${w.nr})` : ''].filter(Boolean).join(' ')],
+      ['Objekt', werte.objekt],
+      ['Klingel', o?.klingel], ['Etage', [o?.etage, o?.aufzug ? `Aufzug: ${o.aufzug}` : ''].filter((x) => String(x || '').trim()).join(', ')], ['Parken', o?.parken],
+      ['Ansprechpartner vor Ort', vorOrt.join('\n')],
+      ['Ihr Ansprechpartner bei uns', wir.join('\n')],
+      ['Termin', w.baustart ? `Beginn am ${datumText(w.baustart)}` : 'nach Absprache'],
+      ['Hinweise', w.hinweise],
+    ].filter(([, v]) => String(v || '').trim());
+    const zahl = [String(p.zahlungsziel || '').trim() ? `Zahlungsziel ${String(p.zahlungsziel).trim()} Tage` : '',
+      String(p.skonto || '').trim() ? `${String(p.skonto).trim()} % Skonto${String(p.skontoTage || '').trim() ? ` bei Zahlung innerhalb von ${String(p.skontoTage).trim()} Tagen` : ''}` : ''].filter(Boolean).join(', ');
+    const eur = (x) => (+x || 0).toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' €';
+    const mehrere = L.bereiche.length > 1;
+    return Besuch.brief({
+      anschrift: Besuch.anschriftVon(p), betreff: textVon('textSubAuftragBetreff', werte), text: textVon('textSubAuftragEinleitung', werte),
+      datei: `Auftrag_Subunternehmer_${w.nr || w.titel || 'Projekt'}_${werte.sub}`,
+      danach: async ({ doc, y, M, R, NAVY, platz }) => {
+        const t = (s, x, yy, o2) => doc.text(s, x, yy, o2);
+        doc.setFontSize(9.5);
+        for (const [kk, v] of angaben) {
+          const ls = doc.splitTextToSize(String(v), R - M - 52);
+          y = await platz(y, 4.6 * ls.length + 1);
+          doc.setTextColor(110); t(kk, M, y); doc.setTextColor(30); t(ls, M + 52, y);
+          y += 4.6 * ls.length + 1;
+        }
+        y += 4;
+        const C = { pos: M, txt: M + 11, menge: 134, einh: 137, ep: 168, gp: R };
+        const kopfZeile = async () => {
+          y = await platz(y, 14);
+          doc.setFont('helvetica', 'bold'); doc.setFontSize(11); doc.setTextColor(...NAVY); t('Ihre Leistungen', M, y); y += 6;
+          doc.setFontSize(8.5); doc.setTextColor(110);
+          t('Pos.', C.pos, y); t('Leistung', C.txt, y); t('Menge', C.menge, y, { align: 'right' }); t('Einheit', C.einh, y); t('EP netto', C.ep, y, { align: 'right' }); t('GP netto', C.gp, y, { align: 'right' });
+          doc.setDrawColor(200); doc.line(M, y + 1.5, R, y + 1.5); y += 6;
+          doc.setFont('helvetica', 'normal'); doc.setTextColor(30);
+        };
+        await kopfZeile();
+        let bi = 0;
+        for (const b of L.bereiche) {
+          bi++;
+          if (mehrere) { y = await platz(y, 10); doc.setFont('helvetica', 'bold'); doc.setFontSize(9.5); t(`${bi} ${b.name}`, C.pos, y); doc.setFont('helvetica', 'normal'); y += 5; }
+          let pi = 0;
+          for (const z of b.zeilen) {
+            pi++;
+            doc.setFontSize(9);
+            const ls = doc.splitTextToSize(z.text, C.menge - C.txt - 14);
+            const lang = z.lang ? doc.splitTextToSize(z.lang, C.menge - C.txt - 14) : [];
+            y = await platz(y, 4.3 * ls.length + 3.6 * lang.length + 2);
+            t(mehrere ? `${bi}.${pi}` : String(pi), C.pos, y); t(ls, C.txt, y);
+            t(String(z.menge).replace('.', ','), C.menge, y, { align: 'right' }); t(z.einheit, C.einh, y);
+            t(z.ep > 0 ? eur(z.ep) : 'nach Absprache', C.ep, y, { align: 'right' }); t(z.ep > 0 ? eur(z.gp) : '', C.gp, y, { align: 'right' });
+            y += 4.3 * ls.length;
+            if (lang.length) { doc.setFontSize(8); doc.setTextColor(100); t(lang, C.txt, y - 0.6); doc.setTextColor(30); y += 3.6 * lang.length; }
+            doc.setDrawColor(230); doc.line(M, y - 1.8, R, y - 1.8); y += 1.6;
+          }
+        }
+        y = await platz(y, 12);
+        doc.setFont('helvetica', 'bold'); doc.setFontSize(10); t('Summe netto', C.txt, y + 2); t(eur(L.summe), C.gp, y + 2, { align: 'right' }); doc.setFont('helvetica', 'normal'); y += 8;
+        doc.setFontSize(9); doc.setTextColor(90);
+        if (L.ohnePreis) { t('Positionen ohne Preis: nach Absprache bzw. Ihrem Angebot.', C.txt, y); y += 5; }
+        if (zahl) { y = await platz(y, 6); t('Zahlungsbedingungen: ' + zahl, C.txt, y); y += 5; }
+        doc.setTextColor(30); y += 3;
+        doc.setFontSize(10.5);
+        for (const z of String(textVon('textSubAuftrag', werte)).split('\n')) {
+          for (const l of z.trim() ? doc.splitTextToSize(z, R - M) : ['']) { y = await platz(y, 5); t(l, M, y); y += 5; }
+        }
+        if (window.Unterschrift?.pdf) { y = await platz(y + 4, 34); try { await Unterschrift.pdf(doc, M, y + 4, { name: meinName() || wir[0]?.split(',')[0] || '', firma: firmaName() }); } catch (e) { console.warn('Unterschrift', e); } }
+      },
+    });
+  }
+  async function subAuftragAblegen(w, f) {
+    const dk = 'wdok:' + w.id + ':' + f.name.replace(/[^\wäöüÄÖÜß.-]+/g, '_');
+    await kvSet(dk, await datUrl(f));
+    w.dokumente = [...(w.dokumente || []).filter((x) => x.key !== dk), { key: dk, name: f.name, t: Date.now(), art: 'subauftrag', typ: 'application/pdf', intern: true }];
+    try { window.Buero?.ablage(w, f.name, f); } catch (e) { console.warn('Ablage', e); }
+    return dk;
+  }
+  const saZeitleiste = async (p, text, art = 'notiz') => {
+    p.zeitleiste = [...(Array.isArray(p.zeitleiste) ? p.zeitleiste : []), { id: uid(), t: Date.now(), art, text, wer: meinName().split(' ')[0] }];
+    await Partner.speichern(p);
+  };
+  /** „Auftrag erstellen“: § 48b prüfen (Hinweis, nicht blockierend), PDF bauen, intern ablegen, ansehen. */
+  async function subAuftragErstellen(w, pid) {
+    const p = Partner.byId(pid); if (!p) return;
+    const chk = frei48b(p);
+    if (!chk.ok) {
+      const pr = sheet('Auftrag an ' + (Partner.titel(p) || 'Partner'), [
+        { label: chk.text, sub: 'Ohne gültige Bescheinigung gilt der Steuerabzug bei Bauleistungen. Nur ein Hinweis, DOM blockiert nichts.', icon: icon('x'), color: '#c0392b', value: 'warn' },
+        { label: 'Trotzdem Auftrag erstellen', icon: icon('file'), value: 'ok' },
+        { label: 'Abbrechen', icon: icon('back'), value: 'nein' }]);
+      const bgs = $$('.sheet-bg'); bgs[bgs.length - 1]?.querySelector('[data-i="0"]')?.classList.add('s48');
+      if ((await pr) !== 'ok') return;
+    }
+    const L = await subLeistungen(w, pid);
+    if (!L.bereiche.length) return toast('Im gewählten Angebot hat dieser Subunternehmer keine Leistungen.', 4000);
+    toast('Auftrag wird erstellt …');
+    const f = await subAuftragPdf(w, p);
+    const e = subEintrag(w, pid);
+    Object.assign(e, { dokKey: await subAuftragAblegen(w, f), erstelltAm: heuteIso(), termin: w.baustart || '', netto: L.summe });
+    await save(w);
+    await neuZeichnen(w);
+    await pdfAnsicht(f, f.name);
+  }
+  /** „Senden“: Versandweg wählen (Mail mit PDF, WhatsApp, PDF drucken), nie von selbst. Danach beauftragt + To-do „Bestätigung eintragen“. */
+  async function subAuftragSenden(w, pid) {
+    const p = Partner.byId(pid); const e = (w.subAuftraege || []).find((x) => x.partnerId === pid);
+    if (!p || !e?.dokKey) return;
+    const data = await kvGet(e.dokKey);
+    if (!data) return toast('Das PDF ist auf diesem Gerät noch nicht da. Bitte kurz warten (Cloud-Abgleich).', 4000);
+    const d = (w.dokumente || []).find((x) => x.key === e.dokKey);
+    const f = new File([await (await fetch(data)).blob()], d?.name || 'Auftrag.pdf', { type: 'application/pdf' });
+    const werte = { ...subWerte(w, p), termin: e.termin ? datumText(e.termin) : 'nach Absprache' };
+    const weg = await Besuch.nachricht(p, 'Auftrag an ' + werte.sub, textVon('textSubAuftragMail', werte), textVon('textSubAuftragBetreff', werte), { anhang: f, datei: f.name.replace(/\.pdf$/i, '') });
+    if (!wegGilt(weg)) return;
+    const neu = e.stand === 'angefragt';
+    if (neu) Object.assign(e, { stand: 'beauftragt', beauftragtAm: heuteIso() });
+    e.weg = weg;
+    await save(w);
+    await saZeitleiste(p, `Auftrag ${neu ? '' : 'nochmal '}geschickt per ${Besuch.WEG_NAME[weg] || weg}: Projekt „${werte.projekt}“`, weg === 'mail' ? 'mail' : 'notiz');
+    await todoZu(`subBeauftragen:${w.id}:${pid}`);
+    if (neu && window.Todos) await Todos.anlegen({ text: `Bestätigung von ${werte.sub} eintragen: ${werte.projekt}`, faellig: plusTage(vorgabe('subBestaetigungTage')), prio: 'mittel', wer: projektWer(w),
+      bezug: { kundeId: w.kundeId || '', vorgangId: w.id, partnerId: pid }, art: 'subBestaetigung', schluessel: `subBestaetigung:${w.id}:${pid}` });
+    toast(neu ? `${werte.sub}: beauftragt` : 'Vermerkt');
+    await neuZeichnen(w);
+  }
+  async function subAuftragBestaetigt(w, pid) {
+    const p = Partner.byId(pid); if (!p) return;
+    const e = subEintrag(w, pid);
+    Object.assign(e, { stand: 'bestaetigt', bestaetigtAm: heuteIso() });
+    await save(w);
+    await saZeitleiste(p, `Auftrag bestätigt: Projekt „${w.titel || 'Projekt'}“`);
+    await todoZu(`subBestaetigung:${w.id}:${pid}`); await todoZu(`subBeauftragen:${w.id}:${pid}`);
+    toast('Bestätigung eingetragen');
+    await neuZeichnen(w);
+  }
+  /** Abschnitt „Subunternehmer“ in der Projekt-Übersicht: je Sub Stand angefragt → beauftragt → bestätigt. */
+  async function subAuftragKarte(el, w) {
+    const l = await subAuftragListe(w);
+    if (!el.isConnected) return;
+    if (!l.length) { el.innerHTML = ''; return; }
+    const rang = (s) => SA_STAND.findIndex(([id]) => id === s);
+    el.innerHTML = `<div class="sec-h"><h2>Subunternehmer</h2><span class="count">${l.filter((s) => s.stand === 'bestaetigt').length}/${l.length}</span></div>
+      <div class="card sa-karte"><ul class="sa-l">${l.map(({ partnerId: pid, e, stand }) => {
+        const p = Partner.byId(pid), chk = frei48b(p);
+        const info = [e?.dokKey ? `Auftrag erstellt am ${datumText(e.erstelltAm || heuteIso())}${e.netto ? ' · ' + eur2(e.netto) + ' netto' : ''}` : '',
+          e?.beauftragtAm ? `beauftragt am ${datumText(e.beauftragtAm)}${e.weg ? ' per ' + (Besuch.WEG_NAME[e.weg] || e.weg) : ''}` : '',
+          e?.bestaetigtAm ? `bestätigt am ${datumText(e.bestaetigtAm)}` : ''].filter(Boolean).join(' · ');
+        const knopf = (attr, txt, ic, zweit = true) => `<button type="button" class="btn ${zweit ? 'secondary ' : ''}small" ${attr}="${esc(pid)}">${icon(ic)} ${txt}</button>`;
+        return `<li class="sa-z" data-sa="${esc(pid)}">
+          <div class="sa-kopf"><b>${esc(Partner.titel(p) || 'Partner')}</b>
+            <span class="sa-schritte">${SA_STAND.map(([id, n]) => `<i class="${rang(stand) >= rang(id) ? 'on' : ''}">${n}</i>`).join('')}</span></div>
+          ${info ? `<small class="muted">${esc(info)}</small>` : ''}
+          ${chk.ok || stand === 'bestaetigt' ? '' : `<p class="sa-48b">${esc(chk.text)}</p>`}
+          <div class="sa-knoepfe">
+            ${stand === 'angefragt' ? knopf('data-saneu', e?.dokKey ? 'Neu erstellen' : 'Auftrag erstellen', 'file', !!e?.dokKey) : ''}
+            ${e?.dokKey ? knopf('data-saans', 'Ansehen', 'eye') : ''}
+            ${e?.dokKey && stand !== 'bestaetigt' ? knopf('data-sasend', stand === 'angefragt' ? 'Senden' : 'Nochmal senden', 'mail', stand !== 'angefragt') : ''}
+            ${stand === 'beauftragt' ? knopf('data-sabest', 'Bestätigung eintragen', 'check', false) : ''}
+          </div></li>`;
+      }).join('')}</ul>
+      <p class="hint" style="margin:6px 0 0">Mit seinen Leistungen und seinem Preis, nie mit unseren Verkaufspreisen. DOM schickt nichts von selbst.</p></div>`;
+    $$('[data-saneu]', el).forEach((b) => (b.onclick = () => subAuftragErstellen(w, b.dataset.saneu).catch((e) => { console.error(e); toast('Auftrag ging nicht: ' + e.message, 5000); })));
+    $$('[data-sasend]', el).forEach((b) => (b.onclick = () => subAuftragSenden(w, b.dataset.sasend)));
+    $$('[data-sabest]', el).forEach((b) => (b.onclick = () => subAuftragBestaetigt(w, b.dataset.sabest)));
+    $$('[data-saans]', el).forEach((b) => (b.onclick = async () => {
+      const e = (w.subAuftraege || []).find((x) => x.partnerId === b.dataset.saans); const d = (w.dokumente || []).find((x) => x.key === e?.dokKey);
+      if (d) await dateiZeigen(await kvGet(d.key), d);
+    }));
   }
   /** „Erklärung zur Bestätigung schicken“: Text an den Kunden (WEG/Firma: Ansprechpartner), Versandweg wählbar, nie von selbst. */
   async function vorzeitigBitte(w) {
@@ -2514,7 +2791,7 @@ window.Projekt = (() => {
     return w2;
   }
 
-  return { absageFragen, absageWiedervorlage, absageAbw, alsVorlageKopieren, plusMonate, automatik, anlegen, angebotVersendet, gesperrt, gesperrtFrage, angebotKopieren, dateiZeigen, nachfassen, nachfassTage, nachfassFaellig, nachfassUeber, nachfassStaffel, nachfassFuerMich, nachfassStand, nachfassVorschlag, nachgefasst, nachfassNachricht, nachfassEmpfaenger, subAbsageListe, verfasserVon, teamIdVon, zusageUnterschrieben, zusageTodos, nachweisText, seitTagen, STATUS, ANGEBOT, ALLE, PHASEN, phase, farbe, pill, norm, zugesagt, statusName, statusKurz, raumAngebot, angebotMerken, forget, neu, neuDirekt, neuFuer, kundeUebernehmen, oeffnen, view, mappeView, moodboardView, migrate, raum, raeume, raumGespeichert, raumEntfernt, save, wahl, PKG_IDS, _intern: { gesamtDoc, kundeUnterschreibt, wegFragen, wegText, versandStand, versandPruefen, sendenMitMappe, alsVersendet, angebotSpeichern, titel, addRoom, raumAusScan, raumAnlegen, reiterSetzen, auftragsbestaetigung } };
+  return { absageFragen, absageWiedervorlage, absageAbw, alsVorlageKopieren, plusMonate, automatik, anlegen, angebotVersendet, gesperrt, gesperrtFrage, angebotKopieren, dateiZeigen, nachfassen, nachfassTage, nachfassFaellig, nachfassUeber, nachfassStaffel, nachfassFuerMich, nachfassStand, nachfassVorschlag, nachgefasst, nachfassNachricht, nachfassEmpfaenger, subAbsageListe, verfasserVon, teamIdVon, zusageUnterschrieben, zusageTodos, nachweisText, ansprechName, ansprechIds, projektWer, einplanTodosWer, EINPLAN_ARTEN, subAuftragListe, subLeistungen, subAuftragPdf, frei48b, seitTagen, STATUS, ANGEBOT, ALLE, PHASEN, phase, farbe, pill, norm, zugesagt, statusName, statusKurz, raumAngebot, angebotMerken, forget, neu, neuDirekt, neuFuer, kundeUebernehmen, oeffnen, view, mappeView, moodboardView, migrate, raum, raeume, raumGespeichert, raumEntfernt, save, wahl, PKG_IDS, _intern: { gesamtDoc, kundeUnterschreibt, wegFragen, wegText, versandStand, versandPruefen, sendenMitMappe, alsVersendet, angebotSpeichern, titel, addRoom, raumAusScan, raumAnlegen, reiterSetzen, auftragsbestaetigung } };
 })();
 // Ältere Aufrufe (PR „Wohnungen“) laufen weiter
 window.Wohnung = { neu: () => Projekt.neu(), oeffnen: (id) => Projekt.oeffnen(id), view: () => Projekt.view(), raumGespeichert: (p) => Projekt.raumGespeichert(p), raumEntfernt: (p) => Projekt.raumEntfernt(p) };

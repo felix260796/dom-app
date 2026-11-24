@@ -391,3 +391,16 @@ details.bs .tot span:last-child { color: var(--muted); }
 .vz-fehlt { margin: 0 0 8px; }
 .vz-fehlt .stk-2 .btn { white-space: normal; line-height: 1.25; }
 .nw-fehlt { margin: 0 0 10px; }
+/* ---------- Auftrag an Subunternehmer (v147) ---------- */
+.sa-karte { margin: 0 0 12px; }
+.sa-l { list-style: none; margin: 0; padding: 0; }
+.sa-z { display: flex; flex-direction: column; gap: 4px; padding: 10px 0; border-top: 1px solid var(--line, #e5e7eb); }
+.sa-z:first-child { border-top: 0; padding-top: 0; }
+.sa-kopf { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
+.sa-schritte { display: inline-flex; gap: 2px; font-size: 12px; }
+.sa-schritte i { font-style: normal; padding: 2px 7px; border-radius: 10px; background: #eef1f5; color: var(--muted, #6b7280); }
+.sa-schritte i.on { background: var(--navy, #1e3550); color: #fff; }
+.sa-48b { margin: 2px 0; padding: 6px 9px; border-radius: 8px; background: #fdecea; color: #a3261b; font-weight: 600; font-size: 13px; border-left: 3px solid #c0392b; }
+.sa-knoepfe { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 2px; }
+.sheet-item.s48 { background: #fdecea; }
+.sheet-item.s48 b { color: #a3261b; }
