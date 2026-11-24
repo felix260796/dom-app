@@ -115,6 +115,9 @@
 .stk-feld { display: flex; align-items: center; gap: 8px; margin: 0 0 6px; font-weight: 650; color: var(--navy); }
 .stk-feld svg.i { width: 19px; height: 19px; color: var(--brass); }
 .stk-feld span { flex: 1; }
+.nf-feld span { flex: 0 0 auto; }
+.nf-feld span:last-of-type { font-weight: 500; }
+.nf-feld input { width: 80px; }
 .stk-vz { display: flex; align-items: flex-start; gap: 8px; margin: 2px 0 6px; font-size: 14px; }
 .stk-vz input { margin-top: 2px; width: auto; flex: none; }
 .stk-vz small { color: var(--muted); }

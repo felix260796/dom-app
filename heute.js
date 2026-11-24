@@ -56,9 +56,11 @@ window.Heute = (() => {
     const pf = window.Pflege?.heute() || { html: '', anzahl: 0, binden() {} };
     if (pf.html) bloecke.push(pf.html);
     // Nachfassen
-    const nachf = idx.filter((x) => Projekt.norm(x.status) === 'angebot' && Projekt.seitTagen(x.versendetAm) >= Projekt.nachfassen());
+    // Frist je Angebot nach Größe (v141), nur die Angebote, die der Besitzer dieses Geräts verfasst hat; am längsten überfällig zuerst
+    const nachf = idx.filter((x) => Projekt.norm(x.status) === 'angebot' && x.versendetAm && Projekt.nachfassUeber(x) >= 0 && Projekt.nachfassFuerMich(x))
+      .sort((a, b) => Projekt.nachfassUeber(b) - Projekt.nachfassUeber(a));
     block('Angebote nachfassen', nachf
-      .map((x) => zeile('p:' + x.id, 'phone', name(x), `Seit ${Projekt.seitTagen(x.versendetAm)} Tagen beim Kunden`, '#b7791f')));
+      .map((x) => { const u = Projekt.nachfassUeber(x); return zeile('p:' + x.id, 'phone', name(x), `Seit ${Projekt.seitTagen(x.versendetAm)} Tagen beim Kunden${u > 0 ? ` · ${u} ${u === 1 ? 'Tag' : 'Tage'} über der Frist` : ''}`, u > 0 ? '#c0392b' : '#b7791f'); }));
     // Geld
     const geld = [];
     for (const r of window.Rechnung?.liste() || []) if (!r.bezahlt && r.faellig && r.faellig < h) { const x = idx.find((y) => y.id === r.projektId); geld.push(zeile('r:' + r.id, 'euro', `Kunde zahlt nicht: ${x ? name(x) : r.nr}`, `${r.nr} · ${eur(Rechnung.zahlbetrag(r))} · fällig seit ${tag(r.faellig)}`, '#c0392b')); }

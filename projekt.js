@@ -82,8 +82,10 @@ window.Projekt = (() => {
     w.nr = await Kunden.projektNr(w);
     await kvSet(key(w.id), w);
     const list = await raeume(w);
+    if (nachfassMerken(w, list)) await kvSet(key(w.id), w); // Größe fürs Nachfassen (v141)
+    const vf = norm(w.status) === 'angebot' ? verfasserVon(w, list) : '';
     const idx = (await projectIndex()).filter((x) => x.id !== w.id);
-    idx.unshift({ id: w.id, kind: 'wohnung', nr: w.nr || '', titel: w.titel || '', status: w.status || '', baustart: w.baustart || '', versendetAm: w.versendetAm || '', absage: w.absage?.grund || '', kundeId: w.kundeId || '', objektId: w.objektId || '', customer: w.customer, address: w.address, room: list.length ? summary(list) : 'noch kein Raum', rooms: list.length, fort: window.Fortschritt?.kurz(w) || null, created: w.created, updated: w.updated, thumb: list.find((r) => r?.thumb)?.thumb || '' });
+    idx.unshift({ id: w.id, kind: 'wohnung', nr: w.nr || '', titel: w.titel || '', status: w.status || '', baustart: w.baustart || '', versendetAm: w.versendetAm || '', nachfTage: norm(w.status) === 'angebot' ? nachfassTage(w) : '', verfasser: vf, verfasserId: teamIdVon(vf), absage: w.absage?.grund || '', kundeId: w.kundeId || '', objektId: w.objektId || '', customer: w.customer, address: w.address, room: list.length ? summary(list) : 'noch kein Raum', rooms: list.length, fort: window.Fortschritt?.kurz(w) || null, created: w.created, updated: w.updated, thumb: list.find((r) => r?.thumb)?.thumb || '' });
     await kvSet('projectIndex', idx);
   }
   const neuesProjekt = () => ({ id: uid(), kind: 'wohnung', created: Date.now(), customer: '', address: '', rooms: [], mappe: {}, pdfProducts: true, pdfPrices: false, pdfEvening: true });
@@ -292,7 +294,7 @@ window.Projekt = (() => {
         w.absage = { grund: g, t: Date.now() };
         await pdfInDokumente(w); // das abgesagte Angebot bleibt als PDF beim Kunden
       }
-      if (v === 'angebot' && norm(w.status) !== 'angebot') w.versendetAm = heuteIso();
+      if (v === 'angebot' && norm(w.status) !== 'angebot') { w.versendetAm = heuteIso(); if (w.nachfass) delete w.nachfass.am; }
       if (norm(v) !== norm(w.status)) (w.verlauf ??= []).push({ st: v, t: Date.now() });
       w.status = v;
       if (!w.isNew) { await save(w); await AngebotDaten.standVomVorgang(w); }
@@ -300,6 +302,13 @@ window.Projekt = (() => {
       toast(statusName(v));
       const y = window.scrollY; await view(); window.scrollTo(0, y);
     };
+    $$('[data-nachf]').forEach((i) => (i.onchange = async () => {
+      const v = Math.round(+i.value);
+      w.nachfass = { ...(w.nachfass || {}), tage: v > 0 ? v : '' };
+      if (!w.isNew) await save(w);
+      toast(v > 0 ? `Nachfassen nach ${v} Tagen` : 'Nachfassen nach Größe des Angebots');
+      const y = window.scrollY; await view(); window.scrollTo(0, y);
+    }));
     $$('[data-st]').forEach((b) => (b.onclick = async () => {
       const v = b.dataset.st;
       if (v === 'geplant' && phase(w) === 'angebot') return zusage(w, list, setzen);
@@ -1021,7 +1030,8 @@ window.Projekt = (() => {
         <div class="ang-k"><span class="ang-st">${stand[1]}</span><b>Angebot${nr ? ` Nr. ${esc(nr)}` : ''}</b></div>
         <p class="ang-i">${[summe ? `${eur2(summe)} brutto` : '', st === 'angebot' && w.versendetAm ? `verschickt am ${esc(datumText(w.versendetAm))}` : '', st === 'abgesagt' && w.absage?.t ? `abgesagt am ${esc(new Date(w.absage.t).toLocaleDateString('de-DE'))}` : '', w.angebotKopieVon ? `ersetzt Nr. ${esc(w.angebotKopieVon)}` : ''].filter(Boolean).join(' · ') || 'Noch nicht gespeichert'}</p>
         ${st === 'abgesagt' && w.absage?.grund ? `<p class="ang-grund">${icon('x')}<span>Grund: <b>${esc(w.absage.grund)}</b></span></p>` : ''}
-        ${st === 'angebot' && tage >= nachfassen() ? `<p class="stk-tipp warn">${icon('phone')} Seit ${tage} Tagen beim Kunden. Zeit zum Nachfassen.</p>` : ''}
+        ${st === 'angebot' && tage >= nachfassTage(w) ? `<p class="stk-tipp warn">${icon('phone')} Seit ${tage} Tagen beim Kunden. Zeit zum Nachfassen.</p>` : ''}
+        ${st === 'angebot' && w.versendetAm ? nachfassFeld(w) : ''}
         ${st === 'angebot' || st === 'abgesagt' ? `
           ${w.angebotPdf ? `<div class="stk-2"><button class="btn secondary" id="wAngAnsehen">${icon('eye')} Ansehen</button><button class="btn secondary" id="wNochmal">${icon('mail')} Nochmal senden</button></div>` : ''}
           ${st === 'angebot' ? `<div class="stk-2" style="margin-top:10px"><button class="btn" data-st="geplant" style="--c:#2f8a57">${icon('check')} Zugesagt</button><button class="btn" data-st="abgesagt" style="--c:#c0392b">${icon('x')} Abgesagt</button></div>` : ''}
@@ -1429,8 +1439,9 @@ window.Projekt = (() => {
       ${st === 'geplant' ? `<label class="stk-feld">${icon('calendar')}<span>Baustart</span><input type="date" id="wBaustart" value="${esc(w.baustart || '')}"></label>
         <p class="hint" style="margin:0 0 6px">${w.baustart ? 'Am Tag des Baustarts springt der Status von selbst auf „Baustelle läuft“.' : 'Noch kein Baustart. Trag ihn ein, dann steht er im Kalender und das Projekt ist eingeplant.'}</p>
         ${vorzeitigHtml(w)}` : ''}
-      ${st === 'angebot' && tage >= nachfassen() ? `<p class="stk-tipp warn">${icon('phone')} Seit ${tage} Tagen beim Kunden. Zeit zum Nachfassen.</p>` : ''}
-      ${st === 'angebot' && w.versendetAm && tage < nachfassen() ? `<p class="hint" style="margin:0 0 10px">Versendet am ${esc(datumText(w.versendetAm))}</p>` : ''}
+      ${st === 'angebot' && tage >= nachfassTage(w) ? `<p class="stk-tipp warn">${icon('phone')} Seit ${tage} Tagen beim Kunden. Zeit zum Nachfassen.</p>` : ''}
+      ${st === 'angebot' && w.versendetAm && tage < nachfassTage(w) ? `<p class="hint" style="margin:0 0 10px">Versendet am ${esc(datumText(w.versendetAm))}</p>` : ''}
+      ${st === 'angebot' && w.versendetAm ? nachfassFeld(w) : ''}
       ${st === 'abgesagt' && w.absage?.grund ? `<p class="hint" style="margin:0 0 10px">Grund: ${esc(w.absage.grund)} · ${esc(new Date(w.absage.t).toLocaleDateString('de-DE'))}</p>` : ''}
       ${allesErledigt ? `<p class="stk-tipp">${icon('check')} Alle Schritte sind abgehakt. Jetzt abschließen?</p>` : ''}
       ${knoepfe}</div>`;
@@ -1442,6 +1453,7 @@ window.Projekt = (() => {
     // Auch beim erneuten Senden (angepasstes Angebot) beginnt das Nachfassen von vorn
     if (norm(w.status) !== 'angebot') (w.verlauf ??= []).push({ st: 'angebot', t: Date.now(), ...(weg ? { weg } : {}) });
     w.status = 'angebot'; w.versendetAm = datum || heuteIso();
+    if (w.nachfass) delete w.nachfass.am; // Größe beim Speichern neu merken (v141)
     // Ab jetzt gesperrt (Wunsch Felix): Ändern geht nur noch über eine Kopie mit neuer Nummer
     w.angebotGesperrt = { t: Date.now(), nr: nrAusPdf(w) }; delete w.angebotFrei;
     await save(w);
@@ -1765,6 +1777,65 @@ window.Projekt = (() => {
     return { doc, name, syn };
   }
   const nachfassen = () => +vorgabe('nachfassenTage') || 7;
+  // ---------- Version 141: Nachfassen nach Angebotsgröße, Verfasser ----------
+  /** Tage bis zum Nachfassen nach Größe (netto nach Nachlass): klein, mittel (nachfassenTage), groß. */
+  function nachfassStaffel(netto) {
+    const n = +netto || 0;
+    if (n < (+vorgabe('nachfassKleinBis') || 0)) return +vorgabe('nachfassKleinTage') || nachfassen();
+    if (n <= (+vorgabe('nachfassMittelBis') || Infinity)) return nachfassen();
+    return +vorgabe('nachfassGrossTage') || nachfassen();
+  }
+  /** Tage bis zum Nachfassen für einen Vorgang (w.nachfass = { tage, netto, am }) oder einen Eintrag aus projectIndex (nachfTage).
+   *  Eigene Tage am Angebot gehen vor, sonst Staffel nach Größe, ohne bekannte Größe die alte feste Zahl. */
+  function nachfassTage(x) {
+    if (!x) return nachfassen();
+    const nf = x.nachfass;
+    if (+nf?.tage > 0) return +nf.tage;
+    if (nf && typeof nf.netto === 'number') return nachfassStaffel(nf.netto);
+    if (+x.nachfTage > 0) return +x.nachfTage;
+    return nachfassen();
+  }
+  /** Tag, an dem nachgefasst wird ('JJJJ-MM-TT'), oder ''. */
+  function nachfassFaellig(x) {
+    if (!x?.versendetAm) return '';
+    const d = new Date(x.versendetAm + 'T12:00'); d.setDate(d.getDate() + nachfassTage(x));
+    return d.toISOString().slice(0, 10);
+  }
+  /** Tage seit dem Nachfass-Tag (0 = heute fällig, negativ = noch nicht fällig). */
+  const nachfassUeber = (x) => seitTagen(x?.versendetAm) - nachfassTage(x);
+  /** Größe des verschickten Angebots merken (beim Versand, sonst nachträglich beim nächsten Speichern). */
+  function nachfassMerken(w, list) {
+    if (norm(w.status) !== 'angebot' || !w.versendetAm || !window.Kalk) return;
+    if (w.nachfass && typeof w.nachfass.netto === 'number' && w.nachfass.am === w.versendetAm) return;
+    try { w.nachfass = { ...(w.nachfass || {}), netto: Kalk.gesamt(w, list).netto || 0, am: w.versendetAm }; return true; } catch (e) { console.warn('Nachfassen', e); }
+  }
+  /** Verfasser des aktiven Angebots (Name, wie im PDF). */
+  function verfasserVon(w, list) {
+    const A = window.Angebot?._intern; if (!A) return '';
+    try { return A.einePerson(kopfVon(w, list).anspr) || A.ansprechpartner()[0] || ''; } catch { return ''; }
+  }
+  /** Name → Team-ID (Kalender.team), '' wenn unbekannt. Ganzer Name, sonst Vorname. */
+  function teamIdVon(name) {
+    const n = String(name || '').trim().toLowerCase(); if (!n) return '';
+    const team = window.Kalender?.team?.() || [];
+    const voll = (t) => String(t.name || '').trim().toLowerCase();
+    const p = team.find((t) => voll(t) === n) || team.find((t) => voll(t).split(/\s+/)[0] === n.split(/\s+/)[0]);
+    return p?.id || '';
+  }
+  /** Sieht der Besitzer dieses Geräts das Nachfassen (Heute)? Gerät für beide oder Verfasser unbekannt: ja. */
+  function nachfassFuerMich(x) {
+    const ich = window.Kalender?.wer?.() || '';
+    const id = x?.verfasserId || teamIdVon(x?.verfasser);
+    return !ich || !id || id === ich;
+  }
+  /** Feld „Nachfassen nach … Tagen“ am verschickten Angebot (leer = nach Größe). */
+  function nachfassFeld(w) {
+    const eigen = +w.nachfass?.tage > 0 ? +w.nachfass.tage : '';
+    const mitNetto = w.nachfass && typeof w.nachfass.netto === 'number';
+    const staffel = mitNetto ? nachfassStaffel(w.nachfass.netto) : nachfassen();
+    return `<label class="stk-feld nf-feld">${icon('phone')}<span>Nachfassen nach</span><input type="number" min="1" step="1" inputmode="numeric" data-nachf value="${eigen}" placeholder="${staffel}" style="max-width:80px"><span>Tagen</span></label>
+      <p class="hint" style="margin:0 0 8px">${eigen ? `Eigene Frist für dieses Angebot. Leer = nach Größe (${staffel} Tage).` : `Nach Größe des Angebots${mitNetto ? ` (${esc(eur2(w.nachfass.netto))} netto)` : ''}: ${staffel} Tage.`} Nachfassen am ${esc(datumText(nachfassFaellig(w)))}.</p>`;
+  }
   const seitTagen = (iso) => (iso ? Math.floor((new Date(heuteIso() + 'T12:00') - new Date(iso + 'T12:00')) / 864e5) : -1);
   const datumText = (iso) => new Date(iso + 'T12:00').toLocaleDateString('de-DE');
   async function dateiZeigen(data, d) {
@@ -1925,7 +1996,7 @@ window.Projekt = (() => {
   }
 
   const forget = (id) => rooms.delete(id);
-  return { automatik, anlegen, angebotVersendet, gesperrt, gesperrtFrage, angebotKopieren, dateiZeigen, nachfassen, seitTagen, STATUS, ANGEBOT, ALLE, PHASEN, phase, farbe, pill, norm, zugesagt, statusName, statusKurz, raumAngebot, angebotMerken, forget, neu, neuDirekt, neuFuer, kundeUebernehmen, oeffnen, view, mappeView, moodboardView, migrate, raum, raeume, raumGespeichert, raumEntfernt, save, wahl, PKG_IDS, _intern: { kundeUnterschreibt, wegFragen, wegText, versandStand, versandPruefen, sendenMitMappe, alsVersendet, angebotSpeichern, titel, addRoom, raumAusScan, raumAnlegen, reiterSetzen, auftragsbestaetigung } };
+  return { automatik, anlegen, angebotVersendet, gesperrt, gesperrtFrage, angebotKopieren, dateiZeigen, nachfassen, nachfassTage, nachfassFaellig, nachfassUeber, nachfassStaffel, nachfassFuerMich, verfasserVon, teamIdVon, seitTagen, STATUS, ANGEBOT, ALLE, PHASEN, phase, farbe, pill, norm, zugesagt, statusName, statusKurz, raumAngebot, angebotMerken, forget, neu, neuDirekt, neuFuer, kundeUebernehmen, oeffnen, view, mappeView, moodboardView, migrate, raum, raeume, raumGespeichert, raumEntfernt, save, wahl, PKG_IDS, _intern: { kundeUnterschreibt, wegFragen, wegText, versandStand, versandPruefen, sendenMitMappe, alsVersendet, angebotSpeichern, titel, addRoom, raumAusScan, raumAnlegen, reiterSetzen, auftragsbestaetigung } };
 })();
 // Ältere Aufrufe (PR „Wohnungen“) laufen weiter
 window.Wohnung = { neu: () => Projekt.neu(), oeffnen: (id) => Projekt.oeffnen(id), view: () => Projekt.view(), raumGespeichert: (p) => Projekt.raumGespeichert(p), raumEntfernt: (p) => Projekt.raumEntfernt(p) };
