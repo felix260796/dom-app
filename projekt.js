@@ -1799,7 +1799,7 @@ window.Projekt = (() => {
     for (const r of raeume) for (const [i, x0] of r.angebot.positionen.entries()) {
       const x = mitPreis(x0, r, A.summen(r.angebot.positionen, r.angebot.kalk).zeilen.find((z) => z.i === i));
       if (!x.raum) { const v = allg.get(x.nr); if (!v || v.menge < x.menge) allg.set(x.nr, { ...x }); continue; } // Allgemeines (z. B. Baustelleneinrichtung) nur einmal
-      pos.push({ ...x, raum: mehrere ? `${r.room || 'Raum'}: ${x.raum}` : x.raum, _dar: r.angebot.darstellung || '' });
+      pos.push({ ...x, raum: mehrere ? `${r.room || 'Raum'}: ${x.raum}` : x.raum, _dar: r.angebot.darstellung || '', _darG: r.angebot.darstellungGewerk || null });
     }
     w.gesamtAngebot ??= {};
     w.gesamtAngebot.nr = angNr(w) || w.gesamtAngebot.nr || await A.naechsteNummer();
@@ -2514,7 +2514,7 @@ window.Projekt = (() => {
     return w2;
   }
 
-  return { absageFragen, absageWiedervorlage, absageAbw, alsVorlageKopieren, plusMonate, automatik, anlegen, angebotVersendet, gesperrt, gesperrtFrage, angebotKopieren, dateiZeigen, nachfassen, nachfassTage, nachfassFaellig, nachfassUeber, nachfassStaffel, nachfassFuerMich, nachfassStand, nachfassVorschlag, nachgefasst, nachfassNachricht, nachfassEmpfaenger, subAbsageListe, verfasserVon, teamIdVon, zusageUnterschrieben, zusageTodos, nachweisText, seitTagen, STATUS, ANGEBOT, ALLE, PHASEN, phase, farbe, pill, norm, zugesagt, statusName, statusKurz, raumAngebot, angebotMerken, forget, neu, neuDirekt, neuFuer, kundeUebernehmen, oeffnen, view, mappeView, moodboardView, migrate, raum, raeume, raumGespeichert, raumEntfernt, save, wahl, PKG_IDS, _intern: { kundeUnterschreibt, wegFragen, wegText, versandStand, versandPruefen, sendenMitMappe, alsVersendet, angebotSpeichern, titel, addRoom, raumAusScan, raumAnlegen, reiterSetzen, auftragsbestaetigung } };
+  return { absageFragen, absageWiedervorlage, absageAbw, alsVorlageKopieren, plusMonate, automatik, anlegen, angebotVersendet, gesperrt, gesperrtFrage, angebotKopieren, dateiZeigen, nachfassen, nachfassTage, nachfassFaellig, nachfassUeber, nachfassStaffel, nachfassFuerMich, nachfassStand, nachfassVorschlag, nachgefasst, nachfassNachricht, nachfassEmpfaenger, subAbsageListe, verfasserVon, teamIdVon, zusageUnterschrieben, zusageTodos, nachweisText, seitTagen, STATUS, ANGEBOT, ALLE, PHASEN, phase, farbe, pill, norm, zugesagt, statusName, statusKurz, raumAngebot, angebotMerken, forget, neu, neuDirekt, neuFuer, kundeUebernehmen, oeffnen, view, mappeView, moodboardView, migrate, raum, raeume, raumGespeichert, raumEntfernt, save, wahl, PKG_IDS, _intern: { gesamtDoc, kundeUnterschreibt, wegFragen, wegText, versandStand, versandPruefen, sendenMitMappe, alsVersendet, angebotSpeichern, titel, addRoom, raumAusScan, raumAnlegen, reiterSetzen, auftragsbestaetigung } };
 })();
 // Ältere Aufrufe (PR „Wohnungen“) laufen weiter
 window.Wohnung = { neu: () => Projekt.neu(), oeffnen: (id) => Projekt.oeffnen(id), view: () => Projekt.view(), raumGespeichert: (p) => Projekt.raumGespeichert(p), raumEntfernt: (p) => Projekt.raumEntfernt(p) };

@@ -351,3 +351,19 @@ tr.xt-titel.ed:hover .xt-tdel, .xt-tdel:focus { opacity: 1; }
 .pb-wahl { display: grid; grid-template-columns: repeat(auto-fill, minmax(88px, 1fr)); gap: 6px; padding: 0 16px 16px; max-height: 60vh; overflow: auto; }
 .pb-wahl button { padding: 0; border: 0; background: none; } .pb-wahl img { width: 100%; aspect-ratio: 4/3; object-fit: cover; border-radius: 6px; }
 .vl-z { border-top: 1px solid var(--line, #e5e7eb); padding: 8px 0; } .vl-z p { margin: 0 0 6px; }
+
+/* ---------- Untertitel je Gewerk (v146) ---------- */
+.xtab tr.xt-ut td { background: #f7f8fa; font-size: 13px; }
+.xtab tr.xt-ut td.xt-nr { color: var(--navy); font-weight: 600; }
+.xtab tr.xt-ut td.r { color: var(--navy); font-weight: 600; }
+.xt-un { display: flex; align-items: center; gap: 10px; min-width: 0; padding-left: 10px; }
+.xt-un b { color: var(--navy); font-weight: 650; flex: none; }
+.xt-ui { flex: 1; min-width: 0; color: var(--muted); font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ut-g { padding: 8px 0; border-bottom: 1px solid var(--line, #ece8e0); }
+.ut-g:last-child { border-bottom: 0; }
+.ut-h { display: flex; justify-content: space-between; gap: 8px; color: var(--navy); }
+.ut-i { display: block; color: var(--muted); font-size: 12px; margin: 2px 0 4px; }
+.ut-p { display: flex; justify-content: space-between; gap: 8px; width: 100%; background: none; border: 0; padding: 6px 0 6px 10px; text-align: left; font: inherit; font-size: 14px; color: inherit; cursor: pointer; }
+.ut-p span { flex: none; color: var(--muted); font-size: 13px; }
+.ut-d { display: flex; align-items: center; gap: 8px; margin: 6px 0 0; font-size: 13px; }
+.ut-d select { flex: 1; min-width: 0; }
