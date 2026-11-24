@@ -415,3 +415,24 @@ details.bs .tot span:last-child { color: var(--muted); }
 .vz-teile { display: flex; flex-direction: column; gap: 4px; margin: 8px 0 0; }
 .vz-teil { display: flex; align-items: center; gap: 8px; font-size: 14px; font-weight: 500; }
 .vz-teil input { width: auto; margin: 0; }
+/* ---------- Bauzeitenplan, optional (v149) ---------- */
+.bp-karte { margin: 0 0 12px; }
+.bp-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; margin: 0 0 10px; padding-bottom: 4px; }
+.bp-chart { display: flex; flex-direction: column; gap: 3px; font-size: 12px; }
+.bp-r { display: grid; grid-template-columns: 110px 1fr; align-items: center; min-height: 20px; }
+.bp-lab { position: sticky; left: 0; z-index: 2; background: var(--card, #fff); padding-right: 6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.bp-spur { display: grid; position: relative; height: 18px; background-image: linear-gradient(to right, var(--line, #e5e7eb) 1px, transparent 1px); background-size: calc(100% / var(--w)) 100%; }
+.bp-kopf .bp-spur { height: auto; background: none; }
+.bp-kopf .bp-spur span { color: var(--muted, #6b7280); font-size: 11px; white-space: nowrap; overflow: hidden; padding-left: 3px; border-left: 1px solid var(--line, #e5e7eb); }
+.bp-bar { grid-row: 1; height: 14px; align-self: center; border-radius: 4px; background: #9aa5b1; }
+.bp-bar.sub { background: var(--navy, #1e3550); }
+.bp-heute { grid-row: 1; justify-self: center; width: 2px; height: 100%; background: #c0392b; z-index: 1; }
+.bp-l { list-style: none; margin: 0; padding: 0; }
+.bp-z { display: flex; align-items: flex-start; gap: 6px; padding: 8px 0; border-top: 1px solid var(--line, #e5e7eb); background: var(--card, #fff); }
+.bp-f { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 5px; }
+.bp-f input { width: 100%; box-sizing: border-box; }
+.bp-dat { display: flex; gap: 8px; }
+.bp-dat label { flex: 1; min-width: 0; display: flex; flex-direction: column; font-size: 12px; color: var(--muted, #6b7280); }
+.bp-weg { flex: none; }
+.bp-neu { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0 4px; }
+.bp-ende { font-weight: 600; }

@@ -402,3 +402,8 @@ html.buero .db-nfm { width: 30px; height: 30px; margin-left: 6px; vertical-align
 /* ---------- Absage (v145) ---------- */
 html.buero .abs-sheet { max-width: 560px; }
 html.buero .abs-gr button { min-height: 34px; padding: 6px 12px; font-size: 13px; border-radius: 7px; }
+/* ---------- Bauzeitenplan (v149): Zeile in einer Reihe ---------- */
+html.buero .bp-f { display: grid; grid-template-columns: minmax(160px, 1.3fr) minmax(260px, auto) minmax(140px, 1fr); gap: 8px; align-items: end; }
+html.buero .bp-f .bp-sub { grid-column: 1 / -1; }
+html.buero .bp-r { grid-template-columns: 180px 1fr; }
+html.buero .bp-spur { --min: 18px; }

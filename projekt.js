@@ -87,7 +87,7 @@ window.Projekt = (() => {
     let subOffen = 0;
     if (norm(w.status) === 'geplant') { try { await AngebotDaten.liste(w); subOffen = subOffenIds(w).length; } catch (e) { console.warn('Sub offen', e); } } // v148
     const idx = (await projectIndex()).filter((x) => x.id !== w.id);
-    idx.unshift({ id: w.id, kind: 'wohnung', nr: w.nr || '', titel: w.titel || '', status: w.status || '', baustart: w.baustart || '', versendetAm: w.versendetAm || '', nachfTage: norm(w.status) === 'angebot' ? nachfassTage(w) : '', verfasser: vf, verfasserId: teamIdVon(vf), ...nachfassIndex(w), absage: w.absage?.grund || '', subOffen, kundeId: w.kundeId || '', objektId: w.objektId || '', customer: w.customer, address: w.address, room: list.length ? summary(list) : 'noch kein Raum', rooms: list.length, fort: window.Fortschritt?.kurz(w) || null, created: w.created, updated: w.updated, thumb: list.find((r) => r?.thumb)?.thumb || '' });
+    idx.unshift({ id: w.id, kind: 'wohnung', nr: w.nr || '', titel: w.titel || '', status: w.status || '', baustart: w.baustart || '', versendetAm: w.versendetAm || '', nachfTage: norm(w.status) === 'angebot' ? nachfassTage(w) : '', verfasser: vf, verfasserId: teamIdVon(vf), ...nachfassIndex(w), absage: w.absage?.grund || '', subOffen, einsatz: bpIndex(w), kundeId: w.kundeId || '', objektId: w.objektId || '', customer: w.customer, address: w.address, room: list.length ? summary(list) : 'noch kein Raum', rooms: list.length, fort: window.Fortschritt?.kurz(w) || null, created: w.created, updated: w.updated, thumb: list.find((r) => r?.thumb)?.thumb || '' });
     await kvSet('projectIndex', idx);
     if (norm(w.status) !== 'angebot' && w.nachfass?.log?.length) nachfassTodosZu(w.id); // zugesagt oder abgesagt: Nachfassen ist erledigt
   }
@@ -319,6 +319,7 @@ window.Projekt = (() => {
     if ($('#wSubAuf')) subAuftragKarte($('#wSubAuf'), w).catch((e) => console.warn('Auftrag an Subs', e));
     if ($('#wBsInfo')) bsInfoKarte($('#wBsInfo'), w).catch((e) => console.warn('Baustart mitteilen', e));
     if ($('#wVzHin')) vzHinweis($('#wVzHin'), w).catch((e) => console.warn('Vorauszahlung', e));
+    if ($('#wBauplan')) bauplanKarte($('#wBauplan'), w).catch((e) => console.warn('Bauzeitenplan', e));
     $$('[data-bsinfo]').forEach((b) => (b.onclick = async () => { w.baustartFrage = { t: Date.now(), alt: '', neu: w.baustart || '' }; await save(w); await neuZeichnen(w); setTimeout(() => $('#wBsInfo')?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 250); }));
     zahlplanBind(w);
     $$('[data-nfabs]').forEach((b) => (b.onclick = () => setzen('abgesagt', { grund: vorgabe('nachfassAbsageGrund') || 'Keine Rückmeldung' })));
@@ -616,6 +617,7 @@ window.Projekt = (() => {
       <div id="wSubAbs"></div>
       ${norm(w.status) === 'geplant' ? '<div class="card pj-todo" id="wTodo"></div>' : ''}
       <div id="wSubAuf"></div>
+      <div id="wBauplan"></div>
       <div id="wTermine"></div>
       <div class="sec-h"><h2>Hinweise zur Baustelle</h2></div>
       <div class="card kform"><textarea id="wHinweis" rows="3" placeholder="z. B. Schlüssel beim Nachbarn, Parken im Hof, Hund im Haus">${esc(w.hinweise || '')}</textarea></div>
@@ -1497,6 +1499,7 @@ window.Projekt = (() => {
         ${subGelbHtml(w)}
         ${window.Angebot?._intern.vzTeil(w) ? '<div id="wVzHin"></div>' : ''}
         ${vorzeitigHtml(w)}` : ''}
+      ${st === 'geplant' || st === '' ? `<div id="wBpEnde">${bpEndeHtml(w)}</div>` : ''}
       ${st === 'angebot' && w.versendetAm && nachfassUeber(w) < 0 ? `<p class="hint" style="margin:0 0 10px">Versendet am ${esc(datumText(w.versendetAm))}</p>` : ''}
       ${st === 'angebot' && w.versendetAm ? nachfassBlock(w) + nachfassFeld(w) : ''}
       ${st === 'abgesagt' && w.absage?.grund ? `<p class="hint" style="margin:0 0 10px">Grund: ${esc(w.absage.grund)} · ${esc(new Date(w.absage.t).toLocaleDateString('de-DE'))}</p>${absageInfoHtml(w)}` : ''}
@@ -2622,7 +2625,7 @@ window.Projekt = (() => {
         const p = Partner.byId(pid), chk = frei48b(p);
         const info = [e?.dokKey ? `Auftrag erstellt am ${datumText(e.erstelltAm || heuteIso())}${e.netto ? ' · ' + eur2(e.netto) + ' netto' : ''}` : '',
           e?.beauftragtAm ? `beauftragt am ${datumText(e.beauftragtAm)}${e.weg ? ' per ' + (Besuch.WEG_NAME[e.weg] || e.weg) : ''}` : '',
-          e?.bestaetigtAm ? `bestätigt am ${datumText(e.bestaetigtAm)}` : ''].filter(Boolean).join(' · ');
+          e?.bestaetigtAm ? `bestätigt am ${datumText(e.bestaetigtAm)}` : '', bpEinsatzKurz(w, pid)].filter(Boolean).join(' · ');
         const knopf = (attr, txt, ic, zweit = true) => `<button type="button" class="btn ${zweit ? 'secondary ' : ''}small" ${attr}="${esc(pid)}">${icon(ic)} ${txt}</button>`;
         return `<li class="sa-z" data-sa="${esc(pid)}">
           <div class="sa-kopf"><b>${esc(Partner.titel(p) || 'Partner')}</b>
@@ -2732,7 +2735,7 @@ window.Projekt = (() => {
     const art = !w.baustart ? 'Offen' : e.verschoben ? 'Verschoben' : '';
     const alt = e.verschoben ? e.letzt.datum : '';
     const werte = { anrede: e.kunde ? Kunden.briefAnrede(k) : String(e.p.inhaber || '').trim() ? `Hallo ${String(e.p.inhaber).trim()},` : 'Hallo,',
-      datum: WTAG(w.baustart), neu: WTAG(w.baustart), alt: WTAG(alt), projekt: w.titel || 'Projekt', objekt: Kunden.einzeilig(o?.adresse || w.address || ''), ansprechpartner: bsAnsprech(w) };
+      datum: WTAG(w.baustart), neu: WTAG(w.baustart), alt: WTAG(alt), projekt: w.titel || 'Projekt', objekt: Kunden.einzeilig(o?.adresse || w.address || ''), ansprechpartner: bsAnsprech(w), einsatz: e.kunde ? '' : bpEinsatzSatz(w, an) };
     const ziel = e.kunde ? nachfassEmpfaenger(k) : e.p;
     const titel = `${art === 'Offen' ? 'Baustart offen' : art === 'Verschoben' ? 'Baustart verschoben' : 'Baustart'}: ${e.name}`;
     const datei = `Baustart_${w.titel || 'Projekt'}${e.kunde ? '' : '_' + e.name}`;
@@ -2764,6 +2767,178 @@ window.Projekt = (() => {
     if (!el.isConnected) return;
     const plan = (Array.isArray(w.abschlagPlan) && w.abschlagPlan.length ? w.abschlagPlan : vorgabe('abschlagPlan')) || [];
     el.innerHTML = bez ? '' : `<p class="stk-tipp warn vz-faellig" style="margin:0 0 6px">Vorauszahlung vor Baustart fällig<small class="muted">${esc(`${t}. Teil, ${String(plan[t - 1]).replace('.', ',')} % · ${da ? 'Rechnung geschrieben, noch nicht bezahlt' : 'noch keine Rechnung'}`)}</small></p>`;
+  }
+  // ---------- v149: Bauzeitenplan (optional, Runde 17, B6) ----------
+  // w.bauplan = [{ id, partnerId?, text, von, bis, notiz }]. Ganz freiwillig: ohne Plan läuft alles nur mit dem Baustart.
+  // Keine Warnung bei Doppelbelegung eines Subs (Wunsch Felix). Nichts geht von selbst raus.
+  const bpZeilen = (w) => (Array.isArray(w?.bauplan) ? w.bauplan : []);
+  const bpBis = (z) => z.bis || z.von || '';
+  const bpName = (z) => {
+    const p = z.partnerId ? window.Partner?.byId(z.partnerId) : null;
+    const n = p ? Partner.titel(p) || 'Subunternehmer' : '';
+    return [n, String(z.text || '').trim()].filter(Boolean).join(' · ') || 'Ohne Bezeichnung';
+  };
+  const bpDM = (iso) => (iso ? `${+iso.slice(8, 10)}.${+iso.slice(5, 7)}.` : '');
+  const bpTag = (iso) => (iso ? new Date(iso + 'T12:00').toLocaleDateString('de-DE', { weekday: 'short', day: '2-digit', month: '2-digit' }) : '');
+  const bpVonBis = (z) => (z.von ? (bpBis(z) !== z.von ? `${bpDM(z.von)}–${bpDM(bpBis(z))}` : bpDM(z.von)) : '');
+  /** Bauende laut Plan = spätestes Bis (leer ohne Plan). */
+  const bpEnde = (w) => bpZeilen(w).map(bpBis).filter(Boolean).sort().pop() || '';
+  function bpEndeHtml(w) {
+    const e = bpEnde(w);
+    return e ? `<p class="hint bp-ende" style="margin:0 0 6px">Bauende laut Bauzeitenplan: ${esc(WTAG(e))}</p>` : '';
+  }
+  /** „Einsatz 3.12.–7.12.“ für die Sub-Zeile (v147). */
+  function bpEinsatzKurz(w, pid) {
+    const l = bpZeilen(w).filter((z) => z.partnerId === pid && z.von).map(bpVonBis);
+    return l.length ? 'Einsatz ' + l.join(', ') : '';
+  }
+  /** {einsatz} in der Baustart-Mitteilung an den Sub: Satz aus Vorgabe textEinsatz, ohne Einsatz leer (Zeile fällt weg). */
+  function bpEinsatzSatz(w, pid) {
+    const l = bpZeilen(w).filter((z) => z.partnerId === pid && z.von).map((z) => (bpBis(z) !== z.von ? `${bpTag(z.von)} bis ${bpTag(bpBis(z))}` : bpTag(z.von)));
+    return l.length ? vorgabeText('textEinsatz', { zeitraum: l.join(', ') }).trim() : '';
+  }
+  /** Für projectIndex (Kalender): nur eingeplant oder läuft. */
+  function bpIndex(w) {
+    if (!['geplant', ''].includes(norm(w.status))) return [];
+    return bpZeilen(w).filter((z) => z.von).map((z) => ({ t: bpName(z), von: z.von, bis: bpBis(z) }));
+  }
+  /** Kalender: ein ganztägiger Eintrag je Werktag eines Einsatzes (vorausgerechnet, kein Termin). */
+  function bpKalender(idx, von, bis) {
+    const out = [];
+    if (vorgabe('bauplanKalender') === 'nein') return out;
+    for (const x of idx || []) for (const [i, z] of (x.einsatz || []).entries()) {
+      const d = new Date(z.von + 'T12:00'), ende = z.bis || z.von;
+      for (let n = 0; n < 370; n++) {
+        const s = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+        if (s > ende || s > bis) break;
+        if (s >= von && d.getDay() % 6) out.push({ typ: 'bauplan', art: 'baustelle', id: `bp-${x.id}-${i}-${s}`, projektId: x.id, kundeId: x.kundeId, datum: s, ganztag: true,
+          titel: `Einsatz: ${z.t}`, sub: [x.titel, `${bpDM(z.von)}–${bpDM(ende)}`].filter(Boolean).join(' · ') });
+        d.setDate(d.getDate() + 1);
+      }
+    }
+    return out;
+  }
+  /** Balken nach Wochen (Mo–Fr), Wochenenden fallen weg. */
+  function bpChart(w) {
+    const l = bpZeilen(w).filter((z) => z.von);
+    if (!l.length) return '';
+    const D = (s) => new Date(s + 'T12:00');
+    const min = l.map((z) => z.von).sort()[0], max = l.map(bpBis).sort().pop();
+    const start = D(min); start.setDate(start.getDate() - ((start.getDay() + 6) % 7));
+    const pos = (s, ende) => {
+      const t = Math.round((D(s) - start) / 864e5), wk = Math.floor(t / 7), dw = t % 7;
+      return dw > 4 ? (ende ? wk * 5 + 4 : (wk + 1) * 5) : wk * 5 + dw;
+    };
+    const W = Math.min(104, Math.floor(Math.round((D(max) - start) / 864e5) / 7) + 1), N = W * 5;
+    const kw = (d) => { const t = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate())); t.setUTCDate(t.getUTCDate() + 4 - (t.getUTCDay() || 7)); return Math.ceil(((t - new Date(Date.UTC(t.getUTCFullYear(), 0, 1))) / 864e5 + 1) / 7); };
+    const wochen = Array.from({ length: W }, (_, i) => { const d = new Date(start); d.setDate(d.getDate() + i * 7); return `<span style="grid-column:${i * 5 + 1}/span 5">KW ${kw(d)} · ${d.getDate()}.${d.getMonth() + 1}.</span>`; }).join('');
+    const h = heuteIso(), hc = h >= min && h <= max && (D(h).getDay() % 6) ? pos(h) : -1;
+    const spur = (inhalt) => `<div class="bp-spur" style="grid-template-columns:repeat(${N},minmax(13px,1fr));--w:${W}">${hc >= 0 && hc < N ? `<i class="bp-heute" style="grid-column:${hc + 1}"></i>` : ''}${inhalt}</div>`;
+    const zeilen = l.map((z) => {
+      let a = pos(z.von), b = pos(bpBis(z), true); if (b < a) b = a; a = Math.min(a, N - 1); b = Math.min(b, N - 1);
+      return `<div class="bp-r"><span class="bp-lab">${esc(bpName(z))}</span>${spur(`<b class="bp-bar ${z.partnerId ? 'sub' : ''}" style="grid-column:${a + 1}/${b + 2}" title="${esc(bpVonBis(z))}"></b>`)}</div>`;
+    }).join('');
+    return `<div class="bp-scroll"><div class="bp-chart" style="min-width:${110 + N * 13}px"><div class="bp-r bp-kopf"><span class="bp-lab"></span>${spur(wochen)}</div>${zeilen}</div></div>`;
+  }
+  const bpOffen = new Set();
+  /** Abschnitt „Bauzeitenplan (optional)“ in der Projekt-Übersicht, zu und unauffällig, solange er leer ist. */
+  async function bauplanKarte(el, w) {
+    const st = norm(w.status), l = bpZeilen(w);
+    if (!['geplant', ''].includes(st) && !l.length) { el.innerHTML = ''; return; }
+    let subs = [];
+    try { subs = (await subAuftragListe(w)).map((s) => s.partnerId); } catch {}
+    for (const e of w.subAuftraege || []) if (e?.partnerId && !subs.includes(e.partnerId) && window.Partner?.byId(e.partnerId)) subs.push(e.partnerId);
+    if (!el.isConnected) return;
+    const ende = bpEnde(w);
+    const zf = l.length ? `${l.length} ${l.length === 1 ? 'Eintrag' : 'Einträge'}${ende ? ' · Bauende ' + bpTag(ende) : ''}` : 'Nur bei Bedarf. Ohne Plan reicht der Baustart.';
+    el.innerHTML = `<details class="more card bs bp-karte" ${bpOffen.has(w.id) ? 'open' : ''}><summary>${icon('calendar')}<span>Bauzeitenplan (optional)<small>${esc(zf)}</small></span>${icon('chevron', 'more-chev')}</summary>
+      ${bpChart(w)}
+      <ul class="bp-l">${l.map((z) => `<li class="bp-z" data-bpz="${esc(z.id)}">
+        ${l.length > 1 ? griffHtml() : ''}
+        <div class="bp-f">
+          ${z.partnerId ? `<b class="bp-sub">${esc(Partner.titel(Partner.byId(z.partnerId)) || 'Subunternehmer')}</b>` : ''}
+          <input type="text" data-bpf="text" value="${esc(z.text || '')}" placeholder="${z.partnerId ? 'Was? (optional)' : 'Gewerk oder Text, z. B. Estrich trocknen'}">
+          <div class="bp-dat"><label>von<input type="date" data-bpf="von" value="${esc(z.von || '')}"></label><label>bis<input type="date" data-bpf="bis" value="${esc(z.bis || '')}"></label></div>
+          <input type="text" data-bpf="notiz" value="${esc(z.notiz || '')}" placeholder="Notiz (optional)">
+        </div>
+        <button type="button" class="icon-btn bp-weg" data-bpweg aria-label="Zeile löschen">${icon('x')}</button></li>`).join('')}</ul>
+      <div class="bp-neu">${subs.map((pid) => `<button type="button" class="btn secondary small" data-bpneu="${esc(pid)}">${icon('plus')} Einsatz ${esc(Partner.titel(Partner.byId(pid)) || 'Subunternehmer')}</button>`).join('')}
+        <button type="button" class="btn secondary small" data-bpneu="">${icon('plus')} Eigene Zeile</button></div>
+      ${l.some((z) => z.von) ? `<button type="button" class="link-add" data-bppdf>${icon('file')} Plan als PDF an Kunde oder Subunternehmer</button>` : ''}
+      <p class="hint" style="margin:6px 0 0">Ganz freiwillig, z. B. für größere Baustellen. Ein Subunternehmer darf sich überschneiden. DOM schickt nichts von selbst.</p></details>`;
+    const neu = () => bauplanKarte(el, w).catch((e) => console.warn('Bauzeitenplan', e));
+    const sichern = async () => {
+      delete w.isNew; await save(w);
+      const be = $('#wBpEnde'); if (be) be.innerHTML = bpEndeHtml(w);
+      if ($('#wSubAuf')) subAuftragKarte($('#wSubAuf'), w).catch(() => {}); // „Einsatz …“ in der Sub-Zeile
+      neu();
+    };
+    $('details', el).ontoggle = (e) => (e.target.open ? bpOffen.add(w.id) : bpOffen.delete(w.id));
+    $$('[data-bpneu]', el).forEach((b) => (b.onclick = async () => {
+      const da = bpZeilen(w).map(bpBis).filter(Boolean).sort().pop();
+      let von = w.baustart || heuteIso();
+      if (da) { const d = new Date(da + 'T12:00'); d.setDate(d.getDate() + 1); while (!(d.getDay() % 6)) d.setDate(d.getDate() + 1); von = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; }
+      w.bauplan = [...bpZeilen(w), { id: uid(), ...(b.dataset.bpneu ? { partnerId: b.dataset.bpneu } : {}), text: '', von, bis: von, notiz: '' }];
+      bpOffen.add(w.id);
+      await sichern();
+    }));
+    $$('.bp-z', el).forEach((li) => {
+      const z = bpZeilen(w).find((x) => x.id === li.dataset.bpz); if (!z) return;
+      $$('[data-bpf]', li).forEach((i) => (i.onchange = async () => {
+        const f = i.dataset.bpf; z[f] = i.value.trim();
+        if (f === 'von' && z.von && (!z.bis || z.bis < z.von)) z.bis = z.von;
+        if (f === 'bis' && z.bis && z.von && z.bis < z.von) z.von = z.bis;
+        await sichern();
+      }));
+      $('[data-bpweg]', li).onclick = async () => { w.bauplan = bpZeilen(w).filter((x) => x !== z); await sichern(); toast('Zeile gelöscht'); };
+    });
+    ziehbar($('.bp-l', el), '.bp-z', async (von, nach) => { const a = [...bpZeilen(w)]; a.splice(nach, 0, a.splice(von, 1)[0]); w.bauplan = a; await sichern(); });
+    if ($('[data-bppdf]', el)) $('[data-bppdf]', el).onclick = () => bauplanSchicken(w).catch((e) => { console.error(e); toast('Ging nicht: ' + e.message, 4000); });
+  }
+  /** PDF „Bauzeitenplan“ (Besuch.brief) an Kunde oder einen Sub aus dem Plan, Weg wählbar (Besuch.nachricht), nur per Klick. */
+  async function bauplanSchicken(w) {
+    const k = Kunden.byId(w.kundeId);
+    const pids = [...new Set(bpZeilen(w).map((z) => z.partnerId).filter((id) => id && Partner.byId(id)))];
+    const an = await sheet('Bauzeitenplan schicken an', [...(k ? [{ label: 'Kunde: ' + (Kunden.name(k) || 'Kunde'), icon: icon('user'), value: 'kunde' }] : []),
+      ...pids.map((id) => ({ label: Partner.titel(Partner.byId(id)) || 'Subunternehmer', sub: 'Subunternehmer', icon: icon('users'), value: id }))]);
+    if (!an) return;
+    const kunde = an === 'kunde', p = kunde ? null : Partner.byId(an), o = k && w.objektId ? Kunden.objekt(k, w.objektId) : null;
+    const werte = { anrede: kunde ? Kunden.briefAnrede(k) : String(p.inhaber || '').trim() ? `Hallo ${String(p.inhaber).trim()},` : 'Hallo,',
+      projekt: w.titel || 'Projekt', objekt: Kunden.einzeilig(o?.adresse || w.address || ''), baustart: w.baustart ? WTAG(w.baustart) : 'nach Absprache', bauende: bpEnde(w) ? WTAG(bpEnde(w)) : '', ansprechpartner: bsAnsprech(w) };
+    const name = kunde ? Kunden.name(k) || 'Kunde' : Partner.titel(p) || 'Subunternehmer';
+    const zeilen = bpZeilen(w).filter((z) => z.von);
+    const f = await Besuch.brief({
+      anschrift: kunde ? Kunden.postanschrift(k) || Besuch.anschriftVon(k) : Besuch.anschriftVon(p),
+      betreff: textVon('textBauplanBetreff', werte), text: textVon('textBauplanEinleitung', werte), datei: `Bauzeitenplan_${w.titel || 'Projekt'}${kunde ? '' : '_' + name}`,
+      danach: async ({ doc, y, M, R, NAVY, platz }) => {
+        const C = { was: M, von: M + 92, bis: M + 120, notiz: M + 148 };
+        y = await platz(y + 2, 12);
+        doc.setFont('helvetica', 'bold'); doc.setFontSize(8.5); doc.setTextColor(110);
+        doc.text('Was', C.was, y); doc.text('von', C.von, y); doc.text('bis', C.bis, y); doc.text('Notiz', C.notiz, y);
+        doc.setDrawColor(200); doc.line(M, y + 1.5, R, y + 1.5); y += 6;
+        doc.setFont('helvetica', 'normal'); doc.setFontSize(9.5); doc.setTextColor(30);
+        for (const z of zeilen) {
+          const a = doc.splitTextToSize(bpName(z), C.von - C.was - 3), n = doc.splitTextToSize(String(z.notiz || ''), R - C.notiz);
+          const hz = 4.6 * Math.max(a.length, n.length || 1) + 1.5;
+          y = await platz(y, hz);
+          const eigen = !kunde && z.partnerId === an;
+          if (eigen) doc.setFont('helvetica', 'bold');
+          doc.text(a, C.was, y); doc.text(bpTag(z.von), C.von, y); doc.text(bpTag(bpBis(z)), C.bis, y); if (n.length) doc.text(n, C.notiz, y);
+          doc.setFont('helvetica', 'normal');
+          y += hz;
+        }
+        if (bpEnde(w)) { y = await platz(y + 2, 8); doc.setFont('helvetica', 'bold'); doc.setTextColor(...NAVY); doc.text(`Voraussichtliches Bauende: ${WTAG(bpEnde(w))}`, M, y); doc.setFont('helvetica', 'normal'); doc.setTextColor(30); }
+      },
+    });
+    const weg = await Besuch.nachricht(kunde ? nachfassEmpfaenger(k) : p, 'Bauzeitenplan an ' + name, textVon('textBauplanMail', werte), textVon('textBauplanBetreff', werte),
+      { anhang: f, datei: f.name.replace(/\.pdf$/i, ''), ...(kunde ? { mail: Kunden.angebotMail(k), mailLabel: 'für Angebote' } : {}) });
+    if (!wegGilt(weg)) return;
+    const text = `Bauzeitenplan geschickt per ${Besuch.WEG_NAME[weg] || weg}: Projekt „${w.titel || 'Projekt'}“`;
+    if (kunde) {
+      k.zeitleiste = [...(Array.isArray(k.zeitleiste) ? k.zeitleiste : []), { id: uid(), t: Date.now(), art: weg === 'mail' ? 'mail' : 'notiz', text, wer: meinName().split(' ')[0] }];
+      await Kunden.speichern(k);
+    } else await saZeitleiste(p, text, weg === 'mail' ? 'mail' : 'notiz');
+    toast('Vermerkt');
   }
   /** Karte „Zahlungsplan“ (Angebot und Projekt › Geld): eigener Plan je Vorgang (w.abschlagPlan) und Kästchen „als Vorauszahlung vor Baustart“ (w.vorauszahlung = { teil }). */
   function zahlplanKarte(w) {
@@ -2955,7 +3130,7 @@ window.Projekt = (() => {
     return w2;
   }
 
-  return { absageFragen, absageWiedervorlage, absageAbw, alsVorlageKopieren, plusMonate, automatik, anlegen, angebotVersendet, gesperrt, gesperrtFrage, angebotKopieren, dateiZeigen, nachfassen, nachfassTage, nachfassFaellig, nachfassUeber, nachfassStaffel, nachfassFuerMich, nachfassStand, nachfassVorschlag, nachgefasst, nachfassNachricht, nachfassEmpfaenger, subAbsageListe, verfasserVon, teamIdVon, zusageUnterschrieben, zusageTodos, nachweisText, ansprechName, ansprechIds, projektWer, einplanTodosWer, EINPLAN_ARTEN, subAuftragListe, subLeistungen, subAuftragPdf, frei48b, subGelb, subOffenIds, bsEmpfaenger, vzHinweis, seitTagen, STATUS, ANGEBOT, ALLE, PHASEN, phase, farbe, pill, norm, zugesagt, statusName, statusKurz, raumAngebot, angebotMerken, forget, neu, neuDirekt, neuFuer, kundeUebernehmen, oeffnen, view, mappeView, moodboardView, migrate, raum, raeume, raumGespeichert, raumEntfernt, save, wahl, PKG_IDS, _intern: { gesamtDoc, kundeUnterschreibt, wegFragen, wegText, versandStand, versandPruefen, sendenMitMappe, alsVersendet, angebotSpeichern, titel, addRoom, raumAusScan, raumAnlegen, reiterSetzen, auftragsbestaetigung } };
+  return { absageFragen, absageWiedervorlage, absageAbw, alsVorlageKopieren, plusMonate, automatik, anlegen, angebotVersendet, gesperrt, gesperrtFrage, angebotKopieren, dateiZeigen, nachfassen, nachfassTage, nachfassFaellig, nachfassUeber, nachfassStaffel, nachfassFuerMich, nachfassStand, nachfassVorschlag, nachgefasst, nachfassNachricht, nachfassEmpfaenger, subAbsageListe, verfasserVon, teamIdVon, zusageUnterschrieben, zusageTodos, nachweisText, ansprechName, ansprechIds, projektWer, einplanTodosWer, EINPLAN_ARTEN, subAuftragListe, subLeistungen, subAuftragPdf, frei48b, subGelb, subOffenIds, bsEmpfaenger, bpKalender, bpEnde, bpEinsatzSatz, vzHinweis, seitTagen, STATUS, ANGEBOT, ALLE, PHASEN, phase, farbe, pill, norm, zugesagt, statusName, statusKurz, raumAngebot, angebotMerken, forget, neu, neuDirekt, neuFuer, kundeUebernehmen, oeffnen, view, mappeView, moodboardView, migrate, raum, raeume, raumGespeichert, raumEntfernt, save, wahl, PKG_IDS, _intern: { gesamtDoc, kundeUnterschreibt, wegFragen, wegText, versandStand, versandPruefen, sendenMitMappe, alsVersendet, angebotSpeichern, titel, addRoom, raumAusScan, raumAnlegen, reiterSetzen, auftragsbestaetigung } };
 })();
 // Ältere Aufrufe (PR „Wohnungen“) laufen weiter
 window.Wohnung = { neu: () => Projekt.neu(), oeffnen: (id) => Projekt.oeffnen(id), view: () => Projekt.view(), raumGespeichert: (p) => Projekt.raumGespeichert(p), raumEntfernt: (p) => Projekt.raumEntfernt(p) };

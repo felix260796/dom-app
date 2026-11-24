@@ -108,6 +108,8 @@ window.Kalender = (() => {
     }
     // Kontakt halten: Anrufe und Treffen nach Rhythmus, mit Tagesgrenze vorausgerechnet (pflege.js)
     if (window.Pflege) out.push(...Pflege.eintraege(von, bis, w));
+    // Bauzeitenplan (v149): Einsätze je Werktag, aus projectIndex vorausgerechnet
+    if (window.Projekt?.bpKalender) out.push(...Projekt.bpKalender(projIdx, von, bis));
     const h = ausgeblendet();
     return out.filter((e) => !filter || !h.has(e.art)).sort((a, b) => a.datum.localeCompare(b.datum) || (a.ganztag ? -1 : b.ganztag ? 1 : (a.von || '').localeCompare(b.von || '')));
   }
@@ -117,7 +119,7 @@ window.Kalender = (() => {
   };
   const zeile = (e) => `<button class="tz" data-e="${esc(e.id)}" style="--c:${art(e.art)[2]}">
       <span class="tz-z">${e.ganztag ? (e.typ === 'geb' ? icon('cake') : e.typ === 'nachf' ? icon('phone') : e.typ === 'pflege' ? icon(e.pflegeArt === 'essen' ? 'users' : 'phone') : 'ganztags') : `${esc(e.von || '')}${e.bis ? `<small>${esc(e.bis)}</small>` : ''}`}</span>
-      <span class="tz-t"><b>${esc(e.titel || art(e.art)[1])}</b><span>${esc(e.typ === 'geb' || e.typ === 'nachf' || e.typ === 'pflege' ? e.sub || '' : [werText(e), zuKunde(e), e.ort].filter(Boolean).join(' · ') || art(e.art)[1])}</span></span>
+      <span class="tz-t"><b>${esc(e.titel || art(e.art)[1])}</b><span>${esc(e.typ === 'geb' || e.typ === 'nachf' || e.typ === 'pflege' || e.typ === 'bauplan' ? e.sub || '' : [werText(e), zuKunde(e), e.ort].filter(Boolean).join(' · ') || art(e.art)[1])}</span></span>
       ${e.typ === 'pflege' ? `<span class="tz-tel" data-ktel role="button" aria-label="Anrufen">${icon('phone')}</span>` : icon('chevron', 'pc-chev')}</button>`;
   /** Klick auf einen Eintrag: Termin bearbeiten bzw. Kunde/Subunternehmer öffnen. */
   function bindZeilen(el, list, zurueck) {
@@ -125,6 +127,7 @@ window.Kalender = (() => {
       const e = list.find((x) => x.id === b.dataset.e); if (!e) return;
       if (e.typ === 'pflege' && ev?.target?.closest?.('[data-ktel]')) return Pflege.anrufenEintrag(e, () => (zurueck ? zurueck() : view())); // kleines Telefon: direkt anrufen
       if (e.typ === 'termin') return bearbeiten(alle.get(e.id), zurueck);
+      if (e.typ === 'bauplan') { state.kalender = false; return Projekt.oeffnen(e.projektId); }
       if (e.typ === 'nachf') { state.kalender = false; return kvGet('wohnung:' + e.projektId).then((w) => { if (w) { w.mappe ??= {}; switchTab('angebote', { wohnung: w }); } }); }
       if (e.typ === 'pflege' && e.datum === heute()) { const c = window.Pflege?.heuteListe(e.pflegeArt).find((y) => y.x.id === (e.kundeId || e.partnerId)); if (c) return Pflege.nachfrage(c, () => (zurueck ? zurueck() : view()), `${Pflege.ARTEN[c.art].titel}: ${c.name}`); }
       if (e.kundeId) return Kunden.oeffnen(e.kundeId);
