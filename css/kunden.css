@@ -125,6 +125,20 @@
 .nf-vor span { flex: 1; }
 .nf-body { padding: 4px 16px 18px; display: flex; flex-direction: column; gap: 8px; }
 .nf-body textarea { width: 100%; }
+/* ---------- Absage mit Grund und Preis (v145) ---------- */
+.abs-gr { display: flex; flex-wrap: wrap; gap: 8px; }
+.abs-gr button { display: inline-flex; flex-direction: column; align-items: center; justify-content: center; min-height: 42px; padding: 8px 14px; border-radius: 12px; border: 1.5px solid var(--line); background: #fff; color: var(--ink, #1c2430); font-weight: 600; font-size: 14px; line-height: 1.2; }
+.abs-gr button small { font-size: 11px; font-weight: 600; color: #c0392b; }
+.abs-gr button.on { background: #c0392b; border-color: #c0392b; color: #fff; }
+.abs-gr button.on small { color: rgba(255,255,255,.85); }
+.abs-preis { display: flex; flex-direction: column; gap: 6px; padding: 10px 12px; border-radius: 12px; background: var(--bg, #f4f5f7); }
+.abs-preis[hidden] { display: none; }
+.abs-preis label { margin: 0; }
+.abs-art { display: grid; grid-template-columns: 1fr 1fr; }
+.abs-wv { margin: 2px 0; }
+.pcard.abg { opacity: .55; }
+.aw-preis { display: block; font-size: 12.5px; color: var(--muted); margin-top: 2px; }
+.aw-schnitt { margin: 8px 0 4px; }
 .nf-erg button.on { background: var(--navy); color: #fff; }
 .hz-nf { display: flex; align-items: center; gap: 8px; }
 .hz-nf .pcard { flex: 1; min-width: 0; }

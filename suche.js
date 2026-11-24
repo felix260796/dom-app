@@ -26,13 +26,13 @@ window.Suche = (() => {
     const idx = await projectIndex();
     const pName = (id) => { const x = idx.find((y) => y.id === id); return x ? [x.titel || x.room || 'Projekt', Kunden.name(Kunden.byId(x.kundeId)) || x.customer].filter(Boolean).join(' · ') : ''; };
     const gruppen = [];
-    const zeile = (ziel, ic, titel, sub, extra = '') => `<button class="pcard" data-su="${esc(ziel)}"><span class="pc-ph">${icon(ic)}</span><span class="pc-t"><b>${esc(titel)}</b>${extra}<span class="muted">${esc(sub)}</span></span>${icon('chevron', 'pc-chev')}</button>`;
+    const zeile = (ziel, ic, titel, sub, extra = '', kl = '') => `<button class="pcard${kl}" data-su="${esc(ziel)}"><span class="pc-ph">${icon(ic)}</span><span class="pc-t"><b>${esc(titel)}</b>${extra}<span class="muted">${esc(sub)}</span></span>${icon('chevron', 'pc-chev')}</button>`;
     const gruppe = (titel, z) => { if (z.length) gruppen.push(`<div class="sec-h"><h2>${titel}</h2><span class="count">${z.length}</span></div><div class="plist">${z.slice(0, 20).join('')}</div>`); };
 
     gruppe('Kunden', Kunden.liste().filter((k) => passt(`${Kunden.name(k)} ${k.nr} ${k.telefon} ${k.email} ${k.privat} ${k.objekte.map((o) => `${o.name} ${o.adresse}`).join(' ')} ${k.hv?.firma || ''}`, woerter))
       .map((k) => zeile('k:' + k.id, 'user', Kunden.name(k) || 'Ohne Namen', [k.nr && `Nr. ${k.nr}`, Kunden.ort(k)].filter(Boolean).join(' · '))));
     gruppe('Projekte und Angebote', idx.filter((x) => passt(`${x.titel || ''} ${x.room || ''} ${x.nr || ''} ${x.customer || ''} ${x.address || ''} ${Kunden.name(Kunden.byId(x.kundeId)) || ''}`, woerter))
-      .map((x) => zeile('p:' + x.id, 'home', x.titel || x.room || 'Projekt', [x.nr, Kunden.name(Kunden.byId(x.kundeId)) || x.customer, x.address].filter(Boolean).join(' · '), Projekt.pill(x.status))));
+      .map((x) => { const ab = Projekt.norm(x.status) === 'abgesagt'; return zeile('p:' + x.id, 'home', x.titel || x.room || 'Projekt', [x.nr, Kunden.name(Kunden.byId(x.kundeId)) || x.customer, x.address, ab && x.absage ? 'Grund: ' + x.absage : ''].filter(Boolean).join(' · '), Projekt.pill(x.status), ab ? ' abg' : ''); }));
     gruppe('Rechnungen an Kunden', (window.Rechnung?.liste() || []).filter((r) => passt(`${r.nr} ${r.titel || ''} ${pName(r.projektId)}`, woerter))
       .map((r) => zeile('r:' + r.id, 'euro', `${r.nr} · ${eur(Rechnung.zahlbetrag(r))}`, [pName(r.projektId), r.bezahlt ? 'bezahlt' : `fällig ${tag(r.faellig)}`].filter(Boolean).join(' · '))));
     const vonText = (b) => window.Partner?.byId(b.partnerId)?.firma || window.Partner?.byId(b.partnerId)?.inhaber || b.von || 'Eingangsrechnung';

@@ -289,18 +289,20 @@ window.Projekt = (() => {
     if (k && $('#wTermine')) window.Kalender?.abschnitt($('#wTermine'), { kundeId: k.id, objektId: w.objektId, projektId: w.id, zurueck: () => view() });
     const setzen = async (v, opt = {}) => {
       // Absage: Grund festhalten (für später: „da war ich schon, abgesagt wegen …“). opt.grund = Vorschlag oben (v142, keine Rückmeldung)
+      // v145: Gründe als Knopfzeile in einem Fenster, bei „Zu teuer“/„Anderer Anbieter“ optional Preis (netto, intern), Wiedervorlage
+      let abs = null;
       if (v === 'abgesagt') {
-        const gr = vorgabe('absageGruende').map((x) => ({ label: x, value: x }));
-        if (opt.grund) { const i = gr.findIndex((x) => x.value === opt.grund); const vor = i >= 0 ? gr.splice(i, 1)[0] : { label: opt.grund, value: opt.grund }; gr.unshift({ ...vor, sub: 'Vorschlag', icon: icon('check'), color: '#c0392b' }); }
-        const g = await sheet('Warum abgesagt?', gr);
-        if (g === null) return;
-        w.absage = { grund: g, t: Date.now() };
+        const unser = await unserNettoVon(w, list);
+        abs = await absageFragen(w, { vorschlag: opt.grund || '', unser });
+        if (!abs) return;
+        w.absage = { grund: abs.grund, t: Date.now(), ...(abs.preis > 0 ? { preis: abs.preis, preisArt: abs.preisArt } : {}), ...(unser > 0 ? { unserNetto: unser } : {}), ...(abs.erinnern ? { wv: plusMonate(+vorgabe('absageWiedervorlageMonate') || 0) } : {}) };
         await pdfInDokumente(w); // das abgesagte Angebot bleibt als PDF beim Kunden
-      }
+      } else if (norm(w.status) === 'abgesagt' && norm(v) !== 'abgesagt') todoZu('absageWv:' + w.id); // Absage zurückgenommen: Erinnerung erledigt
       if (v === 'angebot' && norm(w.status) !== 'angebot') { w.versendetAm = heuteIso(); if (w.nachfass) delete w.nachfass.am; }
       if (norm(v) !== norm(w.status)) (w.verlauf ??= []).push({ st: v, t: Date.now() });
       w.status = v;
       if (!w.isNew) { await save(w); await AngebotDaten.standVomVorgang(w); }
+      if (abs?.erinnern && !w.isNew) await absageWiedervorlage(w, list);
       if (zugesagt(v)) Kunden.dankAuftrag(w); // Empfehlung: zweites „Bei … bedanken“, wenn der Kunde beauftragt
       let subHinweis = 0;
       if (v === 'abgesagt' || v === 'geplant') { try { subHinweis = (await subAbsageListe(w)).subs.filter((s) => !s.erledigt).length; } catch (e) { console.warn(e); } }
@@ -311,6 +313,7 @@ window.Projekt = (() => {
     $$('[data-nfmsg]').forEach((b) => (b.onclick = () => nachfassNachricht(w.id)));
     if ($('#wSubAbs')) subAbsageKarte($('#wSubAbs'), w).catch((e) => console.warn('Absage an Subs', e));
     $$('[data-nfabs]').forEach((b) => (b.onclick = () => setzen('abgesagt', { grund: vorgabe('nachfassAbsageGrund') || 'Keine Rückmeldung' })));
+    $$('[data-vorlage]').forEach((b) => (b.onclick = () => alsVorlageKopieren(w)));
     $$('[data-nachf]').forEach((i) => (i.onchange = async () => {
       const v = Math.round(+i.value);
       w.nachfass = { ...(w.nachfass || {}), tage: v > 0 ? v : '' };
@@ -1044,15 +1047,18 @@ window.Projekt = (() => {
     return `
       ${gibt ? `<div class="card ang-v ${stand[0]}">
         <div class="ang-k"><span class="ang-st">${stand[1]}</span><b>Angebot${nr ? ` Nr. ${esc(nr)}` : ''}</b></div>
-        <p class="ang-i">${[summe ? `${eur2(summe)} brutto` : '', st === 'angebot' && w.versendetAm ? `verschickt am ${esc(datumText(w.versendetAm))}` : '', st === 'abgesagt' && w.absage?.t ? `abgesagt am ${esc(new Date(w.absage.t).toLocaleDateString('de-DE'))}` : '', w.angebotKopieVon ? `ersetzt Nr. ${esc(w.angebotKopieVon)}` : ''].filter(Boolean).join(' · ') || 'Noch nicht gespeichert'}</p>
+        <p class="ang-i">${[summe ? `${eur2(summe)} brutto` : '', st === 'angebot' && w.versendetAm ? `verschickt am ${esc(datumText(w.versendetAm))}` : '', st === 'abgesagt' && w.absage?.t ? `abgesagt am ${esc(new Date(w.absage.t).toLocaleDateString('de-DE'))}` : '', w.angebotKopieVon ? `ersetzt Nr. ${esc(w.angebotKopieVon)}` : '', w.vorlageVon?.nr ? `kopiert aus Vorgang ${esc(w.vorlageVon.nr)}` : ''].filter(Boolean).join(' · ') || 'Noch nicht gespeichert'}</p>
         ${st === 'abgesagt' && w.absage?.grund ? `<p class="ang-grund">${icon('x')}<span>Grund: <b>${esc(w.absage.grund)}</b></span></p>` : ''}
+        ${st === 'abgesagt' ? absageInfoHtml(w) : ''}
         ${st === 'angebot' && w.versendetAm ? nachfassBlock(w) + nachfassFeld(w) : ''}
         ${st === 'angebot' || st === 'abgesagt' ? `
           ${w.angebotPdf ? `<div class="stk-2"><button class="btn secondary" id="wAngAnsehen">${icon('eye')} Ansehen</button><button class="btn secondary" id="wNochmal">${icon('mail')} Nochmal senden</button></div>` : ''}
           ${st === 'angebot' ? `<div class="stk-2" style="margin-top:10px"><button class="btn" data-st="geplant" style="--c:#2f8a57">${icon('check')} Zugesagt</button><button class="btn" data-st="abgesagt" style="--c:#c0392b">${icon('x')} Abgesagt</button></div>` : ''}
           ${st === 'angebot' && !window.Tabelle?.istBuero() ? `<button class="btn block" id="wUnterschrift" style="margin-top:8px">${icon('edit')} Vom Kunden unterschreiben lassen</button>` : ''}
           <button class="btn secondary block" id="wAnpassen" style="margin-top:8px">${icon('edit')} Angebot ändern</button>
-          <p class="hint center" style="margin-bottom:0">„Angebot ändern“ legt eine Kopie mit neuer Nummer und neuem Datum an. Dieses Angebot bleibt unverändert.</p>`
+          <p class="hint center" style="margin-bottom:0">„Angebot ändern“ legt eine Kopie mit neuer Nummer und neuem Datum an. Dieses Angebot bleibt unverändert.</p>
+          ${st === 'abgesagt' ? `<button class="btn secondary block" data-vorlage style="margin-top:10px">${icon('file')} Als Vorlage kopieren</button>
+          <p class="hint center" style="margin-bottom:0">Neuer Vorgang beim selben Kunden und Objekt mit neuer Nummer: Bereiche und Positionen dieses Angebots als neuer Entwurf. Dieser Vorgang bleibt abgesagt im Archiv.</p>` : ''}`
         : `
           <label class="ape-allg" style="margin-top:0"><input type="checkbox" data-allg ${window.AngebotDaten.aktivSync(w)?.allgemeinVerteilt ?? vorgabe('allgemeinVerteilen') === 'ja' ? 'checked' : ''}> Allgemeines auf die Positionen verteilen</label>
           <label>Preise im Angebot</label><select data-dar>${window.Angebot._intern.darstOptionen(window.Angebot._intern.darstAngebot(w))}</select>
@@ -1470,7 +1476,7 @@ window.Projekt = (() => {
         ${vorzeitigHtml(w)}` : ''}
       ${st === 'angebot' && w.versendetAm && nachfassUeber(w) < 0 ? `<p class="hint" style="margin:0 0 10px">Versendet am ${esc(datumText(w.versendetAm))}</p>` : ''}
       ${st === 'angebot' && w.versendetAm ? nachfassBlock(w) + nachfassFeld(w) : ''}
-      ${st === 'abgesagt' && w.absage?.grund ? `<p class="hint" style="margin:0 0 10px">Grund: ${esc(w.absage.grund)} · ${esc(new Date(w.absage.t).toLocaleDateString('de-DE'))}</p>` : ''}
+      ${st === 'abgesagt' && w.absage?.grund ? `<p class="hint" style="margin:0 0 10px">Grund: ${esc(w.absage.grund)} · ${esc(new Date(w.absage.t).toLocaleDateString('de-DE'))}</p>${absageInfoHtml(w)}` : ''}
       ${zugesagt(st) && w.zusageNachweis?.art === 'fehlt' && !zusageUnterschrieben(w) ? `<div class="stk-tipp warn nf-vor nw-fehlt"><span>Nachweis der Zusage fehlt</span><button type="button" class="btn secondary small" data-nwdazu>Nachweis anhängen</button></div>` : ''}
       ${allesErledigt ? `<p class="stk-tipp">${icon('check')} Alle Schritte sind abgehakt. Jetzt abschließen?</p>` : ''}
       ${knoepfe}</div>`;
@@ -1717,6 +1723,7 @@ window.Projekt = (() => {
     for (const r of list) if (r.angebot?.versionen) { r.angebot.versionen = []; await saveProject(r); }
     w.gesamtAngebot = { ...(w.gesamtAngebot || {}), versionen: [] };
     delete w.angebotGesperrt; w.angebotFrei = true; w.angebotKopieVon = alt.nr;
+    if (norm(w.status) === 'abgesagt') todoZu('absageWv:' + w.id);
     if (['angebot', 'abgesagt'].includes(norm(w.status))) { w.status = 'entwurf'; (w.verlauf ??= []).push({ st: 'entwurf', t: Date.now() }); }
     reiterWahl.delete(w.id); schrittWahl.delete(w.id);
     await save(w);
@@ -2371,7 +2378,143 @@ window.Projekt = (() => {
     neuZeichnen(w);
   }
 
-  return { automatik, anlegen, angebotVersendet, gesperrt, gesperrtFrage, angebotKopieren, dateiZeigen, nachfassen, nachfassTage, nachfassFaellig, nachfassUeber, nachfassStaffel, nachfassFuerMich, nachfassStand, nachfassVorschlag, nachgefasst, nachfassNachricht, nachfassEmpfaenger, subAbsageListe, verfasserVon, teamIdVon, zusageUnterschrieben, zusageTodos, nachweisText, seitTagen, STATUS, ANGEBOT, ALLE, PHASEN, phase, farbe, pill, norm, zugesagt, statusName, statusKurz, raumAngebot, angebotMerken, forget, neu, neuDirekt, neuFuer, kundeUebernehmen, oeffnen, view, mappeView, moodboardView, migrate, raum, raeume, raumGespeichert, raumEntfernt, save, wahl, PKG_IDS, _intern: { kundeUnterschreibt, wegFragen, wegText, versandStand, versandPruefen, sendenMitMappe, alsVersendet, angebotSpeichern, titel, addRoom, raumAusScan, raumAnlegen, reiterSetzen, auftragsbestaetigung } };
+
+  // ---------- Version 145: Absage mit Grund und Preis, Archiv, Als Vorlage kopieren, Wiedervorlage ----------
+  const isoVon = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  /** Heute + n Monate (31. → letzter Tag des Monats). */
+  function plusMonate(n, ab = new Date()) {
+    const d = new Date(ab.getFullYear(), ab.getMonth(), ab.getDate(), 12), tag = d.getDate();
+    d.setMonth(d.getMonth() + n);
+    if (d.getDate() !== tag) d.setDate(0);
+    return isoVon(d);
+  }
+  const eur0a = (x) => Math.round(+x || 0).toLocaleString('de-DE') + ' €';
+  /** Preis-Art aus dem Grund: „Anderer Anbieter“ = Preis des Mitbewerbers, sonst Wunschpreis des Kunden. */
+  const absagePreisArt = (g) => (/anbieter|mitbewerb|konkurren|firma/i.test(String(g || '')) ? 'mitbewerber' : 'wunsch');
+  const PREIS_ART = { mitbewerber: 'Preis des Mitbewerbers', wunsch: 'Wunschpreis des Kunden' };
+  /** Unser Angebot netto (nach Nachlass) aus dem aktiven bzw. zuletzt verschickten Angebot, sonst die beim Versand gemerkte Größe. */
+  async function unserNettoVon(w, list) {
+    try {
+      await window.Angebot?._intern.preisliste();
+      const n = window.Kalk ? Kalk.gesamt(w, list || (await raeume(w))).netto : 0;
+      if (n > 0) return Math.round(n * 100) / 100;
+    } catch (e) { console.warn('Absage netto', e); }
+    return +w.nachfass?.netto || 0;
+  }
+  /** Abweichung unseres Preises zum genannten Preis in % (positiv = wir lagen darüber), null ohne Zahlen. */
+  const absageAbw = (a) => (a?.preis > 0 && a?.unserNetto > 0 ? Math.round(((a.unserNetto - a.preis) / a.preis) * 1000) / 10 : null);
+  const abwText = (p) => (p === null ? '' : p === 0 ? 'gleich' : `${p > 0 ? '+' : ''}${String(p).replace('.', ',')} %`);
+  /** Zeile unter dem Grund: Preis, unser Preis, Abweichung, Erinnerung (nur intern). */
+  function absageInfoHtml(w) {
+    const a = w.absage; if (!a) return '';
+    const teile = [];
+    if (a.preis > 0) teile.push(`${PREIS_ART[a.preisArt] || 'Genannter Preis'}: <b>${eur0a(a.preis)}</b> netto${a.unserNetto > 0 ? ` · unser Angebot ${eur0a(a.unserNetto)} (${esc(abwText(absageAbw(a)))})` : ''}`);
+    if (a.wv) teile.push(`Erinnerung „Nochmal melden?“ am ${esc(datumText(a.wv))}`);
+    return teile.length ? `<p class="hint abs-info" style="margin:0 0 10px">${teile.join('<br>')}</p>` : '';
+  }
+  /** Fenster „Warum abgesagt?“: Gründe als Knopfzeile, bei Preis-Gründen optional ein Preis, Häkchen „In … Monaten erinnern“.
+   *  → { grund, preis, preisArt, erinnern } oder null (abgebrochen). Nichts geht an den Kunden. */
+  function absageFragen(w, { vorschlag = '', unser = 0 } = {}) {
+    const gr = [...(vorgabe('absageGruende') || [])];
+    if (vorschlag && !gr.includes(vorschlag)) gr.unshift(vorschlag);
+    const preisG = vorgabe('absagePreisGruende') || [];
+    const wvM = +vorgabe('absageWiedervorlageMonate') || 0, wvG = vorgabe('absageWiedervorlageGruende') || [];
+    const kname = Kunden.name(Kunden.byId(w.kundeId)) || w.customer || '';
+    return new Promise((res) => {
+      const el = document.createElement('div'); el.className = 'sheet-bg fest';
+      el.innerHTML = `<div class="sheet nf-sheet abs-sheet" role="dialog" aria-label="Warum abgesagt?"><div class="sheet-h"><b>Warum abgesagt?</b><button class="icon-btn" data-x aria-label="Schließen">${icon('x')}</button></div>
+        <div class="nf-body">
+          <p class="hint" style="margin-top:0">${esc([kname, w.titel || 'Angebot'].filter(Boolean).join(' · '))}</p>
+          <div class="abs-gr">${gr.map((g, i) => `<button type="button" data-absg="${i}">${esc(g)}${g === vorschlag ? '<small>Vorschlag</small>' : ''}</button>`).join('')}</div>
+          <div class="abs-preis" hidden>
+            <div class="seg2 full abs-art"><button type="button" data-absart="mitbewerber">Mitbewerber</button><button type="button" data-absart="wunsch">Wunsch des Kunden</button></div>
+            <label for="absPreis" id="absPreisL"></label>
+            <input type="number" id="absPreis" min="0" step="any" inputmode="decimal" placeholder="optional, in Euro netto">
+            <p class="hint" style="margin:0">${unser > 0 ? `Unser Angebot: ${eur0a(unser)} netto. ` : ''}Nur intern für die Auswertung, steht in keinem Dokument.</p>
+          </div>
+          ${wvM ? `<label class="check abs-wv"><input type="checkbox" id="absWv"> In ${wvM} ${wvM === 1 ? 'Monat' : 'Monaten'} erinnern</label>` : ''}
+          <button type="button" class="btn block" id="absOk" disabled>Absage speichern</button>
+        </div></div>`;
+      let grund = '', art = 'wunsch', wvAnfass = false;
+      const close = (v) => { el.classList.remove('on'); setTimeout(() => el.remove(), 180); res(v); };
+      const artSetzen = (a) => { art = a; $$('[data-absart]', el).forEach((x) => x.classList.toggle('on', x.dataset.absart === a)); $('#absPreisL', el).textContent = `${PREIS_ART[a]} (netto)`; };
+      const waehlen = (g) => {
+        grund = g;
+        $$('[data-absg]', el).forEach((x) => x.classList.toggle('on', gr[+x.dataset.absg] === g));
+        const mitPreis = preisG.includes(g);
+        $('.abs-preis', el).hidden = !mitPreis;
+        if (mitPreis) artSetzen(absagePreisArt(g));
+        if ($('#absWv', el) && !wvAnfass) $('#absWv', el).checked = wvG.includes(g);
+        $('#absOk', el).disabled = false;
+      };
+      el.onclick = (e) => { if (e.target === el || e.target.closest('[data-x]')) close(null); };
+      $$('[data-absg]', el).forEach((b) => (b.onclick = () => waehlen(gr[+b.dataset.absg])));
+      $$('[data-absart]', el).forEach((b) => (b.onclick = () => artSetzen(b.dataset.absart)));
+      if ($('#absWv', el)) $('#absWv', el).onchange = () => { wvAnfass = true; };
+      $('#absOk', el).onclick = () => {
+        if (!grund) return;
+        const mitPreis = preisG.includes(grund), p = Math.round((+String($('#absPreis', el).value).replace(',', '.') || 0) * 100) / 100;
+        close({ grund, preis: mitPreis && p > 0 ? p : 0, preisArt: mitPreis && p > 0 ? art : '', erinnern: !!$('#absWv', el)?.checked });
+      };
+      document.body.appendChild(el);
+      if (vorschlag) waehlen(vorschlag);
+      requestAnimationFrame(() => el.classList.add('on'));
+    });
+  }
+  /** Wiedervorlage nach der Absage: To-do „Nochmal melden?“ für den Verfasser, fällig nach Vorgabe absageWiedervorlageMonate. Nichts wird verschickt. */
+  async function absageWiedervorlage(w, list) {
+    const m = +vorgabe('absageWiedervorlageMonate') || 0;
+    if (!m || !w.absage || !window.Todos) return null;
+    const k = Kunden.byId(w.kundeId);
+    const monat = new Date(w.absage.t || Date.now()).toLocaleDateString('de-DE', { month: 'long' });
+    const text = textVon('textAbsageWiedervorlage', { kunde: Kunden.name(k) || w.customer || 'Kunde', monat, grund: w.absage.grund || '', projekt: w.titel || 'Angebot' });
+    return Todos.anlegen({ text, faellig: w.absage.wv || plusMonate(m), prio: 'niedrig', wer: teamIdVon(verfasserVon(w, list || (await raeume(w)))),
+      bezug: { kundeId: w.kundeId || '', vorgangId: w.id }, art: 'wiedervorlage', schluessel: `absageWv:${w.id}` });
+  }
+  /** „Als Vorlage kopieren“: neuer Vorgang beim selben Kunden und Objekt (neue Nummer), Bereiche und Positionen des letzten Angebots
+   *  als neuer Entwurf. Der abgesagte Vorgang bleibt unverändert im Archiv. */
+  async function alsVorlageKopieren(w) {
+    const k = Kunden.byId(w.kundeId);
+    if (k && window.Sperre && !(await Sperre.pruefen(k, 'Neues Angebot', (x) => Kunden.speichern(x)))) return;
+    if (!confirm(`„${w.titel || 'Angebot'}“ als Vorlage für einen neuen Vorgang kopieren?\n\nBereiche und Positionen werden übernommen, der neue Vorgang bekommt eine neue Nummer und startet als Entwurf. Dieser Vorgang bleibt abgesagt im Archiv.`)) return;
+    const list = await raeume(w);
+    const a0 = await AngebotDaten.aktiv(w, { anlegen: false });
+    const w2 = neuesProjekt();
+    Object.assign(w2, { status: 'entwurf', kundeId: w.kundeId || '', objektId: w.objektId || '', customer: w.customer || '', address: w.address || '', titel: w.titel || '',
+      verlauf: [{ st: 'entwurf', t: Date.now() }], vorlageVon: { id: w.id, nr: w.nr || '' } });
+    if (w.skonto) w2.skonto = JSON.parse(JSON.stringify(w.skonto));
+    const ids = new Map();
+    for (const r of list) {
+      const c = JSON.parse(JSON.stringify(r)); // r.angebot ist nicht aufzählbar und kommt nicht mit
+      for (const f of ['photos', 'results', 'thumb', 'updated', 'status', 'versionen']) delete c[f];
+      Object.assign(c, { id: uid(), created: Date.now(), wohnungId: w2.id, photos: [], thumb: '', results: {} });
+      ids.set(r.id, c.id);
+      rooms.set(c.id, c); w2.rooms.push(c.id);
+      await kvSet('project:' + c.id, c);
+    }
+    await save(w2);
+    const a = await AngebotDaten.aktiv(w2);
+    if (a && a0) {
+      for (const [alt, neu] of ids) {
+        const b = a0.inhalt.bereiche[alt]; if (!b) continue;
+        const c = JSON.parse(JSON.stringify(b)); delete c.versionen;
+        a.inhalt.bereiche[neu] = c;
+      }
+      // Positionen ohne Bereich (Allgemeines) und Bereiche, die es im Vorgang nicht mehr gibt, bleiben weg
+      if (Object.prototype.hasOwnProperty.call(a0.inhalt, 'texte')) a.inhalt.texte = JSON.parse(JSON.stringify(a0.inhalt.texte || []));
+      for (const f of ['darstellung', 'allgemeinVerteilt', 'nachlass', 'zielpreis']) if (a0[f] !== undefined) a[f] = JSON.parse(JSON.stringify(a0[f]));
+      await AngebotDaten.speichern(a);
+    }
+    for (const id of w2.rooms) { const r = rooms.get(id); if (r) await AngebotDaten.anhaengen(r, w2, a); }
+    await save(w2);
+    todoZu('absageWv:' + w.id); // neuer Anlauf: die Erinnerung ist erledigt
+    toast(`Neuer Vorgang ${w2.nr || ''} angelegt (Kopie von ${w.nr || 'abgesagtem Vorgang'}). Jetzt anpassen und senden.`.replace('  ', ' '), 5000);
+    await oeffnen(w2.id);
+    window.scrollTo(0, 0);
+    return w2;
+  }
+
+  return { absageFragen, absageWiedervorlage, absageAbw, alsVorlageKopieren, plusMonate, automatik, anlegen, angebotVersendet, gesperrt, gesperrtFrage, angebotKopieren, dateiZeigen, nachfassen, nachfassTage, nachfassFaellig, nachfassUeber, nachfassStaffel, nachfassFuerMich, nachfassStand, nachfassVorschlag, nachgefasst, nachfassNachricht, nachfassEmpfaenger, subAbsageListe, verfasserVon, teamIdVon, zusageUnterschrieben, zusageTodos, nachweisText, seitTagen, STATUS, ANGEBOT, ALLE, PHASEN, phase, farbe, pill, norm, zugesagt, statusName, statusKurz, raumAngebot, angebotMerken, forget, neu, neuDirekt, neuFuer, kundeUebernehmen, oeffnen, view, mappeView, moodboardView, migrate, raum, raeume, raumGespeichert, raumEntfernt, save, wahl, PKG_IDS, _intern: { kundeUnterschreibt, wegFragen, wegText, versandStand, versandPruefen, sendenMitMappe, alsVersendet, angebotSpeichern, titel, addRoom, raumAusScan, raumAnlegen, reiterSetzen, auftragsbestaetigung } };
 })();
 // Ältere Aufrufe (PR „Wohnungen“) laufen weiter
 window.Wohnung = { neu: () => Projekt.neu(), oeffnen: (id) => Projekt.oeffnen(id), view: () => Projekt.view(), raumGespeichert: (p) => Projekt.raumGespeichert(p), raumEntfernt: (p) => Projekt.raumEntfernt(p) };

@@ -398,3 +398,7 @@ html.buero .akte-objl .olist .row .add-room { flex: 0 0 auto; }
 
 /* v143: Nachricht-Knopf neben „Nachgefasst“ im Dashboard */
 html.buero .db-nfm { width: 30px; height: 30px; margin-left: 6px; vertical-align: middle; }
+
+/* ---------- Absage (v145) ---------- */
+html.buero .abs-sheet { max-width: 560px; }
+html.buero .abs-gr button { min-height: 34px; padding: 6px 12px; font-size: 13px; border-radius: 7px; }
