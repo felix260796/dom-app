@@ -22,31 +22,80 @@ window.Besuch = (() => {
   const firma = () => String(window.PL?.einstellungen?.firma || 'Dom Projektmanagement GmbH').split('\n')[0];
   const text = (key, werte) => vorgabeText(key, { anrede: '', name: meinName(), firma: firma(), ...werte }).replace(/\n\s*\n/g, '\n').trim();
 
-  // ---------- Nachricht an den Kunden: SMS, WhatsApp oder Mail (Felix tippt nur noch „Senden“) ----------
+  // ---------- Nachricht an Kunde, Partner oder Person: Mail, WhatsApp, SMS, Brief als PDF oder kopieren (Felix tippt nur noch „Senden“) ----------
   const istIos = () => /iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
   function oeffnen(url) {
     if (/^https?:/.test(url)) { const a = document.createElement('a'); a.href = url; a.target = '_blank'; a.rel = 'noopener'; document.body.appendChild(a); a.click(); a.remove(); }
     else location.href = url;
   }
-  async function nachricht(k, titel, inhalt, betreff = '') {
-    const tels = k ? Kontakt.nummernVon(k, 'tel').filter((x) => String(x.wert).trim()) : [];
-    const mails = k ? Kontakt.nummernVon(k, 'mail').filter((x) => /.+@.+\..+/.test(x.wert)) : [];
+  // ---------- Versandweg für jede Nachricht (v143, GRUNDREGEL: nichts geht ohne Tipp raus) ----------
+  // an = Kunde, Partner oder Person ({ telefon, telArt, email, mailArt, weitere }); Kontakt.nummernVon liest alle gleich.
+  // opt: { mail: bevorzugte Adresse (z. B. Kunden.angebotMail), kurz: kürzerer Text für SMS/WhatsApp, anschrift: [Zeilen] für den Brief,
+  //        datei: Name des PDF }. Rückgabe: gewählter Weg 'sms' | 'whatsapp' | 'mail' | 'pdf' | 'kopie' oder false.
+  const WEG_NAME = { sms: 'SMS', whatsapp: 'WhatsApp', mail: 'E-Mail', pdf: 'Brief (PDF)', kopie: 'Text kopiert' };
+  const mailOk = (s) => /.+@.+\..+/.test(String(s || '').trim());
+  function anschriftVon(an) {
+    if (!an) return [];
+    if (Array.isArray(an.objekte) && window.Kunden) return Kunden.postanschrift(an) || [Kunden.name(an)].filter(Boolean);
+    if (an.kind === 'partner') return [window.Partner?.titel?.(an) || an.firma || '', ...(window.Kunden ? Kunden.zeilen(an.anschrift) : [])].filter(Boolean);
+    return [[an.anrede === 'Herr' || an.anrede === 'Frau' ? an.anrede : '', an.vorname, an.name].filter(Boolean).join(' ')].filter(Boolean);
+  }
+  /** Einfacher Brief mit Briefkopf wie im Angebot (Logo oder Firmenname, Absenderzeile, Anschrift, Datum, Betreff, Text). */
+  async function brief({ anschrift = [], betreff = '', text: inhalt = '', datei = 'Brief' } = {}) {
+    let E = {}; try { E = (await window.Angebot._intern.preisliste()).einstellungen || {}; } catch {}
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF({ unit: 'mm', format: 'a4' });
+    const M = 20, R = 192, H = 297, NAVY = [30, 53, 80];
+    const logo = state.settings.logo;
+    const kopf = async () => {
+      if (logo) { try { await addFit(doc, logo, R - 55, 10, 55, 22, mimeOf(logo) === 'image/png' ? 'PNG' : 'JPEG'); } catch (e) { console.warn('Logo', e); } }
+      else { doc.setFont('helvetica', 'bold'); doc.setFontSize(14); doc.setTextColor(...NAVY); doc.text(String(E.firma || firma()), R, 20, { align: 'right' }); }
+      doc.setFont('helvetica', 'normal');
+    };
+    await kopf();
+    doc.setFontSize(7.5); doc.setTextColor(120); doc.text([E.firma || firma(), E.strasse, E.ort].filter(Boolean).join(' · '), M, 47);
+    doc.setDrawColor(200); doc.line(M, 48.5, M + 85, 48.5);
+    doc.setFontSize(10.5); doc.setTextColor(30);
+    anschrift.forEach((l, i) => doc.text(String(l), M, 55 + i * 5));
+    doc.setFontSize(9);
+    const meta = [['Datum', new Date().toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' })], ['Telefon', E.telefon], ['E-Mail', E.email]].filter((x) => x[1]);
+    meta.forEach(([k, v], i) => { doc.setTextColor(120); doc.text(k, 128, 52 + i * 4.6); doc.setTextColor(30); doc.text(String(v), 158, 52 + i * 4.6); });
+    let y = Math.max(92, 55 + anschrift.length * 5 + 12);
+    if (betreff) { doc.setFont('helvetica', 'bold'); doc.setFontSize(12); doc.setTextColor(...NAVY); const b = doc.splitTextToSize(betreff, R - M); doc.text(b, M, y); y += 6 * b.length + 4; }
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(10.5); doc.setTextColor(30);
+    for (const z of String(inhalt).split('\n')) {
+      const ls = z.trim() ? doc.splitTextToSize(z, R - M) : [''];
+      for (const l of ls) { if (y > H - 25) { doc.addPage(); await kopf(); doc.setFontSize(10.5); doc.setTextColor(30); y = 34; } doc.text(l, M, y); y += 5; }
+    }
+    const name = String(datei || 'Brief').replace(/[^\wäöüÄÖÜß-]+/g, '_') + '.pdf';
+    return new File([doc.output('blob')], name, { type: 'application/pdf' });
+  }
+  async function nachricht(an, titel, inhalt, betreff = '', opt = {}) {
+    const tels = an ? Kontakt.nummernVon(an, 'tel').filter((x) => String(x.wert || '').trim()) : [];
+    let mails = an ? Kontakt.nummernVon(an, 'mail').filter((x) => mailOk(x.wert)) : [];
+    if (mailOk(opt.mail)) mails = [{ label: opt.mailLabel || 'bevorzugt', wert: String(opt.mail).trim() }, ...mails.filter((x) => x.wert.trim().toLowerCase() !== String(opt.mail).trim().toLowerCase())];
+    const kurz = opt.kurz || inhalt;
     const items = [
-      ...tels.map((x, i) => ({ label: 'SMS an ' + x.wert, sub: x.label, icon: icon('phone'), value: 'sms:' + i })),
-      ...tels.map((x, i) => ({ label: 'WhatsApp an ' + x.wert, sub: x.label, icon: icon('phone'), value: 'wa:' + i })),
       ...mails.map((x, i) => ({ label: 'E-Mail an ' + x.wert, sub: x.label, icon: icon('mail'), value: 'mail:' + i })),
+      ...tels.map((x, i) => ({ label: 'WhatsApp an ' + x.wert, sub: x.label, icon: icon('phone'), value: 'wa:' + i })),
+      ...tels.map((x, i) => ({ label: 'SMS an ' + x.wert, sub: x.label, icon: icon('phone'), value: 'sms:' + i })),
+      { label: 'Als PDF (Drucken oder Post)', sub: 'Brief mit Briefkopf zum Ausdrucken, Speichern oder Teilen', icon: icon('file'), value: 'pdf' },
       { label: 'Text kopieren', sub: 'selbst einfügen, wo du willst', icon: icon('file'), value: 'kopie' },
     ];
-    const v = await sheet(titel, [{ label: inhalt, sub: 'So geht die Nachricht raus. Tippen zum Ändern.', icon: icon('edit'), value: 'text' }, ...items]);
+    const v = await sheet(titel, [{ label: inhalt, sub: kurz !== inhalt ? 'So geht die Mail bzw. der Brief raus, per WhatsApp und SMS kürzer. Tippen zum Ändern.' : 'So geht die Nachricht raus. Tippen zum Ändern.', icon: icon('edit'), value: 'text' }, ...items]);
     if (!v) return false;
-    if (v === 'text') { const t = prompt('Nachricht', inhalt); return t === null ? false : nachricht(k, titel, t.trim() || inhalt, betreff); }
+    if (v === 'text') { const t = prompt('Nachricht', inhalt); return t === null ? false : nachricht(an, titel, t.trim() || inhalt, betreff, { ...opt, kurz: t.trim() ? t.trim() : opt.kurz }); }
     const [art, i] = v.split(':');
     const nr = (x) => telLink(x).slice(4); // +49…
-    if (art === 'sms') oeffnen(`sms:${nr(tels[+i].wert)}${istIos() ? '&' : '?'}body=${encodeURIComponent(inhalt)}`);
-    else if (art === 'wa') oeffnen(`https://wa.me/${nr(tels[+i].wert).replace('+', '')}?text=${encodeURIComponent(inhalt)}`);
-    else if (art === 'mail') oeffnen(`mailto:${mails[+i].wert.trim()}?subject=${encodeURIComponent(betreff || titel)}&body=${encodeURIComponent(inhalt)}`);
-    else { try { await navigator.clipboard.writeText(inhalt); toast('Text kopiert'); } catch { prompt('Text zum Kopieren', inhalt); } }
-    return true;
+    if (art === 'sms') { oeffnen(`sms:${nr(tels[+i].wert)}${istIos() ? '&' : '?'}body=${encodeURIComponent(kurz)}`); return 'sms'; }
+    if (art === 'wa') { oeffnen(`https://wa.me/${nr(tels[+i].wert).replace('+', '')}?text=${encodeURIComponent(kurz)}`); return 'whatsapp'; }
+    if (art === 'mail') { oeffnen(`mailto:${mails[+i].wert.trim()}?subject=${encodeURIComponent(betreff || titel)}&body=${encodeURIComponent(inhalt)}`); return 'mail'; }
+    if (art === 'pdf') {
+      try { const f = await brief({ anschrift: opt.anschrift || anschriftVon(an), betreff: betreff || titel, text: inhalt, datei: opt.datei || titel }); await pdfAnsicht(f, f.name); return 'pdf'; }
+      catch (e) { console.error(e); toast('Der Brief ging nicht: ' + e.message, 5000); return false; }
+    }
+    try { await navigator.clipboard.writeText(inhalt); toast('Text kopiert'); } catch { prompt('Text zum Kopieren', inhalt); }
+    return 'kopie';
   }
 
   // ---------- Ich komme später ----------
@@ -243,5 +292,5 @@ window.Besuch = (() => {
     if ($('#beDanke')) $('#beDanke').onclick = () => danke(w);
     if ($('#beAbAuf')) $('#beAbAuf').onclick = async () => { if (w.vorOrt) delete w.vorOrt.abschluss; await speichern(); neu?.(); };
   }
-  return { leiste, verkaufHtml, abschlussHtml, bind, einverstanden, einverstandenText, briefingText, nachricht, werktage, soArbeiten };
+  return { leiste, verkaufHtml, abschlussHtml, bind, einverstanden, einverstandenText, briefingText, nachricht, brief, anschriftVon, WEG_NAME, werktage, soArbeiten };
 })();

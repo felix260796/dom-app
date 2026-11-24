@@ -395,3 +395,6 @@ html.buero .akte-objl .olist .row .add-room { flex: 0 0 auto; }
 .ape-dar select { max-width: 60%; }
 .xtab .xt-m.bi svg { width: 12px; height: 12px; vertical-align: -2px; }
 .ape-allg { display: flex; gap: 8px; align-items: center; font-size: 13px; margin: 0 0 8px; }
+
+/* v143: Nachricht-Knopf neben „Nachgefasst“ im Dashboard */
+html.buero .db-nfm { width: 30px; height: 30px; margin-left: 6px; vertical-align: middle; }

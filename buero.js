@@ -718,14 +718,14 @@ window.Buero = (() => {
     const kName = (x) => Kunden.name(Kunden.byId(x?.kundeId)) || x?.customer || '';
     const tel = (x) => Kunden.byId(x?.kundeId)?.telefon || '';
     window.Tabelle.liste($('[data-dbwv]', box), { id: 'wiedervorlage', leer: 'Kein verschicktes Angebot offen.', oeffnen: (id) => Projekt.oeffnen(id),
-      spalten: [{ k: 'kunde', t: 'Kunde' }, { k: 'titel', t: 'Angebot' }, { k: 'verf', t: 'Verfasser', b: 120 }, { k: 'tage', t: 'Seit', r: 1, b: 90 }, { k: 'frist', t: 'Nachfassen', r: 1, b: 110 }, { k: 'wert', t: 'Netto', r: 1, b: 110 }, { k: 'nfg', t: '', b: 120 }, { k: 'tel', t: '', b: 50 }],
+      spalten: [{ k: 'kunde', t: 'Kunde' }, { k: 'titel', t: 'Angebot' }, { k: 'verf', t: 'Verfasser', b: 120 }, { k: 'tage', t: 'Seit', r: 1, b: 90 }, { k: 'frist', t: 'Nachfassen', r: 1, b: 110 }, { k: 'wert', t: 'Netto', r: 1, b: 110 }, { k: 'nfg', t: '', b: 170 }, { k: 'tel', t: '', b: 50 }],
       zeilen: wv.map((v) => ({ id: v.x.id, werte: { kunde: { text: kName(v.x), html: `<b>${esc(kName(v.x))}</b>` },
         titel: (() => { const t = v.x.titel || v.x.room || 'Angebot', s = Projekt.nachfassStand(v.x), vs = Projekt.nachfassVorschlag(v.x);
           return { text: t, html: `${esc(t)}${s.zuletzt ? `<br><small class="muted">Zuletzt ${esc(s.zuletzt)}</small>` : ''}${vs ? `<br><small class="db-faellig">${s.nicht} mal nicht erreicht: absagen?</small>` : ''}` }; })(),
         verf: v.x.verfasser || verf.get(v.x.id) || '',
         tage: { text: v.tage >= 0 ? v.tage + ' Tage' : '', sort: v.tage, html: v.tage >= 0 ? `<span class="${v.ueber >= 0 ? 'db-faellig' : ''}">${v.tage} Tage</span>` : '' },
         frist: { text: fristText(v), sort: v.ueber, html: v.x.versendetAm ? `<span class="${v.ueber >= 0 ? 'db-faellig' : 'muted'}" title="Frist ${v.nf} Tage">${esc(fristText(v))}</span>` : '' }, wert: { text: werte.get(v.x.id) ? e0(werte.get(v.x.id)) : '', sort: werte.get(v.x.id) || 0 },
-        nfg: { text: '', html: `<button type="button" class="btn secondary small db-nfg" data-nfg="${esc(v.x.id)}">Nachgefasst</button>` },
+        nfg: { text: '', html: `<button type="button" class="btn secondary small db-nfg" data-nfg="${esc(v.x.id)}">Nachgefasst</button><button type="button" class="icon-btn db-nfm" data-nfm="${esc(v.x.id)}" title="Nachricht schicken" aria-label="Nachricht schicken">${icon('mail')}</button>` },
         tel: { text: tel(v.x), html: tel(v.x) ? `<a class="icon-btn db-tel" href="${esc(telLink(tel(v.x)))}" title="Anrufen ${esc(tel(v.x))}" data-stop>${icon('phone')}</a>` : '' } } })) });
     window.Tabelle.liste($('[data-dbop]', box), { id: 'offenePosten', leer: 'Alles bezahlt.', oeffnen: (id) => Rechnung.detail(op.find((r) => r.id === id), () => dashboardView()),
       spalten: [{ k: 'nr', t: 'Rechnung', b: 110 }, { k: 'kunde', t: 'Kunde' }, { k: 'faellig', t: 'Fällig', b: 100 }, { k: 'stufe', t: 'Stand', b: 150 }, { k: 'betrag', t: 'Betrag', r: 1, b: 110 }, { k: 'mahn', t: '', b: 100 }],
@@ -733,6 +733,7 @@ window.Buero = (() => {
         return { id: r.id, werte: { nr: r.nr || 'Entwurf', kunde: kName(x), faellig: { text: tag(r.faellig), sort: r.faellig || '' }, stufe: { text: st[0], html: `<span style="color:${st[1]};font-weight:600">${esc(st[0])}</span>` },
           betrag: { text: e0(Rechnung.zahlbetrag(r)), sort: Rechnung.zahlbetrag(r) }, mahn: { text: '', html: mahnbar ? `<button type="button" class="btn secondary small db-mahn" data-mahn="${esc(r.id)}">Mahnen</button>` : '' } } }; }) });
     $$('[data-stop]', box).forEach((a) => a.addEventListener('click', (e) => e.stopPropagation()));
+    $$('[data-nfm]', box).forEach((b) => (b.onclick = (e) => { e.stopPropagation(); Projekt.nachfassNachricht(b.dataset.nfm); }));
     $$('[data-nfg]', box).forEach((b) => (b.onclick = (e) => { e.stopPropagation(); Projekt.nachgefasst(b.dataset.nfg, () => { if (state.tab === 'dashboard') dashboardView(); }); }));
     $$('[data-mahn]', box).forEach((b) => (b.onclick = async (e) => {
       e.stopPropagation();
