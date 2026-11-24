@@ -151,5 +151,7 @@ window.Todos = (() => {
     binden(main(), view);
   }
 
-  return { laden, anlegen, offen, zeitraeume, zeile, binden, bearbeiten, view, liste: () => [...alle.values()] };
+  /** To-do still erledigen (z. B. das alte Nachfass-To-do nach „Nachgefasst“, v142). */
+  async function erledigen(id) { const t = alle.get(id); if (!t || t.erledigt) return; t.erledigt = Date.now(); await speichern(t); }
+  return { laden, anlegen, erledigen, offen, zeitraeume, zeile, binden, bearbeiten, view, liste: () => [...alle.values()] };
 })();

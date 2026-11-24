@@ -84,7 +84,10 @@ function morgen(d: Daten, p: Prefs, heute: string) {
   const tt = d.termine.filter((t) => t.datum === heute && fuer(t, p.wer)).sort((a, b) => (a.von || "").localeCompare(b.von || ""));
   if (tt.length) { zahl += tt.length; zeilen.push(`${tt.length} ${tt.length === 1 ? "Termin" : "Termine"}: ${tt.slice(0, 3).map((t) => `${t.ganztag || !t.von ? "" : t.von + " "}${t.titel || "Termin"}`).join(", ")}${tt.length > 3 ? " …" : ""}`); }
   if (p.nachfassen !== false) {
-    const n = d.idx.filter((x) => norm(x.status) === "angebot" && tageSeit(x.versendetAm, heute) >= (p.nachfassenTage ?? 7)).length;
+    // v142: nur Angebote, die der Besitzer des Geräts verfasst hat (Gerät für beide oder Verfasser unbekannt: alle),
+    // fällig am Tag aus dem Index (nachfAm: Frist nach Größe bzw. „wieder“ nach Nachgefasst), ältere Einträge wie bisher
+    const faellig = (x: any) => x.nachfAm ? String(x.nachfAm) <= heute : tageSeit(x.versendetAm, heute) >= (+x.nachfTage > 0 ? +x.nachfTage : (p.nachfassenTage ?? 7));
+    const n = d.idx.filter((x) => norm(x.status) === "angebot" && x.versendetAm && faellig(x) && (!p.wer || !x.verfasserId || x.verfasserId === p.wer)).length;
     if (n) { zahl += n; zeilen.push(`${n} ${n === 1 ? "Angebot" : "Angebote"} nachfassen`); }
   }
   if (p.geld !== false) {

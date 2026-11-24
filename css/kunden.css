@@ -118,6 +118,17 @@
 .nf-feld span { flex: 0 0 auto; }
 .nf-feld span:last-of-type { font-weight: 500; }
 .nf-feld input { width: 80px; }
+/* Nachgefasst (v142) */
+.nf-zul { margin: 0 0 8px; font-size: 14px; color: var(--muted); }
+.nf-knopf { margin: 0 0 10px; }
+.nf-vor { display: flex; align-items: center; gap: 10px; }
+.nf-vor span { flex: 1; }
+.nf-body { padding: 4px 16px 18px; display: flex; flex-direction: column; gap: 8px; }
+.nf-body textarea { width: 100%; }
+.nf-erg button.on { background: var(--navy); color: #fff; }
+.hz-nf { display: flex; align-items: center; gap: 8px; }
+.hz-nf .pcard { flex: 1; min-width: 0; }
+.hz-nf .hz-nfg { flex: none; }
 .stk-vz { display: flex; align-items: flex-start; gap: 8px; margin: 2px 0 6px; font-size: 14px; }
 .stk-vz input { margin-top: 2px; width: auto; flex: none; }
 .stk-vz small { color: var(--muted); }

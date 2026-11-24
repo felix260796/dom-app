@@ -85,8 +85,9 @@ window.Projekt = (() => {
     if (nachfassMerken(w, list)) await kvSet(key(w.id), w); // Größe fürs Nachfassen (v141)
     const vf = norm(w.status) === 'angebot' ? verfasserVon(w, list) : '';
     const idx = (await projectIndex()).filter((x) => x.id !== w.id);
-    idx.unshift({ id: w.id, kind: 'wohnung', nr: w.nr || '', titel: w.titel || '', status: w.status || '', baustart: w.baustart || '', versendetAm: w.versendetAm || '', nachfTage: norm(w.status) === 'angebot' ? nachfassTage(w) : '', verfasser: vf, verfasserId: teamIdVon(vf), absage: w.absage?.grund || '', kundeId: w.kundeId || '', objektId: w.objektId || '', customer: w.customer, address: w.address, room: list.length ? summary(list) : 'noch kein Raum', rooms: list.length, fort: window.Fortschritt?.kurz(w) || null, created: w.created, updated: w.updated, thumb: list.find((r) => r?.thumb)?.thumb || '' });
+    idx.unshift({ id: w.id, kind: 'wohnung', nr: w.nr || '', titel: w.titel || '', status: w.status || '', baustart: w.baustart || '', versendetAm: w.versendetAm || '', nachfTage: norm(w.status) === 'angebot' ? nachfassTage(w) : '', verfasser: vf, verfasserId: teamIdVon(vf), ...nachfassIndex(w), absage: w.absage?.grund || '', kundeId: w.kundeId || '', objektId: w.objektId || '', customer: w.customer, address: w.address, room: list.length ? summary(list) : 'noch kein Raum', rooms: list.length, fort: window.Fortschritt?.kurz(w) || null, created: w.created, updated: w.updated, thumb: list.find((r) => r?.thumb)?.thumb || '' });
     await kvSet('projectIndex', idx);
+    if (norm(w.status) !== 'angebot' && w.nachfass?.log?.length) nachfassTodosZu(w.id); // zugesagt oder abgesagt: Nachfassen ist erledigt
   }
   const neuesProjekt = () => ({ id: uid(), kind: 'wohnung', created: Date.now(), customer: '', address: '', rooms: [], mappe: {}, pdfProducts: true, pdfPrices: false, pdfEvening: true });
 
@@ -286,10 +287,12 @@ window.Projekt = (() => {
     };
     if ($('#wFort')) window.Fortschritt?.abschnitt($('#wFort'), w, list, () => save(w));
     if (k && $('#wTermine')) window.Kalender?.abschnitt($('#wTermine'), { kundeId: k.id, objektId: w.objektId, projektId: w.id, zurueck: () => view() });
-    const setzen = async (v) => {
-      // Absage: Grund festhalten (für später: „da war ich schon, abgesagt wegen …“)
+    const setzen = async (v, opt = {}) => {
+      // Absage: Grund festhalten (für später: „da war ich schon, abgesagt wegen …“). opt.grund = Vorschlag oben (v142, keine Rückmeldung)
       if (v === 'abgesagt') {
-        const g = await sheet('Warum abgesagt?', vorgabe('absageGruende').map((x) => ({ label: x, value: x })));
+        const gr = vorgabe('absageGruende').map((x) => ({ label: x, value: x }));
+        if (opt.grund) { const i = gr.findIndex((x) => x.value === opt.grund); const vor = i >= 0 ? gr.splice(i, 1)[0] : { label: opt.grund, value: opt.grund }; gr.unshift({ ...vor, sub: 'Vorschlag', icon: icon('check'), color: '#c0392b' }); }
+        const g = await sheet('Warum abgesagt?', gr);
         if (g === null) return;
         w.absage = { grund: g, t: Date.now() };
         await pdfInDokumente(w); // das abgesagte Angebot bleibt als PDF beim Kunden
@@ -302,6 +305,8 @@ window.Projekt = (() => {
       toast(statusName(v));
       const y = window.scrollY; await view(); window.scrollTo(0, y);
     };
+    $$('[data-nfg]').forEach((b) => (b.onclick = () => nachgefasst(w.id, async () => { const y = window.scrollY; await view(); window.scrollTo(0, y); })));
+    $$('[data-nfabs]').forEach((b) => (b.onclick = () => setzen('abgesagt', { grund: vorgabe('nachfassAbsageGrund') || 'Keine Rückmeldung' })));
     $$('[data-nachf]').forEach((i) => (i.onchange = async () => {
       const v = Math.round(+i.value);
       w.nachfass = { ...(w.nachfass || {}), tage: v > 0 ? v : '' };
@@ -1030,8 +1035,7 @@ window.Projekt = (() => {
         <div class="ang-k"><span class="ang-st">${stand[1]}</span><b>Angebot${nr ? ` Nr. ${esc(nr)}` : ''}</b></div>
         <p class="ang-i">${[summe ? `${eur2(summe)} brutto` : '', st === 'angebot' && w.versendetAm ? `verschickt am ${esc(datumText(w.versendetAm))}` : '', st === 'abgesagt' && w.absage?.t ? `abgesagt am ${esc(new Date(w.absage.t).toLocaleDateString('de-DE'))}` : '', w.angebotKopieVon ? `ersetzt Nr. ${esc(w.angebotKopieVon)}` : ''].filter(Boolean).join(' · ') || 'Noch nicht gespeichert'}</p>
         ${st === 'abgesagt' && w.absage?.grund ? `<p class="ang-grund">${icon('x')}<span>Grund: <b>${esc(w.absage.grund)}</b></span></p>` : ''}
-        ${st === 'angebot' && tage >= nachfassTage(w) ? `<p class="stk-tipp warn">${icon('phone')} Seit ${tage} Tagen beim Kunden. Zeit zum Nachfassen.</p>` : ''}
-        ${st === 'angebot' && w.versendetAm ? nachfassFeld(w) : ''}
+        ${st === 'angebot' && w.versendetAm ? nachfassBlock(w) + nachfassFeld(w) : ''}
         ${st === 'angebot' || st === 'abgesagt' ? `
           ${w.angebotPdf ? `<div class="stk-2"><button class="btn secondary" id="wAngAnsehen">${icon('eye')} Ansehen</button><button class="btn secondary" id="wNochmal">${icon('mail')} Nochmal senden</button></div>` : ''}
           ${st === 'angebot' ? `<div class="stk-2" style="margin-top:10px"><button class="btn" data-st="geplant" style="--c:#2f8a57">${icon('check')} Zugesagt</button><button class="btn" data-st="abgesagt" style="--c:#c0392b">${icon('x')} Abgesagt</button></div>` : ''}
@@ -1439,9 +1443,8 @@ window.Projekt = (() => {
       ${st === 'geplant' ? `<label class="stk-feld">${icon('calendar')}<span>Baustart</span><input type="date" id="wBaustart" value="${esc(w.baustart || '')}"></label>
         <p class="hint" style="margin:0 0 6px">${w.baustart ? 'Am Tag des Baustarts springt der Status von selbst auf „Baustelle läuft“.' : 'Noch kein Baustart. Trag ihn ein, dann steht er im Kalender und das Projekt ist eingeplant.'}</p>
         ${vorzeitigHtml(w)}` : ''}
-      ${st === 'angebot' && tage >= nachfassTage(w) ? `<p class="stk-tipp warn">${icon('phone')} Seit ${tage} Tagen beim Kunden. Zeit zum Nachfassen.</p>` : ''}
-      ${st === 'angebot' && w.versendetAm && tage < nachfassTage(w) ? `<p class="hint" style="margin:0 0 10px">Versendet am ${esc(datumText(w.versendetAm))}</p>` : ''}
-      ${st === 'angebot' && w.versendetAm ? nachfassFeld(w) : ''}
+      ${st === 'angebot' && w.versendetAm && nachfassUeber(w) < 0 ? `<p class="hint" style="margin:0 0 10px">Versendet am ${esc(datumText(w.versendetAm))}</p>` : ''}
+      ${st === 'angebot' && w.versendetAm ? nachfassBlock(w) + nachfassFeld(w) : ''}
       ${st === 'abgesagt' && w.absage?.grund ? `<p class="hint" style="margin:0 0 10px">Grund: ${esc(w.absage.grund)} · ${esc(new Date(w.absage.t).toLocaleDateString('de-DE'))}</p>` : ''}
       ${allesErledigt ? `<p class="stk-tipp">${icon('check')} Alle Schritte sind abgehakt. Jetzt abschließen?</p>` : ''}
       ${knoepfe}</div>`;
@@ -1798,11 +1801,12 @@ window.Projekt = (() => {
   /** Tag, an dem nachgefasst wird ('JJJJ-MM-TT'), oder ''. */
   function nachfassFaellig(x) {
     if (!x?.versendetAm) return '';
+    const wieder = nachfassStand(x).wieder; if (wieder) return wieder; // nach „Nachgefasst“ (v142): der eingetragene Tag
     const d = new Date(x.versendetAm + 'T12:00'); d.setDate(d.getDate() + nachfassTage(x));
     return d.toISOString().slice(0, 10);
   }
   /** Tage seit dem Nachfass-Tag (0 = heute fällig, negativ = noch nicht fällig). */
-  const nachfassUeber = (x) => seitTagen(x?.versendetAm) - nachfassTage(x);
+  const nachfassUeber = (x) => { const f = nachfassFaellig(x); return f ? seitTagen(f) : seitTagen(x?.versendetAm) - nachfassTage(x); };
   /** Größe des verschickten Angebots merken (beim Versand, sonst nachträglich beim nächsten Speichern). */
   function nachfassMerken(w, list) {
     if (norm(w.status) !== 'angebot' || !w.versendetAm || !window.Kalk) return;
@@ -1835,6 +1839,92 @@ window.Projekt = (() => {
     const staffel = mitNetto ? nachfassStaffel(w.nachfass.netto) : nachfassen();
     return `<label class="stk-feld nf-feld">${icon('phone')}<span>Nachfassen nach</span><input type="number" min="1" step="1" inputmode="numeric" data-nachf value="${eigen}" placeholder="${staffel}" style="max-width:80px"><span>Tagen</span></label>
       <p class="hint" style="margin:0 0 8px">${eigen ? `Eigene Frist für dieses Angebot. Leer = nach Größe (${staffel} Tage).` : `Nach Größe des Angebots${mitNetto ? ` (${esc(eur2(w.nachfass.netto))} netto)` : ''}: ${staffel} Tage.`} Nachfassen am ${esc(datumText(nachfassFaellig(w)))}.</p>`;
+  }
+  // ---------- Version 142: Nachgefasst, keine Rückmeldung ----------
+  // w.nachfass.log = [{ id, t, wer (Team-ID), erreicht, notiz, wieder (JJJJ-MM-TT), am (Versanddatum der Fassung) }]. Es zählen nur Einträge der
+  // aktuellen Fassung (am === versendetAm). projectIndex trägt nachfWieder, nachfZuletzt, nachfNicht, nachfAm (Fälligkeit, auch für die Mitteilung).
+  const nfLogAlle = (w) => (Array.isArray(w?.nachfass?.log) ? w.nachfass.log : []);
+  const nachfassLog = (w) => nfLogAlle(w).filter((e) => e && e.am === w.versendetAm);
+  const tagKurz = (iso) => new Date(iso + 'T12:00').toLocaleDateString('de-DE', { day: 'numeric', month: 'numeric' });
+  const zuletztText = (e) => `${e.erreicht ? 'erreicht' : 'nicht erreicht'} am ${tagKurz(new Date(e.t).toISOString().slice(0, 10))}${e.notiz ? `: „${e.notiz}“` : ''}`;
+  /** Stand des Nachfassens für einen Vorgang oder einen Index-Eintrag: { wieder, letzter, zuletzt (Text), nicht (hintereinander nicht erreicht) }. */
+  function nachfassStand(x) {
+    if (!x) return { wieder: '', letzter: null, zuletzt: '', nicht: 0 };
+    if (!x.nachfass) return { wieder: x.nachfWieder || '', letzter: null, zuletzt: x.nachfZuletzt || '', nicht: +x.nachfNicht || 0 };
+    const log = nachfassLog(x), l = log[log.length - 1] || null;
+    let nicht = 0; for (let i = log.length - 1; i >= 0 && log[i].erreicht === false; i--) nicht++;
+    return { wieder: l?.wieder || '', letzter: l, zuletzt: l ? zuletztText(l) : '', nicht };
+  }
+  /** Stiller Vorschlag „Absagen, keine Rückmeldung“ (nie automatisch). */
+  const nachfassVorschlag = (x) => nachfassStand(x).nicht >= (+vorgabe('nachfassAbsageNach') || 2);
+  function nachfassIndex(w) {
+    if (norm(w.status) !== 'angebot' || !w.versendetAm) return {};
+    const s = nachfassStand(w);
+    return { nachfWieder: s.wieder, nachfZuletzt: s.zuletzt, nachfNicht: s.nicht, nachfAm: nachfassFaellig(w) };
+  }
+  /** Hinweis, „Zuletzt …“, Knopf „Nachgefasst“ und Vorschlag beim verschickten Angebot. */
+  function nachfassBlock(w) {
+    const u = nachfassUeber(w), s = nachfassStand(w);
+    return `${u >= 0 ? `<p class="stk-tipp warn">${icon('phone')} Seit ${seitTagen(w.versendetAm)} Tagen beim Kunden. Zeit zum Nachfassen.</p>` : ''}
+      ${s.letzter ? `<p class="hint nf-zul">Zuletzt ${esc(s.zuletzt)}${u < 0 ? ` · nächstes Mal am ${esc(datumText(nachfassFaellig(w)))}` : ''}</p>` : ''}
+      <button type="button" class="btn secondary block nf-knopf" data-nfg>${icon('phone')} Nachgefasst</button>
+      ${nachfassVorschlag(w) ? `<div class="stk-tipp nf-vor"><span>${s.nicht} mal nicht erreicht. Absagen, Grund: ${esc(vorgabe('nachfassAbsageGrund') || 'Keine Rückmeldung')}?</span><button type="button" class="btn secondary small" data-nfabs>Absagen</button></div>` : ''}`;
+  }
+  /** Offene Nachfass-To-dos eines Vorgangs erledigen. */
+  async function nachfassTodosZu(wid) {
+    if (!window.Todos) return;
+    try { await Todos.laden(); for (const t of Todos.liste()) if (!t.erledigt && String(t.schluessel || '').startsWith(`nachfass:${wid}:`)) await Todos.erledigen(t.id); } catch (e) { console.warn('Nachfassen', e); }
+  }
+  /** „Nachgefasst“: erreicht / nicht erreicht, kurze Notiz (Tastatur-Mikrofon, mit KI aufgeräumt), wieder in … Tagen.
+   *  Schreibt w.nachfass.log, die Zeitleiste beim Kunden (art 'anruf') und das nächste Nachfass-To-do. fertig() nach dem Speichern. */
+  async function nachgefasst(wid, fertig) {
+    const w = state.wohnung?.id === wid ? state.wohnung : await kvGet(key(wid)); if (!w) return; // offener Vorgang: dasselbe Objekt, sonst überschreibt ein späteres Speichern den Eintrag
+    const k = Kunden.byId(w.kundeId), s = nachfassStand(w), n0 = nachfassTage(w);
+    const kname = Kunden.name(k) || w.customer || '';
+    const r = await new Promise((res) => {
+      const el = document.createElement('div'); el.className = 'sheet-bg fest';
+      el.innerHTML = `<div class="sheet nf-sheet" role="dialog" aria-label="Nachgefasst"><div class="sheet-h"><b>Nachgefasst${kname ? ': ' + esc(kname) : ''}</b><button class="icon-btn" data-x aria-label="Schließen">${icon('x')}</button></div>
+        <div class="nf-body">
+          <p class="hint" style="margin-top:0">${esc(w.titel || 'Angebot')}${w.versendetAm ? ` · verschickt am ${esc(datumText(w.versendetAm))}` : ''}</p>
+          ${s.letzter ? `<p class="nf-zul"><b>Zuletzt</b> ${esc(s.zuletzt)}</p>` : ''}
+          <div class="seg2 full nf-erg"><button type="button" data-nferg="1">Kunde erreicht</button><button type="button" data-nferg="0">Nicht erreicht</button></div>
+          <label for="nfNotiz">Kurze Notiz</label>
+          <textarea id="nfNotiz" rows="3" data-frei placeholder="Was hat der Kunde gesagt? Tippen oder das Mikrofon der Tastatur nehmen."></textarea>
+          <label class="stk-feld nf-feld"><span>Wieder nachfassen in</span><input type="number" min="1" step="1" inputmode="numeric" id="nfTage" value="${n0}"><span>Tagen</span></label>
+          <button type="button" class="btn block" id="nfOk" disabled>Speichern</button>
+        </div></div>`;
+      let erreicht = null;
+      const close = (v) => { el.classList.remove('on'); setTimeout(() => el.remove(), 180); res(v); };
+      el.onclick = (e) => { if (e.target === el || e.target.closest('[data-x]')) close(null); };
+      $$('[data-nferg]', el).forEach((b) => (b.onclick = () => { erreicht = b.dataset.nferg === '1'; $$('[data-nferg]', el).forEach((x) => x.classList.toggle('on', x === b)); $('#nfOk', el).disabled = false; }));
+      $('#nfOk', el).onclick = () => { if (erreicht === null) return; close({ erreicht, notiz: $('#nfNotiz', el).value.trim(), tage: Math.max(1, Math.round(+$('#nfTage', el).value) || n0) }); };
+      document.body.appendChild(el);
+      requestAnimationFrame(() => el.classList.add('on'));
+    });
+    if (!r) return;
+    let notiz = r.notiz;
+    if (notiz && state.settings.apiKey && typeof geminiText === 'function') {
+      toast('Wird gelesen …', 2500);
+      try { const t = String(await geminiText([{ text: `${vorgabe('promptNachgefasst')}\n\nNote:\n${notiz}` }]) || '').trim(); if (t) notiz = t.replace(/^["„“]+|["„“]+$/g, '').trim(); } catch (e) { console.warn('Nachgefasst', e); }
+    }
+    const d = new Date(heuteIso() + 'T12:00'); d.setDate(d.getDate() + r.tage);
+    const wieder = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    const e = { id: uid(), t: Date.now(), wer: window.Kalender?.wer?.() || '', erreicht: r.erreicht, notiz, wieder, am: w.versendetAm || '' };
+    w.nachfass = { ...(w.nachfass || {}), log: [...nfLogAlle(w), e] };
+    await save(w);
+    // Zeitleiste beim Kunden
+    if (k) {
+      const werN = (window.Kalender?.team?.() || []).find((p) => p.id === e.wer)?.name?.split(' ')[0] || '';
+      k.zeitleiste = [...(Array.isArray(k.zeitleiste) ? k.zeitleiste : []), { id: uid(), t: e.t, art: 'anruf', text: `Angebot „${w.titel || 'Angebot'}“ nachgefasst: ${r.erreicht ? 'Kunde erreicht' : 'nicht erreicht'}${notiz ? '. ' + notiz : ''}`, wer: werN }];
+      await Kunden.speichern(k);
+    }
+    // Nächstes Nachfass-To-do für den Verfasser, das alte ist erledigt
+    await nachfassTodosZu(w.id);
+    const list = await raeume(w);
+    await window.Todos?.anlegen({ text: `Angebot nachfassen: ${w.titel || 'Angebot'}${kname ? ` (${kname})` : ''}${notiz ? `. Zuletzt: ${notiz}` : r.erreicht ? '' : '. Zuletzt nicht erreicht'}`, faellig: wieder, prio: 'mittel',
+      wer: teamIdVon(verfasserVon(w, list)), bezug: { kundeId: w.kundeId || '', vorgangId: w.id }, art: 'nachfass', schluessel: `nachfass:${w.id}:${nfLogAlle(w).length}` });
+    toast(`Eingetragen. Wieder nachfassen am ${datumText(wieder)}`);
+    await fertig?.();
   }
   const seitTagen = (iso) => (iso ? Math.floor((new Date(heuteIso() + 'T12:00') - new Date(iso + 'T12:00')) / 864e5) : -1);
   const datumText = (iso) => new Date(iso + 'T12:00').toLocaleDateString('de-DE');
@@ -1996,7 +2086,7 @@ window.Projekt = (() => {
   }
 
   const forget = (id) => rooms.delete(id);
-  return { automatik, anlegen, angebotVersendet, gesperrt, gesperrtFrage, angebotKopieren, dateiZeigen, nachfassen, nachfassTage, nachfassFaellig, nachfassUeber, nachfassStaffel, nachfassFuerMich, verfasserVon, teamIdVon, seitTagen, STATUS, ANGEBOT, ALLE, PHASEN, phase, farbe, pill, norm, zugesagt, statusName, statusKurz, raumAngebot, angebotMerken, forget, neu, neuDirekt, neuFuer, kundeUebernehmen, oeffnen, view, mappeView, moodboardView, migrate, raum, raeume, raumGespeichert, raumEntfernt, save, wahl, PKG_IDS, _intern: { kundeUnterschreibt, wegFragen, wegText, versandStand, versandPruefen, sendenMitMappe, alsVersendet, angebotSpeichern, titel, addRoom, raumAusScan, raumAnlegen, reiterSetzen, auftragsbestaetigung } };
+  return { automatik, anlegen, angebotVersendet, gesperrt, gesperrtFrage, angebotKopieren, dateiZeigen, nachfassen, nachfassTage, nachfassFaellig, nachfassUeber, nachfassStaffel, nachfassFuerMich, nachfassStand, nachfassVorschlag, nachgefasst, verfasserVon, teamIdVon, seitTagen, STATUS, ANGEBOT, ALLE, PHASEN, phase, farbe, pill, norm, zugesagt, statusName, statusKurz, raumAngebot, angebotMerken, forget, neu, neuDirekt, neuFuer, kundeUebernehmen, oeffnen, view, mappeView, moodboardView, migrate, raum, raeume, raumGespeichert, raumEntfernt, save, wahl, PKG_IDS, _intern: { kundeUnterschreibt, wegFragen, wegText, versandStand, versandPruefen, sendenMitMappe, alsVersendet, angebotSpeichern, titel, addRoom, raumAusScan, raumAnlegen, reiterSetzen, auftragsbestaetigung } };
 })();
 // Ältere Aufrufe (PR „Wohnungen“) laufen weiter
 window.Wohnung = { neu: () => Projekt.neu(), oeffnen: (id) => Projekt.oeffnen(id), view: () => Projekt.view(), raumGespeichert: (p) => Projekt.raumGespeichert(p), raumEntfernt: (p) => Projekt.raumEntfernt(p) };
