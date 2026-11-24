@@ -667,8 +667,10 @@ window.Buero = (() => {
     const h = tagIso(new Date()), jahr = h.slice(0, 4), monat = h.slice(0, 7);
     const offenAng = idx.filter((x) => ['besichtigung', 'entwurf', 'angebot'].includes(Projekt.norm(x.status)));
     const versendet = idx.filter((x) => Projekt.norm(x.status) === 'angebot');
-    const nf = Projekt.nachfassen();
-    const wv = versendet.map((x) => ({ x, tage: Projekt.seitTagen(x.versendetAm) })).sort((a, b) => b.tage - a.tage);
+    // Frist je Angebot nach Größe (v141): ueber = Tage über der Frist (ab 0 fällig), für beide sichtbar, am dringendsten zuerst
+    const wv = versendet.map((x) => ({ x, tage: Projekt.seitTagen(x.versendetAm), nf: Projekt.nachfassTage(x), ueber: Projekt.nachfassUeber(x) })).sort((a, b) => b.ueber - a.ueber || b.tage - a.tage);
+    const faellig = wv.filter((v) => v.x.versendetAm && v.ueber >= 0);
+    const fristText = (v) => (!v.x.versendetAm ? '' : v.ueber > 0 ? `${v.ueber} ${v.ueber === 1 ? 'Tag' : 'Tage'} drüber` : v.ueber === 0 ? 'heute' : v.ueber === -1 ? 'morgen' : `in ${-v.ueber} Tagen`);
     const laufend = idx.filter((x) => ['einplanen', 'eingeplant', 'laufend'].includes(Projekt.phase(x)));
     const rech = window.Rechnung?.liste() || [];
     const op = rech.filter(Rechnung.istOffen).sort((a, b) => (a.faellig || '').localeCompare(b.faellig || ''));
@@ -680,7 +682,9 @@ window.Buero = (() => {
     // Wert der versendeten Angebote (netto, aus der Kalkulation)
     let wert = 0;
     const werte = new Map();
-    await Promise.all(versendet.map(async (x) => { try { const w = await kvGet('wohnung:' + x.id); const n = w ? (await Finanzen.kalkulation(w)).soll.netto || 0 : 0; werte.set(x.id, n); wert += n; } catch {} }));
+    const verf = new Map(); // Verfasser für ältere Einträge ohne verfasser im Index (v141)
+    await Promise.all(versendet.map(async (x) => { try { const w = await kvGet('wohnung:' + x.id); const n = w ? (await Finanzen.kalkulation(w)).soll.netto || 0 : 0; werte.set(x.id, n); wert += n;
+      if (w && !x.verfasser) verf.set(x.id, Projekt.verfasserVon(w, await Projekt.raeume(w))); } catch {} }));
     if (!el.isConnected || state.tab !== 'dashboard') return;
     const e0 = (x) => Math.round(x).toLocaleString('de-DE') + ' €';
     const kachel = (ziel, zahl, text, farbe = '') => `<button type="button" class="db-k ${farbe}" data-dbz="${ziel}"><b>${zahl}</b><span>${text}</span></button>`;
@@ -689,7 +693,7 @@ window.Buero = (() => {
     const box = document.createElement('div'); box.className = 'db';
     box.innerHTML = `<div class="db-kpi">
         ${kachel('angebote', offenAng.length, `Offene Angebote${wert ? ` · ${e0(wert)} verschickt` : ''}`)}
-        ${kachel('wv', wv.filter((v) => v.tage >= nf).length, `Zum Nachfassen (ab ${nf} Tagen)`, wv.some((v) => v.tage >= nf) ? 'gelb' : '')}
+        ${kachel('wv', faellig.length, 'Zum Nachfassen (Frist nach Größe)', faellig.length ? 'gelb' : '')}
         ${kachel('projekt', laufend.length, 'Projekte eingeplant oder laufend')}
         ${kachel('op', e0(summe(op)), `Offene Posten${ueber.length ? `, ${e0(summe(ueber))} überfällig` : ''}`, ueber.length ? 'rot' : '')}
         ${kachel('auswertung', e0(umsatz), `Umsatz ${jahr} netto`)}
@@ -714,9 +718,11 @@ window.Buero = (() => {
     const kName = (x) => Kunden.name(Kunden.byId(x?.kundeId)) || x?.customer || '';
     const tel = (x) => Kunden.byId(x?.kundeId)?.telefon || '';
     window.Tabelle.liste($('[data-dbwv]', box), { id: 'wiedervorlage', leer: 'Kein verschicktes Angebot offen.', oeffnen: (id) => Projekt.oeffnen(id),
-      spalten: [{ k: 'kunde', t: 'Kunde' }, { k: 'titel', t: 'Angebot' }, { k: 'tage', t: 'Seit', r: 1, b: 90 }, { k: 'wert', t: 'Netto', r: 1, b: 110 }, { k: 'tel', t: '', b: 50 }],
+      spalten: [{ k: 'kunde', t: 'Kunde' }, { k: 'titel', t: 'Angebot' }, { k: 'verf', t: 'Verfasser', b: 120 }, { k: 'tage', t: 'Seit', r: 1, b: 90 }, { k: 'frist', t: 'Nachfassen', r: 1, b: 110 }, { k: 'wert', t: 'Netto', r: 1, b: 110 }, { k: 'tel', t: '', b: 50 }],
       zeilen: wv.map((v) => ({ id: v.x.id, werte: { kunde: { text: kName(v.x), html: `<b>${esc(kName(v.x))}</b>` }, titel: v.x.titel || v.x.room || 'Angebot',
-        tage: { text: v.tage >= 0 ? v.tage + ' Tage' : '', sort: v.tage, html: v.tage >= 0 ? `<span class="${v.tage >= nf ? 'db-faellig' : ''}">${v.tage} Tage</span>` : '' }, wert: { text: werte.get(v.x.id) ? e0(werte.get(v.x.id)) : '', sort: werte.get(v.x.id) || 0 },
+        verf: v.x.verfasser || verf.get(v.x.id) || '',
+        tage: { text: v.tage >= 0 ? v.tage + ' Tage' : '', sort: v.tage, html: v.tage >= 0 ? `<span class="${v.ueber >= 0 ? 'db-faellig' : ''}">${v.tage} Tage</span>` : '' },
+        frist: { text: fristText(v), sort: v.ueber, html: v.x.versendetAm ? `<span class="${v.ueber >= 0 ? 'db-faellig' : 'muted'}" title="Frist ${v.nf} Tage">${esc(fristText(v))}</span>` : '' }, wert: { text: werte.get(v.x.id) ? e0(werte.get(v.x.id)) : '', sort: werte.get(v.x.id) || 0 },
         tel: { text: tel(v.x), html: tel(v.x) ? `<a class="icon-btn db-tel" href="${esc(telLink(tel(v.x)))}" title="Anrufen ${esc(tel(v.x))}" data-stop>${icon('phone')}</a>` : '' } } })) });
     window.Tabelle.liste($('[data-dbop]', box), { id: 'offenePosten', leer: 'Alles bezahlt.', oeffnen: (id) => Rechnung.detail(op.find((r) => r.id === id), () => dashboardView()),
       spalten: [{ k: 'nr', t: 'Rechnung', b: 110 }, { k: 'kunde', t: 'Kunde' }, { k: 'faellig', t: 'Fällig', b: 100 }, { k: 'stufe', t: 'Stand', b: 150 }, { k: 'betrag', t: 'Betrag', r: 1, b: 110 }, { k: 'mahn', t: '', b: 100 }],

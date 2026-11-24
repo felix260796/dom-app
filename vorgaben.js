@@ -118,7 +118,11 @@ const VORGABEN = {
       { k: 'angebotAuftragsfeld', l: 'Angebot hat am Ende ein Feld, in dem der Kunde unterschreibt (Auftragserteilung)', t: 'janein', d: 'ja', h: 'Text und Abwählen: Schlusstexte im Angebot bzw. Einstellungen › Textbausteine.' },
       { k: 'abEinleitung', l: 'Auftragsbestätigung: Text vor den Positionen', t: 'text', d: 'vielen Dank für Ihren Auftrag. Hiermit bestätigen wir Ihnen die folgenden Leistungen gemäß unserem Angebot Nr. {nr}:', h: 'Platzhalter: {nr} Angebotsnummer, {kunde} Kunde, {datum} heute.' },
       { k: 'abSchluss', l: 'Auftragsbestätigung: Satz vor dem Gruß', t: 'zeile', d: 'Wir freuen uns auf die Zusammenarbeit.' },
-      { k: 'nachfassenTage', l: 'Hinweis „Nachfassen“ nach wie vielen Tagen?', t: 'zahl', d: 7 },
+      { k: 'nachfassKleinBis', l: 'Nachfassen: kleines Angebot bis unter … € netto', t: 'zahl', d: 5000, h: 'Netto nach Nachlass. Je Angebot lässt sich eine eigene Zahl von Tagen eintragen (beim verschickten Angebot).' },
+      { k: 'nachfassKleinTage', l: 'Nachfassen bei kleinen Angeboten nach … Tagen', t: 'zahl', d: 3 },
+      { k: 'nachfassMittelBis', l: 'Nachfassen: mittleres Angebot bis … € netto', t: 'zahl', d: 20000 },
+      { k: 'nachfassenTage', l: 'Nachfassen bei mittleren Angeboten nach … Tagen (auch für Angebote ohne bekannte Größe)', t: 'zahl', d: 7 },
+      { k: 'nachfassGrossTage', l: 'Nachfassen bei großen Angeboten (darüber) nach … Tagen', t: 'zahl', d: 10 },
       { k: 'absageGruende', l: 'Gründe für eine Absage (eine Zeile je Grund)', t: 'liste', d: ['Zu teuer', 'Anderer Anbieter', 'Macht es selbst', 'Kein Bedarf mehr', 'Zeitpunkt passt nicht', 'Keine Rückmeldung', 'Sonstiges'] },
     ]],
     ['Kontakt halten (Anrufen und Treffen)', [

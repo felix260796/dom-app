@@ -93,9 +93,10 @@ window.Kalender = (() => {
     }
     // Nachfassen: verschickte Angebote erscheinen am Tag, an dem nachgefasst werden soll (Tage: Abläufe & Listen)
     if (vorgabe('nachfassenKalender') !== 'nein') {
-      const tage = +vorgabe('nachfassenTage') || 7;
       for (const x of projIdx) {
         if (window.Projekt?.norm(x.status) !== 'angebot' || !x.versendetAm) continue;
+        // Frist je Angebot nach Größe bzw. eigene Tage (v141), sonst die alte feste Zahl
+        const tage = window.Projekt?.nachfassTage ? Projekt.nachfassTage(x) : +vorgabe('nachfassenTage') || 7;
         const d = new Date(ausIso(x.versendetAm)); d.setDate(d.getDate() + tage);
         let ds = iso(d); if (ds < heute()) ds = heute(); // überfällig: bleibt auf heute stehen, bis Zusage oder Absage
         if (ds < von || ds > bis) continue;

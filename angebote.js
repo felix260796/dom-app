@@ -50,7 +50,7 @@ window.Angebote = (() => {
           ${x.thumb ? `<img src="${x.thumb}" alt="">` : `<span class="pc-ph">${icon('euro')}</span>`}
           <span class="pc-t"><b>${esc(x.titel || x.room || 'Projekt')}</b>${Projekt.pill(x.status)}
             ${Kunden.name(Kunden.byId(x.kundeId)) || x.customer ? `<span class="muted pc-wer">${icon('user')}${esc(Kunden.name(Kunden.byId(x.kundeId)) || x.customer)}</span>` : ''}
-            ${Projekt.norm(x.status) === 'angebot' && Projekt.seitTagen(x.versendetAm) >= Projekt.nachfassen() ? `<span class="nachfassen">Seit ${Projekt.seitTagen(x.versendetAm)} Tagen beim Kunden, nachfassen</span>` : ''}
+            ${Projekt.norm(x.status) === 'angebot' && x.versendetAm && Projekt.nachfassUeber(x) >= 0 ? `<span class="nachfassen">Seit ${Projekt.seitTagen(x.versendetAm)} Tagen beim Kunden, nachfassen</span>` : ''}
             ${x.absage ? `<span class="muted">Grund: ${esc(x.absage)}</span>` : ''}
             <span class="ang-sum">${summen[i] ? eur(summen[i]) + ' brutto' : '<span class="muted">noch keine Positionen</span>'}</span></span>
           ${icon('chevron', 'pc-chev')}
@@ -68,7 +68,7 @@ window.Angebote = (() => {
         const tage = Projekt.norm(x.status) === 'angebot' ? Projekt.seitTagen(x.versendetAm) : 0;
         return { id: x.id, werte: {
           nr: x.nr || '', kunde: Kunden.name(Kunden.byId(x.kundeId)) || x.customer || '', betreff: x.titel || x.room || '', objekt: x.address || '',
-          stand: { text: Projekt.norm(x.status), html: Projekt.pill(x.status) + (tage >= Projekt.nachfassen() ? `<br><span class="nachfassen">${tage} Tage, nachfassen</span>` : x.absage ? `<br><span class="muted">${esc(x.absage)}</span>` : '') },
+          stand: { text: Projekt.norm(x.status), html: Projekt.pill(x.status) + (tage && Projekt.nachfassUeber(x) >= 0 ? `<br><span class="nachfassen">${tage} Tage, nachfassen</span>` : x.absage ? `<br><span class="muted">${esc(x.absage)}</span>` : '') },
           summe: { text: summen[i] ? eur(summen[i]) : '', sort: summen[i] || 0 },
           datum: { text: x.updated ? new Date(x.updated).toLocaleDateString('de-DE') : '', sort: x.updated || 0 } } };
       }) });
