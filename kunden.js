@@ -876,11 +876,11 @@ window.Kunden = (() => {
   const objLabel = (o) => (o ? o.name.trim() || einzeilig(o.adresse) || 'Objekt ohne Anschrift' : '');
   const untertitel = (k) => [k.nr && `Kunden-Nr. ${k.nr}`, ort(k)].filter(Boolean).join(' · ');
   /** Projektkarte; zweite Zeile z. B. „1001-02 · Miethaus 1“. */
-  const pcard = (x, wo = '') => `<button class="pcard" data-open="${x.id}">
+  const pcard = (x, wo = '') => `<button class="pcard${window.Projekt?.norm(x.status) === 'abgesagt' ? ' abg' : ''}" data-open="${x.id}">
       ${x.thumb ? `<img src="${x.thumb}" alt="">` : `<span class="pc-ph">${icon('home')}</span>`}
       <span class="pc-t"><b>${esc(x.titel || x.room || 'Projekt')}</b>
         <span class="muted">${esc([x.nr, x.ausKunde && `aus Kunde ${x.ausKunde} übernommen`, wo, x.titel && x.room].filter(Boolean).join(' · '))}</span>
-        <span class="muted">${esc(monatJahr(x.created || x.updated))}</span>${x.absage ? `<span class="muted">Grund: ${esc(x.absage)}</span>` : ''}</span>
+        <span class="muted">${esc(monatJahr(x.created || x.updated))}</span>${window.Projekt?.norm(x.status) === 'abgesagt' ? `<span class="muted">Abgesagt${x.absage ? ` · Grund: ${esc(x.absage)}` : ''}</span>` : x.absage ? `<span class="muted">Grund: ${esc(x.absage)}</span>` : ''}</span>
       ${icon('chevron', 'pc-chev')}</button>`;
 
   // ---------- Ansicht: ein Objekt (Anschrift, Notiz, Bilder, Projekte dort) ----------

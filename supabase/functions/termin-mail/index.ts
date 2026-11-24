@@ -1,9 +1,11 @@
-// DOM – Terminmails (Supabase Edge Function „termin-mail“), Stand 6.11.2026: eigene Mail je Empfänger (Team, Kunde, Subunternehmer)
-// 1. Die App ruft sie beim Speichern eines Termins auf: Bestätigung (bzw. Änderung/Absage) an alle Beteiligten,
-//    mit Kalendereinladung (.ics) im Anhang.
+// DOM – Terminmails (Supabase Edge Function „termin-mail“), Stand 24.11.2026 (App-Version 150): eigene Mail je Empfänger (Team, Kunde, Subunternehmer)
+// 1. Die App ruft sie nur auf, wenn beim Termin „Speichern und senden“ getippt wird (nie von selbst): Bestätigung
+//    (bzw. Änderung/Absage) an die angehakten Empfänger (termin.mailAn), mit Kalendereinladung (.ics) im Anhang.
 // 2. Ein Zeitplan (Supabase Cron, z. B. alle 15 Minuten) ruft sie mit { aktion: "erinnerungen" } auf:
 //    Sie liest die Termine aus dem Firmenspeicher (Bucket „dom“, Ordner „team“) und schickt die Erinnerung,
 //    sobald der eingestellte Vorlauf (z. B. 1 oder 2 Tage vorher) erreicht ist. Jede Erinnerung geht nur einmal raus.
+//    Seit Version 150: Das Team bekommt sie immer, Kunde, Subunternehmer und Ansprechpartner vor Ort nur mit
+//    „erinnerung: true“ (Häkchen „Erinnerung senden“ im Termin). Ältere Termine ohne dieses Kennzeichen: nur das Team.
 //
 // Geheimnisse (Edge Functions → Secrets):
 //   MAIL_FROM      Absender, z. B.  DOM Projektmanagement <termine@deine-firma.de>
@@ -11,7 +13,10 @@
 //   und entweder   RESEND_API_KEY  (Mail-Dienst resend.com)
 //   oder SMTP:     SMTP_HOST, SMTP_PORT (465), SMTP_USER, SMTP_PASS  (z. B. Gmail mit App-Passwort, IONOS, Strato)
 // SUPABASE_URL, SUPABASE_ANON_KEY und SUPABASE_SERVICE_ROLE_KEY stellt Supabase selbst bereit.
-// Beim Anlegen „Verify JWT“ ausschalten: die Funktion prüft die Anmeldung selbst.
+// Beim Anlegen „Verify JWT“ ausschalten. Grund: Der Zeitplan (Cron) ruft ohne Anmeldung auf, nur mit dem Header
+// x-cron-secret; mit Verify JWT würde Supabase diesen Aufruf abweisen. Geschützt ist die Funktion trotzdem:
+// „erinnerungen“ nur mit dem richtigen CRON_SECRET, jeder andere Aufruf nur mit gültiger Anmeldung aus der App
+// (angemeldet(): Supabase prüft das Token des Benutzers), sonst Fehler 401.
 
 import { SMTPClient } from "https://deno.land/x/denomailer@1.6.0/mod.ts";
 
@@ -23,7 +28,7 @@ const cors = { "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Headers
 const antwort = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { ...cors, "Content-Type": "application/json" } });
 
 type Rolle = "team" | "kunde" | "partner";
-type Person = { name?: string; email?: string; rolle?: Rolle; anrede?: string };
+type Person = { name?: string; email?: string; rolle?: Rolle; anrede?: string; erinnerung?: boolean };
 type Texte = Partial<Record<Rolle, { bestaetigung?: string; erinnerung?: string }>>;
 type Termin = {
   id: string; titel?: string; art?: string; datum: string; von?: string; bis?: string; ganztag?: boolean;
@@ -160,6 +165,9 @@ async function senden(an: Person[], betreff: string, html: string, anhang?: { na
   return empf.length;
 }
 
+/** Wer die Erinnerung bekommt: Team immer, alle anderen nur mit Häkchen (erinnerung === true). */
+const erinnerungAn = (an: Person[] = []) => an.filter((p) => rolleVon(p) === "team" || p.erinnerung === true);
+
 // ---------- Speicher (Service-Zugang) ----------
 const sto = (path: string, init: RequestInit = {}) => fetch(`${URL_}/storage/v1/${path}`, { ...init, headers: { apikey: SRK, Authorization: `Bearer ${SRK}`, ...(init.headers || {}) } });
 async function terminListe(): Promise<Termin[]> {
@@ -186,13 +194,14 @@ async function erinnerungen() {
   let n = 0, geaendert = false;
   for (const t of await terminListe()) {
     const tage = Number(t.erinnerung) || 0;
-    if (!tage || !t.mailAn?.length) continue;
+    const an = erinnerungAn(t.mailAn);
+    if (!tage || !an.length) continue;
     const start = zeitpunkt(t.datum, t.ganztag ? "08:00" : t.von).getTime();
     const ab = start - tage * 864e5;
     const schluessel = `${t.id}|${t.datum}|${t.ganztag ? "" : t.von}|${tage}`; // neue Zeit → neue Erinnerung
     if (st[schluessel] || jetzt < ab || jetzt > start) continue;
     const wann = tage === 1 ? "morgen" : tage === 7 ? "in einer Woche" : `in ${tage} Tagen`;
-    await anAlle(t, t.mailAn, "erinnerung", wann);
+    await anAlle(t, an, "erinnerung", wann);
     st[schluessel] = jetzt; n++; geaendert = true;
   }
   // alte Einträge (älter als 60 Tage) aufräumen

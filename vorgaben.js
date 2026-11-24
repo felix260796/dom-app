@@ -9,7 +9,8 @@ const VORGABEN = {
   rechnungen: [
     ['Zahlung', [
       { k: 'zahlungsziel', l: 'Zahlungsziel in Tagen', t: 'zahl', d: 14 },
-      { k: 'abschlagPlan', l: 'Abschläge in % (der letzte Teil kommt mit der Schlussrechnung)', t: 'plan', d: [30, 40, 30], h: 'Je Projekt kannst du im Projekt einen eigenen Plan eintragen.' },
+      { k: 'abschlagPlan', l: 'Abschläge in % (der letzte Teil kommt mit der Schlussrechnung)', t: 'plan', d: [30, 40, 30], h: 'Je Angebot bzw. Projekt änderbar (Karte „Zahlungsplan“ beim Angebot und im Projekt unter Geld).' },
+      { k: 'abschlagVorauszahlung', l: 'Vorauszahlung vor Baustart (eigene Art, ankreuzen)', t: 'vz', d: 0, h: 'Nicht automatisch der erste Abschlag: nur der angekreuzte Teil gilt als Vorauszahlung. Dann steht im Zahlungsplan „als Vorauszahlung vor Baustart“ und im eingeplanten Projekt der Hinweis „Vorauszahlung vor Baustart fällig“, bis die Abschlagsrechnung dieses Teils bezahlt ist. Je Angebot bzw. Projekt änderbar.' },
       { k: 'rechnungQr', l: 'QR-Code zum Bezahlen auf Rechnung und Mahnung (GiroCode, IBAN in den Firmendaten)', t: 'janein', d: 'ja' },
       { k: 'abschlagFortschritt', l: 'Beim Abschlag den Baufortschritt anzeigen (z. B. „60 % fertig“)', t: 'janein', d: 'ja' },
       { k: 'mahnFrist', l: 'Neue Frist bei Erinnerung und Mahnung in Tagen', t: 'zahl', d: 7 },
@@ -73,6 +74,8 @@ const VORGABEN = {
       { k: 'briefingTempo', l: 'Briefing: Sprechtempo (1 = normal, 0,8 langsamer, 1,2 schneller)', t: 'zahl', d: 1 },
       { k: 'verkaufFelder', l: 'Verkaufsinfos (intern) im Vor-Ort-Termin (eine Zeile je Feld)', t: 'liste', d: ['Wer entscheidet?', 'Budget', 'Zeitrahmen', 'Holt noch andere Angebote ein?', 'Zuschuss oder Förderung möglich?', 'Weitere Wünsche für später'], h: 'Nur für euch, steht nie im Angebot. Das Briefing liest sie mit vor.' },
       { k: 'angebotDarstellung', l: 'Angebot: Preise im PDF (Standard, je Angebot und je Titel änderbar)', t: 'wahl', d: 'einzel', o: [['einzel', 'Einzelpreise'], ['inhalt', 'Paketpreis mit Inhalt'], ['paket', 'Nur Paketpreis']], h: 'Bedarfs- und Alternativpositionen stehen immer mit eigenem Preis im Angebot.' },
+      { k: 'angebotUntertitel', l: 'Angebot: Untertitel je Gewerk (z. B. „1.1 Fliesen“) mit Summe', t: 'wahl', d: 'mehrere', o: [['mehrere', 'Nur wenn ein Titel mehrere Gewerke hat'], ['immer', 'Immer'], ['nie', 'Nie']], h: 'Der Untertitel kommt aus dem Gewerk der Position und ist je Position änderbar (Details). Quelle, Sub und Material stehen nur intern in der Tabelle.' },
+      { k: 'untertitelSonstige', l: 'Angebot: Untertitel für Positionen ohne Gewerk', t: 'text', d: 'Weitere Leistungen' },
       { k: 'allgemeinVerteilen', l: 'Angebot: „Allgemeines“ (Baustelleneinrichtung, Schutz, Reinigung) auf die Positionen verteilen', t: 'janein', d: 'nein', h: 'Standard für neue Angebote, je Angebot umschaltbar. Verteilt: Die Positionen stehen nicht im PDF, ihr Betrag steckt anteilig in den Einzelpreisen, darunter steht der Satz unten.' },
       { k: 'textAllgemeinVerteilt', l: 'Angebot: Satz, wenn „Allgemeines“ verteilt ist ({leistungen})', t: 'zeile', d: 'Die Einzelpreise enthalten anteilig: {leistungen}.' },
       { k: 'vorlageLernenAb', l: 'Lernende Vorlagen: Vorschlag, wenn eine Position so oft von Hand ergänzt oder gelöscht wurde …', t: 'zahl', d: 3 },
@@ -87,6 +90,30 @@ const VORGABEN = {
       { k: 'subAnfrageText', l: 'An Sub schicken: Bitte um Angebot (im Blatt)', t: 'text', d: 'Wir bitten um Ihr Angebot für die beschriebenen Arbeiten bis {frist}.', h: '{frist} = Datum.' },
       { k: 'subLohnMaterial', l: 'An Sub schicken: fester Satz zu Lohn und Material', t: 'zeile', d: 'Bitte Lohn und Material getrennt ausweisen.' },
       { k: 'textSubAnfrage', l: 'Mail an den Sub mit Bitte um Angebot', t: 'text', d: '{anrede}\nanbei die Unterlagen zum Projekt {projekt}. Wir bitten um Ihr Angebot bis {frist}. Bitte Lohn und Material getrennt ausweisen.\nViele Grüße\n{name}', h: '{anrede}, {projekt}, {frist}, {name}' },
+      { k: 'textSubAuftragBetreff', l: 'Auftrag an Subunternehmer: Betreff (PDF und Mail)', t: 'zeile', d: 'Auftrag: {projekt}, {objekt}', h: '{projekt}, {objekt}, {nr} = Vorgangsnummer, {sub} = Firma des Subs' },
+      { k: 'textSubAuftragEinleitung', l: 'Auftrag an Subunternehmer: Text oben im PDF', t: 'text', d: '{anrede}\nhiermit beauftragen wir Sie mit den folgenden Leistungen zu den genannten Preisen.', h: '{anrede}, {projekt}, {objekt}, {termin}, {sub}' },
+      { k: 'textSubAuftrag', l: 'Auftrag an Subunternehmer: Schlusstext im PDF', t: 'text', d: 'Bitte bestätigen Sie den Auftrag und den Termin kurz per Mail oder WhatsApp. Abgerechnet wird nach tatsächlich erbrachter Leistung. Bei Fragen erreichen Sie uns unter den oben genannten Nummern.', h: 'Platzhalter wie oben. Danach folgen Gruß und Unterschrift.' },
+      { k: 'textSubAuftragMail', l: 'Auftrag an Subunternehmer: Nachricht zum PDF (Mail, WhatsApp)', t: 'text', d: '{anrede}\nanbei unser Auftrag zum Projekt {projekt} ({objekt}). Termin: {termin}. Bitte kurz bestätigen.\nViele Grüße\n{name}\n{firma}', h: '{anrede}, {projekt}, {objekt}, {termin} (Baustart oder „nach Absprache“), {name}, {firma}. Geschickt wird nur per Tipp.' },
+      { k: 'subBestaetigungTage', l: 'Bestätigung des Subunternehmers eintragen: To-do fällig nach Tagen', t: 'zahl', d: 3 },
+      { k: 'subBestaetigungVorBaustart', l: 'Gelber Hinweis, wenn ein Subunternehmer so viele Tage vor dem Baustart noch nicht bestätigt hat', t: 'zahl', d: 5, h: 'Steht dann in „Jetzt dran“, in der Statuskarte, in der Projektliste, im Dashboard und auf „Heute“.' },
+      { k: 'textBaustartBetreff', l: 'Baustart mitteilen: Betreff', t: 'zeile', d: 'Baustart {projekt}: {datum}', h: '{projekt}, {objekt}, {datum} = Wochentag und Datum' },
+      { k: 'textBaustartKunde', l: 'Baustart mitteilen: Nachricht an den Kunden', t: 'text', d: '{anrede}\nwir freuen uns auf Ihr Projekt {projekt}. Wir beginnen am {datum}.\nIhr Ansprechpartner während der Bauzeit: {ansprechpartner}.\nViele Grüße\n{name}\n{firma}', h: '{anrede}, {datum} (Wochentag und Datum), {projekt}, {objekt}, {ansprechpartner} (Projekt-Ansprechpartner mit Telefon), {name}, {firma}. Geschickt wird nur per Tipp.' },
+      { k: 'textBaustartSub', l: 'Baustart mitteilen: Nachricht an den Subunternehmer (kurze Terminmitteilung)', t: 'text', d: '{anrede}\nkurze Info zum Projekt {projekt} ({objekt}): Baustart ist am {datum}.\n{einsatz}\nAnsprechpartner bei uns: {ansprechpartner}.\nViele Grüße\n{name}\n{firma}', h: 'Platzhalter wie oben, dazu {einsatz} = sein Einsatz aus dem Bauzeitenplan (ohne Plan leer, die Zeile fällt weg). Ersetzt kein Auftrags-PDF.' },
+      { k: 'textBaustartVerschobenBetreff', l: 'Baustart verschoben: Betreff', t: 'zeile', d: 'Neuer Baustart {projekt}: {neu}', h: '{projekt}, {objekt}, {alt}, {neu}' },
+      { k: 'textBaustartVerschobenKunde', l: 'Baustart verschoben: Nachricht an den Kunden', t: 'text', d: '{anrede}\nbeim Projekt {projekt} verschiebt sich der Baustart: statt am {alt} beginnen wir am {neu}.\nBei Fragen erreichen Sie {ansprechpartner}.\nViele Grüße\n{name}\n{firma}', h: '{anrede}, {alt} = bisheriger Termin, {neu} = neuer Termin (Wochentag und Datum), {projekt}, {objekt}, {ansprechpartner}, {name}, {firma}' },
+      { k: 'textBaustartVerschobenSub', l: 'Baustart verschoben: Nachricht an den Subunternehmer', t: 'text', d: '{anrede}\nbeim Projekt {projekt} ({objekt}) verschiebt sich der Baustart vom {alt} auf den {neu}.\n{einsatz}\nViele Grüße\n{name}\n{firma}', h: 'Platzhalter wie oben, dazu {einsatz} (Bauzeitenplan, sonst leer).' },
+      { k: 'textEinsatz', l: 'Bauzeitenplan: Satz für {einsatz} in der Nachricht an den Subunternehmer', t: 'zeile', d: 'Ihr Einsatz laut Bauzeitenplan: {zeitraum}.', h: '{zeitraum} = z. B. „Mo., 03.12. bis Fr., 07.12.“. Ohne Einsatz im Plan bleibt {einsatz} leer.' },
+      { k: 'bauplanKalender', l: 'Bauzeitenplan: Einsätze als Einträge in den Kalender', t: 'janein', d: 'ja', h: 'Je Werktag eines Einsatzes ein Eintrag (Art Baustelle), nur solange das Projekt eingeplant ist oder läuft.' },
+      { k: 'textBauplanBetreff', l: 'Bauzeitenplan als PDF: Betreff', t: 'zeile', d: 'Bauzeitenplan {projekt}', h: '{projekt}, {objekt}, {baustart}, {bauende}' },
+      { k: 'textBauplanEinleitung', l: 'Bauzeitenplan als PDF: Text über der Tabelle', t: 'text', d: '{anrede}\nhier der geplante Ablauf für das Projekt {projekt} ({objekt}). Kleine Verschiebungen sind möglich, wir halten Sie auf dem Laufenden.', h: '{anrede}, {projekt}, {objekt}, {baustart}, {bauende}, {ansprechpartner}, {name}, {firma}' },
+      { k: 'textBauplanMail', l: 'Bauzeitenplan als PDF: Nachricht dazu (Mail, WhatsApp)', t: 'text', d: '{anrede}\nanbei der Bauzeitenplan für das Projekt {projekt}.\nViele Grüße\n{name}\n{firma}', h: 'Platzhalter wie oben. Geschickt wird nur per Tipp.' },
+      { k: 'textBaustartOffenBetreff', l: 'Baustart wieder offen: Betreff', t: 'zeile', d: 'Baustart {projekt}: neuer Termin folgt', h: '{projekt}, {objekt}, {alt}' },
+      { k: 'textBaustartOffenKunde', l: 'Baustart wieder offen: Nachricht an den Kunden', t: 'text', d: '{anrede}\nbeim Projekt {projekt} können wir den Baustart am {alt} leider nicht halten. Wir melden uns mit einem neuen Termin.\nViele Grüße\n{name}\n{firma}', h: '{anrede}, {alt} = bisheriger Termin, {projekt}, {objekt}, {ansprechpartner}, {name}, {firma}' },
+      { k: 'textBaustartOffenSub', l: 'Baustart wieder offen: Nachricht an den Subunternehmer', t: 'text', d: '{anrede}\nbeim Projekt {projekt} ({objekt}) entfällt der Baustart am {alt}. Den neuen Termin geben wir durch.\nViele Grüße\n{name}\n{firma}', h: 'Platzhalter wie oben.' },
+      { k: 'nachweis48b', l: 'Name des Nachweises Freistellungsbescheinigung (§ 48b) in den Pflichtnachweisen', t: 'zeile', d: 'Freistellungsbescheinigung § 48b', h: 'Fehlt er beim Sub oder ist er abgelaufen, zeigt DOM beim Auftrag einen deutlichen Hinweis (blockiert nichts).' },
+      { k: 'textSubAbsageBetreff', l: 'Absage an Subunternehmer: Betreff', t: 'zeile', d: 'Ihr Angebot zum Projekt {projekt}', h: '{projekt}, {objekt}' },
+      { k: 'textSubAbsageZusage', l: 'Absage an Subunternehmer, wenn der Kunde zugesagt hat (anderer oder kein Sub gewählt)', t: 'text', d: '{anrede}\nvielen Dank für Ihr Angebot zum Projekt {projekt} ({objekt}). Diesmal kam es leider nicht zum Zug, wir melden uns gerne beim nächsten passenden Projekt.\nViele Grüße\n{name}\n{firma}', h: '{anrede}, {projekt} = Projektname, {objekt} = Anschrift, {name} = wer das Gerät hat, {firma}. Wird nach der Zusage angeboten, geschickt wird nur per Tipp.' },
+      { k: 'textSubAbsageKunde', l: 'Nachricht an Subunternehmer, wenn der Kunde abgesagt hat', t: 'text', d: '{anrede}\nder Kunde hat sich beim Projekt {projekt} ({objekt}) leider gegen die Ausführung entschieden. Danke für Ihr Angebot.\nViele Grüße\n{name}\n{firma}', h: 'Platzhalter wie oben.' },
       { k: 'textSubInfo', l: 'Mail an den Sub nur zur Info', t: 'text', d: '{anrede}\nanbei zur Info die Unterlagen zum Projekt {projekt}.\nViele Grüße\n{name}', h: '{anrede}, {projekt}, {name}' },
       { k: 'angebotFristTage', l: 'Termin abschließen: Angebot kommt in so vielen Werktagen', t: 'zahl', d: 5, h: 'Vorschlag beim Abschließen, änderbar. Daraus wird ein To-do „Angebot an … schicken“.' },
       { k: 'dankeFragen', l: 'Nach dem Abschließen gleich die Danke-Nachricht anbieten', t: 'janein', d: 'ja' },
@@ -106,6 +133,7 @@ const VORGABEN = {
       { k: 'ansprechAngebot', l: 'Verfasser im Angebot (Standard, eine Person)', t: 'zeile', d: 'Felix Brenzinger', h: 'Steht oben im Angebot als Ansprechpartner und unterschreibt beim Gruß. In jedem Angebot änderbar.' },
       { k: 'angebotGueltigTage', l: 'Angebot gültig (Tage ab Datum)', t: 'zahl', d: 28, h: 'Steht im Angebot oben als „Gültig bis“ und im Baustein „Preisbindung“ ({gueltig}). Standard 4 Wochen.' },
       { k: 'abschlagNamen', l: 'Zahlungsplan im Angebot: Bezeichnung des ersten, der mittleren und des letzten Abschlags', t: 'liste', d: ['bei Auftrag', 'nach Baufortschritt', 'nach Abnahme'], h: 'Daraus und aus dem Abschlagsplan des Projekts entsteht der Satz {zahlungsplan}, z. B. „30 % bei Auftrag, 40 % nach Baufortschritt, 30 % nach Abnahme“.' },
+      { k: 'vorauszahlungName', l: 'Zahlungsplan im Angebot: Bezeichnung einer Vorauszahlung', t: 'zeile', d: 'als Vorauszahlung vor Baustart', h: 'Steht im Satz {zahlungsplan} statt der Bezeichnung des Abschlags, z. B. „30 % als Vorauszahlung vor Baustart, 40 % nach Baufortschritt, 30 % nach Abnahme“.' },
       { k: 'textAuftragWiderruf', l: 'Sätze zum Widerruf in der Auftragserteilung (nur Privatkunden und WEG)', t: 'text', d: '', h: 'Rechtstext, bitte vom Anwalt oder Verband prüfen lassen und dann hier eintragen. Leer = nichts.' },
       { k: 'textWiderrufAnlage', l: 'Anlage zum Angebot: Widerrufsbelehrung und Muster-Widerrufsformular (nur Privatkunden und WEG)', t: 'text', d: '', h: 'Rechtstext, bitte prüfen lassen und dann hier eintragen. Steht als eigene Seite hinter dem Angebot. Platzhalter: {firma}, {anschrift}, {email}, {telefon}. Leer = keine Anlage.' },
       { k: 'kiSatzAuto', l: 'Angebot: persönlichen Satz für die Einleitung von selbst vorschlagen (KI, einmal je Angebot)', t: 'janein', d: 'ja', h: 'Steht als „KI-Vorschlag“ unter dem Anfangstext, erst „Übernehmen“ schreibt ihn ins Angebot.' },
@@ -113,7 +141,12 @@ const VORGABEN = {
       { k: 'skontoTage', l: 'Skonto bei Zahlung innerhalb von … Tagen', t: 'zahl', d: 7 },
       { k: 'textVorzeitig', l: 'Kästchen „vorzeitiger Beginn“ über der Unterschrift des Kunden (nur Privatkunden und WEG)', t: 'text', d: '', h: 'Rechtstext, bitte vom Anwalt oder Verband prüfen lassen und dann hier eintragen. Leer = kein Kästchen im Angebot.' },
       { k: 'widerrufTage', l: 'Widerrufsfrist in Tagen ab Zusage (für den Hinweis beim Einplanen)', t: 'zahl', d: 14, h: 'Liegt der Baustart in dieser Frist und hat der Kunde den vorzeitigen Beginn nicht angekreuzt, zeigt das Projekt einen Hinweis. Nichts wird gesperrt.' },
-      { k: 'ansprechProjekt', l: 'Ansprechpartner im Projekt nach der Zusage (Standard, eine Person)', t: 'zeile', d: 'Deniel Kovacic' },
+      { k: 'textZusageTelefon', l: 'Zusage ohne Unterschrift: Vermerk „telefonisch zugesagt“', t: 'zeile', d: 'Telefonisch zugesagt am {datum}', h: '{datum} = gewählter Tag. Eine kurze Notiz wird angehängt.' },
+      { k: 'textVorzeitigNotiz', l: 'Vorzeitiger Beginn: Vermerk, wenn der Kunde mündlich bestätigt hat', t: 'zeile', d: 'Vorzeitigen Beginn bestätigt am {datum}', h: '{datum} = gewählter Tag.' },
+      { k: 'textVorzeitigBetreff', l: 'Vorzeitiger Beginn: Betreff der Bitte um Bestätigung', t: 'zeile', d: 'Ihr Auftrag {projekt}: Beginn vor Ende der Widerrufsfrist', h: '{projekt}' },
+      { k: 'textVorzeitigBitte', l: 'Vorzeitiger Beginn: Bitte um Bestätigung an den Kunden (Platzhalter-Text, bitte rechtlich prüfen lassen)', t: 'text', d: '{anrede}\nvielen Dank für Ihren Auftrag {projekt}. Damit wir schon vor Ende der Widerrufsfrist ({bis}) mit den Arbeiten beginnen dürfen, bitten wir Sie um eine kurze Bestätigung, am einfachsten als Antwort auf diese Nachricht mit dem folgenden Satz:\n„{vorzeitig}“\nViele Grüße\n{name}\n{firma}', h: 'PLATZHALTER, bitte vom Anwalt oder Verband prüfen lassen. {anrede}, {projekt}, {bis} = Ende der Widerrufsfrist, {vorzeitig} = Text des Kästchens „vorzeitiger Beginn“ (sonst der Satz darunter), {name}, {firma}. Geschickt wird nur per Tipp.' },
+      { k: 'textVorzeitigSatz', l: 'Vorzeitiger Beginn: Satz zum Bestätigen, wenn kein Kästchen-Text eingetragen ist (Platzhalter, bitte prüfen lassen)', t: 'text', d: 'Ich wünsche ausdrücklich, dass Sie vor Ende der Widerrufsfrist mit den Arbeiten beginnen. Mir ist bekannt, dass ich mein Widerrufsrecht bei vollständiger Vertragserfüllung verliere.', h: 'PLATZHALTER, bitte rechtlich prüfen lassen.' },
+      { k: 'ansprechProjekt', l: 'Ansprechpartner im Projekt nach der Zusage (Standard: eine Person oder „beide“)', t: 'zeile', d: 'Deniel Kovacic', h: 'Bekommt die To-dos der Einplanung. „beide“ = ein To-do für beide, wer es erledigt, hakt es für beide ab. Je Projekt änderbar.' },
       { k: 'angebotGruss', l: 'Angebot hat nach den Schlusstexten den Gruß mit Unterschrift und Stempel', t: 'janein', d: 'ja', h: 'Text und Abwählen: Schlusstexte im Angebot bzw. Einstellungen › Textbausteine.' },
       { k: 'angebotAuftragsfeld', l: 'Angebot hat am Ende ein Feld, in dem der Kunde unterschreibt (Auftragserteilung)', t: 'janein', d: 'ja', h: 'Text und Abwählen: Schlusstexte im Angebot bzw. Einstellungen › Textbausteine.' },
       { k: 'abEinleitung', l: 'Auftragsbestätigung: Text vor den Positionen', t: 'text', d: 'vielen Dank für Ihren Auftrag. Hiermit bestätigen wir Ihnen die folgenden Leistungen gemäß unserem Angebot Nr. {nr}:', h: 'Platzhalter: {nr} Angebotsnummer, {kunde} Kunde, {datum} heute.' },
@@ -123,7 +156,16 @@ const VORGABEN = {
       { k: 'nachfassMittelBis', l: 'Nachfassen: mittleres Angebot bis … € netto', t: 'zahl', d: 20000 },
       { k: 'nachfassenTage', l: 'Nachfassen bei mittleren Angeboten nach … Tagen (auch für Angebote ohne bekannte Größe)', t: 'zahl', d: 7 },
       { k: 'nachfassGrossTage', l: 'Nachfassen bei großen Angeboten (darüber) nach … Tagen', t: 'zahl', d: 10 },
+      { k: 'nachfassAbsageNach', l: 'Vorschlag „Absagen, keine Rückmeldung“ nach … mal hintereinander nicht erreicht', t: 'zahl', d: 2, h: 'Nur ein stiller Vorschlag beim Angebot. Weiter nachfassen geht immer. Zählt je Fassung neu.' },
+      { k: 'nachfassAbsageGrund', l: 'Grund, der beim Vorschlag vorausgewählt ist', t: 'zeile', d: 'Keine Rückmeldung' },
+      { k: 'textNachfassBetreff', l: 'Nachfass-Nachricht: Betreff der Mail', t: 'zeile', d: 'Unser Angebot {nr}: {betreff}', h: '{nr} = Angebotsnummer, {betreff} = Projektname.' },
+      { k: 'textNachfassMail', l: 'Nachfass-Nachricht per Mail oder Brief', t: 'text', d: '{anrede}\nhaben Sie unser Angebot {nr} vom {datum} erhalten? Gerne gehen wir es mit Ihnen gemeinsam durch und beantworten Ihre Fragen. Melden Sie sich einfach kurz, auch wenn Sie noch etwas Zeit brauchen.\nViele Grüße\n{verfasser}\n{firma}', h: '{anrede} = Briefanrede (bei Firma und WEG der Ansprechpartner), {nr}, {betreff} = Projektname, {datum} = verschickt am, {verfasser}, {firma}. Knopf „Nachricht schicken“ beim Nachfassen, geschickt wird nur per Tipp.' },
+      { k: 'textNachfassWhatsapp', l: 'Nachfass-Nachricht per WhatsApp oder SMS', t: 'text', d: '{anrede}\nhaben Sie unser Angebot {nr} für „{betreff}“ erhalten? Bei Fragen melden Sie sich gerne jederzeit.\nViele Grüße\n{verfasser}', h: 'Platzhalter wie bei der Mail.' },
       { k: 'absageGruende', l: 'Gründe für eine Absage (eine Zeile je Grund)', t: 'liste', d: ['Zu teuer', 'Anderer Anbieter', 'Macht es selbst', 'Kein Bedarf mehr', 'Zeitpunkt passt nicht', 'Keine Rückmeldung', 'Sonstiges'] },
+      { k: 'absagePreisGruende', l: 'Absage: bei diesen Gründen nach einem Preis fragen (optional, netto, nur intern)', t: 'liste', d: ['Zu teuer', 'Anderer Anbieter'], h: 'Grund mit „Anbieter“ fragt nach dem Preis des Mitbewerbers, sonst nach dem Wunschpreis des Kunden (im Fenster umschaltbar). Auswertung: „Wir lagen im Schnitt … % darüber“.' },
+      { k: 'absageWiedervorlageMonate', l: 'Absage: nach … Monaten erinnern „Nochmal melden?“ (0 = aus)', t: 'zahl', d: 6, h: 'Legt ein To-do für den Verfasser an. Im Fenster „Warum abgesagt?“ für jede Absage abwählbar. Es wird nichts verschickt.' },
+      { k: 'absageWiedervorlageGruende', l: 'Absage: Erinnerung vorausgewählt bei diesen Gründen', t: 'liste', d: ['Zeitpunkt passt nicht', 'Keine Rückmeldung'] },
+      { k: 'textAbsageWiedervorlage', l: 'Absage: Text der Erinnerung (To-do)', t: 'zeile', d: '{kunde} hat im {monat} abgesagt ({grund}): „{projekt}“. Nochmal melden?', h: '{kunde}, {monat} = Monat der Absage, {grund}, {projekt} = Projektname.' },
     ]],
     ['Kontakt halten (Anrufen und Treffen)', [
       { k: 'pflegeNameAnruf', l: 'So heißt das Anrufen (auf „Heute“, im Kalender, in der Mitteilung)', t: 'zeile', d: 'Anrufen' },
@@ -149,6 +191,7 @@ const VORGABEN = {
     ]],
     ['Kalender und Geburtstage', [
       { k: 'kalKW', l: 'Kalenderwoche (KW) im Kalender links anzeigen', t: 'janein', d: 'ja' },
+      { k: 'erinnerungExtern', l: 'Terminerinnerung an Kunde und Subunternehmer anfangs angehakt', t: 'janein', d: 'nein', h: 'Das Team (Felix, Deniel) bekommt die Erinnerung immer. Kunde, Subunternehmer und Ansprechpartner vor Ort nur, wenn beim Termin „Erinnerung senden“ angehakt ist.' },
       { k: 'terminVorlagen', l: 'Termin-Vorlagen (eine Zeile je Vorlage: Titel | Art | Notiz)', t: 'liste', d: [
         'Erstgespräch | kunde | Wünsche und Budget klären, Fotos machen, Termin für Vor-Ort-Besichtigung vereinbaren',
         'Vor-Ort-Termin | kunde | Gespräch aufnehmen, alle Räume fotografieren, Maße nehmen, Anschriften prüfen',
@@ -234,6 +277,7 @@ const VORGABEN = {
   prompts: [
     ['Mitdenken vor Ort und Positionen vorschlagen (die KI antwortet auf Deutsch)', [
       { k: 'promptNotiz', l: 'Kurz notieren: Kontakt, Info und Erinnerung erkennen', t: 'text', d: 'You read a short internal note (typed or dictated in German) by a renovation company owner about one of his customers or subcontractors. Find which contact from the list it is about (use the id exactly as given, empty string if unclear). Extract the information worth keeping in the contact history as one short German sentence (info), and, only if the note asks to do something later, a reminder (erinnerung) with a short German imperative text and a date (YYYY-MM-DD; resolve words like "next week", "Friday", "in May" from today, empty if no date). Answer only JSON: {"kontakt": "", "info": "", "erinnerung": {"text": "", "datum": ""} or null}.' },
+      { k: 'promptNachgefasst', l: 'Nachgefasst: Notiz zum Gespräch aufräumen', t: 'text', d: 'You read a short internal note (typed or dictated in German) about a follow-up call with a customer about a renovation offer. Rewrite it as one or two short, clear German sentences in plain words: what the customer said and what happens next. Keep names, dates and amounts exactly. Do not add anything that was not said. Answer with the sentences only.' },
       { k: 'promptKiSatz', l: 'Angebot: persönlicher Satz für die Einleitung', t: 'text', d: 'You write ONE short, warm, personal sentence in German (formal "Sie") for the introduction of a renovation offer from a German company to a private or business customer. It refers concretely to one or two of the customer\'s confirmed wishes listed below (e.g. "Besonders freut uns, dass wir Ihr neues Bad mit bodengleicher Dusche in warmer Holzoptik planen dürfen."). No prices, no dates, no promises or guarantees, no greeting, no exclamation marks, at most 30 words. Answer with the sentence only.' },
       { k: 'promptMasse', l: 'Vor Ort: Maße aus Sprache lesen', t: 'text', d: 'You read a short German dictation from a renovation site visit with room measurements, e.g. "Bad zwei vierzig mal eins achtzig, Höhe zwei fünfzig". Return every area (room or topic) with its length, width and height in metres as numbers (2,40 = 2.4; "zwei vierzig" = 2.4; centimetres convert to metres). Use the German area name as spoken; if it clearly matches one of the existing areas, use that exact name. Leave out numbers that were not said (0). Answer only JSON: {"bereiche": [{"name": "", "laenge": 0, "breite": 0, "hoehe": 0}]}.' },
       { k: 'promptVorOrt', l: 'Vor Ort: Was fehlt noch?', t: 'text', h: 'Platzhalter: {max} Anzahl Fragen, {pruefliste} deine Prüfliste aus „Abläufe“.', d: 'You are the experienced site manager of a German renovation company (small jobs, single rooms, whole flats, whole houses; ANY trade: tiles, plumbing, electrics, painting, floors, doors, windows, roller shutters, fittings, repairs). Your colleague is still on site with the customer, sometimes together with a subcontractor. Below is everything recorded so far. Think along like a professional estimator: for every piece of work that was discussed, what must be known to write a binding offer? Typical gaps: dimensions (length, width, ceiling height, wall thickness), quantities (how many door handles, sockets, shutters), make and model (ask for a photo of the type plate or the part), material and quality the customer wants, condition of the existing substrate, access (floor, lift, parking), who supplies material, which subcontractor gives a price, dates. Ask ONLY for what is really missing and really needed for the offer. Do not ask for anything already contained in the material or already answered. Most important first. At most {max} questions. Each question short, in German, informal (du), so that it can be answered in a few words or with one photo. bereich = room or area the question belongs to (German). art = "mass" (take a measurement), "foto" (take a photo), "kunde" (ask the customer), "info" (anything else). If nothing is missing, return an empty list.\n\nThe company always wants to remember:\n{pruefliste}' },
@@ -390,6 +434,13 @@ function vorgabe(k) {
 function vorgabeText(k, vars = {}) {
   return String(vorgabe(k) ?? '').replace(/\{(\w+)\}/g, (m, n) => (vars[n] !== undefined && vars[n] !== null ? String(vars[n]) : m));
 }
+/** v148: Kästchen „als Vorauszahlung vor Baustart“ je Teil des Abschlagsplans (der letzte Teil kommt mit der Schlussrechnung).
+ *  teil = 1, 2 … oder 0 (keine). attr = Datenattribut für die Bindung. */
+function vzFelder(plan, teil, attr) {
+  const P = (plan || []).slice(0, -1);
+  if (!P.length) return '<p class="hint" style="margin:4px 0 0">Der Plan hat nur einen Teil, eine Vorauszahlung geht erst mit mindestens zwei Teilen.</p>';
+  return `<div class="vz-teile">${P.map((p, i) => `<label class="vz-teil"><input type="checkbox" ${attr}="${i + 1}" ${teil === i + 1 ? 'checked' : ''}> ${i + 1}. Teil (${String(p).replace('.', ',')} %) als Vorauszahlung vor Baustart</label>`).join('')}</div>`;
+}
 /** „30 / 40 / 30“ → [30, 40, 30]; null, wenn es nicht 100 % ergibt. */
 function planLesen(s) {
   const p = String(s).split(/[^\d,.]+/).map((x) => parseFloat(x.replace(',', '.'))).filter((x) => x > 0);
@@ -418,7 +469,8 @@ window.Vorgaben = (() => {
       // Listen: „(eine Zeile je …)“ braucht es nicht mehr, jeder Eintrag hat ein eigenes Feld
       const label = f.t === 'liste' ? f.l.replace(/\s*\(eine Zeile je [^):]*(?::\s*([^)]*))?\)/, (m, fmt) => (fmt ? ` (${fmt})` : '')) : f.l;
       const kopf = `<div class="vg-l"><label>${esc(label)}</label>${geaendert ? `<button type="button" class="vg-std" data-std="${f.k}">Standard</button>` : ''}</div>`;
-      const inp = f.t === 'liste' ? listenFeld(f.k, vorgabe(f.k))
+      const inp = f.t === 'vz' ? vzFelder(vorgabe('abschlagPlan') || [], +vorgabe(f.k) || 0, 'data-vgvz')
+        : f.t === 'liste' ? listenFeld(f.k, vorgabe(f.k))
         : f.t === 'janein' ? `<select data-vg="${f.k}"><option value="ja" ${wert(f) === 'ja' ? 'selected' : ''}>Ja</option><option value="nein" ${wert(f) === 'nein' ? 'selected' : ''}>Nein</option></select>`
         : f.t === 'wahl' ? `<select data-vg="${f.k}">${f.o.map(([v, n]) => `<option value="${esc(v)}" ${wert(f) === v ? 'selected' : ''}>${esc(n)}</option>`).join('')}</select>`
         : f.t === 'text' ? `<textarea data-vg="${f.k}" rows="${f.rows || 4}">${esc(wert(f))}</textarea>`
@@ -443,6 +495,11 @@ window.Vorgaben = (() => {
       S.vorgaben[f.k] = v;
       await saveSettings(); toast('Gespeichert');
       window.Push?.abgleich();
+      const y = window.scrollY; seite(id); window.scrollTo(0, y);
+    }));
+    $$('[data-vgvz]').forEach((el) => (el.onchange = async () => {
+      S.vorgaben.abschlagVorauszahlung = el.checked ? +el.dataset.vgvz : 0;
+      await saveSettings(); toast(el.checked ? 'Gespeichert: Vorauszahlung vor Baustart' : 'Gespeichert: keine Vorauszahlung');
       const y = window.scrollY; seite(id); window.scrollTo(0, y);
     }));
     $$('[data-std]').forEach((b) => (b.onclick = async () => {

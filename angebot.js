@@ -330,6 +330,7 @@ const Angebot = (() => {
   function posDetails(x, titel = '') {
     return new Promise(async (res) => {
       const bilder = (x.bilder || []).map((b) => ({ ...b })), th = await bildThumbs(bilder.map((b) => b.id));
+      const gAuto = untertitelVon({ ...x, gewerk: '', kalk: { g: gewerkVon(x, pos(x.nr) || (x.frei ? { gewerk: UT_SONST } : null)) } });
       const bilderHtml = () => `${bilder.map((b, i) => `<div class="pb-z"><img src="${th.get(b.id) || ''}" alt=""><label><input type="checkbox" data-pbpdf="${i}" ${b.imPdf ? 'checked' : ''}> im PDF zeigen</label><button type="button" class="icon-btn" data-pbweg="${i}" aria-label="Bild entfernen">${icon('x')}</button></div>`).join('')}
         <button type="button" class="link-add" id="pdBild">${icon('camera')} Bild hinzufügen</button>`;
       const bg = document.createElement('div');
@@ -338,6 +339,9 @@ const Angebot = (() => {
         <label style="margin-top:0">Art der Position</label>
         <select id="pdArt">${ARTEN_POS.map(([v, n]) => `<option value="${v}" ${(x.art || '') === v ? 'selected' : ''}>${esc(n)}</option>`).join('')}</select>
         <p class="hint" style="margin:4px 0 0">Bedarfs- und Alternativpositionen stehen mit Preis im Angebot, zählen aber nicht zur Summe.</p>
+        <label>Untertitel (Gewerk)</label>
+        <select id="pdGewerk"><option value="">automatisch: ${esc(untertitelName(gAuto))}</option>${gewerkListe([x.gewerk]).map((g) => `<option value="${esc(g)}" ${x.gewerk === g ? 'selected' : ''}>${esc(g)}</option>`).join('')}<option value="__neu">Eigener Untertitel …</option></select>
+        <input type="text" id="pdGewerkNeu" placeholder="Name des Untertitels, z. B. Trockenbau" hidden autocomplete="off">
         <label>Langtext (steht im Angebot unter der Leistung)</label>
         <textarea id="pdLang" data-frei rows="4" placeholder="Genaue Beschreibung, z. B. Fabrikat, Ausführung">${esc(x.lang || '')}</textarea>
         <label>Lohnanteil in % (für § 35a)</label>
@@ -350,8 +354,10 @@ const Angebot = (() => {
       $('[data-ok]', bg).onclick = () => {
         const art = $('#pdArt', bg).value, lang = $('#pdLang', bg).value.trim(), notiz = $('#pdNotiz', bg).value.trim();
         const lohn = $('#pdLohn', bg).value.trim().replace('%', '').trim();
+        const gw0 = $('#pdGewerk', bg).value, gw = (gw0 === '__neu' ? $('#pdGewerkNeu', bg).value : gw0).trim();
         const bNeu = JSON.stringify(bilder) !== JSON.stringify(x.bilder || []);
-        const neu = bNeu || art !== (x.art || '') || lang !== (x.lang || '') || notiz !== (x.notiz || '') || lohn !== String(x.lohnP ?? '');
+        const neu = bNeu || art !== (x.art || '') || lang !== (x.lang || '') || notiz !== (x.notiz || '') || lohn !== String(x.lohnP ?? '') || gw !== (x.gewerk || '');
+        if (gw) x.gewerk = gw; else delete x.gewerk;
         if (bilder.length) x.bilder = bilder; else delete x.bilder;
         if (lohn !== '' && Number.isFinite(parseFloat(lohn.replace(',', '.')))) x.lohnP = lohn; else delete x.lohnP;
         if (art) x.art = art; else delete x.art;
@@ -359,6 +365,7 @@ const Angebot = (() => {
         if (notiz) x.notiz = notiz; else delete x.notiz;
         bg.remove(); res(neu);
       };
+      $('#pdGewerk', bg).onchange = (e) => { const n = $('#pdGewerkNeu', bg); n.hidden = e.target.value !== '__neu'; if (!n.hidden) n.focus(); };
       const pb = () => $('#pdBilder', bg);
       pb().onclick = async (e) => {
         const weg = e.target.closest('[data-pbweg]'); if (weg) { bilder.splice(+weg.dataset.pbweg, 1); pb().innerHTML = bilderHtml(); return; }
@@ -424,6 +431,39 @@ const Angebot = (() => {
   const darstAngebot = (w) => window.AngebotDaten?.aktivSync?.(w)?.darstellung || vorgabe('angebotDarstellung') || 'einzel';
   const darstOptionen = (wert, mitWie) => (mitWie ? `<option value="">wie im Angebot</option>` : '') + DARST.map(([v, n]) => `<option value="${v}" ${wert === v ? 'selected' : ''}>${n}</option>`).join('');
   async function darstSetzen(w, v) { const a = window.AngebotDaten?.aktivSync?.(w); if (!a) return; if (v) a.darstellung = v; else delete a.darstellung; await window.AngebotDaten.speichern(a); }
+  // ---------- Untertitel je Gewerk (v146, Runde 9 Punkt 6) ----------
+  // Gliederung Titel (Bereich) → Untertitel (Gewerk, „1.1 Fliesen“) → Position (1.1.1). Gewerk aus gewerkVon (z.kalk.g),
+  // von Hand umhängbar über x.gewerk (Positionsdetails). Die Kalkulation (Zuschläge je Gewerk) bleibt bei gewerkVon.
+  // Reihenfolge der Untertitel: wie die erste Position des Gewerks im Titel. Preisdarstellung je Untertitel:
+  // r.angebot.darstellungGewerk = { [gewerk]: 'einzel' | 'inhalt' | 'paket' } ('' bzw. fehlt = wie der Titel).
+  const UT_SONST = 'Eigene Positionen';
+  function untertitelVon(z) {
+    const eig = String(z?.gewerk || '').trim(); if (eig) return eig;
+    const g = String(z?.kalk?.g || '').trim();
+    return g && g !== String(z?.sub?.firma || '').trim() ? g : UT_SONST; // nie den Namen eines Subs als Untertitel
+  }
+  const untertitelName = (g) => (g === UT_SONST ? String(vorgabe('untertitelSonstige') || '').trim() || 'Weitere Leistungen' : g);
+  function gruppenNachGewerk(zeilen) {
+    const m = new Map();
+    for (const z of zeilen) { const g = untertitelVon(z); if (!m.has(g)) m.set(g, []); m.get(g).push(z); }
+    return [...m].map(([g, zs]) => ({ g, name: untertitelName(g), zeilen: zs }));
+  }
+  /** Stehen Untertitel im Angebot? Vorgabe angebotUntertitel: immer, mehrere (nur bei mehr als einem Gewerk im Titel), nie. */
+  const untertitelZeigen = (anzahl) => { const v = vorgabe('angebotUntertitel') || 'mehrere'; return v === 'immer' ? anzahl > 0 : v === 'nie' ? false : anzahl > 1; };
+  /** Interne Kopfzeile je Gewerk: Quelle, Sub mit Stufe, Material von uns/vom Sub (nie im PDF). */
+  function untertitelInfo(zs) {
+    const Q = { vorlage: 'Vorlage', subpreisliste: 'Partner-Preisliste', subangebot: 'Sub-Angebot', angefragt: 'Sub angefragt', frei: 'frei' };
+    const quellen = [...new Set(zs.map((z) => Q[z.kalk?.quelle]).filter(Boolean))];
+    const subs = [...new Set(zs.filter((z) => z.sub).map((z) => { const p = subPartner(z); return (p?.firma || p?.inhaber || z.sub.firma || 'Sub') + (z.sub.stufe ? ' ' + z.sub.stufe : ''); }))];
+    const mat = [...new Set(zs.filter((z) => ['vorlage', 'subpreisliste'].includes(z.kalk?.quelle)).map((z) => (z.kalk.matSub ? 'Material vom Sub' : 'Material von uns')))];
+    return [quellen.length ? 'Quelle: ' + quellen.join(', ') : '', subs.join(', '), mat.join(', ')].filter(Boolean).join(' · ');
+  }
+  /** Auswahl für „Untertitel (Gewerk)“: Gewerke der Preisliste, der Partner und die schon benutzten. */
+  function gewerkListe(extra = []) {
+    const l = [...(PL?.positionen || []).map((x) => x.gewerk), ...(window.Partner?.liste?.() || []).flatMap((p) => (p.gewerke || []).map((g) => g.name)), ...extra];
+    return [...new Set(l.map((x) => String(x || '').trim()).filter((x) => x && x !== UT_SONST))];
+  }
+  const darstGewerkOptionen = (wert) => `<option value="">wie der Titel</option>` + DARST.map(([v, n]) => `<option value="${v}" ${wert === v ? 'selected' : ''}>${n}</option>`).join('');
   /** Geschätzter Lohnanteil in % für ein Gewerk (Vorgabe lohnSchaetzung, Zeilen „Gewerk: %“, „Sonstige“ für den Rest). */
   function lohnSchaetzung(g) {
     const m = {}; for (const z of [].concat(vorgabe('lohnSchaetzung') || [])) { const t = String(z).match(/^\s*(.+?)\s*[:=]\s*([\d.,]+)/); if (t) m[t[1].toLowerCase()] = parseFloat(t[2].replace(',', '.')); }
@@ -933,6 +973,18 @@ Gib Länge (längere Seite) und Breite der Grundfläche, Raumhöhe, Anzahl und G
         <span class="tb-e">${esc(it.einheit)}</span>
         <button type="button" class="tb-gp" data-tp="${esc(it.nr)}" title="Preis ändern">${q ? fmtEur(r2(q * e)) : ''}</button></div>`;
     };
+    // v146: Gliederung im Angebot (Untertitel je Gewerk) mit Summe, Preisdarstellung je Untertitel, Positionen antippen = Details
+    const utKarte = () => {
+      const S0 = summen(A.positionen, A.kalk), gr = gruppenNachGewerk(S0.zeilen);
+      if (!gr.length) return '';
+      const dG = A.darstellungGewerk || {};
+      return `<div class="card ut-k"><div class="hv-h" style="margin-top:0">${icon('list')}<span>Untertitel im Angebot</span></div>
+        <p class="hint" style="margin:0 0 6px">${untertitelZeigen(gr.length) ? 'So gegliedert steht der Bereich im Angebot.' : 'Nur ein Gewerk: im Angebot ohne Untertitel.'} Position antippen, um sie einem anderen Untertitel zuzuordnen.</p>
+        ${gr.map((g) => `<div class="ut-g"><div class="ut-h"><b>${esc(g.name)}</b><span>${fmtEur(r2(g.zeilen.reduce((a, z) => a + z.gp, 0)))}</span></div>
+          <small class="ut-i">${esc(untertitelInfo(g.zeilen))}</small>
+          ${g.zeilen.map((z) => `<button type="button" class="ut-p" data-utp="${z.i}">${esc(z.it.text)}<span>${fmtNum(z.menge, STUECK.test(z.it.einheit) ? 0 : 1)} ${esc(z.it.einheit)}</span></button>`).join('')}
+          <label class="ut-d"><span>Preise</span><select data-utdar="${esc(g.g)}">${darstGewerkOptionen(dG[g.g] || '')}</select></label></div>`).join('')}</div>`;
+    };
     body.innerHTML = `
       <div class="card asum tb-sum">
         <div class="asum-k"><span>Paket</span><select id="aPaket">${pakete(p).map((x) => `<option value="${x.id}" ${x.id === A.paket ? 'selected' : ''}>${esc(x.name)}</option>`).join('')}</select></div>
@@ -981,6 +1033,7 @@ Gib Länge (längere Seite) und Breite der Grundfläche, Raumhöhe, Anzahl und G
         <button type="button" class="btn secondary block" id="tbSub" style="margin-top:8px">${icon('wrench')} Partnerangebot übernehmen (Scan, Foto, PDF) oder Preisliste</button>
       </div>
 
+      ${utKarte()}
       ${ausPrj ? `<div class="card"><label style="margin-top:0">Preise im Angebot für diesen Bereich</label><select id="aDar">${darstOptionen(A.darstellung || '', true)}</select>
         <button class="btn big block" id="aFertig" style="margin-top:12px">${icon('check')} Fertig</button>
         <p class="hint center" style="margin:6px 0 0">Nummer, Betreff, Texte, Speichern und Senden stehen eine Seite zurück im Büro.</p></div>` : `<div class="card">
@@ -1103,6 +1156,8 @@ Gib Länge (längere Seite) und Breite der Grundfläche, Raumhöhe, Anzahl und G
     $('#tbLeeren').onclick = () => { if (!confirm('Alle Mengen auf 0 setzen? Eigene Positionen bleiben.')) return; A.positionen = A.positionen.filter((x) => x.frei); A.geaendert = true; neu(); };
     if ($('#aWunsch')) $('#aWunsch').onclick = () => wunschVorschlaege(p, neu).catch((e) => toast('Vorschläge gingen nicht: ' + e.message, 5000));
     if ($('#aDar')) $('#aDar').onchange = async (e) => { if (e.target.value) A.darstellung = e.target.value; else delete A.darstellung; await saveProject(p); };
+    $$('[data-utdar]', body).forEach((el) => (el.onchange = async () => { A.darstellungGewerk ??= {}; if (el.value) A.darstellungGewerk[el.dataset.utdar] = el.value; else delete A.darstellungGewerk[el.dataset.utdar]; if (!Object.keys(A.darstellungGewerk).length) delete A.darstellungGewerk; await saveProject(p); }));
+    $$('[data-utp]', body).forEach((b) => (b.onclick = async () => { if (await posDetails(A.positionen[+b.dataset.utp])) { A.geaendert = true; neu(); } }));
     if ($('#aFertig')) $('#aFertig').onclick = async () => { await saveProject(p); state.angebotAusProjekt = false; state.project = null; Projekt.view(); window.scrollTo(0, 0); };
     if ($('#aPdf')) $('#aPdf').onclick = async () => { if (!summen(A.positionen, A.kalk).zeilen.length) return toast('Bitte zuerst Mengen eintragen.');
       const W0 = p.wohnungId && (state.wohnung?.id === p.wohnungId ? state.wohnung : await kvGet('wohnung:' + p.wohnungId));
@@ -1282,50 +1337,79 @@ Gib Länge (längere Seite) und Breite der Grundfläche, Raumhöhe, Anzahl und G
     const darA = WA ? darstAngebot(WA) : (vorgabe('angebotDarstellung') || 'einzel');
     const darVon = (rn) => S.zeilen.find((x) => x.raum === rn && x._dar)?._dar || (p._gesamt ? '' : A.darstellung) || darA;
     const immerPreis = (z) => z.zaehlt === false; // Bedarf und Alternative: immer mit eigenem Preis
+    // v146: Preisdarstellung je Untertitel (Gewerk): im Gesamtangebot an der Zeile als _darG, sonst r.angebot.darstellungGewerk
+    const darGVon = (rn) => S.zeilen.find((x) => x.raum === rn && x._darG)?._darG || (p._gesamt ? null : A.darstellungGewerk) || {};
+    const summeVon = (zs) => r2(zs.reduce((a, x) => a + x.gp, 0));
+    const nrSetzen = (nr) => { if (nr.split('.').length > 2) { doc.setFontSize(8); t(nr, C.pos - 0.5, y); doc.setFontSize(9); } else t(nr, C.pos + 3, y, { align: 'center' }); };
+    const pauschZeile = async (nr, text, betrag) => {
+      doc.setFontSize(9); const txt = doc.splitTextToSize(text, C.menge - C.txt - 14);
+      await platz(4.3 * txt.length + 1.6, true);
+      nrSetzen(nr); t(txt, C.txt, y); t('1', C.menge, y, { align: 'right' }); t('psch.', C.einh, y); t(fmtEur(betrag), C.gp, y, { align: 'right' });
+      y += 4.3 * txt.length + 1.6; doc.setDrawColor(230); doc.line(M - 1, y - 3.2, R + 1, y - 3.2);
+    };
+    const posZeile = async (z, nr, dar) => {
+      const ohnePreis = dar !== 'einzel' && !immerPreis(z);
+      doc.setFontSize(9);
+      const lines = doc.splitTextToSize(z.it.text + (z.bem ? ' – ' + z.bem : ''), C.menge - C.txt - 14);
+      doc.setFontSize(8);
+      const lang = z.lang ? doc.splitTextToSize(z.lang, C.menge - C.txt - 14) : [], art = artText(z) ? doc.splitTextToSize(artText(z), C.menge - C.txt - 14) : [];
+      doc.setFontSize(9);
+      const h = 4.3 * lines.length + 3.6 * (lang.length + art.length) + 1.6;
+      await platz(h, true);
+      nrSetzen(nr); t(lines, C.txt, y);
+      t(fmtNum(z.menge, STUECK.test(z.it.einheit) ? 0 : 1), C.menge, y, { align: 'right' }); t(z.it.einheit, C.einh, y);
+      if (!ohnePreis) { t(fmtEur(z.ep), C.ep, y, { align: 'right' }); t(z.art === 'kostenlos' ? 'kostenlos' : z.zaehlt === false ? `(${fmtEur(z.gpAnzeige)})` : fmtEur(z.gp), C.gp, y, { align: 'right' }); }
+      else if (z.art === 'kostenlos') t('kostenlos', C.gp, y, { align: 'right' });
+      let yy = y + 4.3 * lines.length;
+      if (lang.length || art.length) { doc.setFontSize(8); doc.setTextColor(90); if (lang.length) { t(lang, C.txt, yy); yy += 3.6 * lang.length; } if (art.length) { doc.setFont('helvetica', 'italic'); t(art, C.txt, yy); doc.setFont('helvetica', 'normal'); } doc.setTextColor(30); doc.setFontSize(9); }
+      y += h;
+      const pb = (z.bilder || []).filter((b) => b.imPdf);
+      if (pb.length) {
+        const bw = 42, bh = 30;
+        for (let k = 0; k < pb.length; k += 3) {
+          await platz(bh + 3, true);
+          for (const [j, b] of pb.slice(k, k + 3).entries()) {
+            const data = (await kvGet('bild:' + b.id)) || null;
+            if (data) { try { await addFit(doc, data, C.txt + j * (bw + 3), y - 2, bw, bh, bildFmt(data)); } catch (e) { console.warn('Bild', e); } }
+          }
+          y += bh + 2;
+        }
+      }
+      doc.setDrawColor(230); doc.line(M - 1, y - 3.2, R + 1, y - 3.2);
+    };
+    const summenZeile = async (text, betrag) => { await platz(7); doc.setFont('helvetica', 'bold'); doc.setFontSize(8.5); t(text, C.txt, y); t(fmtEur(betrag), C.gp, y, { align: 'right' }); doc.setFont('helvetica', 'normal'); y += 6; };
+    const titelPaket = {}; // je Titel: steht dort ein Paketpreis (für „Paketpreis n Titel“ unter dem Titel)
     for (const rn of raeume) {
       // Titel mit Nummer (1, 2 …), Positionen darunter 1.1, 1.2 … wie in der Tabelle am PC (v121)
       ti++; n = raeume.length > 1 ? 0 : n;
       if (raeume.length > 1) { await platz(12, true); doc.setFont('helvetica', 'bold'); doc.setFontSize(9); doc.setTextColor(...BRASS); t(String(ti), C.pos + 3, y + 1, { align: 'center' }); t(rn || 'Allgemein', C.txt, y + 1); doc.setFont('helvetica', 'normal'); doc.setTextColor(30); y += 6; }
       const dar = ab ? 'einzel' : darVon(rn);
-      if (dar === 'paket') { // nur Paketpreis: eine Zeile für den Titel, darunter Bedarf/Alternative mit Preis
-        doc.setFontSize(9); const txt = doc.splitTextToSize(raeume.length > 1 ? `${rn || 'Allgemein'}, Leistungen pauschal` : `${String(WA?.titel || '').trim() || A.titel || 'Leistungen'}, pauschal`, C.menge - C.txt - 14);
-        await platz(4.3 * txt.length + 1.6, true); n++;
-        t(raeume.length > 1 ? `${ti}.${n}` : String(n), C.pos + 3, y, { align: 'center' }); t(txt, C.txt, y); t('1', C.menge, y, { align: 'right' }); t('psch.', C.einh, y); t(fmtEur(titelSumme(rn)), C.gp, y, { align: 'right' });
-        y += 4.3 * txt.length + 1.6; doc.setDrawColor(230); doc.line(M - 1, y - 3.2, R + 1, y - 3.2);
-      }
-      for (const z of S.zeilen.filter((x) => x.raum === rn && (dar !== 'paket' || immerPreis(x)))) {
-        const ohnePreis = dar !== 'einzel' && !immerPreis(z);
-        doc.setFontSize(9);
-        const lines = doc.splitTextToSize(z.it.text + (z.bem ? ' – ' + z.bem : ''), C.menge - C.txt - 14);
-        doc.setFontSize(8);
-        const lang = z.lang ? doc.splitTextToSize(z.lang, C.menge - C.txt - 14) : [], art = artText(z) ? doc.splitTextToSize(artText(z), C.menge - C.txt - 14) : [];
-        doc.setFontSize(9);
-        const h = 4.3 * lines.length + 3.6 * (lang.length + art.length) + 1.6;
-        await platz(h, true);
-        n++;
-        t(raeume.length > 1 ? `${ti}.${n}` : String(n), C.pos + 3, y, { align: 'center' }); t(lines, C.txt, y);
-        t(fmtNum(z.menge, STUECK.test(z.it.einheit) ? 0 : 1), C.menge, y, { align: 'right' }); t(z.it.einheit, C.einh, y);
-        if (!ohnePreis) { t(fmtEur(z.ep), C.ep, y, { align: 'right' }); t(z.art === 'kostenlos' ? 'kostenlos' : z.zaehlt === false ? `(${fmtEur(z.gpAnzeige)})` : fmtEur(z.gp), C.gp, y, { align: 'right' }); }
-        else if (z.art === 'kostenlos') t('kostenlos', C.gp, y, { align: 'right' });
-        let yy = y + 4.3 * lines.length;
-        if (lang.length || art.length) { doc.setFontSize(8); doc.setTextColor(90); if (lang.length) { t(lang, C.txt, yy); yy += 3.6 * lang.length; } if (art.length) { doc.setFont('helvetica', 'italic'); t(art, C.txt, yy); doc.setFont('helvetica', 'normal'); } doc.setTextColor(30); doc.setFontSize(9); }
-        y += h;
-        const pb = (z.bilder || []).filter((b) => b.imPdf);
-        if (pb.length) {
-          const bw = 42, bh = 30;
-          for (let k = 0; k < pb.length; k += 3) {
-            await platz(bh + 3, true);
-            for (const [j, b] of pb.slice(k, k + 3).entries()) {
-              const data = (await kvGet('bild:' + b.id)) || null;
-              if (data) { try { await addFit(doc, data, C.txt + j * (bw + 3), y - 2, bw, bh, bildFmt(data)); } catch (e) { console.warn('Bild', e); } }
-            }
-            y += bh + 2;
-          }
+      const gruppen = gruppenNachGewerk(S.zeilen.filter((x) => x.raum === rn));
+      const dG = ab ? {} : darGVon(rn), eigeneG = gruppen.some((gr) => dG[gr.g]);
+      const tp = raeume.length > 1 ? `${ti}.` : '';
+      // Untertitel nach Vorgabe; „nur Paketpreis“ für den ganzen Titel ohne eigene Wahl je Gewerk bleibt eine Zeile ohne Untertitel
+      const mitUT = untertitelZeigen(gruppen.length) && !(dar === 'paket' && !eigeneG);
+      if (!mitUT) {
+        const darT = gruppen.length === 1 && dG[gruppen[0].g] ? dG[gruppen[0].g] : dar; // ohne Untertitel gilt die Wahl des einzigen Gewerks
+        const zs = gruppen.flatMap((gr) => gr.zeilen);
+        titelPaket[rn] = darT;
+        if (darT === 'paket') { n++; await pauschZeile(`${tp}${n}`, raeume.length > 1 ? `${rn || 'Allgemein'}, Leistungen pauschal` : `${String(WA?.titel || '').trim() || A.titel || 'Leistungen'}, pauschal`, titelSumme(rn)); }
+        for (const z of zs.filter((x) => darT !== 'paket' || immerPreis(x))) { n++; await posZeile(z, `${tp}${n}`, darT); }
+        if (darT === 'inhalt' && raeume.length === 1) await summenZeile('Paketpreis für die oben genannten Leistungen', titelSumme(rn));
+      } else {
+        let ui = 0; const arten = [];
+        for (const gr of gruppen) {
+          ui++; n = 0;
+          const un = `${tp}${ui}`, darU = ab ? 'einzel' : dG[gr.g] || dar; arten.push(darU);
+          await platz(14, true); doc.setFont('helvetica', 'bold'); doc.setFontSize(8.5); doc.setTextColor(...NAVY);
+          nrSetzen(un); t(gr.name, C.txt, y); doc.setFont('helvetica', 'normal'); doc.setTextColor(30); doc.setFontSize(9); y += 5;
+          if (darU === 'paket') { n++; await pauschZeile(`${un}.${n}`, `${gr.name}, Leistungen pauschal`, summeVon(gr.zeilen)); }
+          for (const z of gr.zeilen.filter((x) => darU !== 'paket' || immerPreis(x))) { n++; await posZeile(z, `${un}.${n}`, darU); }
+          await summenZeile(`${darU === 'inhalt' ? 'Paketpreis' : 'Summe'} ${un} ${gr.name}`, summeVon(gr.zeilen));
         }
-        doc.setDrawColor(230); doc.line(M - 1, y - 3.2, R + 1, y - 3.2);
+        titelPaket[rn] = arten.every((a) => a !== 'einzel') ? 'inhalt' : 'einzel';
       }
-      if (dar === 'inhalt' && raeume.length === 1) { await platz(7); doc.setFont('helvetica', 'bold'); doc.setFontSize(8.5); t('Paketpreis für die oben genannten Leistungen', C.txt, y); t(fmtEur(titelSumme(rn)), C.gp, y, { align: 'right' }); doc.setFont('helvetica', 'normal'); y += 6; }
-      if (raeume.length > 1) { await platz(7); doc.setFont('helvetica', 'bold'); doc.setFontSize(8.5); t(`${dar === 'inhalt' ? 'Paketpreis' : 'Summe'} ${ti} ${rn || 'Allgemein'}`, C.txt, y); t(fmtEur(titelSumme(rn)), C.gp, y, { align: 'right' }); doc.setFont('helvetica', 'normal'); y += 6; }
+      if (raeume.length > 1) await summenZeile(`${titelPaket[rn] === 'inhalt' ? 'Paketpreis' : 'Summe'} ${ti} ${rn || 'Allgemein'}`, titelSumme(rn));
     }
     // Zusammenstellung: Summe je Titel, dann die Gesamtsumme (v121)
     if (raeume.length > 1 && vorgabe('angebotZusammenstellung') !== 'nein') {
@@ -1558,10 +1642,17 @@ Gib Länge (längere Seite) und Breite der Grundfläche, Raumhöhe, Anzahl und G
     return true;
   }
   /** Zahlungsplan als Satz aus dem Abschlagsplan des Vorgangs (sonst Einstellungen). */
+  /** v148: Welcher Teil des Zahlungsplans ist eine Vorauszahlung vor Baustart? 1, 2 … oder 0 (keine).
+   *  Je Vorgang w.vorauszahlung = { teil } (0 = keine), sonst Vorgabe abschlagVorauszahlung. Nie der letzte Teil (Schlussrechnung). */
+  function vzTeil(w) {
+    const plan = (Array.isArray(w?.abschlagPlan) && w.abschlagPlan.length ? w.abschlagPlan : vorgabe('abschlagPlan')) || [];
+    const t = Math.round(+(w?.vorauszahlung && w.vorauszahlung.teil !== undefined ? w.vorauszahlung.teil : vorgabe('abschlagVorauszahlung')) || 0);
+    return t >= 1 && t <= plan.length - 1 ? t : 0;
+  }
   function zahlungsplanText(w) {
     const plan = (Array.isArray(w?.abschlagPlan) && w.abschlagPlan.length ? w.abschlagPlan : vorgabe('abschlagPlan')) || [];
-    const n = vorgabe('abschlagNamen') || [];
-    const name = (i) => (plan.length === 1 ? n[n.length - 1] : i === 0 ? n[0] : i === plan.length - 1 ? n[n.length - 1] : n[1]) || '';
+    const n = vorgabe('abschlagNamen') || [], vz = vzTeil(w);
+    const name = (i) => (i + 1 === vz ? vorgabe('vorauszahlungName') : plan.length === 1 ? n[n.length - 1] : i === 0 ? n[0] : i === plan.length - 1 ? n[n.length - 1] : n[1]) || '';
     const teile = plan.map((p, i) => `${fmtNum(+p, +p % 1 ? 1 : 0)} % ${name(i)}`.trim());
     return teile.length ? `Zahlungsplan: ${teile.join(', ')}.` : '';
   }
@@ -1977,6 +2068,6 @@ Gib Länge (längere Seite) und Breite der Grundfläche, Raumhöhe, Anzahl und G
     $('#vReset').onclick = async () => { if (!loeschFrage('Alle Paket-Vorlagen zurücksetzen?')) return; await kvDel('angebotVorlagen'); VORL = null; vorlagenView(pkgId, grp); };
   }
 
-  return { projektKarte, ansicht, einstellungenKarte, _intern: { vorlageMerken, vorlageVorschlaege, vorlageAntwort, bildWaehlen, texteEigen, texteSpeichern, versandMeta, DARST, darstAngebot, darstOptionen, darstSetzen, lohnSchaetzung, ekVon, vkVon, gewerkVon, planEinfuegen, firmaSetzen, FIRMA_KEYS, kontextFuer, passt, giltText, zahlungsplanText, privatArt, skontoVon, posDetails, preisHinweis, artText, NICHT_SUMME, init, gruppe, materialliste, uebernimmSchaetzung, masse, rechne, erzeuge, summen, bauzeit, ep, lohnEp, preisliste, vorlagen, neuerRaum, baueAngebotPdf, importExcel, naechsteNummer, mailText, bausteine, textEditor, texteAuftrag, texteEinstellungen, subUebernehmen, ansprechpartner, ansprVon, einePerson, texteFuer, anredeDefault, einstellungen: () => PL.einstellungen, kalkSetzen, kalkNorm, kalkWert, kalkFeld, satz } };
+  return { projektKarte, ansicht, einstellungenKarte, _intern: { vorlageMerken, vorlageVorschlaege, vorlageAntwort, bildWaehlen, texteEigen, texteSpeichern, versandMeta, DARST, darstAngebot, darstOptionen, darstSetzen, UT_SONST, untertitelVon, untertitelName, gruppenNachGewerk, untertitelZeigen, untertitelInfo, gewerkListe, darstGewerkOptionen, lohnSchaetzung, ekVon, vkVon, gewerkVon, planEinfuegen, firmaSetzen, FIRMA_KEYS, kontextFuer, passt, giltText, zahlungsplanText, vzTeil, privatArt, skontoVon, posDetails, preisHinweis, artText, NICHT_SUMME, init, gruppe, materialliste, uebernimmSchaetzung, masse, rechne, erzeuge, summen, bauzeit, ep, lohnEp, preisliste, vorlagen, neuerRaum, baueAngebotPdf, importExcel, naechsteNummer, mailText, bausteine, textEditor, texteAuftrag, texteEinstellungen, subUebernehmen, ansprechpartner, ansprVon, einePerson, texteFuer, anredeDefault, einstellungen: () => PL.einstellungen, kalkSetzen, kalkNorm, kalkWert, kalkFeld, satz } };
 })();
 window.Angebot = Angebot;

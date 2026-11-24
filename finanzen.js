@@ -159,10 +159,18 @@ window.Finanzen = (() => {
     const gruende = zaehl(abL.map(grund).filter(Boolean));
     const tagK = (t) => (t ? new Date(t).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' }) : '');
     // Abgesagte Angebote einzeln: Kunde, Titel, Datum, Grund, Wert. Tippen öffnet das Angebot.
+    // v145: unser Preis (beim Absagen gemerkt, sonst Kalkulation) gegen den Preis des Mitbewerbers bzw. Wunschpreis des Kunden (nur intern)
+    const unser = (e) => +e.w.absage?.unserNetto || e.k.soll.netto || 0;
+    const abw = (e) => { const p = +e.w.absage?.preis || 0, u = unser(e); return p > 0 && u > 0 ? ((u - p) / p) * 100 : null; };
+    const pz = (v) => `${v > 0 ? '+' : ''}${(Math.round(v * 10) / 10).toLocaleString('de-DE')} %`;
+    const mitPreis = abL.filter((e) => abw(e) !== null), schnitt = mitPreis.length ? mitPreis.reduce((s, e) => s + abw(e), 0) / mitPreis.length : null;
+    const preisZeile = (e) => (abw(e) === null ? '' : `${e.w.absage.preisArt === 'mitbewerber' ? 'Mitbewerber' : 'Wunschpreis'} ${eur0(e.w.absage.preis)} · unser ${eur0(unser(e))} · ${pz(abw(e))}`);
     const abListe = [...abL].sort((a, b) => (b.w.absage?.t || 0) - (a.w.absage?.t || 0)).map((e) => `<button type="button" class="hi-z aw-ab" data-awab="${esc(e.x.id)}">
         <span class="hi-t"><b>${esc(Kunden.name(Kunden.byId(e.x.kundeId)) || e.x.customer || 'Kunde')} · ${esc(e.x.titel || e.x.room || 'Angebot')}</b>
-        <span style="--c:#c0392b"><i></i>${esc([tagK(e.w.absage?.t), grund(e) ? 'Grund: ' + grund(e) : 'ohne Grund'].filter(Boolean).join(' · '))}</span></span>
-        ${e.k.soll.netto ? `<span class="hi-b">${eur0(e.k.soll.netto)}</span>` : ''}</button>`).join('');
+        <span style="--c:#c0392b"><i></i>${esc([tagK(e.w.absage?.t), grund(e) ? 'Grund: ' + grund(e) : 'ohne Grund'].filter(Boolean).join(' · '))}</span>
+        ${preisZeile(e) ? `<span class="aw-preis">${esc(preisZeile(e))}</span>` : ''}</span>
+        ${unser(e) ? `<span class="hi-b">${eur0(unser(e))}</span>` : ''}</button>`).join('');
+    const schnittSatz = schnitt === null ? '' : `<p class="aw-satz aw-schnitt">Wir lagen im Schnitt <b>${(Math.round(Math.abs(schnitt) * 10) / 10).toLocaleString('de-DE')} % ${schnitt >= 0 ? 'darüber' : 'darunter'}</b> <small>(${mitPreis.length} ${mitPreis.length === 1 ? 'Absage' : 'Absagen'} mit genanntem Preis)</small></p>`;
     const balken = (liste, gesamt, extra) => liste.map(([n, c]) => `<div class="aw-b"><span>${esc(n)}</span><i style="--w:${Math.round((c / gesamt) * 100)}%"></i><b>${c}${extra ? extra(n) : ''}</b></div>`).join('');
     const stufe = (name, n, von, farbe, zusatz = '') => `<div class="aw-t" style="--c:${farbe};--w:${von ? Math.max(2, Math.round((n / von) * 100)) : 0}%"><span>${name}${zusatz ? ` <small>${zusatz}</small>` : ''}</span><b>${n}</b><i></i></div>`;
     const proz = (n, von) => (von ? ` (${Math.round((n / von) * 100)} %)` : '');
@@ -200,7 +208,7 @@ window.Finanzen = (() => {
       ${jahr && window.Tabelle?.istBuero() ? `<div class="card aw aw-mon"><b class="aw-h">Monate ${jahr}</b><div id="awMon"></div></div>` : ''}
       ${jahr && umsatz ? `<div class="card aw"><b class="aw-h">Umsatz je Monat ${jahr}</b><div class="aw-m">${monate.map((v, m) => `<div title="${eur0(v)}"><i class="${v ? '' : 'leer'}" style="--h:${Math.round((v / maxM) * 100)}%"></i>${['J', 'F', 'M', 'A', 'M', 'J', 'J', 'A', 'S', 'O', 'N', 'D'][m]}</div>`).join('')}</div><p class="hint" style="margin:6px 0 0">Bester Monat: ${eur0(maxM)}</p></div>` : ''}
       ${quellen.length ? `<div class="card aw"><b class="aw-h">Woher kommen die Kunden?</b>${balken(quellen, kunden.filter((k) => k.quelle).length, (q) => { const n = quelleZu(q), w = quelleW(q); return n ? ` <small>· ${n} Auftr.${w ? ', ' + eur0(w) + ' netto' : ''}</small>` : ''; })}</div>` : ''}
-      ${ab ? `<div class="card aw"><b class="aw-h">Abgesagte Angebote</b>${gruende.length ? balken(gruende, ab) : ''}<div class="aw-abl">${abListe}</div></div>` : ''}`;
+      ${ab ? `<div class="card aw"><b class="aw-h">Abgesagte Angebote</b>${gruende.length ? balken(gruende, ab) : ''}${schnittSatz}<div class="aw-abl">${abListe}</div></div>` : ''}`;
   }
 
   // ---------- Menü › Auswertung: führt in den Reiter Rechnungen, Bereich Auswertung (eine Seite, nicht doppelt) ----------

@@ -84,9 +84,12 @@ window.Projekt = (() => {
     const list = await raeume(w);
     if (nachfassMerken(w, list)) await kvSet(key(w.id), w); // Größe fürs Nachfassen (v141)
     const vf = norm(w.status) === 'angebot' ? verfasserVon(w, list) : '';
+    let subOffen = 0;
+    if (norm(w.status) === 'geplant') { try { await AngebotDaten.liste(w); subOffen = subOffenIds(w).length; } catch (e) { console.warn('Sub offen', e); } } // v148
     const idx = (await projectIndex()).filter((x) => x.id !== w.id);
-    idx.unshift({ id: w.id, kind: 'wohnung', nr: w.nr || '', titel: w.titel || '', status: w.status || '', baustart: w.baustart || '', versendetAm: w.versendetAm || '', nachfTage: norm(w.status) === 'angebot' ? nachfassTage(w) : '', verfasser: vf, verfasserId: teamIdVon(vf), absage: w.absage?.grund || '', kundeId: w.kundeId || '', objektId: w.objektId || '', customer: w.customer, address: w.address, room: list.length ? summary(list) : 'noch kein Raum', rooms: list.length, fort: window.Fortschritt?.kurz(w) || null, created: w.created, updated: w.updated, thumb: list.find((r) => r?.thumb)?.thumb || '' });
+    idx.unshift({ id: w.id, kind: 'wohnung', nr: w.nr || '', titel: w.titel || '', status: w.status || '', baustart: w.baustart || '', versendetAm: w.versendetAm || '', nachfTage: norm(w.status) === 'angebot' ? nachfassTage(w) : '', verfasser: vf, verfasserId: teamIdVon(vf), ...nachfassIndex(w), absage: w.absage?.grund || '', subOffen, einsatz: bpIndex(w), kundeId: w.kundeId || '', objektId: w.objektId || '', customer: w.customer, address: w.address, room: list.length ? summary(list) : 'noch kein Raum', rooms: list.length, fort: window.Fortschritt?.kurz(w) || null, created: w.created, updated: w.updated, thumb: list.find((r) => r?.thumb)?.thumb || '' });
     await kvSet('projectIndex', idx);
+    if (norm(w.status) !== 'angebot' && w.nachfass?.log?.length) nachfassTodosZu(w.id); // zugesagt oder abgesagt: Nachfassen ist erledigt
   }
   const neuesProjekt = () => ({ id: uid(), kind: 'wohnung', created: Date.now(), customer: '', address: '', rooms: [], mappe: {}, pdfProducts: true, pdfPrices: false, pdfEvening: true });
 
@@ -279,29 +282,48 @@ window.Projekt = (() => {
     if ($('#dAb')) $('#dAb').onclick = () => abMenue(w, list);
     if ($('#wAnspr')) $('#wAnspr').onclick = async () => {
       const A = window.Angebot._intern; await A.preisliste();
-      const v = await sheet('Ansprechpartner im Projekt', A.ansprechpartner().map((n) => ({ label: n, icon: icon('user'), value: n })));
+      const team = (window.Kalender?.team?.() || []).map((p) => String(p.name || '').split(/\s+/)[0]).filter(Boolean);
+      const v = await sheet('Ansprechpartner im Projekt', [...A.ansprechpartner().map((n) => ({ label: n, icon: icon('user'), value: n })),
+        { label: 'Beide', sub: `${team.join(' und ')} bekommen die To-dos des Projekts, wer erledigt, hakt für beide ab`, icon: icon('users'), value: BEIDE }]);
       if (!v) return;
-      w.ansprechpartner = v; if (!w.isNew) await save(w);
+      w.ansprechpartner = v; if (!w.isNew) { await save(w); await einplanTodosWer(w); }
       const y = window.scrollY; await view(); window.scrollTo(0, y);
     };
     if ($('#wFort')) window.Fortschritt?.abschnitt($('#wFort'), w, list, () => save(w));
     if (k && $('#wTermine')) window.Kalender?.abschnitt($('#wTermine'), { kundeId: k.id, objektId: w.objektId, projektId: w.id, zurueck: () => view() });
-    const setzen = async (v) => {
-      // Absage: Grund festhalten (für später: „da war ich schon, abgesagt wegen …“)
+    const setzen = async (v, opt = {}) => {
+      // Absage: Grund festhalten (für später: „da war ich schon, abgesagt wegen …“). opt.grund = Vorschlag oben (v142, keine Rückmeldung)
+      // v145: Gründe als Knopfzeile in einem Fenster, bei „Zu teuer“/„Anderer Anbieter“ optional Preis (netto, intern), Wiedervorlage
+      let abs = null;
       if (v === 'abgesagt') {
-        const g = await sheet('Warum abgesagt?', vorgabe('absageGruende').map((x) => ({ label: x, value: x })));
-        if (g === null) return;
-        w.absage = { grund: g, t: Date.now() };
+        const unser = await unserNettoVon(w, list);
+        abs = await absageFragen(w, { vorschlag: opt.grund || '', unser });
+        if (!abs) return;
+        w.absage = { grund: abs.grund, t: Date.now(), ...(abs.preis > 0 ? { preis: abs.preis, preisArt: abs.preisArt } : {}), ...(unser > 0 ? { unserNetto: unser } : {}), ...(abs.erinnern ? { wv: plusMonate(+vorgabe('absageWiedervorlageMonate') || 0) } : {}) };
         await pdfInDokumente(w); // das abgesagte Angebot bleibt als PDF beim Kunden
-      }
+      } else if (norm(w.status) === 'abgesagt' && norm(v) !== 'abgesagt') todoZu('absageWv:' + w.id); // Absage zurückgenommen: Erinnerung erledigt
       if (v === 'angebot' && norm(w.status) !== 'angebot') { w.versendetAm = heuteIso(); if (w.nachfass) delete w.nachfass.am; }
       if (norm(v) !== norm(w.status)) (w.verlauf ??= []).push({ st: v, t: Date.now() });
       w.status = v;
       if (!w.isNew) { await save(w); await AngebotDaten.standVomVorgang(w); }
+      if (abs?.erinnern && !w.isNew) await absageWiedervorlage(w, list);
       if (zugesagt(v)) Kunden.dankAuftrag(w); // Empfehlung: zweites „Bei … bedanken“, wenn der Kunde beauftragt
-      toast(statusName(v));
+      let subHinweis = 0;
+      if (v === 'abgesagt' || v === 'geplant') { try { subHinweis = (await subAbsageListe(w)).subs.filter((s) => !s.erledigt).length; } catch (e) { console.warn(e); } }
+      toast(subHinweis ? `${statusName(v)}. ${subHinweis === 1 ? 'Ein Subunternehmer bekommt' : subHinweis + ' Subunternehmer bekommen'} auf Wunsch eine Absage, siehe Karte im ${v === 'geplant' ? 'Projekt' : 'Angebot'}.` : statusName(v), subHinweis ? 5000 : undefined);
       const y = window.scrollY; await view(); window.scrollTo(0, y);
     };
+    $$('[data-nfg]').forEach((b) => (b.onclick = () => nachgefasst(w.id, async () => { const y = window.scrollY; await view(); window.scrollTo(0, y); })));
+    $$('[data-nfmsg]').forEach((b) => (b.onclick = () => nachfassNachricht(w.id)));
+    if ($('#wSubAbs')) subAbsageKarte($('#wSubAbs'), w).catch((e) => console.warn('Absage an Subs', e));
+    if ($('#wSubAuf')) subAuftragKarte($('#wSubAuf'), w).catch((e) => console.warn('Auftrag an Subs', e));
+    if ($('#wBsInfo')) bsInfoKarte($('#wBsInfo'), w).catch((e) => console.warn('Baustart mitteilen', e));
+    if ($('#wVzHin')) vzHinweis($('#wVzHin'), w).catch((e) => console.warn('Vorauszahlung', e));
+    if ($('#wBauplan')) bauplanKarte($('#wBauplan'), w).catch((e) => console.warn('Bauzeitenplan', e));
+    $$('[data-bsinfo]').forEach((b) => (b.onclick = async () => { w.baustartFrage = { t: Date.now(), alt: '', neu: w.baustart || '' }; await save(w); await neuZeichnen(w); setTimeout(() => $('#wBsInfo')?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 250); }));
+    zahlplanBind(w);
+    $$('[data-nfabs]').forEach((b) => (b.onclick = () => setzen('abgesagt', { grund: vorgabe('nachfassAbsageGrund') || 'Keine Rückmeldung' })));
+    $$('[data-vorlage]').forEach((b) => (b.onclick = () => alsVorlageKopieren(w)));
     $$('[data-nachf]').forEach((i) => (i.onchange = async () => {
       const v = Math.round(+i.value);
       w.nachfass = { ...(w.nachfass || {}), tage: v > 0 ? v : '' };
@@ -333,13 +355,19 @@ window.Projekt = (() => {
       if (!w.isNew) await save(w);
       toast('Unterschriebenes Angebot abgelegt'); const y = window.scrollY; await view(); window.scrollTo(0, y);
     };
+    $$('[data-nwdazu]').forEach((b) => (b.onclick = () => nachweisTippen(w)));
+    $$('[data-vzbitte]').forEach((b) => (b.onclick = () => vorzeitigBitte(w)));
+    $$('[data-vzbest]').forEach((b) => (b.onclick = () => vorzeitigBestaetigung(w)));
     if ($('#wVorzeitig')) $('#wVorzeitig').onchange = async (e) => {
       if (e.target.checked) w.vorzeitig = { t: Date.now(), wer: window.Kalender?.wer?.() || '' }; else delete w.vorzeitig;
       if (!w.isNew) await save(w);
       const y = window.scrollY; await view(); window.scrollTo(0, y);
     };
     if ($('#wBaustart')) $('#wBaustart').onchange = async (e) => {
+      const vorher = w.baustart || '';
       w.baustart = e.target.value;
+      // v148 (B4/B5): Kunde und Subs informieren? Karte bleibt, bis „Fertig“ bzw. „Nicht nötig“. Nichts geht von selbst raus.
+      if (w.baustart !== vorher && (w.baustart || (w.baustartInfo || []).length)) w.baustartFrage = { t: Date.now(), alt: vorher, neu: w.baustart || '' };
       await baustartTermin(w);
       if (w.baustart && w.baustart <= heuteIso()) return setzen('');
       if (!w.isNew) await save(w);
@@ -349,6 +377,7 @@ window.Projekt = (() => {
     if ($('#stRech')) $('#stRech').onclick = () => window.Rechnung?.neu(w, () => { view(); window.scrollTo(0, 0); });
     if ($('#stAlle')) $('#stAlle').onclick = async () => {
       const v = await sheet('Status ändern', ALLE.map(([id, n, c]) => ({ label: n, icon: '<i class="si-dot"></i>', color: c, value: id || '__laeuft' })));
+      if (v === 'geplant' && phase(w) === 'angebot') return zusage(w, list, setzen); // v144: Nachweis und To-dos wie beim Knopf
       if (v !== null) setzen(v === '__laeuft' ? '' : v);
     };
 
@@ -535,6 +564,8 @@ window.Projekt = (() => {
     const st = norm(w.status), f = window.Fortschritt?.kurz(w);
     if (st === 'geplant' && !w.baustart) return { text: 'Baustart festlegen', sub: 'Dann steht er im Kalender und das Projekt ist eingeplant.', knopf: 'Baustart eintragen', ziel: 'baustart' };
     if (st === 'geplant') {
+      const sg = subGelb(w); // v148: Sub-Bestätigung fehlt kurz vor Baustart → gelb
+      if (sg) return { text: sg === 1 ? 'Ein Subunternehmer hat noch nicht bestätigt' : `${sg} Subunternehmer haben noch nicht bestätigt`, sub: `Baustart am ${datumText(w.baustart)} · ${subOffenNamen(w)}`, knopf: 'Zu den Subunternehmern', ziel: 'subs', gelb: true };
       if (w.auftragsbestaetigung && !w.auftragsbestaetigung.gesendetAm) return { text: 'Auftragsbestätigung an den Kunden', sub: `Baustart am ${datumText(w.baustart)}`, knopf: 'Ansehen und senden', ziel: 'ab' };
       if (!w.schritte?.length) return { text: 'Leistungen für die Baustelle festlegen', sub: `Baustart am ${datumText(w.baustart)}`, knopf: 'Zur Baustelle', ziel: 'fortschritt' };
       if (!w.bestellungen?.length) return { text: 'Material bestellen', sub: `Baustart am ${datumText(w.baustart)}`, knopf: 'Bestellung eintragen', ziel: 'bestellung' };
@@ -553,7 +584,8 @@ window.Projekt = (() => {
     const ab = w.auftragsbestaetigung;
     const vorOrt = window.Gespraech?.karte(w, list) || '';
     // Ansprechpartner im Projekt (Version 100): eine Person, Standard aus Vorgabe ansprechProjekt, je Projekt wählbar (w.ansprechpartner)
-    const anspr = window.Angebot._intern.einePerson(w.ansprechpartner) || vorgabe('ansprechProjekt') || '';
+    // v147: auch „Beide“ (w.ansprechpartner = 'beide'), siehe ansprechName
+    const anspr = ansprechText(w);
     const kopf = `
       <div class="card kunde">
         ${k ? `<button class="kline" id="wKunde"><span class="av sm">${esc(Kunden.initialen(k))}</span><span class="kl-t"><b>${esc(Kunden.name(k) || 'Ohne Namen')}</b><small>${esc([k.telefon, k.email].filter(Boolean).join(' · ') || 'Kundenkarte öffnen')}</small></span>${icon('chevron', 'pc-chev')}</button>
@@ -565,7 +597,7 @@ window.Projekt = (() => {
         <button type="button" class="pj-anspr" id="wAnspr">${icon('user')}<span>Ansprechpartner: <b>${esc(anspr || 'wählen')}</b></span></button>`
         : `<button class="kline" id="wKundeWahl">${icon('user')}<span class="kl-t"><b>${esc(w.customer || 'Kunde zuordnen')}</b><small>Kunde auswählen oder neu anlegen</small></span>${icon('chevron', 'pc-chev')}</button>`}
       </div>
-      <div class="card pj-jetzt">
+      <div class="card pj-jetzt${jd.gelb ? ' gelb' : ''}">
         <small>Jetzt dran</small><b>${esc(jd.text)}</b>${jd.sub ? `<span>${esc(jd.sub)}</span>` : ''}
         ${jd.knopf ? `<button class="btn block" data-jetzt="${jd.ziel}">${esc(jd.knopf)}</button>` : ''}
       </div>
@@ -581,7 +613,11 @@ window.Projekt = (() => {
       </div>`;
     const uebersicht = `
       ${statusKarte(w)}
+      <div id="wBsInfo"></div>
+      <div id="wSubAbs"></div>
       ${norm(w.status) === 'geplant' ? '<div class="card pj-todo" id="wTodo"></div>' : ''}
+      <div id="wSubAuf"></div>
+      <div id="wBauplan"></div>
       <div id="wTermine"></div>
       <div class="sec-h"><h2>Hinweise zur Baustelle</h2></div>
       <div class="card kform"><textarea id="wHinweis" rows="3" placeholder="z. B. Schlüssel beim Nachbarn, Parken im Hof, Hund im Haus">${esc(w.hinweise || '')}</textarea></div>
@@ -612,7 +648,7 @@ window.Projekt = (() => {
       <div class="sec-h" style="margin-top:18px"><h2>Abnahme</h2></div>
       <div id="wAbn"></div>
       <div id="wSterne"></div>`;
-    const geld = `<div id="wRech"></div><div id="wKosten"></div>`;
+    const geld = `<div id="wRech"></div>${zahlplanKarte(w)}<div id="wKosten"></div>`;
     return `${kopf}
       ${tab === 'uebersicht' ? uebersicht : tab === 'baustelle' ? baustelle : geld}
       ${k ? `<button id="wBilder" hidden></button>` : ''}
@@ -620,12 +656,13 @@ window.Projekt = (() => {
   }
   /** Zu einer Stelle im Projekt springen, auch in einen anderen Reiter. */
   async function jetztGehen(w, ziel) {
-    const reiter = { baustart: 'uebersicht', ab: 'uebersicht', fortschritt: 'baustelle', bestellung: 'baustelle', abnahme: 'baustelle', geld: 'geld' }[ziel];
+    const reiter = { baustart: 'uebersicht', ab: 'uebersicht', subs: 'uebersicht', fortschritt: 'baustelle', bestellung: 'baustelle', abnahme: 'baustelle', geld: 'geld' }[ziel];
     if (ziel === 'schluss') return window.Rechnung?.neu(w, () => { view(); window.scrollTo(0, 0); });
     if (reiter && pjReiterVon(w) !== reiter) { reiterSetzen(w, reiter); await view(); window.scrollTo(0, 0); }
     const springe = (sel) => { const z = $(sel); if (z) window.scrollTo({ top: z.getBoundingClientRect().top + window.scrollY - 110, behavior: 'smooth' }); };
     if (ziel === 'baustart') { const f = $('#wBaustart'); springe('.stk'); if (f) setTimeout(() => { try { f.showPicker(); } catch { f.focus(); } }, 350); }
     else if (ziel === 'ab') $('#dAb')?.click();
+    else if (ziel === 'subs') setTimeout(() => springe('#wSubAuf'), 350);
     else if (ziel === 'fortschritt') springe('#wFort');
     else if (ziel === 'bestellung') setTimeout(() => springe('#wBau'), 150);
     else if (ziel === 'abnahme') setTimeout(() => springe('#wAbn'), 300);
@@ -638,6 +675,7 @@ window.Projekt = (() => {
       ['baustart', !!w.baustart, w.baustart ? `Baustart am ${datumText(w.baustart)}` : 'Baustart festlegen'],
       ...(w.auftragsbestaetigung ? [['ab', !!w.auftragsbestaetigung.gesendetAm, 'Auftragsbestätigung an den Kunden']] : []),
       ['auftrag', !!w.auftrag, 'Unterschriebenes Angebot ablegen'],
+      ...(w.zusageNachweis ? [['nachweis', zusageNachweisOk(w), zusageNachweisOk(w) ? nachweisText(w) : 'Nachweis der Zusage anhängen']] : []),
       ['bestellung', !!w.bestellungen?.length, w.bestellungen?.length ? `${w.bestellungen.length} ${w.bestellungen.length === 1 ? 'Bestellung' : 'Bestellungen'} eingetragen` : 'Material bestellen'],
       ['fortschritt', !!w.schritte?.length, w.schritte?.length ? 'Leistungen stehen' : 'Leistungen für die Baustelle festlegen'],
     ];
@@ -645,6 +683,7 @@ window.Projekt = (() => {
     $$('[data-todo]', el).forEach((b) => (b.onclick = () => {
       const id = b.dataset.todo;
       if (id === 'auftrag') $('#wAuftrag')?.click();
+      else if (id === 'nachweis') nachweisTippen(w);
       else jetztGehen(w, id);
     }));
   }
@@ -817,6 +856,7 @@ window.Projekt = (() => {
             ${window.VorOrt?.bueroKarte(w, list) || ''}</details>
           ${window.Kalk?.karte(w, list, { offen: true, gesperrt: gesperrt(w) }) || ''}
           ${skontoKarte(w)}
+          ${zahlplanKarte(w)}
           ${dokListe(w)}
           <div class="ape-links">
             <button class="link-add" id="wAngUpload">${icon('upload')} Fertiges PDF hochladen (z. B. aus Excel)</button>
@@ -992,7 +1032,8 @@ window.Projekt = (() => {
         ${window.Bausteine.block({ wo: 'nach', titel: 'Schlusstexte', leer: 'Kein Text nach den Positionen', liste: texte, offen: true, passt: passtV })}
         ${planHtml(w, list, texte)}
         <p class="hint">Am Schluss stehen immer „${esc(vorgabeText('textGruss'))}“ mit ${esc(A.einePerson(K.anspr) || anspr[0] || 'Name')}, Unterschrift und Stempel und ganz zuletzt die Auftragserteilung für den Kunden. Abwählen oder Text ändern geht hier.</p>
-        ${skontoKarte(w)}`,
+        ${skontoKarte(w)}
+        ${zahlplanKarte(w)}`,
       ansicht: () => `
         <div class="sec-h"><h2>Alles beisammen?</h2></div>
         <div class="card bs-ueb">
@@ -1028,16 +1069,18 @@ window.Projekt = (() => {
     return `
       ${gibt ? `<div class="card ang-v ${stand[0]}">
         <div class="ang-k"><span class="ang-st">${stand[1]}</span><b>Angebot${nr ? ` Nr. ${esc(nr)}` : ''}</b></div>
-        <p class="ang-i">${[summe ? `${eur2(summe)} brutto` : '', st === 'angebot' && w.versendetAm ? `verschickt am ${esc(datumText(w.versendetAm))}` : '', st === 'abgesagt' && w.absage?.t ? `abgesagt am ${esc(new Date(w.absage.t).toLocaleDateString('de-DE'))}` : '', w.angebotKopieVon ? `ersetzt Nr. ${esc(w.angebotKopieVon)}` : ''].filter(Boolean).join(' · ') || 'Noch nicht gespeichert'}</p>
+        <p class="ang-i">${[summe ? `${eur2(summe)} brutto` : '', st === 'angebot' && w.versendetAm ? `verschickt am ${esc(datumText(w.versendetAm))}` : '', st === 'abgesagt' && w.absage?.t ? `abgesagt am ${esc(new Date(w.absage.t).toLocaleDateString('de-DE'))}` : '', w.angebotKopieVon ? `ersetzt Nr. ${esc(w.angebotKopieVon)}` : '', w.vorlageVon?.nr ? `kopiert aus Vorgang ${esc(w.vorlageVon.nr)}` : ''].filter(Boolean).join(' · ') || 'Noch nicht gespeichert'}</p>
         ${st === 'abgesagt' && w.absage?.grund ? `<p class="ang-grund">${icon('x')}<span>Grund: <b>${esc(w.absage.grund)}</b></span></p>` : ''}
-        ${st === 'angebot' && tage >= nachfassTage(w) ? `<p class="stk-tipp warn">${icon('phone')} Seit ${tage} Tagen beim Kunden. Zeit zum Nachfassen.</p>` : ''}
-        ${st === 'angebot' && w.versendetAm ? nachfassFeld(w) : ''}
+        ${st === 'abgesagt' ? absageInfoHtml(w) : ''}
+        ${st === 'angebot' && w.versendetAm ? nachfassBlock(w) + nachfassFeld(w) : ''}
         ${st === 'angebot' || st === 'abgesagt' ? `
           ${w.angebotPdf ? `<div class="stk-2"><button class="btn secondary" id="wAngAnsehen">${icon('eye')} Ansehen</button><button class="btn secondary" id="wNochmal">${icon('mail')} Nochmal senden</button></div>` : ''}
           ${st === 'angebot' ? `<div class="stk-2" style="margin-top:10px"><button class="btn" data-st="geplant" style="--c:#2f8a57">${icon('check')} Zugesagt</button><button class="btn" data-st="abgesagt" style="--c:#c0392b">${icon('x')} Abgesagt</button></div>` : ''}
           ${st === 'angebot' && !window.Tabelle?.istBuero() ? `<button class="btn block" id="wUnterschrift" style="margin-top:8px">${icon('edit')} Vom Kunden unterschreiben lassen</button>` : ''}
           <button class="btn secondary block" id="wAnpassen" style="margin-top:8px">${icon('edit')} Angebot ändern</button>
-          <p class="hint center" style="margin-bottom:0">„Angebot ändern“ legt eine Kopie mit neuer Nummer und neuem Datum an. Dieses Angebot bleibt unverändert.</p>`
+          <p class="hint center" style="margin-bottom:0">„Angebot ändern“ legt eine Kopie mit neuer Nummer und neuem Datum an. Dieses Angebot bleibt unverändert.</p>
+          ${st === 'abgesagt' ? `<button class="btn secondary block" data-vorlage style="margin-top:10px">${icon('file')} Als Vorlage kopieren</button>
+          <p class="hint center" style="margin-bottom:0">Neuer Vorgang beim selben Kunden und Objekt mit neuer Nummer: Bereiche und Positionen dieses Angebots als neuer Entwurf. Dieser Vorgang bleibt abgesagt im Archiv.</p>` : ''}`
         : `
           <label class="ape-allg" style="margin-top:0"><input type="checkbox" data-allg ${window.AngebotDaten.aktivSync(w)?.allgemeinVerteilt ?? vorgabe('allgemeinVerteilen') === 'ja' ? 'checked' : ''}> Allgemeines auf die Positionen verteilen</label>
           <label>Preise im Angebot</label><select data-dar>${window.Angebot._intern.darstOptionen(window.Angebot._intern.darstAngebot(w))}</select>
@@ -1047,6 +1090,7 @@ window.Projekt = (() => {
           <p class="hint center" style="margin-bottom:0">${mitPos.length ? '„Als versendet markieren“, wenn der Kunde das Angebot anders bekommen hat, z. B. ausgedruckt. Danach ist es gesperrt (Ändern über eine Kopie mit neuer Nummer), und das Nachfassen läuft.' : 'Zuerst im Reiter „Büro“ ausarbeiten.'}</p>`}
       </div>` : `<div class="card"><p class="hint" style="margin-top:0">Es gibt noch kein Angebot. Im Reiter „Büro“ arbeitest du es aus.</p>
         <button class="btn block" data-reiter="buero">Zum Büro</button></div>`}
+      ${st === 'abgesagt' ? '<div id="wSubAbs"></div>' : ''}
       ${archiv.length ? `<div class="sec-h"><h2>Frühere Fassungen</h2><span class="count">${archiv.length}</span></div>
         <div class="docs">${archiv.map((x, i) => `<button type="button" class="doc" data-arch="${i}"><span class="d-ico grey">${icon('file')}</span><span class="d-t"><b>Angebot${x.nr ? ` Nr. ${esc(x.nr)}` : ''}</b><span>überarbeitet · ${esc(new Date(x.t).toLocaleDateString('de-DE'))}</span></span>${icon('chevron', 'pc-chev')}</button>`).join('')}</div>` : ''}
       ${dokListe(w)}
@@ -1310,6 +1354,7 @@ window.Projekt = (() => {
     if (v === 'ab') { try { datei = await auftragsbestaetigung(w, list); } catch (e) { console.error(e); $('#toast').hidden = true; toast('Die Auftragsbestätigung ging nicht: ' + e.message, 6000); } }
     await pdfInDokumente(w);
     await setzen('geplant');
+    if (zugesagt(w.status)) { try { await nachZusage(w, list); } catch (e) { console.warn('Nach der Zusage', e); } }
     if (datei) { toast('Auftragsbestätigung liegt im Projekt unter „Unterlagen“. Dort senden oder als versendet markieren.', 5000); pdfAnsicht(datei, datei.name); }
   }
   /** Auftragsbestätigung bauen und beim Auftrag ablegen: Eintrag in w.dokumente (art 'auftragsbestaetigung') und w.auftragsbestaetigung. */
@@ -1403,12 +1448,24 @@ window.Projekt = (() => {
     const d = new Date(z); d.setDate(d.getDate() + (+vorgabe('widerrufTage') || 14));
     return d.toISOString().slice(0, 10);
   }
+  /** Hinweis „Vorzeitiger Beginn fehlt“ (v144): nur Privat/WEG, nur solange kein Baustart steht oder er in der Widerrufsfrist liegt
+   *  (und die Frist noch läuft), und solange w.vorzeitig fehlt. Knöpfe: Erklärung zur Bestätigung schicken, Bestätigung anhängen. */
+  function vorzeitigFehlt(w) {
+    if (w.vorzeitig) return false;
+    const bis = widerrufBis(w);
+    if (bis && heuteIso() > bis) return false; // Frist ist vorbei, ein vorzeitiger Beginn ist kein Thema mehr
+    return !w.baustart || !bis || w.baustart <= bis;
+  }
   function vorzeitigHtml(w) {
     const k = window.Kunden?.byId?.(w.kundeId);
     if (!window.Angebot._intern.privatArt(k)) return '';
     const bis = widerrufBis(w), frueh = w.baustart && bis && w.baustart <= bis && !w.vorzeitig;
-    return `<label class="stk-vz"><input type="checkbox" id="wVorzeitig" ${w.vorzeitig ? 'checked' : ''}><span>Kunde hat den vorzeitigen Beginn angekreuzt${w.vorzeitig?.t ? ` <small>(${esc(new Date(w.vorzeitig.t).toLocaleDateString('de-DE'))})</small>` : ''}</span></label>
-      ${frueh ? `<p class="hint warn" style="margin:0 0 6px">Der Baustart liegt in der Widerrufsfrist (bis ${esc(datumText(bis))}). Ohne Kreuz beim vorzeitigen Beginn erst danach anfangen.</p>` : ''}`;
+    const vz = w.vorzeitig, na = w.vorzeitigAnfrage;
+    const nwT = vz?.nachweis ? (String(vz.nachweis).startsWith('wdok:') ? 'Bestätigung abgelegt' : String(vz.nachweis)) : '';
+    return `<label class="stk-vz"><input type="checkbox" id="wVorzeitig" ${vz ? 'checked' : ''}><span>Kunde hat den vorzeitigen Beginn angekreuzt${vz?.t ? ` <small>(${esc(new Date(vz.t).toLocaleDateString('de-DE'))}${nwT ? ' · ' + esc(nwT) : ''})</small>` : ''}</span></label>
+      ${vorzeitigFehlt(w) ? `<div class="vz-fehlt"><p class="stk-tipp warn" style="margin:0 0 4px">Vorzeitiger Beginn fehlt</p>
+        <p class="hint" style="margin:0 0 6px">${bis ? `Widerrufsfrist bis ${esc(datumText(bis))}. ` : ''}${frueh ? 'Der Baustart liegt in der Frist. ' : ''}Ohne Bestätigung des Kunden erst nach der Frist anfangen.${na?.t ? ` Erklärung geschickt am ${esc(new Date(na.t).toLocaleDateString('de-DE'))}${na.weg ? ' per ' + esc(Besuch.WEG_NAME[na.weg] || na.weg) : ''}.` : ''}</p>
+        <div class="stk-2"><button type="button" class="btn secondary small" data-vzbitte>${icon('mail')} Erklärung zur Bestätigung schicken</button><button type="button" class="btn secondary small" data-vzbest>${icon('upload')} Bestätigung anhängen</button></div></div>` : ''}`;
   }
   async function baustartTermin(w) {
     const id = 'bau-' + w.id;
@@ -1438,11 +1495,15 @@ window.Projekt = (() => {
       <div class="stk-pfad" aria-hidden="true">${PFAD.map((id, j) => `<i class="${st === 'abgesagt' ? (j <= 2 ? 'ab' : '') : j < i ? 'ok' : j === i ? 'jetzt' : ''}" style="--c:${farbe(id)}"></i>`).join('')}</div>
       ${st === 'geplant' ? `<label class="stk-feld">${icon('calendar')}<span>Baustart</span><input type="date" id="wBaustart" value="${esc(w.baustart || '')}"></label>
         <p class="hint" style="margin:0 0 6px">${w.baustart ? 'Am Tag des Baustarts springt der Status von selbst auf „Baustelle läuft“.' : 'Noch kein Baustart. Trag ihn ein, dann steht er im Kalender und das Projekt ist eingeplant.'}</p>
+        ${bsInfoZeile(w)}
+        ${subGelbHtml(w)}
+        ${window.Angebot?._intern.vzTeil(w) ? '<div id="wVzHin"></div>' : ''}
         ${vorzeitigHtml(w)}` : ''}
-      ${st === 'angebot' && tage >= nachfassTage(w) ? `<p class="stk-tipp warn">${icon('phone')} Seit ${tage} Tagen beim Kunden. Zeit zum Nachfassen.</p>` : ''}
-      ${st === 'angebot' && w.versendetAm && tage < nachfassTage(w) ? `<p class="hint" style="margin:0 0 10px">Versendet am ${esc(datumText(w.versendetAm))}</p>` : ''}
-      ${st === 'angebot' && w.versendetAm ? nachfassFeld(w) : ''}
-      ${st === 'abgesagt' && w.absage?.grund ? `<p class="hint" style="margin:0 0 10px">Grund: ${esc(w.absage.grund)} · ${esc(new Date(w.absage.t).toLocaleDateString('de-DE'))}</p>` : ''}
+      ${st === 'geplant' || st === '' ? `<div id="wBpEnde">${bpEndeHtml(w)}</div>` : ''}
+      ${st === 'angebot' && w.versendetAm && nachfassUeber(w) < 0 ? `<p class="hint" style="margin:0 0 10px">Versendet am ${esc(datumText(w.versendetAm))}</p>` : ''}
+      ${st === 'angebot' && w.versendetAm ? nachfassBlock(w) + nachfassFeld(w) : ''}
+      ${st === 'abgesagt' && w.absage?.grund ? `<p class="hint" style="margin:0 0 10px">Grund: ${esc(w.absage.grund)} · ${esc(new Date(w.absage.t).toLocaleDateString('de-DE'))}</p>${absageInfoHtml(w)}` : ''}
+      ${zugesagt(st) && w.zusageNachweis?.art === 'fehlt' && !zusageUnterschrieben(w) ? `<div class="stk-tipp warn nf-vor nw-fehlt"><span>Nachweis der Zusage fehlt</span><button type="button" class="btn secondary small" data-nwdazu>Nachweis anhängen</button></div>` : ''}
       ${allesErledigt ? `<p class="stk-tipp">${icon('check')} Alle Schritte sind abgehakt. Jetzt abschließen?</p>` : ''}
       ${knoepfe}</div>`;
   }
@@ -1624,6 +1685,7 @@ window.Projekt = (() => {
       await navigator.share({ files: [f], title: d.name, ohneDialog: true });
       const ab = (w.auftragsbestaetigung ??= { t: d.t, nr: '', dokId: d.key, gesendetAm: '' });
       if (!ab.gesendetAm) { ab.gesendetAm = heuteIso(); await save(w); }
+      await todoZu(`ab:${w.id}`);
       toast('Auftragsbestätigung gesendet');
       neuZeichnen(w);
     } catch (e) { if (e.name !== 'AbortError') toast('Senden nicht möglich: ' + e.message, 4000); }
@@ -1652,6 +1714,7 @@ window.Projekt = (() => {
       if (!datum) return;
       w.auftragsbestaetigung = { ...(w.auftragsbestaetigung || { t: d.t, nr: '', dokId: d.key }), gesendetAm: datum };
       await save(w);
+      await todoZu(`ab:${w.id}`);
       toast(`Als versendet markiert (${datumText(datum)})`);
       neuZeichnen(w);
     }
@@ -1686,6 +1749,7 @@ window.Projekt = (() => {
     for (const r of list) if (r.angebot?.versionen) { r.angebot.versionen = []; await saveProject(r); }
     w.gesamtAngebot = { ...(w.gesamtAngebot || {}), versionen: [] };
     delete w.angebotGesperrt; w.angebotFrei = true; w.angebotKopieVon = alt.nr;
+    if (norm(w.status) === 'abgesagt') todoZu('absageWv:' + w.id);
     if (['angebot', 'abgesagt'].includes(norm(w.status))) { w.status = 'entwurf'; (w.verlauf ??= []).push({ st: 'entwurf', t: Date.now() }); }
     reiterWahl.delete(w.id); schrittWahl.delete(w.id);
     await save(w);
@@ -1761,7 +1825,7 @@ window.Projekt = (() => {
     for (const r of raeume) for (const [i, x0] of r.angebot.positionen.entries()) {
       const x = mitPreis(x0, r, A.summen(r.angebot.positionen, r.angebot.kalk).zeilen.find((z) => z.i === i));
       if (!x.raum) { const v = allg.get(x.nr); if (!v || v.menge < x.menge) allg.set(x.nr, { ...x }); continue; } // Allgemeines (z. B. Baustelleneinrichtung) nur einmal
-      pos.push({ ...x, raum: mehrere ? `${r.room || 'Raum'}: ${x.raum}` : x.raum, _dar: r.angebot.darstellung || '' });
+      pos.push({ ...x, raum: mehrere ? `${r.room || 'Raum'}: ${x.raum}` : x.raum, _dar: r.angebot.darstellung || '', _darG: r.angebot.darstellungGewerk || null });
     }
     w.gesamtAngebot ??= {};
     w.gesamtAngebot.nr = angNr(w) || w.gesamtAngebot.nr || await A.naechsteNummer();
@@ -1798,11 +1862,12 @@ window.Projekt = (() => {
   /** Tag, an dem nachgefasst wird ('JJJJ-MM-TT'), oder ''. */
   function nachfassFaellig(x) {
     if (!x?.versendetAm) return '';
+    const wieder = nachfassStand(x).wieder; if (wieder) return wieder; // nach „Nachgefasst“ (v142): der eingetragene Tag
     const d = new Date(x.versendetAm + 'T12:00'); d.setDate(d.getDate() + nachfassTage(x));
     return d.toISOString().slice(0, 10);
   }
   /** Tage seit dem Nachfass-Tag (0 = heute fällig, negativ = noch nicht fällig). */
-  const nachfassUeber = (x) => seitTagen(x?.versendetAm) - nachfassTage(x);
+  const nachfassUeber = (x) => { const f = nachfassFaellig(x); return f ? seitTagen(f) : seitTagen(x?.versendetAm) - nachfassTage(x); };
   /** Größe des verschickten Angebots merken (beim Versand, sonst nachträglich beim nächsten Speichern). */
   function nachfassMerken(w, list) {
     if (norm(w.status) !== 'angebot' || !w.versendetAm || !window.Kalk) return;
@@ -1835,6 +1900,179 @@ window.Projekt = (() => {
     const staffel = mitNetto ? nachfassStaffel(w.nachfass.netto) : nachfassen();
     return `<label class="stk-feld nf-feld">${icon('phone')}<span>Nachfassen nach</span><input type="number" min="1" step="1" inputmode="numeric" data-nachf value="${eigen}" placeholder="${staffel}" style="max-width:80px"><span>Tagen</span></label>
       <p class="hint" style="margin:0 0 8px">${eigen ? `Eigene Frist für dieses Angebot. Leer = nach Größe (${staffel} Tage).` : `Nach Größe des Angebots${mitNetto ? ` (${esc(eur2(w.nachfass.netto))} netto)` : ''}: ${staffel} Tage.`} Nachfassen am ${esc(datumText(nachfassFaellig(w)))}.</p>`;
+  }
+  // ---------- Version 142: Nachgefasst, keine Rückmeldung ----------
+  // w.nachfass.log = [{ id, t, wer (Team-ID), erreicht, notiz, wieder (JJJJ-MM-TT), am (Versanddatum der Fassung) }]. Es zählen nur Einträge der
+  // aktuellen Fassung (am === versendetAm). projectIndex trägt nachfWieder, nachfZuletzt, nachfNicht, nachfAm (Fälligkeit, auch für die Mitteilung).
+  const nfLogAlle = (w) => (Array.isArray(w?.nachfass?.log) ? w.nachfass.log : []);
+  const nachfassLog = (w) => nfLogAlle(w).filter((e) => e && e.am === w.versendetAm);
+  const tagKurz = (iso) => new Date(iso + 'T12:00').toLocaleDateString('de-DE', { day: 'numeric', month: 'numeric' });
+  const zuletztText = (e) => `${e.erreicht ? 'erreicht' : 'nicht erreicht'} am ${tagKurz(new Date(e.t).toISOString().slice(0, 10))}${e.notiz ? `: „${e.notiz}“` : ''}`;
+  /** Stand des Nachfassens für einen Vorgang oder einen Index-Eintrag: { wieder, letzter, zuletzt (Text), nicht (hintereinander nicht erreicht) }. */
+  function nachfassStand(x) {
+    if (!x) return { wieder: '', letzter: null, zuletzt: '', nicht: 0 };
+    if (!x.nachfass) return { wieder: x.nachfWieder || '', letzter: null, zuletzt: x.nachfZuletzt || '', nicht: +x.nachfNicht || 0 };
+    const log = nachfassLog(x), l = log[log.length - 1] || null;
+    let nicht = 0; for (let i = log.length - 1; i >= 0 && log[i].erreicht === false; i--) nicht++;
+    return { wieder: l?.wieder || '', letzter: l, zuletzt: l ? zuletztText(l) : '', nicht };
+  }
+  /** Stiller Vorschlag „Absagen, keine Rückmeldung“ (nie automatisch). */
+  const nachfassVorschlag = (x) => nachfassStand(x).nicht >= (+vorgabe('nachfassAbsageNach') || 2);
+  function nachfassIndex(w) {
+    if (norm(w.status) !== 'angebot' || !w.versendetAm) return {};
+    const s = nachfassStand(w);
+    return { nachfWieder: s.wieder, nachfZuletzt: s.zuletzt, nachfNicht: s.nicht, nachfAm: nachfassFaellig(w) };
+  }
+  /** Hinweis, „Zuletzt …“, Knopf „Nachgefasst“ und Vorschlag beim verschickten Angebot. */
+  function nachfassBlock(w) {
+    const u = nachfassUeber(w), s = nachfassStand(w);
+    return `${u >= 0 ? `<p class="stk-tipp warn">${icon('phone')} Seit ${seitTagen(w.versendetAm)} Tagen beim Kunden. Zeit zum Nachfassen.</p>` : ''}
+      ${s.letzter ? `<p class="hint nf-zul">Zuletzt ${esc(s.zuletzt)}${u < 0 ? ` · nächstes Mal am ${esc(datumText(nachfassFaellig(w)))}` : ''}</p>` : ''}
+      <div class="stk-2 nf-knoepfe"><button type="button" class="btn secondary nf-knopf" data-nfg>${icon('phone')} Nachgefasst</button><button type="button" class="btn secondary" data-nfmsg>${icon('mail')} Nachricht schicken</button></div>
+      ${nachfassVorschlag(w) ? `<div class="stk-tipp nf-vor"><span>${s.nicht} mal nicht erreicht. Absagen, Grund: ${esc(vorgabe('nachfassAbsageGrund') || 'Keine Rückmeldung')}?</span><button type="button" class="btn secondary small" data-nfabs>Absagen</button></div>` : ''}`;
+  }
+  /** Offene Nachfass-To-dos eines Vorgangs erledigen. */
+  async function nachfassTodosZu(wid) {
+    if (!window.Todos) return;
+    try { await Todos.laden(); for (const t of Todos.liste()) if (!t.erledigt && String(t.schluessel || '').startsWith(`nachfass:${wid}:`)) await Todos.erledigen(t.id); } catch (e) { console.warn('Nachfassen', e); }
+  }
+  /** „Nachgefasst“: erreicht / nicht erreicht, kurze Notiz (Tastatur-Mikrofon, mit KI aufgeräumt), wieder in … Tagen.
+   *  Schreibt w.nachfass.log, die Zeitleiste beim Kunden (art 'anruf') und das nächste Nachfass-To-do. fertig() nach dem Speichern. */
+  async function nachgefasst(wid, fertig) {
+    const w = state.wohnung?.id === wid ? state.wohnung : await kvGet(key(wid)); if (!w) return; // offener Vorgang: dasselbe Objekt, sonst überschreibt ein späteres Speichern den Eintrag
+    const k = Kunden.byId(w.kundeId), s = nachfassStand(w), n0 = nachfassTage(w);
+    const kname = Kunden.name(k) || w.customer || '';
+    const r = await new Promise((res) => {
+      const el = document.createElement('div'); el.className = 'sheet-bg fest';
+      el.innerHTML = `<div class="sheet nf-sheet" role="dialog" aria-label="Nachgefasst"><div class="sheet-h"><b>Nachgefasst${kname ? ': ' + esc(kname) : ''}</b><button class="icon-btn" data-x aria-label="Schließen">${icon('x')}</button></div>
+        <div class="nf-body">
+          <p class="hint" style="margin-top:0">${esc(w.titel || 'Angebot')}${w.versendetAm ? ` · verschickt am ${esc(datumText(w.versendetAm))}` : ''}</p>
+          ${s.letzter ? `<p class="nf-zul"><b>Zuletzt</b> ${esc(s.zuletzt)}</p>` : ''}
+          <div class="seg2 full nf-erg"><button type="button" data-nferg="1">Kunde erreicht</button><button type="button" data-nferg="0">Nicht erreicht</button></div>
+          <label for="nfNotiz">Kurze Notiz</label>
+          <textarea id="nfNotiz" rows="3" data-frei placeholder="Was hat der Kunde gesagt? Tippen oder das Mikrofon der Tastatur nehmen."></textarea>
+          <label class="stk-feld nf-feld"><span>Wieder nachfassen in</span><input type="number" min="1" step="1" inputmode="numeric" id="nfTage" value="${n0}"><span>Tagen</span></label>
+          <button type="button" class="btn block" id="nfOk" disabled>Speichern</button>
+          <button type="button" class="link-add nf-msg" id="nfMsg">${icon('mail')} Nachricht schicken (Mail, WhatsApp oder Brief)</button>
+        </div></div>`;
+      let erreicht = null;
+      const close = (v) => { el.classList.remove('on'); setTimeout(() => el.remove(), 180); res(v); };
+      el.onclick = (e) => { if (e.target === el || e.target.closest('[data-x]')) close(null); };
+      $$('[data-nferg]', el).forEach((b) => (b.onclick = () => { erreicht = b.dataset.nferg === '1'; $$('[data-nferg]', el).forEach((x) => x.classList.toggle('on', x === b)); $('#nfOk', el).disabled = false; }));
+      $('#nfMsg', el).onclick = () => nachfassNachricht(w.id);
+      $('#nfOk', el).onclick = () => { if (erreicht === null) return; close({ erreicht, notiz: $('#nfNotiz', el).value.trim(), tage: Math.max(1, Math.round(+$('#nfTage', el).value) || n0) }); };
+      document.body.appendChild(el);
+      requestAnimationFrame(() => el.classList.add('on'));
+    });
+    if (!r) return;
+    let notiz = r.notiz;
+    if (notiz && state.settings.apiKey && typeof geminiText === 'function') {
+      toast('Wird gelesen …', 2500);
+      try { const t = String(await geminiText([{ text: `${vorgabe('promptNachgefasst')}\n\nNote:\n${notiz}` }]) || '').trim(); if (t) notiz = t.replace(/^["„“]+|["„“]+$/g, '').trim(); } catch (e) { console.warn('Nachgefasst', e); }
+    }
+    const d = new Date(heuteIso() + 'T12:00'); d.setDate(d.getDate() + r.tage);
+    const wieder = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    const e = { id: uid(), t: Date.now(), wer: window.Kalender?.wer?.() || '', erreicht: r.erreicht, notiz, wieder, am: w.versendetAm || '' };
+    w.nachfass = { ...(w.nachfass || {}), log: [...nfLogAlle(w), e] };
+    await save(w);
+    // Zeitleiste beim Kunden
+    if (k) {
+      const werN = (window.Kalender?.team?.() || []).find((p) => p.id === e.wer)?.name?.split(' ')[0] || '';
+      k.zeitleiste = [...(Array.isArray(k.zeitleiste) ? k.zeitleiste : []), { id: uid(), t: e.t, art: 'anruf', text: `Angebot „${w.titel || 'Angebot'}“ nachgefasst: ${r.erreicht ? 'Kunde erreicht' : 'nicht erreicht'}${notiz ? '. ' + notiz : ''}`, wer: werN }];
+      await Kunden.speichern(k);
+    }
+    // Nächstes Nachfass-To-do für den Verfasser, das alte ist erledigt
+    await nachfassTodosZu(w.id);
+    const list = await raeume(w);
+    await window.Todos?.anlegen({ text: `Angebot nachfassen: ${w.titel || 'Angebot'}${kname ? ` (${kname})` : ''}${notiz ? `. Zuletzt: ${notiz}` : r.erreicht ? '' : '. Zuletzt nicht erreicht'}`, faellig: wieder, prio: 'mittel',
+      wer: teamIdVon(verfasserVon(w, list)), bezug: { kundeId: w.kundeId || '', vorgangId: w.id }, art: 'nachfass', schluessel: `nachfass:${w.id}:${nfLogAlle(w).length}` });
+    toast(`Eingetragen. Wieder nachfassen am ${datumText(wieder)}`);
+    await fertig?.();
+  }
+
+  // ---------- Version 143: Nachfass-Nachricht, Absage an Subunternehmer (nur per Tipp, Versandweg über Besuch.nachricht) ----------
+  const meinName = () => (window.Kalender?.team?.() || []).find((p) => p.id === window.Kalender?.wer?.())?.name || '';
+  const firmaName = () => String(window.PL?.einstellungen?.firma || 'Dom Projektmanagement GmbH').split('\n')[0];
+  const textVon = (k, werte) => vorgabeText(k, { firma: firmaName(), name: meinName(), ...werte }).replace(/\n\s*\n/g, '\n').trim();
+  /** Empfänger beim Nachfassen: Privat der Kunde, Firma der Ansprechpartner, WEG die Person bei der Hausverwaltung (sonst die Hausverwaltung). */
+  function nachfassEmpfaenger(k) {
+    if (!k) return null;
+    const H = Kunden.hvVon(k);
+    if (H) return Kunden.person(H, k.hvPersonId) || H;
+    if (k.art === 'firma') return Kunden.person(k, k.ansprechId) || k;
+    return k;
+  }
+  /** Bei „Kopieren“ fragen, ob die Nachricht raus ist; sonst zählt der gewählte Weg. */
+  const wegGilt = (weg) => weg && (weg !== 'kopie' || confirm('Nachricht verschickt? Dann vermerkt DOM sie.'));
+  async function nachfassNachricht(wid) {
+    const w = state.wohnung?.id === wid ? state.wohnung : await kvGet(key(wid)); if (!w) return;
+    const k = Kunden.byId(w.kundeId); if (!k) return toast('Bitte zuerst einen Kunden zuordnen.');
+    const an = nachfassEmpfaenger(k);
+    const list = await raeume(w);
+    try { await window.Angebot._intern.preisliste(); } catch {}
+    const nr = aktNr(w, list) || sperrInfo(w).nr || '';
+    const werte = { anrede: Kunden.briefAnrede(k), nr, betreff: w.titel || 'Angebot', datum: w.versendetAm ? datumText(w.versendetAm) : '', verfasser: verfasserVon(w, list) || meinName() };
+    const anName = an === k ? Kunden.name(k) : Kunden.personName(an) || Kunden.name(an);
+    const weg = await Besuch.nachricht(an, 'Nachfassen' + (anName ? ': ' + anName : ''), textVon('textNachfassMail', werte), textVon('textNachfassBetreff', werte),
+      { kurz: textVon('textNachfassWhatsapp', werte), mail: Kunden.angebotMail(k), mailLabel: 'für Angebote', anschrift: Kunden.postanschrift(k) || undefined, datei: `Nachfassen_${nr || w.titel || 'Angebot'}` });
+    if (!wegGilt(weg)) return;
+    const kk = Kunden.byId(w.kundeId) || k;
+    kk.zeitleiste = [...(Array.isArray(kk.zeitleiste) ? kk.zeitleiste : []), { id: uid(), t: Date.now(), art: weg === 'mail' ? 'mail' : 'notiz', text: `Nachfass-Nachricht per ${Besuch.WEG_NAME[weg] || weg} zu Angebot ${nr ? nr + ' ' : ''}„${w.titel || 'Angebot'}“${an !== k && anName ? ' an ' + anName : ''}`, wer: meinName().split(' ')[0] }];
+    await Kunden.speichern(kk);
+    toast('In der Zeitleiste vermerkt');
+  }
+  /** Partner mit Preisen in einem Angebot (x.sub.partnerId in allen Bereichen). */
+  function subIdsVon(a) {
+    const s = new Set();
+    for (const b of Object.values(a?.inhalt?.bereiche || {})) for (const x of b?.positionen || []) if (x?.sub?.partnerId) s.add(x.sub.partnerId);
+    return s;
+  }
+  /** Wer bekommt eine Absage? Zusage: angefragte Subs und Subs aus nicht gewählten Angeboten, die im gewählten Angebot nicht vorkommen.
+   *  Absage durch den Kunden: alle angefragten und alle mit Preisen in irgendeinem Angebot. → { art: 'zusage'|'absage'|'', subs: [{ partnerId, warum, erledigt }] } */
+  async function subAbsageListe(w) {
+    const st = norm(w.status);
+    const art = ['geplant', ''].includes(st) ? 'zusage' : st === 'abgesagt' ? 'absage' : '';
+    if (!art || !window.AngebotDaten) return { art, subs: [] };
+    await AngebotDaten.liste(w);
+    const alle = AngebotDaten.listeSync(w);
+    const gew = art === 'zusage' ? alle.find((a) => a.status === 'zugesagt') || AngebotDaten.aktivSync(w) : null;
+    const drin = gew ? subIdsVon(gew) : new Set();
+    const ids = new Map();
+    for (const q of w.subAnfragen || []) if (q?.partnerId && !ids.has(q.partnerId)) ids.set(q.partnerId, q.art === 'angebot' ? 'um ein Angebot gebeten' : 'zur Info angeschrieben');
+    for (const a of alle) if (a !== gew) for (const id of subIdsVon(a)) if (!ids.has(id)) ids.set(id, `Preise im Angebot ${AngebotDaten.nr(a, w)}`);
+    const subs = [...ids].filter(([id]) => !drin.has(id) && window.Partner?.byId(id))
+      .map(([partnerId, warum]) => ({ partnerId, warum, erledigt: (w.subAbsagen || []).find((x) => x.partnerId === partnerId && x.art === art) || null }));
+    return { art, subs };
+  }
+  /** Karte „Absage an Subunternehmer schicken“ (Projekt Übersicht nach Zusage, Reiter Angebote nach Absage). Bleibt, bis alle geschickt oder „Nicht nötig“. */
+  async function subAbsageKarte(el, w) {
+    const { art, subs } = await subAbsageListe(w);
+    if (!el.isConnected) return;
+    if (!subs.some((s) => !s.erledigt)) { el.innerHTML = ''; return; }
+    const wegT = (e) => (e.weg === 'keine' ? 'nicht nötig' : `geschickt am ${new Date(e.t).toLocaleDateString('de-DE')} per ${Besuch.WEG_NAME[e.weg] || e.weg}`);
+    el.innerHTML = `<div class="card sab-karte">
+      <b>Absage an Subunternehmer schicken</b>
+      <p class="hint">${art === 'zusage' ? 'Der Kunde hat zugesagt. Diese Subunternehmer waren angefragt oder nur in einem anderen Angebot und sind im gewählten Angebot nicht dabei.' : 'Der Kunde hat abgesagt. Diese Subunternehmer waren angefragt oder haben Preise im Angebot.'} DOM schickt nichts von selbst.</p>
+      <ul class="sab-l">${subs.map((s) => { const p = Partner.byId(s.partnerId); return `<li><span class="sab-t"><b>${esc(Partner.titel(p) || 'Partner')}</b><small>${esc(s.warum)}</small></span>
+        ${s.erledigt ? `<span class="muted sab-ok">${esc(wegT(s.erledigt))}</span>` : `<button type="button" class="btn secondary small" data-sab="${esc(s.partnerId)}">${icon('mail')} Absage schicken</button>`}</li>`; }).join('')}</ul>
+      <button type="button" class="link-add" data-sabnein>${icon('x')} Nicht nötig</button></div>`;
+    const fertig = async () => { await save(w); await subAbsageKarte(el, w); };
+    $$('[data-sab]', el).forEach((b) => (b.onclick = async () => {
+      const p = Partner.byId(b.dataset.sab); if (!p) return;
+      const k = Kunden.byId(w.kundeId), o = k && w.objektId ? Kunden.objekt(k, w.objektId) : null;
+      const werte = { anrede: p.inhaber.trim() ? `Hallo ${p.inhaber.trim()},` : 'Hallo,', projekt: w.titel || 'Projekt', objekt: Kunden.einzeilig(o?.adresse || w.address || '') };
+      const weg = await Besuch.nachricht(p, 'Absage an ' + (Partner.titel(p) || 'Partner'), textVon(art === 'zusage' ? 'textSubAbsageZusage' : 'textSubAbsageKunde', werte), textVon('textSubAbsageBetreff', werte), { datei: `Absage_${w.titel || 'Projekt'}_${Partner.titel(p) || ''}` });
+      if (!wegGilt(weg)) return;
+      w.subAbsagen = [...(w.subAbsagen || []), { partnerId: p.id, art, t: Date.now(), weg }];
+      p.zeitleiste = [...(Array.isArray(p.zeitleiste) ? p.zeitleiste : []), { id: uid(), t: Date.now(), art: weg === 'mail' ? 'mail' : 'notiz', text: `${art === 'zusage' ? 'Absage geschickt (Kunde hat zugesagt, nicht gewählt)' : 'Absage geschickt (Kunde hat abgesagt)'} per ${Besuch.WEG_NAME[weg] || weg}: Projekt „${w.titel || 'Projekt'}“`, wer: meinName().split(' ')[0] }];
+      await Partner.speichern(p);
+      await fertig();
+    }));
+    $('[data-sabnein]', el).onclick = async () => {
+      const t = Date.now();
+      w.subAbsagen = [...(w.subAbsagen || []), ...subs.filter((s) => !s.erledigt).map((s) => ({ partnerId: s.partnerId, art, t, weg: 'keine' }))];
+      await fertig();
+    };
   }
   const seitTagen = (iso) => (iso ? Math.floor((new Date(heuteIso() + 'T12:00') - new Date(iso + 'T12:00')) / 864e5) : -1);
   const datumText = (iso) => new Date(iso + 'T12:00').toLocaleDateString('de-DE');
@@ -1996,7 +2234,903 @@ window.Projekt = (() => {
   }
 
   const forget = (id) => rooms.delete(id);
-  return { automatik, anlegen, angebotVersendet, gesperrt, gesperrtFrage, angebotKopieren, dateiZeigen, nachfassen, nachfassTage, nachfassFaellig, nachfassUeber, nachfassStaffel, nachfassFuerMich, verfasserVon, teamIdVon, seitTagen, STATUS, ANGEBOT, ALLE, PHASEN, phase, farbe, pill, norm, zugesagt, statusName, statusKurz, raumAngebot, angebotMerken, forget, neu, neuDirekt, neuFuer, kundeUebernehmen, oeffnen, view, mappeView, moodboardView, migrate, raum, raeume, raumGespeichert, raumEntfernt, save, wahl, PKG_IDS, _intern: { kundeUnterschreibt, wegFragen, wegText, versandStand, versandPruefen, sendenMitMappe, alsVersendet, angebotSpeichern, titel, addRoom, raumAusScan, raumAnlegen, reiterSetzen, auftragsbestaetigung } };
+  // ---------- Version 144: Zusage mit Nachweis, vorzeitiger Beginn, To-dos nach der Zusage ----------
+  /** Gewähltes Angebot nach der Zusage (zugesagt, sonst das aktive). */
+  const gewaehlt = (w) => AngebotDaten.listeSync(w).find((a) => a.status === 'zugesagt') || AngebotDaten.aktivSync(w);
+  /** Hat der Kunde unterschrieben? Unterschriebenes Angebot abgelegt (w.auftrag) oder Unterschrift am iPad an der Fassung. */
+  function zusageUnterschrieben(w) {
+    if (w.auftrag) return true;
+    try { const a = gewaehlt(w); return !!(a?.fassungen || []).some((f) => f?.unterschrieben); } catch { return false; }
+  }
+  const zusageNachweisOk = (w) => zusageUnterschrieben(w) || (!!w.zusageNachweis && w.zusageNachweis.art !== 'fehlt');
+  const NW_ART = { datei: 'Mail oder WhatsApp', foto: 'Foto', telefon: 'telefonisch' };
+  function nachweisText(w) {
+    const n = w.zusageNachweis;
+    if (!n || n.art === 'fehlt') return zusageUnterschrieben(w) ? 'Kunde hat unterschrieben' : 'Nachweis der Zusage fehlt';
+    return n.art === 'telefon' ? n.notiz || 'Telefonisch zugesagt' : `Nachweis der Zusage: ${NW_ART[n.art] || n.art}`;
+  }
+  const isoHeute = () => heuteIso();
+  /** Notiz mit Datum (Tastatur-Mikrofon geht wie bei „Kurz notieren“). → { datum, notiz } oder null */
+  function notizFrage(titel, vorlageKey) {
+    return new Promise((res) => {
+      const el = document.createElement('div'); el.className = 'sheet-bg fest';
+      el.innerHTML = `<div class="sheet nf-sheet" role="dialog" aria-label="${esc(titel)}"><div class="sheet-h"><b>${esc(titel)}</b><button class="icon-btn" data-x aria-label="Schließen">${icon('x')}</button></div>
+        <div class="nf-body">
+          <label class="stk-feld nf-feld"><span>Am</span><input type="date" id="nwDatum" value="${isoHeute()}"></label>
+          <label for="nwNotiz">Kurze Notiz (freiwillig)</label>
+          <textarea id="nwNotiz" rows="3" data-frei placeholder="z. B. Herr Müller hat am Telefon zugesagt, Start nach Absprache. Tippen oder das Mikrofon der Tastatur nehmen."></textarea>
+          <p class="hint" id="nwVor"></p>
+          <button type="button" class="btn block" id="nwOk">Speichern</button>
+        </div></div>`;
+      const vor = () => textVon(vorlageKey, { datum: $('#nwDatum', el).value ? datumText($('#nwDatum', el).value) : '' });
+      const zeig = () => { $('#nwVor', el).textContent = 'Wird vermerkt als: ' + vor() + ($('#nwNotiz', el).value.trim() ? '. ' + $('#nwNotiz', el).value.trim() : ''); };
+      const close = (v) => { el.classList.remove('on'); setTimeout(() => el.remove(), 180); res(v); };
+      el.onclick = (e) => { if (e.target === el || e.target.closest('[data-x]')) close(null); };
+      $('#nwDatum', el).onchange = zeig; $('#nwNotiz', el).oninput = zeig; zeig();
+      $('#nwOk', el).onclick = () => { const n = $('#nwNotiz', el).value.trim(); close({ datum: $('#nwDatum', el).value || isoHeute(), notiz: vor() + (n ? '. ' + n : '') }); };
+      document.body.appendChild(el);
+      requestAnimationFrame(() => el.classList.add('on'));
+    });
+  }
+  /** Datei oder Foto als internes Dokument beim Vorgang ablegen (nie an den Kunden). → dokKey oder '' */
+  async function nachweisAblegen(w, quelle, { name, art }) {
+    let data = '', typ = '';
+    if (quelle === 'scan') { data = await Geraet.scannen(); typ = 'image/jpeg'; if (!data) return ''; data = await resize(data, 2200, 'image/jpeg', 0.85); }
+    else {
+      const [f] = await pickFiles(quelle === 'foto' ? { camera: true, accept: 'image/*' } : { accept: 'application/pdf,image/*' });
+      if (!f) return '';
+      if (f.size > 8e6) { toast('Die Datei ist zu groß (höchstens 8 MB).', 4000); return ''; }
+      data = await fileToDataUrl(f); typ = f.type || 'application/pdf';
+      if (typ.startsWith('image/')) { data = await resize(data, 2200, 'image/jpeg', 0.85); typ = 'image/jpeg'; }
+    }
+    const datei = `${name}_${isoHeute()}_${String(Date.now()).slice(-4)}.${typ === 'application/pdf' ? 'pdf' : 'jpg'}`;
+    if (w.isNew) { delete w.isNew; }
+    const dk = 'wdok:' + w.id + ':' + datei.replace(/[^\wäöüÄÖÜß.-]+/g, '_');
+    await kvSet(dk, data);
+    w.dokumente = [...(w.dokumente || []).filter((x) => x.key !== dk), { key: dk, name: datei, t: Date.now(), art, typ, intern: true }];
+    try { window.Buero?.ablage(w, datei, await (await fetch(data)).blob()); } catch (e) { console.warn('Ablage', e); }
+    return dk;
+  }
+  /** Auswahl: Mail oder WhatsApp (Screenshot/Datei), Foto (Scan), Notiz (telefonisch), Später.
+   *  → { art: 'datei'|'foto'|'telefon', t, wer, notiz, dokKey } | { art: 'spaeter' } | null (geschlossen) */
+  async function nachweisHolen(w, o) {
+    const pc = !!window.Tabelle?.istBuero();
+    const v = await sheet(o.titel, [
+      { label: 'Mail oder WhatsApp', sub: 'Screenshot oder Datei (Bild oder PDF) ablegen', icon: icon('upload'), value: 'datei' },
+      ...(pc ? [] : [{ label: 'Foto', sub: 'z. B. von einem Zettel oder Bildschirm', icon: icon('camera'), value: 'foto' }]),
+      ...(!pc && window.Geraet?.kann?.('scanner') ? [{ label: 'Dokument scannen', sub: 'Papier mit mehreren Seiten', icon: icon('file'), value: 'scan' }] : []),
+      { label: o.telLabel, sub: 'Datum ist vorausgefüllt, kurze Notiz per Tastatur oder Sprache', icon: icon('phone'), value: 'telefon' },
+      ...(o.spaeter ? [{ label: 'Später', sub: o.spaeter, icon: icon('x'), value: 'spaeter' }] : []),
+    ], { suche: '' });
+    if (!v) return null;
+    if (v === 'spaeter') return { art: 'spaeter' };
+    const wer = window.Kalender?.wer?.() || '';
+    if (v === 'telefon') {
+      const r = await notizFrage(o.telLabel, o.telVorlage);
+      if (!r) return null;
+      return { art: 'telefon', t: new Date(r.datum + 'T12:00').getTime(), wer, notiz: r.notiz, dokKey: '' };
+    }
+    try {
+      const dk = await nachweisAblegen(w, v, { name: o.datei, art: o.art });
+      if (!dk) return null;
+      return { art: v === 'datei' ? 'datei' : 'foto', t: Date.now(), wer, notiz: '', dokKey: dk };
+    } catch (e) { console.warn('Nachweis', e); toast('Ablegen ging nicht: ' + (e?.message || e), 5000); return null; }
+  }
+  const NW_OPT = { titel: 'Nachweis der Zusage', art: 'zusage-nachweis', datei: 'Zusage_Nachweis', telLabel: 'Telefonisch zugesagt', telVorlage: 'textZusageTelefon' };
+  /** Nach „Zugesagt“: To-dos anlegen, dann (ohne Unterschrift) nach dem Nachweis fragen. Überspringen = stiller Hinweis. */
+  async function nachZusage(w, list) {
+    await zusageTodos(w, list);
+    if (zusageUnterschrieben(w) || (w.zusageNachweis && w.zusageNachweis.art !== 'fehlt')) return;
+    const n = await nachweisHolen(w, { ...NW_OPT, titel: 'Nachweis der Zusage (keine Unterschrift)', spaeter: 'Ohne Nachweis weiter, im Projekt steht dann „Nachweis der Zusage fehlt“' });
+    w.zusageNachweis = n && n.art !== 'spaeter' ? n : { art: 'fehlt', t: Date.now(), wer: window.Kalender?.wer?.() || '' };
+    await save(w);
+    if (n && n.art !== 'spaeter') toast(n.art === 'telefon' ? 'Telefonische Zusage vermerkt' : 'Nachweis der Zusage abgelegt');
+    await neuZeichnen(w);
+  }
+  /** Hinweis oder Vorbereiten: Nachweis ansehen bzw. nachträglich anhängen. */
+  async function nachweisTippen(w) {
+    const n = w.zusageNachweis;
+    if (n?.dokKey && n.art !== 'fehlt') {
+      const d = (w.dokumente || []).find((x) => x.key === n.dokKey);
+      const v = await sheet('Nachweis der Zusage', [{ label: 'Ansehen', icon: icon('eye'), value: 'zeigen' }, { label: 'Anderen Nachweis anhängen', icon: icon('upload'), value: 'neu' }]);
+      if (v === 'zeigen') return dateiZeigen(await kvGet(n.dokKey), { name: d?.name || 'Nachweis', typ: d?.typ || 'image/jpeg' });
+      if (v !== 'neu') return;
+    } else if (n && n.art === 'telefon') {
+      const v = await sheet(n.notiz || 'Telefonisch zugesagt', [{ label: 'Anderen Nachweis anhängen', icon: icon('upload'), value: 'neu' }]);
+      if (v !== 'neu') return;
+    }
+    const r = await nachweisHolen(w, NW_OPT);
+    if (!r || r.art === 'spaeter') return;
+    w.zusageNachweis = r;
+    await save(w);
+    toast(r.art === 'telefon' ? 'Telefonische Zusage vermerkt' : 'Nachweis der Zusage abgelegt');
+    neuZeichnen(w);
+  }
+  // ---------- v147: Projekt-Ansprechpartner (eine Person oder beide) ----------
+  const BEIDE = 'beide';
+  /** Name des Projekt-Ansprechpartners oder 'beide'. Zwei Namen in einem Feld (alt) gelten als nicht gewählt → Vorgabe. */
+  function ansprechName(w) {
+    const A = window.Angebot?._intern;
+    for (const v of [w?.ansprechpartner, vorgabe('ansprechProjekt')]) {
+      const s = String(v || '').trim();
+      if (/^beide$/i.test(s)) return BEIDE;
+      const e = A?.einePerson ? A.einePerson(s) : s;
+      if (e) return e;
+    }
+    return '';
+  }
+  const vornamen = () => (window.Kalender?.team?.() || []).map((p) => String(p.name || '').split(/\s+/)[0]).filter(Boolean);
+  /** Anzeige: Name bzw. „Beide (Felix und Deniel)“. */
+  function ansprechText(w) { const n = ansprechName(w); return n === BEIDE ? `Beide (${vornamen().join(' und ')})` : n; }
+  /** Team-IDs des Projekt-Ansprechpartners: [] (unbekannt), [id] oder alle bei „beide“. */
+  function ansprechIds(w) {
+    const n = ansprechName(w);
+    if (n === BEIDE) return (window.Kalender?.team?.() || []).map((p) => p.id);
+    const id = teamIdVon(n); return id ? [id] : [];
+  }
+  /** Für To-dos: eine Team-ID, '' = beide (ein To-do, das beide sehen; wer es erledigt, hakt es für beide ab). */
+  function projektWer(w) { const ids = ansprechIds(w); return ids.length === 1 ? ids[0] : ''; }
+  /** Einplanungs-To-dos (gehen an den Projekt-Ansprechpartner). Spätere Versionen tragen ihre Arten hier ein. */
+  const EINPLAN_ARTEN = ['subBeauftragen', 'subBestaetigung'];
+  /** Ansprechpartner geändert: offene Einplanungs-To-dos des Vorgangs bekommen den neuen Empfänger. */
+  async function einplanTodosWer(w) {
+    if (!window.Todos?.aendern) return;
+    try {
+      await Todos.laden();
+      const wer = projektWer(w);
+      for (const t of Todos.liste()) {
+        if (t.erledigt || t.wer === wer) continue;
+        const s = String(t.schluessel || '');
+        if (EINPLAN_ARTEN.some((a) => t.art === a && t.bezug?.vorgangId === w.id) || EINPLAN_ARTEN.some((a) => s.startsWith(`${a}:${w.id}:`) || s === `${a}:${w.id}`)) await Todos.aendern(t.id, { wer });
+      }
+    } catch (e) { console.warn('To-dos', e); }
+  }
+  /** To-dos nach der Zusage: „Subunternehmer … beauftragen“ je Sub mit Preisen im gewählten Angebot (an den Projekt-Ansprechpartner),
+   *  „Auftragsbestätigung an … schicken“ (an den Verfasser, solange sie nicht gesendet ist). Gleicher Schlüssel = nie doppelt. */
+  async function zusageTodos(w, list) {
+    if (!window.Todos) return;
+    await AngebotDaten.liste(w);
+    const a = gewaehlt(w), k = Kunden.byId(w.kundeId), kname = Kunden.name(k) || w.customer || 'Kunde';
+    const bezug = { kundeId: w.kundeId || '', vorgangId: w.id }, heute = isoHeute();
+    const pw = projektWer(w);
+    for (const pid of subIdsVon(a)) {
+      const p = window.Partner?.byId(pid); if (!p) continue;
+      await Todos.anlegen({ text: `Subunternehmer ${Partner.titel(p) || 'Partner'} beauftragen: ${w.titel || 'Projekt'}`, faellig: heute, prio: 'hoch', wer: pw,
+        bezug: { ...bezug, partnerId: pid }, art: 'subBeauftragen', schluessel: `subBeauftragen:${w.id}:${pid}` });
+    }
+    if (!w.auftragsbestaetigung?.gesendetAm) {
+      let vf = ''; try { await window.Angebot._intern.preisliste(); vf = verfasserVon(w, list); } catch {}
+      await Todos.anlegen({ text: `Auftragsbestätigung an ${kname} schicken: ${w.titel || 'Projekt'}`, faellig: heute, prio: 'mittel', wer: teamIdVon(vf),
+        bezug, art: 'auftragsbestaetigung', schluessel: `ab:${w.id}` });
+    }
+  }
+  /** Offenes To-do mit diesem Schlüssel erledigen. */
+  async function todoZu(schluessel) {
+    if (!window.Todos) return;
+    try { await Todos.laden(); for (const t of Todos.liste()) if (!t.erledigt && t.schluessel === schluessel) await Todos.erledigen(t.id); } catch (e) { console.warn('To-do', e); }
+  }
+  // ---------- v147: Auftrag an Subunternehmer (Runde 17, B2) ----------
+  // w.subAuftraege = [{ partnerId, stand: 'angefragt'|'beauftragt'|'bestaetigt', dokKey, erstelltAm, termin, netto, beauftragtAm, weg, bestaetigtAm }]
+  // Subs = Partner mit Preisen im gewählten Angebot (wie zusageTodos). Preise im Auftrag = Einkauf (sein Preis), nie unser Verkaufspreis.
+  const SA_STAND = [['angefragt', 'angefragt'], ['beauftragt', 'beauftragt'], ['bestaetigt', 'bestätigt']];
+  const plusTage = (n) => { const d = new Date(); d.setDate(d.getDate() + (+n || 0)); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
+  async function subAuftragListe(w) {
+    if (!window.AngebotDaten) return [];
+    await AngebotDaten.liste(w);
+    const a = gewaehlt(w);
+    return [...subIdsVon(a)].filter((id) => window.Partner?.byId(id)).map((pid) => {
+      const e = (w.subAuftraege || []).find((x) => x.partnerId === pid) || null;
+      return { partnerId: pid, e, stand: e?.stand || 'angefragt' };
+    });
+  }
+  function subEintrag(w, pid) {
+    if (!Array.isArray(w.subAuftraege)) w.subAuftraege = [];
+    let e = w.subAuftraege.find((x) => x.partnerId === pid);
+    if (!e) { e = { partnerId: pid, stand: 'angefragt' }; w.subAuftraege.push(e); }
+    return e;
+  }
+  /** Freistellungsbescheinigung § 48b beim Partner: { ok, text, bis }. Fehlt oder abgelaufen = Hinweis, blockiert nichts. */
+  function frei48b(p) {
+    const art = String(vorgabe('nachweis48b') || '').trim();
+    const l = (p?.nachweise || []).filter((n) => (art && n.art === art) || /48\s*b/i.test(n.art || ''));
+    if (!l.length) return { ok: false, text: 'Freistellungsbescheinigung § 48b fehlt. Bitte vor Beauftragung anfordern.' };
+    const bis = l.map((n) => n.bis || '9999-12-31').sort().pop();
+    if (bis < heuteIso()) return { ok: false, bis, text: `Freistellungsbescheinigung § 48b abgelaufen am ${datumText(bis)}. Bitte vor Beauftragung anfordern.` };
+    return { ok: true, bis: bis === '9999-12-31' ? '' : bis };
+  }
+  /** Leistungen eines Subs im gewählten Angebot mit SEINEM Preis (Einkauf): Partner-Preisliste = sein Lohnpreis,
+   *  Sub-Angebot pauschal = sein Betrag, eigene Zeile mit Einkauf = dieser; sonst ohne Preis. Bedarf und Alternative nicht. */
+  async function subLeistungen(w, pid) {
+    const A = window.Angebot._intern; await A.preisliste();
+    await AngebotDaten.liste(w);
+    const out = { bereiche: [], summe: 0, ohnePreis: 0 };
+    for (const { r, A: T } of await AngebotDaten.teile(w, gewaehlt(w))) {
+      if (!T.positionen.some((x) => x?.sub?.partnerId === pid)) continue;
+      const S = A.summen(T.positionen, T.kalk);
+      const zeilen = [];
+      for (const z of S.zeilen) {
+        if (z.sub?.partnerId !== pid || ['bedarf', 'alternativ'].includes(z.art)) continue;
+        const K = z.kalk || {};
+        const ep = K.quelle === 'subpreisliste' ? +K.lohn || 0 : ['subangebot', 'frei'].includes(K.quelle) && !K.ohne ? +K.ekEp || 0 : 0;
+        const gp = Math.round(z.menge * ep * 100) / 100;
+        if (!(ep > 0)) out.ohnePreis++;
+        out.summe += gp;
+        zeilen.push({ text: String(z.it?.text || 'Leistung'), lang: String(z.lang || '').trim(), menge: z.menge, einheit: String(z.it?.einheit || ''), ep, gp });
+      }
+      if (zeilen.length) out.bereiche.push({ name: r.room || roomType(r.roomType)?.name || 'Leistungen', zeilen });
+    }
+    out.summe = Math.round(out.summe * 100) / 100;
+    return out;
+  }
+  const subWerte = (w, p) => {
+    const k = Kunden.byId(w.kundeId), o = k && w.objektId ? Kunden.objekt(k, w.objektId) : null;
+    return { anrede: String(p.inhaber || '').trim() ? `Hallo ${String(p.inhaber).trim()},` : 'Hallo,', projekt: w.titel || 'Projekt', objekt: Kunden.einzeilig(o?.adresse || w.address || ''),
+      termin: w.baustart ? datumText(w.baustart) : 'nach Absprache', sub: Partner.titel(p) || 'Partner', nr: w.nr || '' };
+  };
+  /** PDF „Auftrag an Subunternehmer“ (Briefkopf wie Besuch.brief). */
+  async function subAuftragPdf(w, p) {
+    const L = await subLeistungen(w, p.id);
+    const k = Kunden.byId(w.kundeId), o = k && w.objektId ? Kunden.objekt(k, w.objektId) : null;
+    const werte = subWerte(w, p);
+    const tel = (x) => (x ? (Kontakt.nummernVon(x, 'tel').find((n) => String(n.wert || '').trim())?.wert || '') : '');
+    const vorOrt = (o?.kontakte || []).filter((x) => x.name.trim() || x.telefon.trim()).map((x) => [x.name.trim(), x.rolle ? `(${x.rolle})` : '', x.telefon.trim()].filter(Boolean).join(' '));
+    if (!vorOrt.length && k) vorOrt.push([Kunden.name(k), tel(k)].filter(Boolean).join(', '));
+    let E = {}; try { E = (await window.Angebot._intern.preisliste()).einstellungen || {}; } catch {}
+    const team = window.Kalender?.team?.() || [];
+    const wir = ansprechIds(w).map((id) => team.find((t) => t.id === id)).filter(Boolean)
+      .map((t) => [t.name, String(t.telefon || t.mobil || E.telefon || '').trim()].filter(Boolean).join(', '));
+    if (!wir.length) { const n = ansprechName(w); if (n && n !== BEIDE) wir.push([n, E.telefon].filter(Boolean).join(', ')); }
+    const angaben = [
+      ['Bauvorhaben', [w.titel, w.nr ? `(${w.nr})` : ''].filter(Boolean).join(' ')],
+      ['Objekt', werte.objekt],
+      ['Klingel', o?.klingel], ['Etage', [o?.etage, o?.aufzug ? `Aufzug: ${o.aufzug}` : ''].filter((x) => String(x || '').trim()).join(', ')], ['Parken', o?.parken],
+      ['Ansprechpartner vor Ort', vorOrt.join('\n')],
+      ['Ihr Ansprechpartner bei uns', wir.join('\n')],
+      ['Termin', w.baustart ? `Beginn am ${datumText(w.baustart)}` : 'nach Absprache'],
+      ['Hinweise', w.hinweise],
+    ].filter(([, v]) => String(v || '').trim());
+    const zahl = [String(p.zahlungsziel || '').trim() ? `Zahlungsziel ${String(p.zahlungsziel).trim()} Tage` : '',
+      String(p.skonto || '').trim() ? `${String(p.skonto).trim()} % Skonto${String(p.skontoTage || '').trim() ? ` bei Zahlung innerhalb von ${String(p.skontoTage).trim()} Tagen` : ''}` : ''].filter(Boolean).join(', ');
+    const eur = (x) => (+x || 0).toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' €';
+    const mehrere = L.bereiche.length > 1;
+    return Besuch.brief({
+      anschrift: Besuch.anschriftVon(p), betreff: textVon('textSubAuftragBetreff', werte), text: textVon('textSubAuftragEinleitung', werte),
+      datei: `Auftrag_Subunternehmer_${w.nr || w.titel || 'Projekt'}_${werte.sub}`,
+      danach: async ({ doc, y, M, R, NAVY, platz }) => {
+        const t = (s, x, yy, o2) => doc.text(s, x, yy, o2);
+        doc.setFontSize(9.5);
+        for (const [kk, v] of angaben) {
+          const ls = doc.splitTextToSize(String(v), R - M - 52);
+          y = await platz(y, 4.6 * ls.length + 1);
+          doc.setTextColor(110); t(kk, M, y); doc.setTextColor(30); t(ls, M + 52, y);
+          y += 4.6 * ls.length + 1;
+        }
+        y += 4;
+        const C = { pos: M, txt: M + 11, menge: 134, einh: 137, ep: 168, gp: R };
+        const kopfZeile = async () => {
+          y = await platz(y, 14);
+          doc.setFont('helvetica', 'bold'); doc.setFontSize(11); doc.setTextColor(...NAVY); t('Ihre Leistungen', M, y); y += 6;
+          doc.setFontSize(8.5); doc.setTextColor(110);
+          t('Pos.', C.pos, y); t('Leistung', C.txt, y); t('Menge', C.menge, y, { align: 'right' }); t('Einheit', C.einh, y); t('EP netto', C.ep, y, { align: 'right' }); t('GP netto', C.gp, y, { align: 'right' });
+          doc.setDrawColor(200); doc.line(M, y + 1.5, R, y + 1.5); y += 6;
+          doc.setFont('helvetica', 'normal'); doc.setTextColor(30);
+        };
+        await kopfZeile();
+        let bi = 0;
+        for (const b of L.bereiche) {
+          bi++;
+          if (mehrere) { y = await platz(y, 10); doc.setFont('helvetica', 'bold'); doc.setFontSize(9.5); t(`${bi} ${b.name}`, C.pos, y); doc.setFont('helvetica', 'normal'); y += 5; }
+          let pi = 0;
+          for (const z of b.zeilen) {
+            pi++;
+            doc.setFontSize(9);
+            const ls = doc.splitTextToSize(z.text, C.menge - C.txt - 14);
+            const lang = z.lang ? doc.splitTextToSize(z.lang, C.menge - C.txt - 14) : [];
+            y = await platz(y, 4.3 * ls.length + 3.6 * lang.length + 2);
+            t(mehrere ? `${bi}.${pi}` : String(pi), C.pos, y); t(ls, C.txt, y);
+            t(String(z.menge).replace('.', ','), C.menge, y, { align: 'right' }); t(z.einheit, C.einh, y);
+            t(z.ep > 0 ? eur(z.ep) : 'nach Absprache', C.ep, y, { align: 'right' }); t(z.ep > 0 ? eur(z.gp) : '', C.gp, y, { align: 'right' });
+            y += 4.3 * ls.length;
+            if (lang.length) { doc.setFontSize(8); doc.setTextColor(100); t(lang, C.txt, y - 0.6); doc.setTextColor(30); y += 3.6 * lang.length; }
+            doc.setDrawColor(230); doc.line(M, y - 1.8, R, y - 1.8); y += 1.6;
+          }
+        }
+        y = await platz(y, 12);
+        doc.setFont('helvetica', 'bold'); doc.setFontSize(10); t('Summe netto', C.txt, y + 2); t(eur(L.summe), C.gp, y + 2, { align: 'right' }); doc.setFont('helvetica', 'normal'); y += 8;
+        doc.setFontSize(9); doc.setTextColor(90);
+        if (L.ohnePreis) { t('Positionen ohne Preis: nach Absprache bzw. Ihrem Angebot.', C.txt, y); y += 5; }
+        if (zahl) { y = await platz(y, 6); t('Zahlungsbedingungen: ' + zahl, C.txt, y); y += 5; }
+        doc.setTextColor(30); y += 3;
+        doc.setFontSize(10.5);
+        for (const z of String(textVon('textSubAuftrag', werte)).split('\n')) {
+          for (const l of z.trim() ? doc.splitTextToSize(z, R - M) : ['']) { y = await platz(y, 5); t(l, M, y); y += 5; }
+        }
+        if (window.Unterschrift?.pdf) { y = await platz(y + 4, 34); try { await Unterschrift.pdf(doc, M, y + 4, { name: meinName() || wir[0]?.split(',')[0] || '', firma: firmaName() }); } catch (e) { console.warn('Unterschrift', e); } }
+      },
+    });
+  }
+  async function subAuftragAblegen(w, f) {
+    const dk = 'wdok:' + w.id + ':' + f.name.replace(/[^\wäöüÄÖÜß.-]+/g, '_');
+    await kvSet(dk, await datUrl(f));
+    w.dokumente = [...(w.dokumente || []).filter((x) => x.key !== dk), { key: dk, name: f.name, t: Date.now(), art: 'subauftrag', typ: 'application/pdf', intern: true }];
+    try { window.Buero?.ablage(w, f.name, f); } catch (e) { console.warn('Ablage', e); }
+    return dk;
+  }
+  const saZeitleiste = async (p, text, art = 'notiz') => {
+    p.zeitleiste = [...(Array.isArray(p.zeitleiste) ? p.zeitleiste : []), { id: uid(), t: Date.now(), art, text, wer: meinName().split(' ')[0] }];
+    await Partner.speichern(p);
+  };
+  /** „Auftrag erstellen“: § 48b prüfen (Hinweis, nicht blockierend), PDF bauen, intern ablegen, ansehen. */
+  async function subAuftragErstellen(w, pid) {
+    const p = Partner.byId(pid); if (!p) return;
+    const chk = frei48b(p);
+    if (!chk.ok) {
+      const pr = sheet('Auftrag an ' + (Partner.titel(p) || 'Partner'), [
+        { label: chk.text, sub: 'Ohne gültige Bescheinigung gilt der Steuerabzug bei Bauleistungen. Nur ein Hinweis, DOM blockiert nichts.', icon: icon('x'), color: '#c0392b', value: 'warn' },
+        { label: 'Trotzdem Auftrag erstellen', icon: icon('file'), value: 'ok' },
+        { label: 'Abbrechen', icon: icon('back'), value: 'nein' }]);
+      const bgs = $$('.sheet-bg'); bgs[bgs.length - 1]?.querySelector('[data-i="0"]')?.classList.add('s48');
+      if ((await pr) !== 'ok') return;
+    }
+    const L = await subLeistungen(w, pid);
+    if (!L.bereiche.length) return toast('Im gewählten Angebot hat dieser Subunternehmer keine Leistungen.', 4000);
+    toast('Auftrag wird erstellt …');
+    const f = await subAuftragPdf(w, p);
+    const e = subEintrag(w, pid);
+    Object.assign(e, { dokKey: await subAuftragAblegen(w, f), erstelltAm: heuteIso(), termin: w.baustart || '', netto: L.summe });
+    await save(w);
+    await neuZeichnen(w);
+    await pdfAnsicht(f, f.name);
+  }
+  /** „Senden“: Versandweg wählen (Mail mit PDF, WhatsApp, PDF drucken), nie von selbst. Danach beauftragt + To-do „Bestätigung eintragen“. */
+  async function subAuftragSenden(w, pid) {
+    const p = Partner.byId(pid); const e = (w.subAuftraege || []).find((x) => x.partnerId === pid);
+    if (!p || !e?.dokKey) return;
+    const data = await kvGet(e.dokKey);
+    if (!data) return toast('Das PDF ist auf diesem Gerät noch nicht da. Bitte kurz warten (Cloud-Abgleich).', 4000);
+    const d = (w.dokumente || []).find((x) => x.key === e.dokKey);
+    const f = new File([await (await fetch(data)).blob()], d?.name || 'Auftrag.pdf', { type: 'application/pdf' });
+    const werte = { ...subWerte(w, p), termin: e.termin ? datumText(e.termin) : 'nach Absprache' };
+    const weg = await Besuch.nachricht(p, 'Auftrag an ' + werte.sub, textVon('textSubAuftragMail', werte), textVon('textSubAuftragBetreff', werte), { anhang: f, datei: f.name.replace(/\.pdf$/i, '') });
+    if (!wegGilt(weg)) return;
+    const neu = e.stand === 'angefragt';
+    if (neu) Object.assign(e, { stand: 'beauftragt', beauftragtAm: heuteIso() });
+    e.weg = weg;
+    await save(w);
+    await saZeitleiste(p, `Auftrag ${neu ? '' : 'nochmal '}geschickt per ${Besuch.WEG_NAME[weg] || weg}: Projekt „${werte.projekt}“`, weg === 'mail' ? 'mail' : 'notiz');
+    await todoZu(`subBeauftragen:${w.id}:${pid}`);
+    if (neu && window.Todos) await Todos.anlegen({ text: `Bestätigung von ${werte.sub} eintragen: ${werte.projekt}`, faellig: plusTage(vorgabe('subBestaetigungTage')), prio: 'mittel', wer: projektWer(w),
+      bezug: { kundeId: w.kundeId || '', vorgangId: w.id, partnerId: pid }, art: 'subBestaetigung', schluessel: `subBestaetigung:${w.id}:${pid}` });
+    toast(neu ? `${werte.sub}: beauftragt` : 'Vermerkt');
+    await neuZeichnen(w);
+  }
+  async function subAuftragBestaetigt(w, pid) {
+    const p = Partner.byId(pid); if (!p) return;
+    const e = subEintrag(w, pid);
+    Object.assign(e, { stand: 'bestaetigt', bestaetigtAm: heuteIso() });
+    await save(w);
+    await saZeitleiste(p, `Auftrag bestätigt: Projekt „${w.titel || 'Projekt'}“`);
+    await todoZu(`subBestaetigung:${w.id}:${pid}`); await todoZu(`subBeauftragen:${w.id}:${pid}`);
+    toast('Bestätigung eingetragen');
+    await neuZeichnen(w);
+  }
+  /** Abschnitt „Subunternehmer“ in der Projekt-Übersicht: je Sub Stand angefragt → beauftragt → bestätigt. */
+  async function subAuftragKarte(el, w) {
+    const l = await subAuftragListe(w);
+    if (!el.isConnected) return;
+    if (!l.length) { el.innerHTML = ''; return; }
+    const rang = (s) => SA_STAND.findIndex(([id]) => id === s);
+    el.innerHTML = `<div class="sec-h"><h2>Subunternehmer</h2><span class="count">${l.filter((s) => s.stand === 'bestaetigt').length}/${l.length}</span></div>
+      <div class="card sa-karte"><ul class="sa-l">${l.map(({ partnerId: pid, e, stand }) => {
+        const p = Partner.byId(pid), chk = frei48b(p);
+        const info = [e?.dokKey ? `Auftrag erstellt am ${datumText(e.erstelltAm || heuteIso())}${e.netto ? ' · ' + eur2(e.netto) + ' netto' : ''}` : '',
+          e?.beauftragtAm ? `beauftragt am ${datumText(e.beauftragtAm)}${e.weg ? ' per ' + (Besuch.WEG_NAME[e.weg] || e.weg) : ''}` : '',
+          e?.bestaetigtAm ? `bestätigt am ${datumText(e.bestaetigtAm)}` : '', bpEinsatzKurz(w, pid)].filter(Boolean).join(' · ');
+        const knopf = (attr, txt, ic, zweit = true) => `<button type="button" class="btn ${zweit ? 'secondary ' : ''}small" ${attr}="${esc(pid)}">${icon(ic)} ${txt}</button>`;
+        return `<li class="sa-z" data-sa="${esc(pid)}">
+          <div class="sa-kopf"><b>${esc(Partner.titel(p) || 'Partner')}</b>
+            <span class="sa-schritte">${SA_STAND.map(([id, n]) => `<i class="${rang(stand) >= rang(id) ? 'on' : ''}">${n}</i>`).join('')}</span></div>
+          ${info ? `<small class="muted">${esc(info)}</small>` : ''}
+          ${chk.ok || stand === 'bestaetigt' ? '' : `<p class="sa-48b">${esc(chk.text)}</p>`}
+          <div class="sa-knoepfe">
+            ${stand === 'angefragt' ? knopf('data-saneu', e?.dokKey ? 'Neu erstellen' : 'Auftrag erstellen', 'file', !!e?.dokKey) : ''}
+            ${e?.dokKey ? knopf('data-saans', 'Ansehen', 'eye') : ''}
+            ${e?.dokKey && stand !== 'bestaetigt' ? knopf('data-sasend', stand === 'angefragt' ? 'Senden' : 'Nochmal senden', 'mail', stand !== 'angefragt') : ''}
+            ${stand === 'beauftragt' ? knopf('data-sabest', 'Bestätigung eintragen', 'check', false) : ''}
+          </div></li>`;
+      }).join('')}</ul>
+      <p class="hint" style="margin:6px 0 0">Mit seinen Leistungen und seinem Preis, nie mit unseren Verkaufspreisen. DOM schickt nichts von selbst.</p></div>`;
+    $$('[data-saneu]', el).forEach((b) => (b.onclick = () => subAuftragErstellen(w, b.dataset.saneu).catch((e) => { console.error(e); toast('Auftrag ging nicht: ' + e.message, 5000); })));
+    $$('[data-sasend]', el).forEach((b) => (b.onclick = () => subAuftragSenden(w, b.dataset.sasend)));
+    $$('[data-sabest]', el).forEach((b) => (b.onclick = () => subAuftragBestaetigt(w, b.dataset.sabest)));
+    $$('[data-saans]', el).forEach((b) => (b.onclick = async () => {
+      const e = (w.subAuftraege || []).find((x) => x.partnerId === b.dataset.saans); const d = (w.dokumente || []).find((x) => x.key === e?.dokKey);
+      if (d) await dateiZeigen(await kvGet(d.key), d);
+    }));
+  }
+  // ---------- v148: Dringlichkeit gelb, Baustart mitteilen, Vorauszahlung (Runde 17, B3 B4 B5 B7) ----------
+  const tageBis = (iso) => (iso ? -seitTagen(iso) : null);
+  /** Subs des Projekts (Preise im gewählten Angebot oder in w.subAuftraege), die noch nicht bestätigt haben. Braucht AngebotDaten im Speicher. */
+  function subOffenIds(w) {
+    let ids = new Set();
+    try { ids = subIdsVon(gewaehlt(w)); } catch {}
+    for (const e of w?.subAuftraege || []) if (e?.partnerId) ids.add(e.partnerId);
+    return [...ids].filter((id) => window.Partner?.byId(id) && (w.subAuftraege || []).find((e) => e.partnerId === id)?.stand !== 'bestaetigt');
+  }
+  const subOffenNamen = (w) => subOffenIds(w).map((id) => Partner.titel(Partner.byId(id))).filter(Boolean).join(', ');
+  /** Gelb (B3): eingeplant, Baustart in höchstens Vorgabe subBestaetigungVorBaustart Tagen, ein Sub hat nicht bestätigt.
+   *  x = Vorgang (rechnet live) oder Eintrag aus projectIndex (Feld subOffen). → Anzahl offener Subs oder 0. */
+  function subGelb(x) {
+    if (!x || norm(x.status) !== 'geplant' || !x.baustart) return 0;
+    const v = vorgabe('subBestaetigungVorBaustart'), N = v === '' || v === null || v === undefined ? 5 : +v;
+    if (!(tageBis(x.baustart) <= N)) return 0;
+    return x.subOffen !== undefined ? +x.subOffen || 0 : subOffenIds(x).length;
+  }
+  function subGelbHtml(w) {
+    const n = subGelb(w); if (!n) return '';
+    const t = tageBis(w.baustart);
+    return `<div class="sub-gelb">${n === 1 ? 'Ein Subunternehmer hat' : n + ' Subunternehmer haben'} noch nicht bestätigt: ${esc(subOffenNamen(w))} · Baustart ${t <= 0 ? 'heute' : t === 1 ? 'morgen' : `in ${t} Tagen`}</div>`;
+  }
+  const WTAG = (iso) => (iso ? new Date(iso + 'T12:00').toLocaleDateString('de-DE', { weekday: 'long', day: '2-digit', month: '2-digit', year: 'numeric' }) : '');
+  /** Projekt-Ansprechpartner mit Telefon für {ansprechpartner}. */
+  function bsAnsprech(w) {
+    const team = window.Kalender?.team?.() || [], ftel = String(window.PL?.einstellungen?.telefon || '').trim();
+    const l = ansprechIds(w).map((id) => team.find((t) => t.id === id)).filter(Boolean).map((t) => [t.name, String(t.telefon || t.mobil || ftel).trim()].filter(Boolean).join(', '));
+    if (!l.length) { const n = ansprechName(w); if (n && n !== BEIDE) l.push([n, ftel].filter(Boolean).join(', ')); }
+    return l.join(' oder ') || firmaName();
+  }
+  /** Empfänger beim Baustart: Kunde und beteiligte Subs (Preise im gewählten Angebot oder Auftrag), je mit letzter Mitteilung. */
+  async function bsEmpfaenger(w) {
+    const out = [], k = Kunden.byId(w.kundeId);
+    if (k) out.push({ an: 'kunde', kunde: true, name: Kunden.name(k) || 'Kunde' });
+    if (window.AngebotDaten) await AngebotDaten.liste(w);
+    let ids = new Set(); try { ids = subIdsVon(gewaehlt(w)); } catch {}
+    for (const e of w.subAuftraege || []) if (e?.partnerId) ids.add(e.partnerId);
+    for (const id of ids) {
+      const p = window.Partner?.byId(id); if (!p) continue;
+      const e = (w.subAuftraege || []).find((x) => x.partnerId === id);
+      out.push({ an: id, p, name: Partner.titel(p) || 'Partner', imAuftrag: !!w.baustart && e?.termin === w.baustart, auftrag: !!e?.dokKey });
+    }
+    for (const e of out) {
+      const l = (w.baustartInfo || []).filter((x) => x.an === e.an);
+      e.letzt = l[l.length - 1] || null;
+      e.aktuell = !!e.letzt && e.letzt.datum === (w.baustart || '');
+      e.verschoben = !!e.letzt && !e.aktuell && !!e.letzt.datum;
+    }
+    return w.baustart ? out : out.filter((e) => e.verschoben); // Baustart wieder offen: nur wer einen Termin kannte
+  }
+  const bsWeg = (x) => `mitgeteilt am ${new Date(x.t).toLocaleDateString('de-DE')} per ${Besuch.WEG_NAME[x.weg] || x.weg}`;
+  /** Zeile in der Statuskarte: wem der aktuelle Baustart schon mitgeteilt ist, Knopf zum (erneuten) Informieren. */
+  function bsInfoZeile(w) {
+    if (!w.baustart) return '';
+    const team = new Map();
+    for (const x of w.baustartInfo || []) if (x.datum === w.baustart) team.set(x.an, x);
+    const namen = [...team.values()].map((x) => `${x.an === 'kunde' ? 'Kunde' : Partner.titel(Partner.byId(x.an)) || 'Partner'} ${bsWeg(x)}`);
+    return `${namen.length ? `<p class="hint bsi-zeile" style="margin:0 0 4px">Baustart ${esc(namen.join(' · '))}</p>` : ''}
+      ${w.baustartFrage ? '' : `<button type="button" class="link-add" data-bsinfo style="margin:0 0 6px">${icon('mail')} Kunde und Subunternehmer informieren</button>`}`;
+  }
+  /** Karte „Kunde und Subunternehmer informieren?“ bzw. „Baustart verschoben“ (B4/B5). Je Empfänger „Mitteilen“, Weg wählbar, nie von selbst. */
+  async function bsInfoKarte(el, w) {
+    if (!w.baustartFrage || !['geplant', ''].includes(norm(w.status))) { el.innerHTML = ''; return; }
+    const l = await bsEmpfaenger(w);
+    if (!el.isConnected) return;
+    if (!l.length) { el.innerHTML = ''; return; }
+    const versch = l.some((e) => e.verschoben);
+    const titel = !w.baustart ? 'Baustart wieder offen: Kunde und Subunternehmer informieren?' : versch ? 'Baustart verschoben: Kunde und Subunternehmer informieren?' : 'Kunde und Subunternehmer informieren?';
+    const stand = (e) => (e.aktuell ? (e.imAuftrag ? 'Termin steht auch im Auftrag' : '')
+      : e.verschoben ? `${w.baustart ? 'noch nicht über die Verschiebung informiert' : 'weiß noch nicht, dass der Termin offen ist'} (bisher: ${WTAG(e.letzt.datum)})`
+      : e.kunde ? 'noch nicht mitgeteilt' : e.imAuftrag ? 'steht schon im Auftrag, Mitteilen geht trotzdem' : e.auftrag ? 'Termin noch nicht im Auftrag: kurze Terminmitteilung' : 'noch nicht mitgeteilt');
+    el.innerHTML = `<div class="card bsi-karte sab-karte">
+      <b>${esc(titel)}</b>
+      <p class="hint">${w.baustart ? `Baustart am ${esc(WTAG(w.baustart))}.` : 'Es gibt gerade keinen Baustart.'} Je Empfänger den Weg wählen (Mail, WhatsApp oder PDF zum Drucken). DOM schickt nichts von selbst.</p>
+      <ul class="sab-l">${l.map((e) => `<li data-bsz="${esc(e.an)}"><span class="sab-t"><b>${esc(e.kunde ? 'Kunde: ' + e.name : e.name)}</b>${stand(e) ? `<small class="${e.verschoben ? 'bsi-alt' : ''}">${esc(stand(e))}</small>` : ''}</span>
+        ${e.aktuell ? `<span class="muted sab-ok">${esc(bsWeg(e.letzt))}</span>` : `<button type="button" class="btn secondary small" data-bsi="${esc(e.an)}">${icon('mail')} Mitteilen</button>`}</li>`).join('')}</ul>
+      <button type="button" class="link-add" data-bsinein>${icon(l.every((e) => e.aktuell) ? 'check' : 'x')} ${l.every((e) => e.aktuell) ? 'Fertig' : 'Nicht nötig'}</button></div>`;
+    $$('[data-bsi]', el).forEach((b) => (b.onclick = () => bsMitteilen(w, b.dataset.bsi).catch((e) => { console.error(e); toast('Ging nicht: ' + e.message, 4000); })));
+    $('[data-bsinein]', el).onclick = async () => { delete w.baustartFrage; await save(w); await neuZeichnen(w); };
+  }
+  async function bsMitteilen(w, an) {
+    const e = (await bsEmpfaenger(w)).find((x) => x.an === an); if (!e) return;
+    const k = Kunden.byId(w.kundeId), o = k && w.objektId ? Kunden.objekt(k, w.objektId) : null;
+    const art = !w.baustart ? 'Offen' : e.verschoben ? 'Verschoben' : '';
+    const alt = e.verschoben ? e.letzt.datum : '';
+    const werte = { anrede: e.kunde ? Kunden.briefAnrede(k) : String(e.p.inhaber || '').trim() ? `Hallo ${String(e.p.inhaber).trim()},` : 'Hallo,',
+      datum: WTAG(w.baustart), neu: WTAG(w.baustart), alt: WTAG(alt), projekt: w.titel || 'Projekt', objekt: Kunden.einzeilig(o?.adresse || w.address || ''), ansprechpartner: bsAnsprech(w), einsatz: e.kunde ? '' : bpEinsatzSatz(w, an) };
+    const ziel = e.kunde ? nachfassEmpfaenger(k) : e.p;
+    const titel = `${art === 'Offen' ? 'Baustart offen' : art === 'Verschoben' ? 'Baustart verschoben' : 'Baustart'}: ${e.name}`;
+    const datei = `Baustart_${w.titel || 'Projekt'}${e.kunde ? '' : '_' + e.name}`;
+    const weg = await Besuch.nachricht(ziel, titel, textVon(`textBaustart${art}${e.kunde ? 'Kunde' : 'Sub'}`, werte), textVon(`textBaustart${art}Betreff`, werte),
+      e.kunde ? { mail: Kunden.angebotMail(k), mailLabel: 'für Angebote', anschrift: Kunden.postanschrift(k) || undefined, datei } : { datei });
+    if (!wegGilt(weg)) return;
+    w.baustartInfo = [...(w.baustartInfo || []), { an, datum: w.baustart || '', t: Date.now(), weg }];
+    await save(w);
+    const was = art === 'Offen' ? `Baustart ${datumText(alt)} abgesagt, neuer Termin folgt` : art === 'Verschoben' ? `Baustart verschoben vom ${datumText(alt)} auf ${datumText(w.baustart)}` : `Baustart ${datumText(w.baustart)}`;
+    const text = `${was}, mitgeteilt per ${Besuch.WEG_NAME[weg] || weg}: Projekt „${w.titel || 'Projekt'}“`;
+    if (e.kunde) {
+      const kk = Kunden.byId(w.kundeId) || k;
+      kk.zeitleiste = [...(Array.isArray(kk.zeitleiste) ? kk.zeitleiste : []), { id: uid(), t: Date.now(), art: weg === 'mail' ? 'mail' : 'notiz', text, wer: meinName().split(' ')[0] }];
+      await Kunden.speichern(kk);
+    } else await saZeitleiste(e.p, text, weg === 'mail' ? 'mail' : 'notiz');
+    toast('Vermerkt');
+    await neuZeichnen(w);
+  }
+  /** B7: Hinweis „Vorauszahlung vor Baustart fällig“, solange keine Abschlagsrechnung dieses Teils (r.stufe) bezahlt ist. */
+  async function vzHinweis(el, w) {
+    const A = window.Angebot._intern, t = A.vzTeil(w);
+    if (!t || norm(w.status) !== 'geplant') { el.innerHTML = ''; return; }
+    let bez = false, da = false;
+    try {
+      await Rechnung.laden();
+      const l = Rechnung.fuerProjekt(w.id).filter((r) => r.art === 'abschlag' && Rechnung.gilt(r) && +r.stufe === t);
+      da = l.length > 0; bez = l.some((r) => r.bezahlt);
+    } catch (e) { console.warn('Vorauszahlung', e); }
+    if (!el.isConnected) return;
+    const plan = (Array.isArray(w.abschlagPlan) && w.abschlagPlan.length ? w.abschlagPlan : vorgabe('abschlagPlan')) || [];
+    el.innerHTML = bez ? '' : `<p class="stk-tipp warn vz-faellig" style="margin:0 0 6px">Vorauszahlung vor Baustart fällig<small class="muted">${esc(`${t}. Teil, ${String(plan[t - 1]).replace('.', ',')} % · ${da ? 'Rechnung geschrieben, noch nicht bezahlt' : 'noch keine Rechnung'}`)}</small></p>`;
+  }
+  // ---------- v149: Bauzeitenplan (optional, Runde 17, B6) ----------
+  // w.bauplan = [{ id, partnerId?, text, von, bis, notiz }]. Ganz freiwillig: ohne Plan läuft alles nur mit dem Baustart.
+  // Keine Warnung bei Doppelbelegung eines Subs (Wunsch Felix). Nichts geht von selbst raus.
+  const bpZeilen = (w) => (Array.isArray(w?.bauplan) ? w.bauplan : []);
+  const bpBis = (z) => z.bis || z.von || '';
+  const bpName = (z) => {
+    const p = z.partnerId ? window.Partner?.byId(z.partnerId) : null;
+    const n = p ? Partner.titel(p) || 'Subunternehmer' : '';
+    return [n, String(z.text || '').trim()].filter(Boolean).join(' · ') || 'Ohne Bezeichnung';
+  };
+  const bpDM = (iso) => (iso ? `${+iso.slice(8, 10)}.${+iso.slice(5, 7)}.` : '');
+  const bpTag = (iso) => (iso ? new Date(iso + 'T12:00').toLocaleDateString('de-DE', { weekday: 'short', day: '2-digit', month: '2-digit' }) : '');
+  const bpVonBis = (z) => (z.von ? (bpBis(z) !== z.von ? `${bpDM(z.von)}–${bpDM(bpBis(z))}` : bpDM(z.von)) : '');
+  /** Bauende laut Plan = spätestes Bis (leer ohne Plan). */
+  const bpEnde = (w) => bpZeilen(w).map(bpBis).filter(Boolean).sort().pop() || '';
+  function bpEndeHtml(w) {
+    const e = bpEnde(w);
+    return e ? `<p class="hint bp-ende" style="margin:0 0 6px">Bauende laut Bauzeitenplan: ${esc(WTAG(e))}</p>` : '';
+  }
+  /** „Einsatz 3.12.–7.12.“ für die Sub-Zeile (v147). */
+  function bpEinsatzKurz(w, pid) {
+    const l = bpZeilen(w).filter((z) => z.partnerId === pid && z.von).map(bpVonBis);
+    return l.length ? 'Einsatz ' + l.join(', ') : '';
+  }
+  /** {einsatz} in der Baustart-Mitteilung an den Sub: Satz aus Vorgabe textEinsatz, ohne Einsatz leer (Zeile fällt weg). */
+  function bpEinsatzSatz(w, pid) {
+    const l = bpZeilen(w).filter((z) => z.partnerId === pid && z.von).map((z) => (bpBis(z) !== z.von ? `${bpTag(z.von)} bis ${bpTag(bpBis(z))}` : bpTag(z.von)));
+    return l.length ? vorgabeText('textEinsatz', { zeitraum: l.join(', ') }).trim() : '';
+  }
+  /** Für projectIndex (Kalender): nur eingeplant oder läuft. */
+  function bpIndex(w) {
+    if (!['geplant', ''].includes(norm(w.status))) return [];
+    return bpZeilen(w).filter((z) => z.von).map((z) => ({ t: bpName(z), von: z.von, bis: bpBis(z) }));
+  }
+  /** Kalender: ein ganztägiger Eintrag je Werktag eines Einsatzes (vorausgerechnet, kein Termin). */
+  function bpKalender(idx, von, bis) {
+    const out = [];
+    if (vorgabe('bauplanKalender') === 'nein') return out;
+    for (const x of idx || []) for (const [i, z] of (x.einsatz || []).entries()) {
+      const d = new Date(z.von + 'T12:00'), ende = z.bis || z.von;
+      for (let n = 0; n < 370; n++) {
+        const s = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+        if (s > ende || s > bis) break;
+        if (s >= von && d.getDay() % 6) out.push({ typ: 'bauplan', art: 'baustelle', id: `bp-${x.id}-${i}-${s}`, projektId: x.id, kundeId: x.kundeId, datum: s, ganztag: true,
+          titel: `Einsatz: ${z.t}`, sub: [x.titel, `${bpDM(z.von)}–${bpDM(ende)}`].filter(Boolean).join(' · ') });
+        d.setDate(d.getDate() + 1);
+      }
+    }
+    return out;
+  }
+  /** Balken nach Wochen (Mo–Fr), Wochenenden fallen weg. */
+  function bpChart(w) {
+    const l = bpZeilen(w).filter((z) => z.von);
+    if (!l.length) return '';
+    const D = (s) => new Date(s + 'T12:00');
+    const min = l.map((z) => z.von).sort()[0], max = l.map(bpBis).sort().pop();
+    const start = D(min); start.setDate(start.getDate() - ((start.getDay() + 6) % 7));
+    const pos = (s, ende) => {
+      const t = Math.round((D(s) - start) / 864e5), wk = Math.floor(t / 7), dw = t % 7;
+      return dw > 4 ? (ende ? wk * 5 + 4 : (wk + 1) * 5) : wk * 5 + dw;
+    };
+    const W = Math.min(104, Math.floor(Math.round((D(max) - start) / 864e5) / 7) + 1), N = W * 5;
+    const kw = (d) => { const t = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate())); t.setUTCDate(t.getUTCDate() + 4 - (t.getUTCDay() || 7)); return Math.ceil(((t - new Date(Date.UTC(t.getUTCFullYear(), 0, 1))) / 864e5 + 1) / 7); };
+    const wochen = Array.from({ length: W }, (_, i) => { const d = new Date(start); d.setDate(d.getDate() + i * 7); return `<span style="grid-column:${i * 5 + 1}/span 5">KW ${kw(d)} · ${d.getDate()}.${d.getMonth() + 1}.</span>`; }).join('');
+    const h = heuteIso(), hc = h >= min && h <= max && (D(h).getDay() % 6) ? pos(h) : -1;
+    const spur = (inhalt) => `<div class="bp-spur" style="grid-template-columns:repeat(${N},minmax(13px,1fr));--w:${W}">${hc >= 0 && hc < N ? `<i class="bp-heute" style="grid-column:${hc + 1}"></i>` : ''}${inhalt}</div>`;
+    const zeilen = l.map((z) => {
+      let a = pos(z.von), b = pos(bpBis(z), true); if (b < a) b = a; a = Math.min(a, N - 1); b = Math.min(b, N - 1);
+      return `<div class="bp-r"><span class="bp-lab">${esc(bpName(z))}</span>${spur(`<b class="bp-bar ${z.partnerId ? 'sub' : ''}" style="grid-column:${a + 1}/${b + 2}" title="${esc(bpVonBis(z))}"></b>`)}</div>`;
+    }).join('');
+    return `<div class="bp-scroll"><div class="bp-chart" style="min-width:${110 + N * 13}px"><div class="bp-r bp-kopf"><span class="bp-lab"></span>${spur(wochen)}</div>${zeilen}</div></div>`;
+  }
+  const bpOffen = new Set();
+  /** Abschnitt „Bauzeitenplan (optional)“ in der Projekt-Übersicht, zu und unauffällig, solange er leer ist. */
+  async function bauplanKarte(el, w) {
+    const st = norm(w.status), l = bpZeilen(w);
+    if (!['geplant', ''].includes(st) && !l.length) { el.innerHTML = ''; return; }
+    let subs = [];
+    try { subs = (await subAuftragListe(w)).map((s) => s.partnerId); } catch {}
+    for (const e of w.subAuftraege || []) if (e?.partnerId && !subs.includes(e.partnerId) && window.Partner?.byId(e.partnerId)) subs.push(e.partnerId);
+    if (!el.isConnected) return;
+    const ende = bpEnde(w);
+    const zf = l.length ? `${l.length} ${l.length === 1 ? 'Eintrag' : 'Einträge'}${ende ? ' · Bauende ' + bpTag(ende) : ''}` : 'Nur bei Bedarf. Ohne Plan reicht der Baustart.';
+    el.innerHTML = `<details class="more card bs bp-karte" ${bpOffen.has(w.id) ? 'open' : ''}><summary>${icon('calendar')}<span>Bauzeitenplan (optional)<small>${esc(zf)}</small></span>${icon('chevron', 'more-chev')}</summary>
+      ${bpChart(w)}
+      <ul class="bp-l">${l.map((z) => `<li class="bp-z" data-bpz="${esc(z.id)}">
+        ${l.length > 1 ? griffHtml() : ''}
+        <div class="bp-f">
+          ${z.partnerId ? `<b class="bp-sub">${esc(Partner.titel(Partner.byId(z.partnerId)) || 'Subunternehmer')}</b>` : ''}
+          <input type="text" data-bpf="text" value="${esc(z.text || '')}" placeholder="${z.partnerId ? 'Was? (optional)' : 'Gewerk oder Text, z. B. Estrich trocknen'}">
+          <div class="bp-dat"><label>von<input type="date" data-bpf="von" value="${esc(z.von || '')}"></label><label>bis<input type="date" data-bpf="bis" value="${esc(z.bis || '')}"></label></div>
+          <input type="text" data-bpf="notiz" value="${esc(z.notiz || '')}" placeholder="Notiz (optional)">
+        </div>
+        <button type="button" class="icon-btn bp-weg" data-bpweg aria-label="Zeile löschen">${icon('x')}</button></li>`).join('')}</ul>
+      <div class="bp-neu">${subs.map((pid) => `<button type="button" class="btn secondary small" data-bpneu="${esc(pid)}">${icon('plus')} Einsatz ${esc(Partner.titel(Partner.byId(pid)) || 'Subunternehmer')}</button>`).join('')}
+        <button type="button" class="btn secondary small" data-bpneu="">${icon('plus')} Eigene Zeile</button></div>
+      ${l.some((z) => z.von) ? `<button type="button" class="link-add" data-bppdf>${icon('file')} Plan als PDF an Kunde oder Subunternehmer</button>` : ''}
+      <p class="hint" style="margin:6px 0 0">Ganz freiwillig, z. B. für größere Baustellen. Ein Subunternehmer darf sich überschneiden. DOM schickt nichts von selbst.</p></details>`;
+    const neu = () => bauplanKarte(el, w).catch((e) => console.warn('Bauzeitenplan', e));
+    const sichern = async () => {
+      delete w.isNew; await save(w);
+      const be = $('#wBpEnde'); if (be) be.innerHTML = bpEndeHtml(w);
+      if ($('#wSubAuf')) subAuftragKarte($('#wSubAuf'), w).catch(() => {}); // „Einsatz …“ in der Sub-Zeile
+      neu();
+    };
+    $('details', el).ontoggle = (e) => (e.target.open ? bpOffen.add(w.id) : bpOffen.delete(w.id));
+    $$('[data-bpneu]', el).forEach((b) => (b.onclick = async () => {
+      const da = bpZeilen(w).map(bpBis).filter(Boolean).sort().pop();
+      let von = w.baustart || heuteIso();
+      if (da) { const d = new Date(da + 'T12:00'); d.setDate(d.getDate() + 1); while (!(d.getDay() % 6)) d.setDate(d.getDate() + 1); von = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; }
+      w.bauplan = [...bpZeilen(w), { id: uid(), ...(b.dataset.bpneu ? { partnerId: b.dataset.bpneu } : {}), text: '', von, bis: von, notiz: '' }];
+      bpOffen.add(w.id);
+      await sichern();
+    }));
+    $$('.bp-z', el).forEach((li) => {
+      const z = bpZeilen(w).find((x) => x.id === li.dataset.bpz); if (!z) return;
+      $$('[data-bpf]', li).forEach((i) => (i.onchange = async () => {
+        const f = i.dataset.bpf; z[f] = i.value.trim();
+        if (f === 'von' && z.von && (!z.bis || z.bis < z.von)) z.bis = z.von;
+        if (f === 'bis' && z.bis && z.von && z.bis < z.von) z.von = z.bis;
+        await sichern();
+      }));
+      $('[data-bpweg]', li).onclick = async () => { w.bauplan = bpZeilen(w).filter((x) => x !== z); await sichern(); toast('Zeile gelöscht'); };
+    });
+    ziehbar($('.bp-l', el), '.bp-z', async (von, nach) => { const a = [...bpZeilen(w)]; a.splice(nach, 0, a.splice(von, 1)[0]); w.bauplan = a; await sichern(); });
+    if ($('[data-bppdf]', el)) $('[data-bppdf]', el).onclick = () => bauplanSchicken(w).catch((e) => { console.error(e); toast('Ging nicht: ' + e.message, 4000); });
+  }
+  /** PDF „Bauzeitenplan“ (Besuch.brief) an Kunde oder einen Sub aus dem Plan, Weg wählbar (Besuch.nachricht), nur per Klick. */
+  async function bauplanSchicken(w) {
+    const k = Kunden.byId(w.kundeId);
+    const pids = [...new Set(bpZeilen(w).map((z) => z.partnerId).filter((id) => id && Partner.byId(id)))];
+    const an = await sheet('Bauzeitenplan schicken an', [...(k ? [{ label: 'Kunde: ' + (Kunden.name(k) || 'Kunde'), icon: icon('user'), value: 'kunde' }] : []),
+      ...pids.map((id) => ({ label: Partner.titel(Partner.byId(id)) || 'Subunternehmer', sub: 'Subunternehmer', icon: icon('users'), value: id }))]);
+    if (!an) return;
+    const kunde = an === 'kunde', p = kunde ? null : Partner.byId(an), o = k && w.objektId ? Kunden.objekt(k, w.objektId) : null;
+    const werte = { anrede: kunde ? Kunden.briefAnrede(k) : String(p.inhaber || '').trim() ? `Hallo ${String(p.inhaber).trim()},` : 'Hallo,',
+      projekt: w.titel || 'Projekt', objekt: Kunden.einzeilig(o?.adresse || w.address || ''), baustart: w.baustart ? WTAG(w.baustart) : 'nach Absprache', bauende: bpEnde(w) ? WTAG(bpEnde(w)) : '', ansprechpartner: bsAnsprech(w) };
+    const name = kunde ? Kunden.name(k) || 'Kunde' : Partner.titel(p) || 'Subunternehmer';
+    const zeilen = bpZeilen(w).filter((z) => z.von);
+    const f = await Besuch.brief({
+      anschrift: kunde ? Kunden.postanschrift(k) || Besuch.anschriftVon(k) : Besuch.anschriftVon(p),
+      betreff: textVon('textBauplanBetreff', werte), text: textVon('textBauplanEinleitung', werte), datei: `Bauzeitenplan_${w.titel || 'Projekt'}${kunde ? '' : '_' + name}`,
+      danach: async ({ doc, y, M, R, NAVY, platz }) => {
+        const C = { was: M, von: M + 92, bis: M + 120, notiz: M + 148 };
+        y = await platz(y + 2, 12);
+        doc.setFont('helvetica', 'bold'); doc.setFontSize(8.5); doc.setTextColor(110);
+        doc.text('Was', C.was, y); doc.text('von', C.von, y); doc.text('bis', C.bis, y); doc.text('Notiz', C.notiz, y);
+        doc.setDrawColor(200); doc.line(M, y + 1.5, R, y + 1.5); y += 6;
+        doc.setFont('helvetica', 'normal'); doc.setFontSize(9.5); doc.setTextColor(30);
+        for (const z of zeilen) {
+          const a = doc.splitTextToSize(bpName(z), C.von - C.was - 3), n = doc.splitTextToSize(String(z.notiz || ''), R - C.notiz);
+          const hz = 4.6 * Math.max(a.length, n.length || 1) + 1.5;
+          y = await platz(y, hz);
+          const eigen = !kunde && z.partnerId === an;
+          if (eigen) doc.setFont('helvetica', 'bold');
+          doc.text(a, C.was, y); doc.text(bpTag(z.von), C.von, y); doc.text(bpTag(bpBis(z)), C.bis, y); if (n.length) doc.text(n, C.notiz, y);
+          doc.setFont('helvetica', 'normal');
+          y += hz;
+        }
+        if (bpEnde(w)) { y = await platz(y + 2, 8); doc.setFont('helvetica', 'bold'); doc.setTextColor(...NAVY); doc.text(`Voraussichtliches Bauende: ${WTAG(bpEnde(w))}`, M, y); doc.setFont('helvetica', 'normal'); doc.setTextColor(30); }
+      },
+    });
+    const weg = await Besuch.nachricht(kunde ? nachfassEmpfaenger(k) : p, 'Bauzeitenplan an ' + name, textVon('textBauplanMail', werte), textVon('textBauplanBetreff', werte),
+      { anhang: f, datei: f.name.replace(/\.pdf$/i, ''), ...(kunde ? { mail: Kunden.angebotMail(k), mailLabel: 'für Angebote' } : {}) });
+    if (!wegGilt(weg)) return;
+    const text = `Bauzeitenplan geschickt per ${Besuch.WEG_NAME[weg] || weg}: Projekt „${w.titel || 'Projekt'}“`;
+    if (kunde) {
+      k.zeitleiste = [...(Array.isArray(k.zeitleiste) ? k.zeitleiste : []), { id: uid(), t: Date.now(), art: weg === 'mail' ? 'mail' : 'notiz', text, wer: meinName().split(' ')[0] }];
+      await Kunden.speichern(k);
+    } else await saZeitleiste(p, text, weg === 'mail' ? 'mail' : 'notiz');
+    toast('Vermerkt');
+  }
+  /** Karte „Zahlungsplan“ (Angebot und Projekt › Geld): eigener Plan je Vorgang (w.abschlagPlan) und Kästchen „als Vorauszahlung vor Baustart“ (w.vorauszahlung = { teil }). */
+  function zahlplanKarte(w) {
+    const A = window.Angebot?._intern; if (!A?.vzTeil) return '';
+    const eigen = Array.isArray(w.abschlagPlan) && w.abschlagPlan.length, std = vorgabe('abschlagPlan') || [];
+    const plan = eigen ? w.abschlagPlan : std;
+    return `<details class="more card bs zp-karte"><summary>${icon('euro')}<span>Zahlungsplan<small>${esc(A.zahlungsplanText(w).replace(/^Zahlungsplan:\s*/, '').replace(/\.$/, ''))}</small></span>${icon('chevron', 'more-chev')}</summary>
+      <label>Anteile in %</label><input type="text" data-zp value="${eigen ? esc(plan.join(' / ')) : ''}" placeholder="${esc(std.join(' / '))} (Standard)">
+      ${vzFelder(plan, A.vzTeil(w), 'data-zpvz')}
+      <p class="hint" style="margin:6px 0 0">Leer = Standard aus den Einstellungen. Der letzte Teil kommt mit der Schlussrechnung. Eine Vorauszahlung ist eine eigene Art, nicht automatisch der erste Abschlag.</p></details>`;
+  }
+  function zahlplanBind(w) {
+    $$('[data-zp]').forEach((el) => (el.onchange = async () => {
+      const v = el.value.trim();
+      if (v) { const P = planLesen(v); if (!P) return toast('Die Anteile müssen zusammen 100 % ergeben.', 4000); w.abschlagPlan = P; } else delete w.abschlagPlan;
+      delete w.isNew; await save(w);
+      toast(v ? 'Zahlungsplan gilt für dieses Projekt' : 'Wieder der Standard aus den Einstellungen');
+      const y = window.scrollY; await view(); window.scrollTo(0, y);
+    }));
+    $$('[data-zpvz]').forEach((el) => (el.onchange = async () => {
+      w.vorauszahlung = { teil: el.checked ? +el.dataset.zpvz : 0 };
+      delete w.isNew; await save(w);
+      toast(el.checked ? `${el.dataset.zpvz}. Teil als Vorauszahlung vor Baustart` : 'Keine Vorauszahlung');
+      const y = window.scrollY; await view(); window.scrollTo(0, y);
+      $$('.zp-karte').forEach((d) => (d.open = true));
+    }));
+  }
+  /** „Erklärung zur Bestätigung schicken“: Text an den Kunden (WEG/Firma: Ansprechpartner), Versandweg wählbar, nie von selbst. */
+  async function vorzeitigBitte(w) {
+    const k = Kunden.byId(w.kundeId); if (!k) return toast('Bitte zuerst einen Kunden zuordnen.');
+    const an = nachfassEmpfaenger(k);
+    const bis = widerrufBis(w);
+    const werte = { anrede: Kunden.briefAnrede(k), projekt: w.titel || 'Projekt', bis: bis ? datumText(bis) : '', vorzeitig: String(vorgabe('textVorzeitig') || '').trim() || textVon('textVorzeitigSatz', {}) };
+    const anName = an === k ? Kunden.name(k) : Kunden.personName(an) || Kunden.name(an);
+    const weg = await Besuch.nachricht(an, 'Vorzeitiger Beginn' + (anName ? ': ' + anName : ''), textVon('textVorzeitigBitte', werte), textVon('textVorzeitigBetreff', werte),
+      { mail: Kunden.angebotMail(k), mailLabel: 'für Angebote', anschrift: Kunden.postanschrift(k) || undefined, datei: `Vorzeitiger_Beginn_${w.titel || 'Projekt'}` });
+    if (!wegGilt(weg)) return;
+    w.vorzeitigAnfrage = { t: Date.now(), weg };
+    await save(w);
+    const kk = Kunden.byId(w.kundeId) || k;
+    kk.zeitleiste = [...(Array.isArray(kk.zeitleiste) ? kk.zeitleiste : []), { id: uid(), t: Date.now(), art: weg === 'mail' ? 'mail' : 'notiz', text: `Erklärung zum vorzeitigen Beginn per ${Besuch.WEG_NAME[weg] || weg} geschickt: „${w.titel || 'Projekt'}“${an !== k && anName ? ' an ' + anName : ''}`, wer: meinName().split(' ')[0] }];
+    await Kunden.speichern(kk);
+    toast('Vermerkt. Kommt die Bestätigung, hier „Bestätigung anhängen“.', 4000);
+    neuZeichnen(w);
+  }
+  /** „Bestätigung anhängen“: Datei, Foto oder Notiz → w.vorzeitig = { t, wer, nachweis: dokKey | Notiz }. */
+  async function vorzeitigBestaetigung(w) {
+    const r = await nachweisHolen(w, { titel: 'Bestätigung vorzeitiger Beginn', art: 'vorzeitig-nachweis', datei: 'Vorzeitiger_Beginn_Bestaetigung', telLabel: 'Mündlich oder am Telefon bestätigt', telVorlage: 'textVorzeitigNotiz' });
+    if (!r || r.art === 'spaeter') return;
+    w.vorzeitig = { t: Date.now(), wer: r.wer, nachweis: r.dokKey || r.notiz, art: r.art };
+    await save(w);
+    toast('Vorzeitiger Beginn bestätigt');
+    neuZeichnen(w);
+  }
+
+
+  // ---------- Version 145: Absage mit Grund und Preis, Archiv, Als Vorlage kopieren, Wiedervorlage ----------
+  const isoVon = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  /** Heute + n Monate (31. → letzter Tag des Monats). */
+  function plusMonate(n, ab = new Date()) {
+    const d = new Date(ab.getFullYear(), ab.getMonth(), ab.getDate(), 12), tag = d.getDate();
+    d.setMonth(d.getMonth() + n);
+    if (d.getDate() !== tag) d.setDate(0);
+    return isoVon(d);
+  }
+  const eur0a = (x) => Math.round(+x || 0).toLocaleString('de-DE') + ' €';
+  /** Preis-Art aus dem Grund: „Anderer Anbieter“ = Preis des Mitbewerbers, sonst Wunschpreis des Kunden. */
+  const absagePreisArt = (g) => (/anbieter|mitbewerb|konkurren|firma/i.test(String(g || '')) ? 'mitbewerber' : 'wunsch');
+  const PREIS_ART = { mitbewerber: 'Preis des Mitbewerbers', wunsch: 'Wunschpreis des Kunden' };
+  /** Unser Angebot netto (nach Nachlass) aus dem aktiven bzw. zuletzt verschickten Angebot, sonst die beim Versand gemerkte Größe. */
+  async function unserNettoVon(w, list) {
+    try {
+      await window.Angebot?._intern.preisliste();
+      const n = window.Kalk ? Kalk.gesamt(w, list || (await raeume(w))).netto : 0;
+      if (n > 0) return Math.round(n * 100) / 100;
+    } catch (e) { console.warn('Absage netto', e); }
+    return +w.nachfass?.netto || 0;
+  }
+  /** Abweichung unseres Preises zum genannten Preis in % (positiv = wir lagen darüber), null ohne Zahlen. */
+  const absageAbw = (a) => (a?.preis > 0 && a?.unserNetto > 0 ? Math.round(((a.unserNetto - a.preis) / a.preis) * 1000) / 10 : null);
+  const abwText = (p) => (p === null ? '' : p === 0 ? 'gleich' : `${p > 0 ? '+' : ''}${String(p).replace('.', ',')} %`);
+  /** Zeile unter dem Grund: Preis, unser Preis, Abweichung, Erinnerung (nur intern). */
+  function absageInfoHtml(w) {
+    const a = w.absage; if (!a) return '';
+    const teile = [];
+    if (a.preis > 0) teile.push(`${PREIS_ART[a.preisArt] || 'Genannter Preis'}: <b>${eur0a(a.preis)}</b> netto${a.unserNetto > 0 ? ` · unser Angebot ${eur0a(a.unserNetto)} (${esc(abwText(absageAbw(a)))})` : ''}`);
+    if (a.wv) teile.push(`Erinnerung „Nochmal melden?“ am ${esc(datumText(a.wv))}`);
+    return teile.length ? `<p class="hint abs-info" style="margin:0 0 10px">${teile.join('<br>')}</p>` : '';
+  }
+  /** Fenster „Warum abgesagt?“: Gründe als Knopfzeile, bei Preis-Gründen optional ein Preis, Häkchen „In … Monaten erinnern“.
+   *  → { grund, preis, preisArt, erinnern } oder null (abgebrochen). Nichts geht an den Kunden. */
+  function absageFragen(w, { vorschlag = '', unser = 0 } = {}) {
+    const gr = [...(vorgabe('absageGruende') || [])];
+    if (vorschlag && !gr.includes(vorschlag)) gr.unshift(vorschlag);
+    const preisG = vorgabe('absagePreisGruende') || [];
+    const wvM = +vorgabe('absageWiedervorlageMonate') || 0, wvG = vorgabe('absageWiedervorlageGruende') || [];
+    const kname = Kunden.name(Kunden.byId(w.kundeId)) || w.customer || '';
+    return new Promise((res) => {
+      const el = document.createElement('div'); el.className = 'sheet-bg fest';
+      el.innerHTML = `<div class="sheet nf-sheet abs-sheet" role="dialog" aria-label="Warum abgesagt?"><div class="sheet-h"><b>Warum abgesagt?</b><button class="icon-btn" data-x aria-label="Schließen">${icon('x')}</button></div>
+        <div class="nf-body">
+          <p class="hint" style="margin-top:0">${esc([kname, w.titel || 'Angebot'].filter(Boolean).join(' · '))}</p>
+          <div class="abs-gr">${gr.map((g, i) => `<button type="button" data-absg="${i}">${esc(g)}${g === vorschlag ? '<small>Vorschlag</small>' : ''}</button>`).join('')}</div>
+          <div class="abs-preis" hidden>
+            <div class="seg2 full abs-art"><button type="button" data-absart="mitbewerber">Mitbewerber</button><button type="button" data-absart="wunsch">Wunsch des Kunden</button></div>
+            <label for="absPreis" id="absPreisL"></label>
+            <input type="number" id="absPreis" min="0" step="any" inputmode="decimal" placeholder="optional, in Euro netto">
+            <p class="hint" style="margin:0">${unser > 0 ? `Unser Angebot: ${eur0a(unser)} netto. ` : ''}Nur intern für die Auswertung, steht in keinem Dokument.</p>
+          </div>
+          ${wvM ? `<label class="check abs-wv"><input type="checkbox" id="absWv"> In ${wvM} ${wvM === 1 ? 'Monat' : 'Monaten'} erinnern</label>` : ''}
+          <button type="button" class="btn block" id="absOk" disabled>Absage speichern</button>
+        </div></div>`;
+      let grund = '', art = 'wunsch', wvAnfass = false;
+      const close = (v) => { el.classList.remove('on'); setTimeout(() => el.remove(), 180); res(v); };
+      const artSetzen = (a) => { art = a; $$('[data-absart]', el).forEach((x) => x.classList.toggle('on', x.dataset.absart === a)); $('#absPreisL', el).textContent = `${PREIS_ART[a]} (netto)`; };
+      const waehlen = (g) => {
+        grund = g;
+        $$('[data-absg]', el).forEach((x) => x.classList.toggle('on', gr[+x.dataset.absg] === g));
+        const mitPreis = preisG.includes(g);
+        $('.abs-preis', el).hidden = !mitPreis;
+        if (mitPreis) artSetzen(absagePreisArt(g));
+        if ($('#absWv', el) && !wvAnfass) $('#absWv', el).checked = wvG.includes(g);
+        $('#absOk', el).disabled = false;
+      };
+      el.onclick = (e) => { if (e.target === el || e.target.closest('[data-x]')) close(null); };
+      $$('[data-absg]', el).forEach((b) => (b.onclick = () => waehlen(gr[+b.dataset.absg])));
+      $$('[data-absart]', el).forEach((b) => (b.onclick = () => artSetzen(b.dataset.absart)));
+      if ($('#absWv', el)) $('#absWv', el).onchange = () => { wvAnfass = true; };
+      $('#absOk', el).onclick = () => {
+        if (!grund) return;
+        const mitPreis = preisG.includes(grund), p = Math.round((+String($('#absPreis', el).value).replace(',', '.') || 0) * 100) / 100;
+        close({ grund, preis: mitPreis && p > 0 ? p : 0, preisArt: mitPreis && p > 0 ? art : '', erinnern: !!$('#absWv', el)?.checked });
+      };
+      document.body.appendChild(el);
+      if (vorschlag) waehlen(vorschlag);
+      requestAnimationFrame(() => el.classList.add('on'));
+    });
+  }
+  /** Wiedervorlage nach der Absage: To-do „Nochmal melden?“ für den Verfasser, fällig nach Vorgabe absageWiedervorlageMonate. Nichts wird verschickt. */
+  async function absageWiedervorlage(w, list) {
+    const m = +vorgabe('absageWiedervorlageMonate') || 0;
+    if (!m || !w.absage || !window.Todos) return null;
+    const k = Kunden.byId(w.kundeId);
+    const monat = new Date(w.absage.t || Date.now()).toLocaleDateString('de-DE', { month: 'long' });
+    const text = textVon('textAbsageWiedervorlage', { kunde: Kunden.name(k) || w.customer || 'Kunde', monat, grund: w.absage.grund || '', projekt: w.titel || 'Angebot' });
+    return Todos.anlegen({ text, faellig: w.absage.wv || plusMonate(m), prio: 'niedrig', wer: teamIdVon(verfasserVon(w, list || (await raeume(w)))),
+      bezug: { kundeId: w.kundeId || '', vorgangId: w.id }, art: 'wiedervorlage', schluessel: `absageWv:${w.id}` });
+  }
+  /** „Als Vorlage kopieren“: neuer Vorgang beim selben Kunden und Objekt (neue Nummer), Bereiche und Positionen des letzten Angebots
+   *  als neuer Entwurf. Der abgesagte Vorgang bleibt unverändert im Archiv. */
+  async function alsVorlageKopieren(w) {
+    const k = Kunden.byId(w.kundeId);
+    if (k && window.Sperre && !(await Sperre.pruefen(k, 'Neues Angebot', (x) => Kunden.speichern(x)))) return;
+    if (!confirm(`„${w.titel || 'Angebot'}“ als Vorlage für einen neuen Vorgang kopieren?\n\nBereiche und Positionen werden übernommen, der neue Vorgang bekommt eine neue Nummer und startet als Entwurf. Dieser Vorgang bleibt abgesagt im Archiv.`)) return;
+    const list = await raeume(w);
+    const a0 = await AngebotDaten.aktiv(w, { anlegen: false });
+    const w2 = neuesProjekt();
+    Object.assign(w2, { status: 'entwurf', kundeId: w.kundeId || '', objektId: w.objektId || '', customer: w.customer || '', address: w.address || '', titel: w.titel || '',
+      verlauf: [{ st: 'entwurf', t: Date.now() }], vorlageVon: { id: w.id, nr: w.nr || '' } });
+    if (w.skonto) w2.skonto = JSON.parse(JSON.stringify(w.skonto));
+    const ids = new Map();
+    for (const r of list) {
+      const c = JSON.parse(JSON.stringify(r)); // r.angebot ist nicht aufzählbar und kommt nicht mit
+      for (const f of ['photos', 'results', 'thumb', 'updated', 'status', 'versionen']) delete c[f];
+      Object.assign(c, { id: uid(), created: Date.now(), wohnungId: w2.id, photos: [], thumb: '', results: {} });
+      ids.set(r.id, c.id);
+      rooms.set(c.id, c); w2.rooms.push(c.id);
+      await kvSet('project:' + c.id, c);
+    }
+    await save(w2);
+    const a = await AngebotDaten.aktiv(w2);
+    if (a && a0) {
+      for (const [alt, neu] of ids) {
+        const b = a0.inhalt.bereiche[alt]; if (!b) continue;
+        const c = JSON.parse(JSON.stringify(b)); delete c.versionen;
+        a.inhalt.bereiche[neu] = c;
+      }
+      // Positionen ohne Bereich (Allgemeines) und Bereiche, die es im Vorgang nicht mehr gibt, bleiben weg
+      if (Object.prototype.hasOwnProperty.call(a0.inhalt, 'texte')) a.inhalt.texte = JSON.parse(JSON.stringify(a0.inhalt.texte || []));
+      for (const f of ['darstellung', 'allgemeinVerteilt', 'nachlass', 'zielpreis']) if (a0[f] !== undefined) a[f] = JSON.parse(JSON.stringify(a0[f]));
+      await AngebotDaten.speichern(a);
+    }
+    for (const id of w2.rooms) { const r = rooms.get(id); if (r) await AngebotDaten.anhaengen(r, w2, a); }
+    await save(w2);
+    todoZu('absageWv:' + w.id); // neuer Anlauf: die Erinnerung ist erledigt
+    toast(`Neuer Vorgang ${w2.nr || ''} angelegt (Kopie von ${w.nr || 'abgesagtem Vorgang'}). Jetzt anpassen und senden.`.replace('  ', ' '), 5000);
+    await oeffnen(w2.id);
+    window.scrollTo(0, 0);
+    return w2;
+  }
+
+  return { absageFragen, absageWiedervorlage, absageAbw, alsVorlageKopieren, plusMonate, automatik, anlegen, angebotVersendet, gesperrt, gesperrtFrage, angebotKopieren, dateiZeigen, nachfassen, nachfassTage, nachfassFaellig, nachfassUeber, nachfassStaffel, nachfassFuerMich, nachfassStand, nachfassVorschlag, nachgefasst, nachfassNachricht, nachfassEmpfaenger, subAbsageListe, verfasserVon, teamIdVon, zusageUnterschrieben, zusageTodos, nachweisText, ansprechName, ansprechIds, projektWer, einplanTodosWer, EINPLAN_ARTEN, subAuftragListe, subLeistungen, subAuftragPdf, frei48b, subGelb, subOffenIds, bsEmpfaenger, bpKalender, bpEnde, bpEinsatzSatz, vzHinweis, seitTagen, STATUS, ANGEBOT, ALLE, PHASEN, phase, farbe, pill, norm, zugesagt, statusName, statusKurz, raumAngebot, angebotMerken, forget, neu, neuDirekt, neuFuer, kundeUebernehmen, oeffnen, view, mappeView, moodboardView, migrate, raum, raeume, raumGespeichert, raumEntfernt, save, wahl, PKG_IDS, _intern: { gesamtDoc, kundeUnterschreibt, wegFragen, wegText, versandStand, versandPruefen, sendenMitMappe, alsVersendet, angebotSpeichern, titel, addRoom, raumAusScan, raumAnlegen, reiterSetzen, auftragsbestaetigung } };
 })();
 // Ältere Aufrufe (PR „Wohnungen“) laufen weiter
 window.Wohnung = { neu: () => Projekt.neu(), oeffnen: (id) => Projekt.oeffnen(id), view: () => Projekt.view(), raumGespeichert: (p) => Projekt.raumGespeichert(p), raumEntfernt: (p) => Projekt.raumEntfernt(p) };

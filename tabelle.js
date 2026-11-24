@@ -43,6 +43,13 @@ window.Tabelle = (() => {
     const ohneMasse = (r) => !!r.nurAngebot && r.roomType === 'sonstiges';
     const sichern = async (r) => { await saveProject(r); if (w.isNew) { delete w.isNew; await Projekt.save(w); } };
 
+    /** v146: Untertitel (Gewerk) eines Titels wie im PDF: Gruppen in der Reihenfolge der ersten Position, mitUT = Nummer mit Untertitel. */
+    function gliederung(r, zs) {
+      const m = new Map(); for (const z of zs) { if (!m.has(z.ut)) m.set(z.ut, []); m.get(z.ut).push(z); }
+      const gruppen = [...m].map(([g, l]) => ({ g, name: A.untertitelName(g), zeilen: l }));
+      const darT = r.angebot.darstellung || A.darstAngebot(w), dG = r.angebot.darstellungGewerk || {};
+      return { gruppen, mitUT: A.untertitelZeigen(gruppen.length) && !(darT === 'paket' && !gruppen.some((x) => dG[x.g])) };
+    }
     function zeichnen() {
       const zeilen = [];
       let gesNetto = 0;
@@ -52,7 +59,7 @@ window.Tabelle = (() => {
         gesNetto += S.netto;
         P.forEach((x, i) => {
           const z = S.zeilen.find((y) => y.i === i);
-          zeilen.push({ r, ri, x, i, text: z?.it.text || x.frei?.text || '', einheit: z?.it.einheit || x.frei?.einheit || '', ep: z?.ep || 0, gp: z?.gp || 0, gpA: z?.gpAnzeige || 0, zaehlt: z?.zaehlt !== false, fix: !!z?.fix, ph: A.preisHinweis(x, r.angebot.kalk), k: z?.kalk || null });
+          zeilen.push({ r, ri, x, i, sz: z, ut: z ? A.untertitelVon(z) : A.UT_SONST, text: z?.it.text || x.frei?.text || '', einheit: z?.it.einheit || x.frei?.einheit || '', ep: z?.ep || 0, gp: z?.gp || 0, gpA: z?.gpAnzeige || 0, zaehlt: z?.zaehlt !== false, fix: !!z?.fix, ph: A.preisHinweis(x, r.angebot.kalk), k: z?.kalk || null });
         });
       });
       const G = window.Kalk ? Kalk.gesamt(w, list) : null, nl = G?.nachlass || 0;
@@ -84,6 +91,7 @@ window.Tabelle = (() => {
           <thead><tr><th>Pos.</th><th>Leistung</th><th class="r">Menge</th><th>Einheit</th>${ks ? '<th class="r">EK Lohn</th><th class="r">EK Mat.</th><th class="r">EK Pausch.</th><th class="r">Zuschlag</th>' : ''}<th class="r">${ks ? 'Verkauf' : 'EP netto'}</th><th class="r">GP netto</th>${ks ? '<th class="r">Marge</th>' : ''}</tr></thead>
           <tbody>${list.map((r, ri) => {
             const zs = zeilen.filter((z) => z.r === r), tn = gNr[ri] || '';
+            const U = gliederung(r, zs), tp = g > 1 && tn ? `${tn}.` : '';
             const m = masse(r);
             return (opt.titelNeu ? `<tr class="xt-titel ed" data-tr="${r.id}"><td class="xt-nr">${g > 1 && tn ? tn : ''}</td>
               <td colspan="${4 + kc}"><div class="xt-tn"><input data-t="name" value="${esc(titel(r))}" title="Titel (Bereich) umbenennen" autocomplete="off">
@@ -93,13 +101,16 @@ window.Tabelle = (() => {
               <td class="r" data-zs="${r.id}">${zs.length ? zahl(zs.reduce((a, z) => a + z.gp, 0)) : ''}</td>${ks ? '<td></td>' : ''}</tr>`
               : `<tr class="xt-titel"><td class="xt-nr">${g > 1 && tn ? tn : ''}</td><td colspan="${4 + kc}"><b>${esc(titel(r))}</b></td><td class="r" data-zs="${r.id}">${zs.length ? zahl(zs.reduce((a, z) => a + z.gp, 0)) : ''}</td>${ks ? '<td></td>' : ''}</tr>`)
             + `
-            ${zs.map((z) => { nrIn[z.ri] = (nrIn[z.ri] || 0) + 1; return `<tr data-r="${z.r.id}" data-i="${z.i}" class="${z.x.frei ? 'frei' : ''} ${z.zaehlt ? '' : 'nz'} ${z.x.art === 'kostenlos' ? 'kl' : ''}">
-            <td class="xt-nr">${g > 1 ? `${gNr[z.ri]}.` : ''}${nrIn[z.ri]}${marke(z.x)}${{ bedarf: '<span class="xt-m b" title="Bedarfsposition, nicht in der Summe">B</span>', alternativ: '<span class="xt-m a" title="Alternativposition, nicht in der Summe">A</span>', kostenlos: '<span class="xt-m k" title="Kostenlos">0</span>' }[z.x.art] || ''}${z.x.bilder?.length ? `<span class="xt-m bi" title="${z.x.bilder.length} ${z.x.bilder.length === 1 ? 'Bild' : 'Bilder'} an der Position${z.x.bilder.some((b) => b.imPdf) ? ', im PDF' : ''}">${icon('camera')}</span>` : ''}<button type="button" class="xt-d ${z.x.lang || z.x.notiz || z.x.bilder?.length ? 'hat' : ''}" data-xd title="${esc(z.x.notiz ? 'Notiz: ' + z.x.notiz : 'Art, Langtext, interne Notiz')}" aria-label="Details">…</button></td>
+            ${U.gruppen.map((gr, ui) => { nrIn[ri] = 0; const un = `${tp}${ui + 1}`; return `<tr class="xt-ut" data-ur="${r.id}" data-g="${esc(gr.g)}"><td class="xt-nr">${U.mitUT ? un : ''}</td>
+              <td colspan="${4 + kc}"><div class="xt-un"><b>${esc(gr.name)}</b><small class="xt-ui" title="Nur intern, steht nicht im Angebot">${esc(A.untertitelInfo(gr.zeilen.map((z) => z.sz).filter(Boolean)))}</small>
+                <select data-u="dar" class="xt-dar" title="Preise im Angebot für diesen Untertitel" aria-label="Preise im Angebot für diesen Untertitel">${A.darstGewerkOptionen(r.angebot.darstellungGewerk?.[gr.g] || '').replace('wie der Titel', 'Preise wie der Titel')}</select></div></td>
+              <td class="r" data-zu="${r.id}" data-zg="${esc(gr.g)}">${zahl(gr.zeilen.reduce((a, z) => a + z.gp, 0))}</td>${ks ? '<td></td>' : ''}</tr>` + gr.zeilen.map((z) => { nrIn[z.ri] = (nrIn[z.ri] || 0) + 1; return `<tr data-r="${z.r.id}" data-i="${z.i}" class="${z.x.frei ? 'frei' : ''} ${z.zaehlt ? '' : 'nz'} ${z.x.art === 'kostenlos' ? 'kl' : ''}">
+            <td class="xt-nr">${U.mitUT ? `${un}.` : tp}${nrIn[z.ri]}${marke(z.x)}${{ bedarf: '<span class="xt-m b" title="Bedarfsposition, nicht in der Summe">B</span>', alternativ: '<span class="xt-m a" title="Alternativposition, nicht in der Summe">A</span>', kostenlos: '<span class="xt-m k" title="Kostenlos">0</span>' }[z.x.art] || ''}${z.x.bilder?.length ? `<span class="xt-m bi" title="${z.x.bilder.length} ${z.x.bilder.length === 1 ? 'Bild' : 'Bilder'} an der Position${z.x.bilder.some((b) => b.imPdf) ? ', im PDF' : ''}">${icon('camera')}</span>` : ''}<button type="button" class="xt-d ${z.x.lang || z.x.notiz || z.x.bilder?.length ? 'hat' : ''}" data-xd title="${esc(z.x.notiz ? 'Notiz: ' + z.x.notiz : 'Art, Langtext, interne Notiz')}" aria-label="Details">…</button></td>
             <td><input data-c="text" value="${esc(z.text)}" list="xtPL" title="${esc(z.x.frei ? 'Eigene Position' : `${z.x.nr} aus der Preisliste`)}" autocomplete="off"></td>
             <td><input data-c="menge" class="r" value="${esc(mengeText(z.x.menge))}" autocomplete="off"></td>
             <td><input data-c="einheit" value="${esc(z.einheit)}" list="xtEh" autocomplete="off"></td>${kalkZellen(z)}
             <td><input data-c="ep" class="r ${z.fix ? 'fix' : ''} ${z.ph ? 'warn' : ''}" value="${esc(zahl(z.ep))}" title="${esc(z.ph ? 'Hinweis: ' + z.ph : z.fix ? 'Eigener Preis' : 'Preis aus der Preisliste')}" autocomplete="off"></td>
-            <td class="r xt-gp">${z.x.art === 'kostenlos' ? 'kostenlos' : z.zaehlt ? zahl(z.gp) : `(${zahl(z.gpA)})`}</td>${ks ? `<td class="r xt-mg">${margeZ(z)}</td>` : ''}</tr>`; }).join('')}
+            <td class="r xt-gp">${z.x.art === 'kostenlos' ? 'kostenlos' : z.zaehlt ? zahl(z.gp) : `(${zahl(z.gpA)})`}</td>${ks ? `<td class="r xt-mg">${margeZ(z)}</td>` : ''}</tr>`; }).join(''); }).join('')}
             <tr class="xt-neu" data-neu="1" data-nr="${r.id}"><td class="xt-nr">${icon('plus')}</td>
               <td><input data-c="text" list="xtPL" placeholder="Neue Position in „${esc(titel(r))}“: eintippen oder aus der Preisliste wählen" autocomplete="off"></td>
               <td><input data-c="menge" class="r" placeholder="1" autocomplete="off"></td><td><input data-c="einheit" list="xtEh" autocomplete="off"></td>${leerK}<td><input data-c="ep" class="r" autocomplete="off"></td><td></td>${ks ? '<td></td>' : ''}</tr>`;
@@ -151,6 +162,7 @@ window.Tabelle = (() => {
       list.forEach((r) => {
         const P = r.angebot.positionen || [], S = A.summen(P, r.angebot.kalk); ges += S.netto;
         const zsEl = $(`[data-zs="${r.id}"]`, box); if (zsEl) zsEl.textContent = S.zeilen.length ? zahl(S.netto) : '';
+        $$(`[data-zu="${r.id}"]`, box).forEach((td) => { td.textContent = zahl(S.zeilen.filter((z) => A.untertitelVon(z) === td.dataset.zg).reduce((a, z) => a + z.gp, 0)); });
         S.zeilen.forEach((z) => { const tr = $(`tr[data-r="${r.id}"][data-i="${z.i}"]`, box); if (!tr) return; $('.xt-gp', tr).textContent = z.art === 'kostenlos' ? 'kostenlos' : z.zaehlt === false ? `(${zahl(z.gpAnzeige)})` : zahl(z.gp); const e = $('[data-c="ep"]', tr); if (document.activeElement !== e) { e.value = zahl(z.ep); e.classList.toggle('fix', z.fix); } });
       });
       const nl = window.Kalk ? Kalk.gesamt(w, list).nachlass : 0, mwst = r2((ges - nl) * (A.einstellungen().mwst || 0.19)), f = $$('tfoot td.r', box);
@@ -316,7 +328,13 @@ window.Tabelle = (() => {
       let ges = 0;
       list.forEach((r, ri) => {
         const S = A.summen(r.angebot.positionen || [], r.angebot.kalk); ges += S.netto;
-        S.zeilen.forEach((z, j) => aoa.push([list.length > 1 ? `${ri + 1}.${j + 1}` : String(j + 1), titel(r), z.frei ? '' : z.nr, z.it.text, +z.menge || 0, z.it.einheit, z.ep, z.gp]));
+        const U = gliederung(r, S.zeilen.map((z) => ({ ...z, ut: A.untertitelVon(z) }))), tp = list.length > 1 ? `${ri + 1}.` : '';
+        let j = 0;
+        U.gruppen.forEach((gr, ui) => {
+          j = U.mitUT ? 0 : j;
+          if (U.mitUT) aoa.push([`${tp}${ui + 1}`, titel(r), '', gr.name, '', '', '', r2(gr.zeilen.reduce((a, z) => a + z.gp, 0))]);
+          gr.zeilen.forEach((z) => { j++; aoa.push([U.mitUT ? `${tp}${ui + 1}.${j}` : `${tp}${j}`, titel(r), z.frei ? '' : z.nr, z.it.text, +z.menge || 0, z.it.einheit, z.ep, z.gp]); });
+        });
       });
       const mwst = r2(ges * (A.einstellungen().mwst || 0.19));
       aoa.push([], ['', '', '', 'Summe netto', '', '', '', r2(ges)], ['', '', '', 'MwSt.', '', '', '', mwst], ['', '', '', 'Gesamt brutto', '', '', '', r2(ges + mwst)]);
@@ -342,6 +360,10 @@ window.Tabelle = (() => {
       box.onchange = (e) => {
         if (e.target.matches('[data-c]')) aendern(e.target).catch((err) => toast('Ging nicht: ' + err.message, 5000));
         else if (e.target.matches('[data-t]')) titelAendern(e.target).catch((err) => toast('Ging nicht: ' + err.message, 5000));
+        else if (e.target.matches('[data-u="dar"]')) { const tr = e.target.closest('tr'), r = list.find((x) => x.id === tr?.dataset.ur); if (!r) return; const g = tr.dataset.g, v = e.target.value;
+          r.angebot.darstellungGewerk ??= {}; if (v) r.angebot.darstellungGewerk[g] = v; else delete r.angebot.darstellungGewerk[g];
+          if (!Object.keys(r.angebot.darstellungGewerk).length) delete r.angebot.darstellungGewerk;
+          sichern(r).then(() => { letzteZelle = null; zeichnen(); }).catch((err) => toast('Ging nicht: ' + err.message, 5000)); }
       };
       box.onclick = async (e) => {
         const b = e.target.closest('[data-t="del"]'); if (b) return titelLoeschen(b).catch((err) => toast('Ging nicht: ' + err.message, 5000));
@@ -370,13 +392,13 @@ window.Tabelle = (() => {
         const d = e.dataTransfer?.getData('application/x-dom-pos'); if (!d) return;
         e.preventDefault(); e.stopPropagation(); $$('tr.drop', box).forEach((t) => t.classList.remove('drop'));
         const tr = e.target.closest?.('tbody tr');
-        einfuegen(JSON.parse(d), tr?.dataset.r || tr?.dataset.tr || tr?.dataset.nr).catch((err) => toast('Ging nicht: ' + err.message, 5000));
+        einfuegen(JSON.parse(d), tr?.dataset.r || tr?.dataset.tr || tr?.dataset.ur || tr?.dataset.nr).catch((err) => toast('Ging nicht: ' + err.message, 5000));
       };
       box.onkeydown = (e) => {
         const el = e.target;
         if (el.matches?.('[data-t]') && e.key === 'Enter') { e.preventDefault(); el.blur(); return; } // Titel: Enter übernimmt (change)
         if (!el.matches?.('[data-c]')) return;
-        const tr = el.closest('tr'), zeilen = $$('tbody tr:not(.xt-titel)', box), zi = zeilen.indexOf(tr), c = el.dataset.c, ci = SPALTEN.indexOf(c);
+        const tr = el.closest('tr'), zeilen = $$('tbody tr:not(.xt-titel):not(.xt-ut)', box), zi = zeilen.indexOf(tr), c = el.dataset.c, ci = SPALTEN.indexOf(c);
         const geh = (z, s) => { const t = zeilen[z]; const ziel = t && $(`[data-c="${SPALTEN[s]}"]`, t); if (ziel) { e.preventDefault(); el.blur(); ziel.focus(); } };
         if (e.ctrlKey && (e.key === 'Enter' || e.key === 'Insert')) { e.preventDefault(); el.blur(); const n = $(`[data-nr="${tr.dataset.r || tr.dataset.nr}"] [data-c="text"]`, box) || $('[data-neu] [data-c="text"]', box); n?.focus(); return; }
         if (e.ctrlKey && (e.key === 'Delete' || e.key === 'Backspace') && !tr.dataset.neu) { e.preventDefault(); return loeschen(el); }

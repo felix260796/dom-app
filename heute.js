@@ -59,8 +59,11 @@ window.Heute = (() => {
     // Frist je Angebot nach Größe (v141), nur die Angebote, die der Besitzer dieses Geräts verfasst hat; am längsten überfällig zuerst
     const nachf = idx.filter((x) => Projekt.norm(x.status) === 'angebot' && x.versendetAm && Projekt.nachfassUeber(x) >= 0 && Projekt.nachfassFuerMich(x))
       .sort((a, b) => Projekt.nachfassUeber(b) - Projekt.nachfassUeber(a));
+    // Knopf „Nachgefasst“ rechts, darunter was der Kunde beim letzten Mal gesagt hat und der stille Vorschlag (v142)
     block('Angebote nachfassen', nachf
-      .map((x) => { const u = Projekt.nachfassUeber(x); return zeile('p:' + x.id, 'phone', name(x), `Seit ${Projekt.seitTagen(x.versendetAm)} Tagen beim Kunden${u > 0 ? ` · ${u} ${u === 1 ? 'Tag' : 'Tage'} über der Frist` : ''}`, u > 0 ? '#c0392b' : '#b7791f'); }));
+      .map((x) => { const u = Projekt.nachfassUeber(x), s = Projekt.nachfassStand(x);
+        const sub = [`Seit ${Projekt.seitTagen(x.versendetAm)} Tagen beim Kunden${u > 0 ? ` · ${u} ${u === 1 ? 'Tag' : 'Tage'} über der Frist` : ''}`, s.zuletzt ? `Zuletzt ${s.zuletzt}` : '', Projekt.nachfassVorschlag(x) ? `${s.nicht} mal nicht erreicht: absagen?` : ''].filter(Boolean).join(' · ');
+        return `<div class="hz-nf">${zeile('p:' + x.id, 'phone', name(x), sub, u > 0 ? '#c0392b' : '#b7791f')}<button type="button" class="btn secondary small hz-nfg" data-nfg="${esc(x.id)}">Nachgefasst</button></div>`; }));
     // Geld
     const geld = [];
     for (const r of window.Rechnung?.liste() || []) if (!r.bezahlt && r.faellig && r.faellig < h) { const x = idx.find((y) => y.id === r.projektId); geld.push(zeile('r:' + r.id, 'euro', `Kunde zahlt nicht: ${x ? name(x) : r.nr}`, `${r.nr} · ${eur(Rechnung.zahlbetrag(r))} · fällig seit ${tag(r.faellig)}`, '#c0392b')); }
@@ -72,7 +75,7 @@ window.Heute = (() => {
     for (const w of ws) {
       for (const b of w.bestellungen || []) if (b.status !== 'geliefert' && b.liefertermin && b.liefertermin <= vor) bau.push(zeile('p:' + w.id, 'clipboard', `Lieferung: ${b.was}`, `${w.titel || w.customer || ''} · ${b.liefertermin < h ? 'überfällig seit ' : ''}${tag(b.liefertermin)}`, b.liefertermin < h ? '#c0392b' : ''));
       for (const m of w.abnahme?.maengel || []) if (!m.erledigt && m.frist && m.frist <= vor) bau.push(zeile('p:' + w.id, 'x', `Mangel: ${m.text}`, `${w.titel || w.customer || ''} · Frist ${tag(m.frist)}`, m.frist < h ? '#c0392b' : '#d2691e'));
-      if (Projekt.norm(w.status) === 'geplant' && w.baustart && w.baustart <= plus(7)) bau.push(zeile('p:' + w.id, 'calendar', `Baustart: ${w.titel || w.customer || 'Projekt'}`, tag(w.baustart)));
+      if (Projekt.norm(w.status) === 'geplant' && w.baustart && w.baustart <= plus(7)) { const sg = Projekt.subGelb(idx.find((y) => y.id === w.id) || w); bau.push(zeile('p:' + w.id, 'calendar', `Baustart: ${w.titel || w.customer || 'Projekt'}`, tag(w.baustart) + (sg ? ` · ${sg === 1 ? 'Ein Subunternehmer hat' : sg + ' Subunternehmer haben'} noch nicht bestätigt` : ''), sg ? '#b7791f' : '')); }
     }
     block('Baustellen: zu erledigen', bau);
     // Firmendokumente, die bald ablaufen
@@ -94,6 +97,7 @@ window.Heute = (() => {
     $$('[data-hab]').forEach((b) => (b.onclick = () => { ab = b.dataset.hab; view(); }));
     Todos.binden(main(), () => { if (state.tab === 'heute') view(); });
     pf.binden(main(), () => { if (state.tab === 'heute') view(); });
+    $$('[data-nfg]').forEach((b) => (b.onclick = () => Projekt.nachgefasst(b.dataset.nfg, () => { if (state.tab === 'heute') view(); })));
     if ($('#hRoute')) $('#hRoute').onclick = () => route(stopps.map((t) => String(t.ort).split(/\s*\n\s*/).join(', ').trim()));
   }
 

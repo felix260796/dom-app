@@ -20,12 +20,18 @@ Supabase-Funktion „auswertung“ transkribieren. Solange die Funktion fehlt, w
 2. Name: `auswertung`.
 3. Den ganzen Inhalt der Datei `supabase/functions/auswertung/index.ts` aus GitHub (felix260796/dom-app) in den Editor kopieren.
 4. **Deploy**.
-5. In den Einstellungen der Funktion **Verify JWT** ausschalten (die Funktion prüft die Anmeldung selbst, wie „termin-mail“ und „push“).
+5. **Verify JWT** (bzw. „Enforce JWT verification“) **anlassen**. Diese Funktion hat keinen Zeitplan, sie wird nur aus der App aufgerufen, und die App schickt dabei immer deine Anmeldung mit. Zusätzlich prüft die Funktion die Anmeldung selbst.
+
+   Kommt bei der Auswertung trotzdem Fehler 401 (bei manchen Supabase-Projekten mit den neuen Schlüsseln `sb_publishable_…` kann Supabase die Anmeldung am Eingang nicht prüfen), dann Verify JWT ausschalten und speichern. Die Funktion bleibt geschützt, weil sie die Anmeldung selbst prüft: ohne Anmeldung aus der App antwortet sie mit 401 und macht nichts.
 
 ## 3. Prüfen
 
 Eine kurze Aufnahme im Reiter Vor Ort machen. Während der Auswertung steht „Wird in der Cloud ausgewertet …“. Danach auf
 „Aufnahme prüfen“: an jeder Zeile des Gesprächs steht eine Zeitmarke, ein Tipp spielt ab dieser Stelle ab.
+
+Klappt die Cloud nicht, wertet das Gerät selbst aus und es fällt kaum auf. Ob die Funktion wirklich arbeitet, siehst du in
+Supabase unter **Edge Functions › auswertung › Invocations** (bzw. „Logs“): Steht dort Status 200, ist alles gut. Steht dort 401,
+bei Schritt 2.5 Verify JWT ausschalten.
 
 ## Gut zu wissen
 

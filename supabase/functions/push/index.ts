@@ -11,7 +11,9 @@
 // Die Schlüssel für Web-Push (VAPID) erzeugt die Funktion beim ersten Aufruf selbst und legt sie im Speicher unter
 // „system/“ ab. Dort kommt nur Supabase selbst hin (die App sieht nur den Ordner „team“). Es gibt also keine
 // zusätzlichen Geheimnisse einzutragen, nur CRON_SECRET (dasselbe wie bei den Terminmails).
-// Beim Anlegen „Verify JWT“ ausschalten: die Funktion prüft die Anmeldung selbst.
+// Beim Anlegen „Verify JWT“ ausschalten. Grund: Der Zeitplan (Cron) ruft ohne Anmeldung auf, nur mit dem Header
+// x-cron-secret; mit Verify JWT würde Supabase diesen Aufruf abweisen. Geschützt ist die Funktion trotzdem:
+// „lauf“ nur mit dem richtigen CRON_SECRET, jeder andere Aufruf nur mit gültiger Anmeldung aus der App, sonst Fehler 401.
 // Seit 11.11.2026: Die iPhone-App aus TestFlight meldet sich mit { apns: <Token> } an. Dorthin geht die Mitteilung über
 // Apples Dienst (APNs). Dafür in Supabase drei Geheimnisse eintragen (Anleitung IPHONE_APP_EINRICHTEN.md):
 // APNS_KEY_P8 (Inhalt der Datei AuthKey_….p8), APNS_KEY_ID, APNS_TEAM_ID. Optional APNS_TOPIC (Bundle-ID).
@@ -84,7 +86,10 @@ function morgen(d: Daten, p: Prefs, heute: string) {
   const tt = d.termine.filter((t) => t.datum === heute && fuer(t, p.wer)).sort((a, b) => (a.von || "").localeCompare(b.von || ""));
   if (tt.length) { zahl += tt.length; zeilen.push(`${tt.length} ${tt.length === 1 ? "Termin" : "Termine"}: ${tt.slice(0, 3).map((t) => `${t.ganztag || !t.von ? "" : t.von + " "}${t.titel || "Termin"}`).join(", ")}${tt.length > 3 ? " …" : ""}`); }
   if (p.nachfassen !== false) {
-    const n = d.idx.filter((x) => norm(x.status) === "angebot" && tageSeit(x.versendetAm, heute) >= (p.nachfassenTage ?? 7)).length;
+    // v142: nur Angebote, die der Besitzer des Geräts verfasst hat (Gerät für beide oder Verfasser unbekannt: alle),
+    // fällig am Tag aus dem Index (nachfAm: Frist nach Größe bzw. „wieder“ nach Nachgefasst), ältere Einträge wie bisher
+    const faellig = (x: any) => x.nachfAm ? String(x.nachfAm) <= heute : tageSeit(x.versendetAm, heute) >= (+x.nachfTage > 0 ? +x.nachfTage : (p.nachfassenTage ?? 7));
+    const n = d.idx.filter((x) => norm(x.status) === "angebot" && x.versendetAm && faellig(x) && (!p.wer || !x.verfasserId || x.verfasserId === p.wer)).length;
     if (n) { zahl += n; zeilen.push(`${n} ${n === 1 ? "Angebot" : "Angebote"} nachfassen`); }
   }
   if (p.geld !== false) {
