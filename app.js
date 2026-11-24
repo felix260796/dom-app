@@ -6,7 +6,7 @@
  * Kern-Funktionen (Speicher, KI, Bilder) stehen in core.js. */
 
 // ---------- Symbole (einfache Linien-Icons) ----------
-const APP_VERSION = '147';
+const APP_VERSION = '148';
 const ICONS = {
   plus: '<path d="M12 5v14M5 12h14"/>',
   camera: '<path d="M3 8.5A2 2 0 0 1 5 6.5h2l1.6-2h6.8l1.6 2h2a2 2 0 0 1 2 2V18a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><circle cx="12" cy="13" r="3.6"/>',
@@ -202,7 +202,7 @@ async function viewProjektListe() {
       <div class="plist">${shown.map((x) => `
         <button class="pcard" data-open="${x.id}" data-kind="${x.kind || ''}">
           ${x.thumb ? `<img src="${x.thumb}" alt="">` : `<span class="pc-ph">${icon('home')}</span>`}
-          <span class="pc-t"><b>${esc(x.titel || x.room || 'Projekt')}</b>${Projekt.pill(x.status)}
+          <span class="pc-t"><b>${esc(x.titel || x.room || 'Projekt')}</b>${Projekt.pill(x.status)}${Projekt.subGelb(x) ? '<span class="pc-gelb">Sub-Bestätigung fehlt</span>' : ''}
             ${projektOrt(x) ? `<span class="muted pc-wo">${icon('map')}${esc(projektOrt(x))}</span>` : ''}
             ${projektKunde(x) ? `<span class="muted pc-wer">${icon('user')}${esc(projektKunde(x))}</span>` : ''}
             ${x.fort && Projekt.zugesagt(x.status) ? `<span class="bf-mini">${Fortschritt.balken(x.fort)}</span>` : ''}</span>
@@ -212,7 +212,7 @@ async function viewProjektListe() {
   if ($('#pjTab')) window.Tabelle.liste($('#pjTab'), { id: 'projekte', oeffnen: (id) => Projekt.oeffnen(id),
     spalten: [{ k: 'nr', t: 'Projekt-Nr.', b: 120 }, { k: 'kunde', t: 'Kunde' }, { k: 'titel', t: 'Projekt' }, { k: 'ort', t: 'Ort' }, { k: 'st', t: 'Stand', b: 190 }, { k: 'bs', t: 'Baustart', b: 110 }, { k: 'fort', t: 'Fortschritt', b: 140 }],
     zeilen: shown.map((x) => ({ id: x.id, werte: { nr: x.nr || '', kunde: projektKunde(x) || '', titel: { text: x.titel || x.room || 'Projekt', html: `<b>${esc(x.titel || x.room || 'Projekt')}</b>` }, ort: projektOrt(x) || '',
-      st: { text: Projekt.norm(x.status), html: Projekt.pill(x.status) }, bs: { text: x.baustart ? new Date(x.baustart).toLocaleDateString('de-DE') : '', sort: x.baustart || '' },
+      st: { text: Projekt.norm(x.status), html: Projekt.pill(x.status) + (Projekt.subGelb(x) ? ' <span class="pc-gelb">Sub-Bestätigung fehlt</span>' : '') }, bs: { text: x.baustart ? new Date(x.baustart).toLocaleDateString('de-DE') : '', sort: x.baustart || '' },
       fort: { text: '', sort: x.fort?.n ? x.fort.fertig / x.fort.n : -1, html: x.fort && Projekt.zugesagt(x.status) ? `<span class="bf-mini">${Fortschritt.balken(x.fort)}</span>` : '' } } })) });
   $$('[data-ls]').forEach((b) => (b.onclick = () => { listStatus = b.dataset.ls; viewProjektListe(); }));
   $('#pNeu').onclick = () => { listStatus = 'einplanen'; Projekt.neuDirekt(); };

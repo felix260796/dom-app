@@ -714,7 +714,7 @@ window.Buero = (() => {
     window.Tabelle.liste($('[data-dbpj]', box), { id: 'dbProjekte', leer: 'Kein Projekt eingeplant oder laufend.', oeffnen: (id) => Projekt.oeffnen(id),
       spalten: [{ k: 'kunde', t: 'Kunde' }, { k: 'titel', t: 'Projekt' }, { k: 'phase', t: 'Stand', b: 140 }, { k: 'start', t: 'Baustart', b: 100 }],
       zeilen: laufend.map((x) => ({ id: x.id, werte: { kunde: { text: Kunden.name(Kunden.byId(x.kundeId)) || x.customer || '', html: `<b>${esc(Kunden.name(Kunden.byId(x.kundeId)) || x.customer || '')}</b>` }, titel: x.titel || 'Projekt',
-        phase: PHASE[Projekt.phase(x)] || '', start: { text: x.baustart ? tag(x.baustart) : '', sort: x.baustart || '' } } })) });
+        phase: { text: PHASE[Projekt.phase(x)] || '', html: esc(PHASE[Projekt.phase(x)] || '') + (Projekt.subGelb(x) ? ' <span class="pc-gelb">Sub-Bestätigung fehlt</span>' : '') }, start: { text: x.baustart ? tag(x.baustart) : '', sort: x.baustart || '' } } })) });
     const kName = (x) => Kunden.name(Kunden.byId(x?.kundeId)) || x?.customer || '';
     const tel = (x) => Kunden.byId(x?.kundeId)?.telefon || '';
     window.Tabelle.liste($('[data-dbwv]', box), { id: 'wiedervorlage', leer: 'Kein verschicktes Angebot offen.', oeffnen: (id) => Projekt.oeffnen(id),

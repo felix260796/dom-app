@@ -404,3 +404,14 @@ details.bs .tot span:last-child { color: var(--muted); }
 .sa-knoepfe { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 2px; }
 .sheet-item.s48 { background: #fdecea; }
 .sheet-item.s48 b { color: #a3261b; }
+/* ---------- Baustart mitteilen, Sub-Bestätigung gelb, Vorauszahlung (v148) ---------- */
+.sub-gelb { margin: 0 0 8px; padding: 6px 9px; border-radius: 8px; background: #fdf6e3; color: #8a5a00; font-weight: 600; font-size: 13px; border-left: 3px solid #d4a017; }
+.pj-jetzt.gelb { border-left-color: #d4a017; background: #fffaf0; }
+.pc-gelb { display: inline-block; margin-left: 6px; padding: 1px 7px; border-radius: 10px; background: #fdf6e3; color: #8a5a00; font-size: 12px; font-weight: 600; border: 1px solid #ecd9a0; white-space: nowrap; }
+.bsi-karte .bsi-alt { color: #b7791f; }
+.bsi-zeile { font-size: 13px; }
+.vz-faellig { flex-wrap: wrap; }
+.vz-faellig small { font-weight: 500; width: 100%; }
+.vz-teile { display: flex; flex-direction: column; gap: 4px; margin: 8px 0 0; }
+.vz-teil { display: flex; align-items: center; gap: 8px; font-size: 14px; font-weight: 500; }
+.vz-teil input { width: auto; margin: 0; }

@@ -75,7 +75,7 @@ window.Heute = (() => {
     for (const w of ws) {
       for (const b of w.bestellungen || []) if (b.status !== 'geliefert' && b.liefertermin && b.liefertermin <= vor) bau.push(zeile('p:' + w.id, 'clipboard', `Lieferung: ${b.was}`, `${w.titel || w.customer || ''} · ${b.liefertermin < h ? 'überfällig seit ' : ''}${tag(b.liefertermin)}`, b.liefertermin < h ? '#c0392b' : ''));
       for (const m of w.abnahme?.maengel || []) if (!m.erledigt && m.frist && m.frist <= vor) bau.push(zeile('p:' + w.id, 'x', `Mangel: ${m.text}`, `${w.titel || w.customer || ''} · Frist ${tag(m.frist)}`, m.frist < h ? '#c0392b' : '#d2691e'));
-      if (Projekt.norm(w.status) === 'geplant' && w.baustart && w.baustart <= plus(7)) bau.push(zeile('p:' + w.id, 'calendar', `Baustart: ${w.titel || w.customer || 'Projekt'}`, tag(w.baustart)));
+      if (Projekt.norm(w.status) === 'geplant' && w.baustart && w.baustart <= plus(7)) { const sg = Projekt.subGelb(idx.find((y) => y.id === w.id) || w); bau.push(zeile('p:' + w.id, 'calendar', `Baustart: ${w.titel || w.customer || 'Projekt'}`, tag(w.baustart) + (sg ? ` · ${sg === 1 ? 'Ein Subunternehmer hat' : sg + ' Subunternehmer haben'} noch nicht bestätigt` : ''), sg ? '#b7791f' : '')); }
     }
     block('Baustellen: zu erledigen', bau);
     // Firmendokumente, die bald ablaufen

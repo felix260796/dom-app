@@ -1642,10 +1642,17 @@ Gib Länge (längere Seite) und Breite der Grundfläche, Raumhöhe, Anzahl und G
     return true;
   }
   /** Zahlungsplan als Satz aus dem Abschlagsplan des Vorgangs (sonst Einstellungen). */
+  /** v148: Welcher Teil des Zahlungsplans ist eine Vorauszahlung vor Baustart? 1, 2 … oder 0 (keine).
+   *  Je Vorgang w.vorauszahlung = { teil } (0 = keine), sonst Vorgabe abschlagVorauszahlung. Nie der letzte Teil (Schlussrechnung). */
+  function vzTeil(w) {
+    const plan = (Array.isArray(w?.abschlagPlan) && w.abschlagPlan.length ? w.abschlagPlan : vorgabe('abschlagPlan')) || [];
+    const t = Math.round(+(w?.vorauszahlung && w.vorauszahlung.teil !== undefined ? w.vorauszahlung.teil : vorgabe('abschlagVorauszahlung')) || 0);
+    return t >= 1 && t <= plan.length - 1 ? t : 0;
+  }
   function zahlungsplanText(w) {
     const plan = (Array.isArray(w?.abschlagPlan) && w.abschlagPlan.length ? w.abschlagPlan : vorgabe('abschlagPlan')) || [];
-    const n = vorgabe('abschlagNamen') || [];
-    const name = (i) => (plan.length === 1 ? n[n.length - 1] : i === 0 ? n[0] : i === plan.length - 1 ? n[n.length - 1] : n[1]) || '';
+    const n = vorgabe('abschlagNamen') || [], vz = vzTeil(w);
+    const name = (i) => (i + 1 === vz ? vorgabe('vorauszahlungName') : plan.length === 1 ? n[n.length - 1] : i === 0 ? n[0] : i === plan.length - 1 ? n[n.length - 1] : n[1]) || '';
     const teile = plan.map((p, i) => `${fmtNum(+p, +p % 1 ? 1 : 0)} % ${name(i)}`.trim());
     return teile.length ? `Zahlungsplan: ${teile.join(', ')}.` : '';
   }
@@ -2061,6 +2068,6 @@ Gib Länge (längere Seite) und Breite der Grundfläche, Raumhöhe, Anzahl und G
     $('#vReset').onclick = async () => { if (!loeschFrage('Alle Paket-Vorlagen zurücksetzen?')) return; await kvDel('angebotVorlagen'); VORL = null; vorlagenView(pkgId, grp); };
   }
 
-  return { projektKarte, ansicht, einstellungenKarte, _intern: { vorlageMerken, vorlageVorschlaege, vorlageAntwort, bildWaehlen, texteEigen, texteSpeichern, versandMeta, DARST, darstAngebot, darstOptionen, darstSetzen, UT_SONST, untertitelVon, untertitelName, gruppenNachGewerk, untertitelZeigen, untertitelInfo, gewerkListe, darstGewerkOptionen, lohnSchaetzung, ekVon, vkVon, gewerkVon, planEinfuegen, firmaSetzen, FIRMA_KEYS, kontextFuer, passt, giltText, zahlungsplanText, privatArt, skontoVon, posDetails, preisHinweis, artText, NICHT_SUMME, init, gruppe, materialliste, uebernimmSchaetzung, masse, rechne, erzeuge, summen, bauzeit, ep, lohnEp, preisliste, vorlagen, neuerRaum, baueAngebotPdf, importExcel, naechsteNummer, mailText, bausteine, textEditor, texteAuftrag, texteEinstellungen, subUebernehmen, ansprechpartner, ansprVon, einePerson, texteFuer, anredeDefault, einstellungen: () => PL.einstellungen, kalkSetzen, kalkNorm, kalkWert, kalkFeld, satz } };
+  return { projektKarte, ansicht, einstellungenKarte, _intern: { vorlageMerken, vorlageVorschlaege, vorlageAntwort, bildWaehlen, texteEigen, texteSpeichern, versandMeta, DARST, darstAngebot, darstOptionen, darstSetzen, UT_SONST, untertitelVon, untertitelName, gruppenNachGewerk, untertitelZeigen, untertitelInfo, gewerkListe, darstGewerkOptionen, lohnSchaetzung, ekVon, vkVon, gewerkVon, planEinfuegen, firmaSetzen, FIRMA_KEYS, kontextFuer, passt, giltText, zahlungsplanText, vzTeil, privatArt, skontoVon, posDetails, preisHinweis, artText, NICHT_SUMME, init, gruppe, materialliste, uebernimmSchaetzung, masse, rechne, erzeuge, summen, bauzeit, ep, lohnEp, preisliste, vorlagen, neuerRaum, baueAngebotPdf, importExcel, naechsteNummer, mailText, bausteine, textEditor, texteAuftrag, texteEinstellungen, subUebernehmen, ansprechpartner, ansprVon, einePerson, texteFuer, anredeDefault, einstellungen: () => PL.einstellungen, kalkSetzen, kalkNorm, kalkWert, kalkFeld, satz } };
 })();
 window.Angebot = Angebot;

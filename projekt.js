@@ -84,8 +84,10 @@ window.Projekt = (() => {
     const list = await raeume(w);
     if (nachfassMerken(w, list)) await kvSet(key(w.id), w); // Größe fürs Nachfassen (v141)
     const vf = norm(w.status) === 'angebot' ? verfasserVon(w, list) : '';
+    let subOffen = 0;
+    if (norm(w.status) === 'geplant') { try { await AngebotDaten.liste(w); subOffen = subOffenIds(w).length; } catch (e) { console.warn('Sub offen', e); } } // v148
     const idx = (await projectIndex()).filter((x) => x.id !== w.id);
-    idx.unshift({ id: w.id, kind: 'wohnung', nr: w.nr || '', titel: w.titel || '', status: w.status || '', baustart: w.baustart || '', versendetAm: w.versendetAm || '', nachfTage: norm(w.status) === 'angebot' ? nachfassTage(w) : '', verfasser: vf, verfasserId: teamIdVon(vf), ...nachfassIndex(w), absage: w.absage?.grund || '', kundeId: w.kundeId || '', objektId: w.objektId || '', customer: w.customer, address: w.address, room: list.length ? summary(list) : 'noch kein Raum', rooms: list.length, fort: window.Fortschritt?.kurz(w) || null, created: w.created, updated: w.updated, thumb: list.find((r) => r?.thumb)?.thumb || '' });
+    idx.unshift({ id: w.id, kind: 'wohnung', nr: w.nr || '', titel: w.titel || '', status: w.status || '', baustart: w.baustart || '', versendetAm: w.versendetAm || '', nachfTage: norm(w.status) === 'angebot' ? nachfassTage(w) : '', verfasser: vf, verfasserId: teamIdVon(vf), ...nachfassIndex(w), absage: w.absage?.grund || '', subOffen, kundeId: w.kundeId || '', objektId: w.objektId || '', customer: w.customer, address: w.address, room: list.length ? summary(list) : 'noch kein Raum', rooms: list.length, fort: window.Fortschritt?.kurz(w) || null, created: w.created, updated: w.updated, thumb: list.find((r) => r?.thumb)?.thumb || '' });
     await kvSet('projectIndex', idx);
     if (norm(w.status) !== 'angebot' && w.nachfass?.log?.length) nachfassTodosZu(w.id); // zugesagt oder abgesagt: Nachfassen ist erledigt
   }
@@ -315,6 +317,10 @@ window.Projekt = (() => {
     $$('[data-nfmsg]').forEach((b) => (b.onclick = () => nachfassNachricht(w.id)));
     if ($('#wSubAbs')) subAbsageKarte($('#wSubAbs'), w).catch((e) => console.warn('Absage an Subs', e));
     if ($('#wSubAuf')) subAuftragKarte($('#wSubAuf'), w).catch((e) => console.warn('Auftrag an Subs', e));
+    if ($('#wBsInfo')) bsInfoKarte($('#wBsInfo'), w).catch((e) => console.warn('Baustart mitteilen', e));
+    if ($('#wVzHin')) vzHinweis($('#wVzHin'), w).catch((e) => console.warn('Vorauszahlung', e));
+    $$('[data-bsinfo]').forEach((b) => (b.onclick = async () => { w.baustartFrage = { t: Date.now(), alt: '', neu: w.baustart || '' }; await save(w); await neuZeichnen(w); setTimeout(() => $('#wBsInfo')?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 250); }));
+    zahlplanBind(w);
     $$('[data-nfabs]').forEach((b) => (b.onclick = () => setzen('abgesagt', { grund: vorgabe('nachfassAbsageGrund') || 'Keine Rückmeldung' })));
     $$('[data-vorlage]').forEach((b) => (b.onclick = () => alsVorlageKopieren(w)));
     $$('[data-nachf]').forEach((i) => (i.onchange = async () => {
@@ -357,7 +363,10 @@ window.Projekt = (() => {
       const y = window.scrollY; await view(); window.scrollTo(0, y);
     };
     if ($('#wBaustart')) $('#wBaustart').onchange = async (e) => {
+      const vorher = w.baustart || '';
       w.baustart = e.target.value;
+      // v148 (B4/B5): Kunde und Subs informieren? Karte bleibt, bis „Fertig“ bzw. „Nicht nötig“. Nichts geht von selbst raus.
+      if (w.baustart !== vorher && (w.baustart || (w.baustartInfo || []).length)) w.baustartFrage = { t: Date.now(), alt: vorher, neu: w.baustart || '' };
       await baustartTermin(w);
       if (w.baustart && w.baustart <= heuteIso()) return setzen('');
       if (!w.isNew) await save(w);
@@ -554,6 +563,8 @@ window.Projekt = (() => {
     const st = norm(w.status), f = window.Fortschritt?.kurz(w);
     if (st === 'geplant' && !w.baustart) return { text: 'Baustart festlegen', sub: 'Dann steht er im Kalender und das Projekt ist eingeplant.', knopf: 'Baustart eintragen', ziel: 'baustart' };
     if (st === 'geplant') {
+      const sg = subGelb(w); // v148: Sub-Bestätigung fehlt kurz vor Baustart → gelb
+      if (sg) return { text: sg === 1 ? 'Ein Subunternehmer hat noch nicht bestätigt' : `${sg} Subunternehmer haben noch nicht bestätigt`, sub: `Baustart am ${datumText(w.baustart)} · ${subOffenNamen(w)}`, knopf: 'Zu den Subunternehmern', ziel: 'subs', gelb: true };
       if (w.auftragsbestaetigung && !w.auftragsbestaetigung.gesendetAm) return { text: 'Auftragsbestätigung an den Kunden', sub: `Baustart am ${datumText(w.baustart)}`, knopf: 'Ansehen und senden', ziel: 'ab' };
       if (!w.schritte?.length) return { text: 'Leistungen für die Baustelle festlegen', sub: `Baustart am ${datumText(w.baustart)}`, knopf: 'Zur Baustelle', ziel: 'fortschritt' };
       if (!w.bestellungen?.length) return { text: 'Material bestellen', sub: `Baustart am ${datumText(w.baustart)}`, knopf: 'Bestellung eintragen', ziel: 'bestellung' };
@@ -585,7 +596,7 @@ window.Projekt = (() => {
         <button type="button" class="pj-anspr" id="wAnspr">${icon('user')}<span>Ansprechpartner: <b>${esc(anspr || 'wählen')}</b></span></button>`
         : `<button class="kline" id="wKundeWahl">${icon('user')}<span class="kl-t"><b>${esc(w.customer || 'Kunde zuordnen')}</b><small>Kunde auswählen oder neu anlegen</small></span>${icon('chevron', 'pc-chev')}</button>`}
       </div>
-      <div class="card pj-jetzt">
+      <div class="card pj-jetzt${jd.gelb ? ' gelb' : ''}">
         <small>Jetzt dran</small><b>${esc(jd.text)}</b>${jd.sub ? `<span>${esc(jd.sub)}</span>` : ''}
         ${jd.knopf ? `<button class="btn block" data-jetzt="${jd.ziel}">${esc(jd.knopf)}</button>` : ''}
       </div>
@@ -601,6 +612,7 @@ window.Projekt = (() => {
       </div>`;
     const uebersicht = `
       ${statusKarte(w)}
+      <div id="wBsInfo"></div>
       <div id="wSubAbs"></div>
       ${norm(w.status) === 'geplant' ? '<div class="card pj-todo" id="wTodo"></div>' : ''}
       <div id="wSubAuf"></div>
@@ -634,7 +646,7 @@ window.Projekt = (() => {
       <div class="sec-h" style="margin-top:18px"><h2>Abnahme</h2></div>
       <div id="wAbn"></div>
       <div id="wSterne"></div>`;
-    const geld = `<div id="wRech"></div><div id="wKosten"></div>`;
+    const geld = `<div id="wRech"></div>${zahlplanKarte(w)}<div id="wKosten"></div>`;
     return `${kopf}
       ${tab === 'uebersicht' ? uebersicht : tab === 'baustelle' ? baustelle : geld}
       ${k ? `<button id="wBilder" hidden></button>` : ''}
@@ -642,12 +654,13 @@ window.Projekt = (() => {
   }
   /** Zu einer Stelle im Projekt springen, auch in einen anderen Reiter. */
   async function jetztGehen(w, ziel) {
-    const reiter = { baustart: 'uebersicht', ab: 'uebersicht', fortschritt: 'baustelle', bestellung: 'baustelle', abnahme: 'baustelle', geld: 'geld' }[ziel];
+    const reiter = { baustart: 'uebersicht', ab: 'uebersicht', subs: 'uebersicht', fortschritt: 'baustelle', bestellung: 'baustelle', abnahme: 'baustelle', geld: 'geld' }[ziel];
     if (ziel === 'schluss') return window.Rechnung?.neu(w, () => { view(); window.scrollTo(0, 0); });
     if (reiter && pjReiterVon(w) !== reiter) { reiterSetzen(w, reiter); await view(); window.scrollTo(0, 0); }
     const springe = (sel) => { const z = $(sel); if (z) window.scrollTo({ top: z.getBoundingClientRect().top + window.scrollY - 110, behavior: 'smooth' }); };
     if (ziel === 'baustart') { const f = $('#wBaustart'); springe('.stk'); if (f) setTimeout(() => { try { f.showPicker(); } catch { f.focus(); } }, 350); }
     else if (ziel === 'ab') $('#dAb')?.click();
+    else if (ziel === 'subs') setTimeout(() => springe('#wSubAuf'), 350);
     else if (ziel === 'fortschritt') springe('#wFort');
     else if (ziel === 'bestellung') setTimeout(() => springe('#wBau'), 150);
     else if (ziel === 'abnahme') setTimeout(() => springe('#wAbn'), 300);
@@ -841,6 +854,7 @@ window.Projekt = (() => {
             ${window.VorOrt?.bueroKarte(w, list) || ''}</details>
           ${window.Kalk?.karte(w, list, { offen: true, gesperrt: gesperrt(w) }) || ''}
           ${skontoKarte(w)}
+          ${zahlplanKarte(w)}
           ${dokListe(w)}
           <div class="ape-links">
             <button class="link-add" id="wAngUpload">${icon('upload')} Fertiges PDF hochladen (z. B. aus Excel)</button>
@@ -1016,7 +1030,8 @@ window.Projekt = (() => {
         ${window.Bausteine.block({ wo: 'nach', titel: 'Schlusstexte', leer: 'Kein Text nach den Positionen', liste: texte, offen: true, passt: passtV })}
         ${planHtml(w, list, texte)}
         <p class="hint">Am Schluss stehen immer „${esc(vorgabeText('textGruss'))}“ mit ${esc(A.einePerson(K.anspr) || anspr[0] || 'Name')}, Unterschrift und Stempel und ganz zuletzt die Auftragserteilung für den Kunden. Abwählen oder Text ändern geht hier.</p>
-        ${skontoKarte(w)}`,
+        ${skontoKarte(w)}
+        ${zahlplanKarte(w)}`,
       ansicht: () => `
         <div class="sec-h"><h2>Alles beisammen?</h2></div>
         <div class="card bs-ueb">
@@ -1478,6 +1493,9 @@ window.Projekt = (() => {
       <div class="stk-pfad" aria-hidden="true">${PFAD.map((id, j) => `<i class="${st === 'abgesagt' ? (j <= 2 ? 'ab' : '') : j < i ? 'ok' : j === i ? 'jetzt' : ''}" style="--c:${farbe(id)}"></i>`).join('')}</div>
       ${st === 'geplant' ? `<label class="stk-feld">${icon('calendar')}<span>Baustart</span><input type="date" id="wBaustart" value="${esc(w.baustart || '')}"></label>
         <p class="hint" style="margin:0 0 6px">${w.baustart ? 'Am Tag des Baustarts springt der Status von selbst auf „Baustelle läuft“.' : 'Noch kein Baustart. Trag ihn ein, dann steht er im Kalender und das Projekt ist eingeplant.'}</p>
+        ${bsInfoZeile(w)}
+        ${subGelbHtml(w)}
+        ${window.Angebot?._intern.vzTeil(w) ? '<div id="wVzHin"></div>' : ''}
         ${vorzeitigHtml(w)}` : ''}
       ${st === 'angebot' && w.versendetAm && nachfassUeber(w) < 0 ? `<p class="hint" style="margin:0 0 10px">Versendet am ${esc(datumText(w.versendetAm))}</p>` : ''}
       ${st === 'angebot' && w.versendetAm ? nachfassBlock(w) + nachfassFeld(w) : ''}
@@ -2627,6 +2645,152 @@ window.Projekt = (() => {
       if (d) await dateiZeigen(await kvGet(d.key), d);
     }));
   }
+  // ---------- v148: Dringlichkeit gelb, Baustart mitteilen, Vorauszahlung (Runde 17, B3 B4 B5 B7) ----------
+  const tageBis = (iso) => (iso ? -seitTagen(iso) : null);
+  /** Subs des Projekts (Preise im gewählten Angebot oder in w.subAuftraege), die noch nicht bestätigt haben. Braucht AngebotDaten im Speicher. */
+  function subOffenIds(w) {
+    let ids = new Set();
+    try { ids = subIdsVon(gewaehlt(w)); } catch {}
+    for (const e of w?.subAuftraege || []) if (e?.partnerId) ids.add(e.partnerId);
+    return [...ids].filter((id) => window.Partner?.byId(id) && (w.subAuftraege || []).find((e) => e.partnerId === id)?.stand !== 'bestaetigt');
+  }
+  const subOffenNamen = (w) => subOffenIds(w).map((id) => Partner.titel(Partner.byId(id))).filter(Boolean).join(', ');
+  /** Gelb (B3): eingeplant, Baustart in höchstens Vorgabe subBestaetigungVorBaustart Tagen, ein Sub hat nicht bestätigt.
+   *  x = Vorgang (rechnet live) oder Eintrag aus projectIndex (Feld subOffen). → Anzahl offener Subs oder 0. */
+  function subGelb(x) {
+    if (!x || norm(x.status) !== 'geplant' || !x.baustart) return 0;
+    const v = vorgabe('subBestaetigungVorBaustart'), N = v === '' || v === null || v === undefined ? 5 : +v;
+    if (!(tageBis(x.baustart) <= N)) return 0;
+    return x.subOffen !== undefined ? +x.subOffen || 0 : subOffenIds(x).length;
+  }
+  function subGelbHtml(w) {
+    const n = subGelb(w); if (!n) return '';
+    const t = tageBis(w.baustart);
+    return `<div class="sub-gelb">${n === 1 ? 'Ein Subunternehmer hat' : n + ' Subunternehmer haben'} noch nicht bestätigt: ${esc(subOffenNamen(w))} · Baustart ${t <= 0 ? 'heute' : t === 1 ? 'morgen' : `in ${t} Tagen`}</div>`;
+  }
+  const WTAG = (iso) => (iso ? new Date(iso + 'T12:00').toLocaleDateString('de-DE', { weekday: 'long', day: '2-digit', month: '2-digit', year: 'numeric' }) : '');
+  /** Projekt-Ansprechpartner mit Telefon für {ansprechpartner}. */
+  function bsAnsprech(w) {
+    const team = window.Kalender?.team?.() || [], ftel = String(window.PL?.einstellungen?.telefon || '').trim();
+    const l = ansprechIds(w).map((id) => team.find((t) => t.id === id)).filter(Boolean).map((t) => [t.name, String(t.telefon || t.mobil || ftel).trim()].filter(Boolean).join(', '));
+    if (!l.length) { const n = ansprechName(w); if (n && n !== BEIDE) l.push([n, ftel].filter(Boolean).join(', ')); }
+    return l.join(' oder ') || firmaName();
+  }
+  /** Empfänger beim Baustart: Kunde und beteiligte Subs (Preise im gewählten Angebot oder Auftrag), je mit letzter Mitteilung. */
+  async function bsEmpfaenger(w) {
+    const out = [], k = Kunden.byId(w.kundeId);
+    if (k) out.push({ an: 'kunde', kunde: true, name: Kunden.name(k) || 'Kunde' });
+    if (window.AngebotDaten) await AngebotDaten.liste(w);
+    let ids = new Set(); try { ids = subIdsVon(gewaehlt(w)); } catch {}
+    for (const e of w.subAuftraege || []) if (e?.partnerId) ids.add(e.partnerId);
+    for (const id of ids) {
+      const p = window.Partner?.byId(id); if (!p) continue;
+      const e = (w.subAuftraege || []).find((x) => x.partnerId === id);
+      out.push({ an: id, p, name: Partner.titel(p) || 'Partner', imAuftrag: !!w.baustart && e?.termin === w.baustart, auftrag: !!e?.dokKey });
+    }
+    for (const e of out) {
+      const l = (w.baustartInfo || []).filter((x) => x.an === e.an);
+      e.letzt = l[l.length - 1] || null;
+      e.aktuell = !!e.letzt && e.letzt.datum === (w.baustart || '');
+      e.verschoben = !!e.letzt && !e.aktuell && !!e.letzt.datum;
+    }
+    return w.baustart ? out : out.filter((e) => e.verschoben); // Baustart wieder offen: nur wer einen Termin kannte
+  }
+  const bsWeg = (x) => `mitgeteilt am ${new Date(x.t).toLocaleDateString('de-DE')} per ${Besuch.WEG_NAME[x.weg] || x.weg}`;
+  /** Zeile in der Statuskarte: wem der aktuelle Baustart schon mitgeteilt ist, Knopf zum (erneuten) Informieren. */
+  function bsInfoZeile(w) {
+    if (!w.baustart) return '';
+    const team = new Map();
+    for (const x of w.baustartInfo || []) if (x.datum === w.baustart) team.set(x.an, x);
+    const namen = [...team.values()].map((x) => `${x.an === 'kunde' ? 'Kunde' : Partner.titel(Partner.byId(x.an)) || 'Partner'} ${bsWeg(x)}`);
+    return `${namen.length ? `<p class="hint bsi-zeile" style="margin:0 0 4px">Baustart ${esc(namen.join(' · '))}</p>` : ''}
+      ${w.baustartFrage ? '' : `<button type="button" class="link-add" data-bsinfo style="margin:0 0 6px">${icon('mail')} Kunde und Subunternehmer informieren</button>`}`;
+  }
+  /** Karte „Kunde und Subunternehmer informieren?“ bzw. „Baustart verschoben“ (B4/B5). Je Empfänger „Mitteilen“, Weg wählbar, nie von selbst. */
+  async function bsInfoKarte(el, w) {
+    if (!w.baustartFrage || !['geplant', ''].includes(norm(w.status))) { el.innerHTML = ''; return; }
+    const l = await bsEmpfaenger(w);
+    if (!el.isConnected) return;
+    if (!l.length) { el.innerHTML = ''; return; }
+    const versch = l.some((e) => e.verschoben);
+    const titel = !w.baustart ? 'Baustart wieder offen: Kunde und Subunternehmer informieren?' : versch ? 'Baustart verschoben: Kunde und Subunternehmer informieren?' : 'Kunde und Subunternehmer informieren?';
+    const stand = (e) => (e.aktuell ? (e.imAuftrag ? 'Termin steht auch im Auftrag' : '')
+      : e.verschoben ? `${w.baustart ? 'noch nicht über die Verschiebung informiert' : 'weiß noch nicht, dass der Termin offen ist'} (bisher: ${WTAG(e.letzt.datum)})`
+      : e.kunde ? 'noch nicht mitgeteilt' : e.imAuftrag ? 'steht schon im Auftrag, Mitteilen geht trotzdem' : e.auftrag ? 'Termin noch nicht im Auftrag: kurze Terminmitteilung' : 'noch nicht mitgeteilt');
+    el.innerHTML = `<div class="card bsi-karte sab-karte">
+      <b>${esc(titel)}</b>
+      <p class="hint">${w.baustart ? `Baustart am ${esc(WTAG(w.baustart))}.` : 'Es gibt gerade keinen Baustart.'} Je Empfänger den Weg wählen (Mail, WhatsApp oder PDF zum Drucken). DOM schickt nichts von selbst.</p>
+      <ul class="sab-l">${l.map((e) => `<li data-bsz="${esc(e.an)}"><span class="sab-t"><b>${esc(e.kunde ? 'Kunde: ' + e.name : e.name)}</b>${stand(e) ? `<small class="${e.verschoben ? 'bsi-alt' : ''}">${esc(stand(e))}</small>` : ''}</span>
+        ${e.aktuell ? `<span class="muted sab-ok">${esc(bsWeg(e.letzt))}</span>` : `<button type="button" class="btn secondary small" data-bsi="${esc(e.an)}">${icon('mail')} Mitteilen</button>`}</li>`).join('')}</ul>
+      <button type="button" class="link-add" data-bsinein>${icon(l.every((e) => e.aktuell) ? 'check' : 'x')} ${l.every((e) => e.aktuell) ? 'Fertig' : 'Nicht nötig'}</button></div>`;
+    $$('[data-bsi]', el).forEach((b) => (b.onclick = () => bsMitteilen(w, b.dataset.bsi).catch((e) => { console.error(e); toast('Ging nicht: ' + e.message, 4000); })));
+    $('[data-bsinein]', el).onclick = async () => { delete w.baustartFrage; await save(w); await neuZeichnen(w); };
+  }
+  async function bsMitteilen(w, an) {
+    const e = (await bsEmpfaenger(w)).find((x) => x.an === an); if (!e) return;
+    const k = Kunden.byId(w.kundeId), o = k && w.objektId ? Kunden.objekt(k, w.objektId) : null;
+    const art = !w.baustart ? 'Offen' : e.verschoben ? 'Verschoben' : '';
+    const alt = e.verschoben ? e.letzt.datum : '';
+    const werte = { anrede: e.kunde ? Kunden.briefAnrede(k) : String(e.p.inhaber || '').trim() ? `Hallo ${String(e.p.inhaber).trim()},` : 'Hallo,',
+      datum: WTAG(w.baustart), neu: WTAG(w.baustart), alt: WTAG(alt), projekt: w.titel || 'Projekt', objekt: Kunden.einzeilig(o?.adresse || w.address || ''), ansprechpartner: bsAnsprech(w) };
+    const ziel = e.kunde ? nachfassEmpfaenger(k) : e.p;
+    const titel = `${art === 'Offen' ? 'Baustart offen' : art === 'Verschoben' ? 'Baustart verschoben' : 'Baustart'}: ${e.name}`;
+    const datei = `Baustart_${w.titel || 'Projekt'}${e.kunde ? '' : '_' + e.name}`;
+    const weg = await Besuch.nachricht(ziel, titel, textVon(`textBaustart${art}${e.kunde ? 'Kunde' : 'Sub'}`, werte), textVon(`textBaustart${art}Betreff`, werte),
+      e.kunde ? { mail: Kunden.angebotMail(k), mailLabel: 'für Angebote', anschrift: Kunden.postanschrift(k) || undefined, datei } : { datei });
+    if (!wegGilt(weg)) return;
+    w.baustartInfo = [...(w.baustartInfo || []), { an, datum: w.baustart || '', t: Date.now(), weg }];
+    await save(w);
+    const was = art === 'Offen' ? `Baustart ${datumText(alt)} abgesagt, neuer Termin folgt` : art === 'Verschoben' ? `Baustart verschoben vom ${datumText(alt)} auf ${datumText(w.baustart)}` : `Baustart ${datumText(w.baustart)}`;
+    const text = `${was}, mitgeteilt per ${Besuch.WEG_NAME[weg] || weg}: Projekt „${w.titel || 'Projekt'}“`;
+    if (e.kunde) {
+      const kk = Kunden.byId(w.kundeId) || k;
+      kk.zeitleiste = [...(Array.isArray(kk.zeitleiste) ? kk.zeitleiste : []), { id: uid(), t: Date.now(), art: weg === 'mail' ? 'mail' : 'notiz', text, wer: meinName().split(' ')[0] }];
+      await Kunden.speichern(kk);
+    } else await saZeitleiste(e.p, text, weg === 'mail' ? 'mail' : 'notiz');
+    toast('Vermerkt');
+    await neuZeichnen(w);
+  }
+  /** B7: Hinweis „Vorauszahlung vor Baustart fällig“, solange keine Abschlagsrechnung dieses Teils (r.stufe) bezahlt ist. */
+  async function vzHinweis(el, w) {
+    const A = window.Angebot._intern, t = A.vzTeil(w);
+    if (!t || norm(w.status) !== 'geplant') { el.innerHTML = ''; return; }
+    let bez = false, da = false;
+    try {
+      await Rechnung.laden();
+      const l = Rechnung.fuerProjekt(w.id).filter((r) => r.art === 'abschlag' && Rechnung.gilt(r) && +r.stufe === t);
+      da = l.length > 0; bez = l.some((r) => r.bezahlt);
+    } catch (e) { console.warn('Vorauszahlung', e); }
+    if (!el.isConnected) return;
+    const plan = (Array.isArray(w.abschlagPlan) && w.abschlagPlan.length ? w.abschlagPlan : vorgabe('abschlagPlan')) || [];
+    el.innerHTML = bez ? '' : `<p class="stk-tipp warn vz-faellig" style="margin:0 0 6px">Vorauszahlung vor Baustart fällig<small class="muted">${esc(`${t}. Teil, ${String(plan[t - 1]).replace('.', ',')} % · ${da ? 'Rechnung geschrieben, noch nicht bezahlt' : 'noch keine Rechnung'}`)}</small></p>`;
+  }
+  /** Karte „Zahlungsplan“ (Angebot und Projekt › Geld): eigener Plan je Vorgang (w.abschlagPlan) und Kästchen „als Vorauszahlung vor Baustart“ (w.vorauszahlung = { teil }). */
+  function zahlplanKarte(w) {
+    const A = window.Angebot?._intern; if (!A?.vzTeil) return '';
+    const eigen = Array.isArray(w.abschlagPlan) && w.abschlagPlan.length, std = vorgabe('abschlagPlan') || [];
+    const plan = eigen ? w.abschlagPlan : std;
+    return `<details class="more card bs zp-karte"><summary>${icon('euro')}<span>Zahlungsplan<small>${esc(A.zahlungsplanText(w).replace(/^Zahlungsplan:\s*/, '').replace(/\.$/, ''))}</small></span>${icon('chevron', 'more-chev')}</summary>
+      <label>Anteile in %</label><input type="text" data-zp value="${eigen ? esc(plan.join(' / ')) : ''}" placeholder="${esc(std.join(' / '))} (Standard)">
+      ${vzFelder(plan, A.vzTeil(w), 'data-zpvz')}
+      <p class="hint" style="margin:6px 0 0">Leer = Standard aus den Einstellungen. Der letzte Teil kommt mit der Schlussrechnung. Eine Vorauszahlung ist eine eigene Art, nicht automatisch der erste Abschlag.</p></details>`;
+  }
+  function zahlplanBind(w) {
+    $$('[data-zp]').forEach((el) => (el.onchange = async () => {
+      const v = el.value.trim();
+      if (v) { const P = planLesen(v); if (!P) return toast('Die Anteile müssen zusammen 100 % ergeben.', 4000); w.abschlagPlan = P; } else delete w.abschlagPlan;
+      delete w.isNew; await save(w);
+      toast(v ? 'Zahlungsplan gilt für dieses Projekt' : 'Wieder der Standard aus den Einstellungen');
+      const y = window.scrollY; await view(); window.scrollTo(0, y);
+    }));
+    $$('[data-zpvz]').forEach((el) => (el.onchange = async () => {
+      w.vorauszahlung = { teil: el.checked ? +el.dataset.zpvz : 0 };
+      delete w.isNew; await save(w);
+      toast(el.checked ? `${el.dataset.zpvz}. Teil als Vorauszahlung vor Baustart` : 'Keine Vorauszahlung');
+      const y = window.scrollY; await view(); window.scrollTo(0, y);
+      $$('.zp-karte').forEach((d) => (d.open = true));
+    }));
+  }
   /** „Erklärung zur Bestätigung schicken“: Text an den Kunden (WEG/Firma: Ansprechpartner), Versandweg wählbar, nie von selbst. */
   async function vorzeitigBitte(w) {
     const k = Kunden.byId(w.kundeId); if (!k) return toast('Bitte zuerst einen Kunden zuordnen.');
@@ -2791,7 +2955,7 @@ window.Projekt = (() => {
     return w2;
   }
 
-  return { absageFragen, absageWiedervorlage, absageAbw, alsVorlageKopieren, plusMonate, automatik, anlegen, angebotVersendet, gesperrt, gesperrtFrage, angebotKopieren, dateiZeigen, nachfassen, nachfassTage, nachfassFaellig, nachfassUeber, nachfassStaffel, nachfassFuerMich, nachfassStand, nachfassVorschlag, nachgefasst, nachfassNachricht, nachfassEmpfaenger, subAbsageListe, verfasserVon, teamIdVon, zusageUnterschrieben, zusageTodos, nachweisText, ansprechName, ansprechIds, projektWer, einplanTodosWer, EINPLAN_ARTEN, subAuftragListe, subLeistungen, subAuftragPdf, frei48b, seitTagen, STATUS, ANGEBOT, ALLE, PHASEN, phase, farbe, pill, norm, zugesagt, statusName, statusKurz, raumAngebot, angebotMerken, forget, neu, neuDirekt, neuFuer, kundeUebernehmen, oeffnen, view, mappeView, moodboardView, migrate, raum, raeume, raumGespeichert, raumEntfernt, save, wahl, PKG_IDS, _intern: { gesamtDoc, kundeUnterschreibt, wegFragen, wegText, versandStand, versandPruefen, sendenMitMappe, alsVersendet, angebotSpeichern, titel, addRoom, raumAusScan, raumAnlegen, reiterSetzen, auftragsbestaetigung } };
+  return { absageFragen, absageWiedervorlage, absageAbw, alsVorlageKopieren, plusMonate, automatik, anlegen, angebotVersendet, gesperrt, gesperrtFrage, angebotKopieren, dateiZeigen, nachfassen, nachfassTage, nachfassFaellig, nachfassUeber, nachfassStaffel, nachfassFuerMich, nachfassStand, nachfassVorschlag, nachgefasst, nachfassNachricht, nachfassEmpfaenger, subAbsageListe, verfasserVon, teamIdVon, zusageUnterschrieben, zusageTodos, nachweisText, ansprechName, ansprechIds, projektWer, einplanTodosWer, EINPLAN_ARTEN, subAuftragListe, subLeistungen, subAuftragPdf, frei48b, subGelb, subOffenIds, bsEmpfaenger, vzHinweis, seitTagen, STATUS, ANGEBOT, ALLE, PHASEN, phase, farbe, pill, norm, zugesagt, statusName, statusKurz, raumAngebot, angebotMerken, forget, neu, neuDirekt, neuFuer, kundeUebernehmen, oeffnen, view, mappeView, moodboardView, migrate, raum, raeume, raumGespeichert, raumEntfernt, save, wahl, PKG_IDS, _intern: { gesamtDoc, kundeUnterschreibt, wegFragen, wegText, versandStand, versandPruefen, sendenMitMappe, alsVersendet, angebotSpeichern, titel, addRoom, raumAusScan, raumAnlegen, reiterSetzen, auftragsbestaetigung } };
 })();
 // Ältere Aufrufe (PR „Wohnungen“) laufen weiter
 window.Wohnung = { neu: () => Projekt.neu(), oeffnen: (id) => Projekt.oeffnen(id), view: () => Projekt.view(), raumGespeichert: (p) => Projekt.raumGespeichert(p), raumEntfernt: (p) => Projekt.raumEntfernt(p) };

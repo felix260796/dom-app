@@ -9,7 +9,8 @@ const VORGABEN = {
   rechnungen: [
     ['Zahlung', [
       { k: 'zahlungsziel', l: 'Zahlungsziel in Tagen', t: 'zahl', d: 14 },
-      { k: 'abschlagPlan', l: 'Abschläge in % (der letzte Teil kommt mit der Schlussrechnung)', t: 'plan', d: [30, 40, 30], h: 'Je Projekt kannst du im Projekt einen eigenen Plan eintragen.' },
+      { k: 'abschlagPlan', l: 'Abschläge in % (der letzte Teil kommt mit der Schlussrechnung)', t: 'plan', d: [30, 40, 30], h: 'Je Angebot bzw. Projekt änderbar (Karte „Zahlungsplan“ beim Angebot und im Projekt unter Geld).' },
+      { k: 'abschlagVorauszahlung', l: 'Vorauszahlung vor Baustart (eigene Art, ankreuzen)', t: 'vz', d: 0, h: 'Nicht automatisch der erste Abschlag: nur der angekreuzte Teil gilt als Vorauszahlung. Dann steht im Zahlungsplan „als Vorauszahlung vor Baustart“ und im eingeplanten Projekt der Hinweis „Vorauszahlung vor Baustart fällig“, bis die Abschlagsrechnung dieses Teils bezahlt ist. Je Angebot bzw. Projekt änderbar.' },
       { k: 'rechnungQr', l: 'QR-Code zum Bezahlen auf Rechnung und Mahnung (GiroCode, IBAN in den Firmendaten)', t: 'janein', d: 'ja' },
       { k: 'abschlagFortschritt', l: 'Beim Abschlag den Baufortschritt anzeigen (z. B. „60 % fertig“)', t: 'janein', d: 'ja' },
       { k: 'mahnFrist', l: 'Neue Frist bei Erinnerung und Mahnung in Tagen', t: 'zahl', d: 7 },
@@ -94,6 +95,16 @@ const VORGABEN = {
       { k: 'textSubAuftrag', l: 'Auftrag an Subunternehmer: Schlusstext im PDF', t: 'text', d: 'Bitte bestätigen Sie den Auftrag und den Termin kurz per Mail oder WhatsApp. Abgerechnet wird nach tatsächlich erbrachter Leistung. Bei Fragen erreichen Sie uns unter den oben genannten Nummern.', h: 'Platzhalter wie oben. Danach folgen Gruß und Unterschrift.' },
       { k: 'textSubAuftragMail', l: 'Auftrag an Subunternehmer: Nachricht zum PDF (Mail, WhatsApp)', t: 'text', d: '{anrede}\nanbei unser Auftrag zum Projekt {projekt} ({objekt}). Termin: {termin}. Bitte kurz bestätigen.\nViele Grüße\n{name}\n{firma}', h: '{anrede}, {projekt}, {objekt}, {termin} (Baustart oder „nach Absprache“), {name}, {firma}. Geschickt wird nur per Tipp.' },
       { k: 'subBestaetigungTage', l: 'Bestätigung des Subunternehmers eintragen: To-do fällig nach Tagen', t: 'zahl', d: 3 },
+      { k: 'subBestaetigungVorBaustart', l: 'Gelber Hinweis, wenn ein Subunternehmer so viele Tage vor dem Baustart noch nicht bestätigt hat', t: 'zahl', d: 5, h: 'Steht dann in „Jetzt dran“, in der Statuskarte, in der Projektliste, im Dashboard und auf „Heute“.' },
+      { k: 'textBaustartBetreff', l: 'Baustart mitteilen: Betreff', t: 'zeile', d: 'Baustart {projekt}: {datum}', h: '{projekt}, {objekt}, {datum} = Wochentag und Datum' },
+      { k: 'textBaustartKunde', l: 'Baustart mitteilen: Nachricht an den Kunden', t: 'text', d: '{anrede}\nwir freuen uns auf Ihr Projekt {projekt}. Wir beginnen am {datum}.\nIhr Ansprechpartner während der Bauzeit: {ansprechpartner}.\nViele Grüße\n{name}\n{firma}', h: '{anrede}, {datum} (Wochentag und Datum), {projekt}, {objekt}, {ansprechpartner} (Projekt-Ansprechpartner mit Telefon), {name}, {firma}. Geschickt wird nur per Tipp.' },
+      { k: 'textBaustartSub', l: 'Baustart mitteilen: Nachricht an den Subunternehmer (kurze Terminmitteilung)', t: 'text', d: '{anrede}\nkurze Info zum Projekt {projekt} ({objekt}): Baustart ist am {datum}.\nAnsprechpartner bei uns: {ansprechpartner}.\nViele Grüße\n{name}\n{firma}', h: 'Platzhalter wie oben. Ersetzt kein Auftrags-PDF.' },
+      { k: 'textBaustartVerschobenBetreff', l: 'Baustart verschoben: Betreff', t: 'zeile', d: 'Neuer Baustart {projekt}: {neu}', h: '{projekt}, {objekt}, {alt}, {neu}' },
+      { k: 'textBaustartVerschobenKunde', l: 'Baustart verschoben: Nachricht an den Kunden', t: 'text', d: '{anrede}\nbeim Projekt {projekt} verschiebt sich der Baustart: statt am {alt} beginnen wir am {neu}.\nBei Fragen erreichen Sie {ansprechpartner}.\nViele Grüße\n{name}\n{firma}', h: '{anrede}, {alt} = bisheriger Termin, {neu} = neuer Termin (Wochentag und Datum), {projekt}, {objekt}, {ansprechpartner}, {name}, {firma}' },
+      { k: 'textBaustartVerschobenSub', l: 'Baustart verschoben: Nachricht an den Subunternehmer', t: 'text', d: '{anrede}\nbeim Projekt {projekt} ({objekt}) verschiebt sich der Baustart vom {alt} auf den {neu}.\nViele Grüße\n{name}\n{firma}', h: 'Platzhalter wie oben.' },
+      { k: 'textBaustartOffenBetreff', l: 'Baustart wieder offen: Betreff', t: 'zeile', d: 'Baustart {projekt}: neuer Termin folgt', h: '{projekt}, {objekt}, {alt}' },
+      { k: 'textBaustartOffenKunde', l: 'Baustart wieder offen: Nachricht an den Kunden', t: 'text', d: '{anrede}\nbeim Projekt {projekt} können wir den Baustart am {alt} leider nicht halten. Wir melden uns mit einem neuen Termin.\nViele Grüße\n{name}\n{firma}', h: '{anrede}, {alt} = bisheriger Termin, {projekt}, {objekt}, {ansprechpartner}, {name}, {firma}' },
+      { k: 'textBaustartOffenSub', l: 'Baustart wieder offen: Nachricht an den Subunternehmer', t: 'text', d: '{anrede}\nbeim Projekt {projekt} ({objekt}) entfällt der Baustart am {alt}. Den neuen Termin geben wir durch.\nViele Grüße\n{name}\n{firma}', h: 'Platzhalter wie oben.' },
       { k: 'nachweis48b', l: 'Name des Nachweises Freistellungsbescheinigung (§ 48b) in den Pflichtnachweisen', t: 'zeile', d: 'Freistellungsbescheinigung § 48b', h: 'Fehlt er beim Sub oder ist er abgelaufen, zeigt DOM beim Auftrag einen deutlichen Hinweis (blockiert nichts).' },
       { k: 'textSubAbsageBetreff', l: 'Absage an Subunternehmer: Betreff', t: 'zeile', d: 'Ihr Angebot zum Projekt {projekt}', h: '{projekt}, {objekt}' },
       { k: 'textSubAbsageZusage', l: 'Absage an Subunternehmer, wenn der Kunde zugesagt hat (anderer oder kein Sub gewählt)', t: 'text', d: '{anrede}\nvielen Dank für Ihr Angebot zum Projekt {projekt} ({objekt}). Diesmal kam es leider nicht zum Zug, wir melden uns gerne beim nächsten passenden Projekt.\nViele Grüße\n{name}\n{firma}', h: '{anrede}, {projekt} = Projektname, {objekt} = Anschrift, {name} = wer das Gerät hat, {firma}. Wird nach der Zusage angeboten, geschickt wird nur per Tipp.' },
@@ -117,6 +128,7 @@ const VORGABEN = {
       { k: 'ansprechAngebot', l: 'Verfasser im Angebot (Standard, eine Person)', t: 'zeile', d: 'Felix Brenzinger', h: 'Steht oben im Angebot als Ansprechpartner und unterschreibt beim Gruß. In jedem Angebot änderbar.' },
       { k: 'angebotGueltigTage', l: 'Angebot gültig (Tage ab Datum)', t: 'zahl', d: 28, h: 'Steht im Angebot oben als „Gültig bis“ und im Baustein „Preisbindung“ ({gueltig}). Standard 4 Wochen.' },
       { k: 'abschlagNamen', l: 'Zahlungsplan im Angebot: Bezeichnung des ersten, der mittleren und des letzten Abschlags', t: 'liste', d: ['bei Auftrag', 'nach Baufortschritt', 'nach Abnahme'], h: 'Daraus und aus dem Abschlagsplan des Projekts entsteht der Satz {zahlungsplan}, z. B. „30 % bei Auftrag, 40 % nach Baufortschritt, 30 % nach Abnahme“.' },
+      { k: 'vorauszahlungName', l: 'Zahlungsplan im Angebot: Bezeichnung einer Vorauszahlung', t: 'zeile', d: 'als Vorauszahlung vor Baustart', h: 'Steht im Satz {zahlungsplan} statt der Bezeichnung des Abschlags, z. B. „30 % als Vorauszahlung vor Baustart, 40 % nach Baufortschritt, 30 % nach Abnahme“.' },
       { k: 'textAuftragWiderruf', l: 'Sätze zum Widerruf in der Auftragserteilung (nur Privatkunden und WEG)', t: 'text', d: '', h: 'Rechtstext, bitte vom Anwalt oder Verband prüfen lassen und dann hier eintragen. Leer = nichts.' },
       { k: 'textWiderrufAnlage', l: 'Anlage zum Angebot: Widerrufsbelehrung und Muster-Widerrufsformular (nur Privatkunden und WEG)', t: 'text', d: '', h: 'Rechtstext, bitte prüfen lassen und dann hier eintragen. Steht als eigene Seite hinter dem Angebot. Platzhalter: {firma}, {anschrift}, {email}, {telefon}. Leer = keine Anlage.' },
       { k: 'kiSatzAuto', l: 'Angebot: persönlichen Satz für die Einleitung von selbst vorschlagen (KI, einmal je Angebot)', t: 'janein', d: 'ja', h: 'Steht als „KI-Vorschlag“ unter dem Anfangstext, erst „Übernehmen“ schreibt ihn ins Angebot.' },
@@ -416,6 +428,13 @@ function vorgabe(k) {
 function vorgabeText(k, vars = {}) {
   return String(vorgabe(k) ?? '').replace(/\{(\w+)\}/g, (m, n) => (vars[n] !== undefined && vars[n] !== null ? String(vars[n]) : m));
 }
+/** v148: Kästchen „als Vorauszahlung vor Baustart“ je Teil des Abschlagsplans (der letzte Teil kommt mit der Schlussrechnung).
+ *  teil = 1, 2 … oder 0 (keine). attr = Datenattribut für die Bindung. */
+function vzFelder(plan, teil, attr) {
+  const P = (plan || []).slice(0, -1);
+  if (!P.length) return '<p class="hint" style="margin:4px 0 0">Der Plan hat nur einen Teil, eine Vorauszahlung geht erst mit mindestens zwei Teilen.</p>';
+  return `<div class="vz-teile">${P.map((p, i) => `<label class="vz-teil"><input type="checkbox" ${attr}="${i + 1}" ${teil === i + 1 ? 'checked' : ''}> ${i + 1}. Teil (${String(p).replace('.', ',')} %) als Vorauszahlung vor Baustart</label>`).join('')}</div>`;
+}
 /** „30 / 40 / 30“ → [30, 40, 30]; null, wenn es nicht 100 % ergibt. */
 function planLesen(s) {
   const p = String(s).split(/[^\d,.]+/).map((x) => parseFloat(x.replace(',', '.'))).filter((x) => x > 0);
@@ -444,7 +463,8 @@ window.Vorgaben = (() => {
       // Listen: „(eine Zeile je …)“ braucht es nicht mehr, jeder Eintrag hat ein eigenes Feld
       const label = f.t === 'liste' ? f.l.replace(/\s*\(eine Zeile je [^):]*(?::\s*([^)]*))?\)/, (m, fmt) => (fmt ? ` (${fmt})` : '')) : f.l;
       const kopf = `<div class="vg-l"><label>${esc(label)}</label>${geaendert ? `<button type="button" class="vg-std" data-std="${f.k}">Standard</button>` : ''}</div>`;
-      const inp = f.t === 'liste' ? listenFeld(f.k, vorgabe(f.k))
+      const inp = f.t === 'vz' ? vzFelder(vorgabe('abschlagPlan') || [], +vorgabe(f.k) || 0, 'data-vgvz')
+        : f.t === 'liste' ? listenFeld(f.k, vorgabe(f.k))
         : f.t === 'janein' ? `<select data-vg="${f.k}"><option value="ja" ${wert(f) === 'ja' ? 'selected' : ''}>Ja</option><option value="nein" ${wert(f) === 'nein' ? 'selected' : ''}>Nein</option></select>`
         : f.t === 'wahl' ? `<select data-vg="${f.k}">${f.o.map(([v, n]) => `<option value="${esc(v)}" ${wert(f) === v ? 'selected' : ''}>${esc(n)}</option>`).join('')}</select>`
         : f.t === 'text' ? `<textarea data-vg="${f.k}" rows="${f.rows || 4}">${esc(wert(f))}</textarea>`
@@ -469,6 +489,11 @@ window.Vorgaben = (() => {
       S.vorgaben[f.k] = v;
       await saveSettings(); toast('Gespeichert');
       window.Push?.abgleich();
+      const y = window.scrollY; seite(id); window.scrollTo(0, y);
+    }));
+    $$('[data-vgvz]').forEach((el) => (el.onchange = async () => {
+      S.vorgaben.abschlagVorauszahlung = el.checked ? +el.dataset.vgvz : 0;
+      await saveSettings(); toast(el.checked ? 'Gespeichert: Vorauszahlung vor Baustart' : 'Gespeichert: keine Vorauszahlung');
       const y = window.scrollY; seite(id); window.scrollTo(0, y);
     }));
     $$('[data-std]').forEach((b) => (b.onclick = async () => {
