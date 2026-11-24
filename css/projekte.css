@@ -387,3 +387,7 @@ details.bs .tot span:last-child { color: var(--muted); }
 .sab-l .btn, .sab-ok { flex: none; }
 .nf-knoepfe { margin-top: 6px; }
 .nf-msg { margin-top: 10px; }
+/* ---------- Zusage-Nachweis, vorzeitiger Beginn (v144) ---------- */
+.vz-fehlt { margin: 0 0 8px; }
+.vz-fehlt .stk-2 .btn { white-space: normal; line-height: 1.25; }
+.nw-fehlt { margin: 0 0 10px; }

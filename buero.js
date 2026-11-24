@@ -767,6 +767,10 @@ window.Buero = (() => {
       if (w.absage?.t) dazu(w.absage.t, 'x', `Abgesagt: ${n}`, w.absage.grund ? 'Grund: ' + w.absage.grund : '', 'p:' + w.id);
       if (w.auftragsbestaetigung?.t) dazu(w.auftragsbestaetigung.t, 'check', `Auftragsbestätigung: ${n}`, w.auftragsbestaetigung.gesendetAm ? 'gesendet ' + tag(w.auftragsbestaetigung.gesendetAm) : '', 'p:' + w.id);
       if (w.baustart) dazu(w.baustart, 'home', `Baustart: ${n}`, '', 'p:' + w.id);
+      // v144: Nachweis der Zusage, vorzeitiger Beginn
+      const nw = w.zusageNachweis;
+      if (nw?.t && nw.art !== 'fehlt') dazu(nw.t, nw.art === 'telefon' ? 'phone' : 'check', `Zusage ${nw.art === 'telefon' ? 'telefonisch' : 'mit Nachweis'}: ${n}`, nw.art === 'telefon' ? nw.notiz || '' : nw.art === 'foto' ? 'Foto abgelegt' : 'Mail oder WhatsApp abgelegt', 'p:' + w.id);
+      if (w.vorzeitig?.t) dazu(w.vorzeitig.t, 'check', `Vorzeitiger Beginn bestätigt: ${n}`, w.vorzeitig.nachweis && !String(w.vorzeitig.nachweis).startsWith('wdok:') ? String(w.vorzeitig.nachweis) : w.vorzeitig.nachweis ? 'Bestätigung abgelegt' : 'im Angebot angekreuzt', 'p:' + w.id);
     }
     const ids = new Set(idx.map((x) => x.id));
     for (const r of (window.Rechnung?.liste() || []).filter((r) => ids.has(r.projektId))) {

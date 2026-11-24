@@ -342,6 +342,9 @@ window.Projekt = (() => {
       if (!w.isNew) await save(w);
       toast('Unterschriebenes Angebot abgelegt'); const y = window.scrollY; await view(); window.scrollTo(0, y);
     };
+    $$('[data-nwdazu]').forEach((b) => (b.onclick = () => nachweisTippen(w)));
+    $$('[data-vzbitte]').forEach((b) => (b.onclick = () => vorzeitigBitte(w)));
+    $$('[data-vzbest]').forEach((b) => (b.onclick = () => vorzeitigBestaetigung(w)));
     if ($('#wVorzeitig')) $('#wVorzeitig').onchange = async (e) => {
       if (e.target.checked) w.vorzeitig = { t: Date.now(), wer: window.Kalender?.wer?.() || '' }; else delete w.vorzeitig;
       if (!w.isNew) await save(w);
@@ -358,6 +361,7 @@ window.Projekt = (() => {
     if ($('#stRech')) $('#stRech').onclick = () => window.Rechnung?.neu(w, () => { view(); window.scrollTo(0, 0); });
     if ($('#stAlle')) $('#stAlle').onclick = async () => {
       const v = await sheet('Status ändern', ALLE.map(([id, n, c]) => ({ label: n, icon: '<i class="si-dot"></i>', color: c, value: id || '__laeuft' })));
+      if (v === 'geplant' && phase(w) === 'angebot') return zusage(w, list, setzen); // v144: Nachweis und To-dos wie beim Knopf
       if (v !== null) setzen(v === '__laeuft' ? '' : v);
     };
 
@@ -648,6 +652,7 @@ window.Projekt = (() => {
       ['baustart', !!w.baustart, w.baustart ? `Baustart am ${datumText(w.baustart)}` : 'Baustart festlegen'],
       ...(w.auftragsbestaetigung ? [['ab', !!w.auftragsbestaetigung.gesendetAm, 'Auftragsbestätigung an den Kunden']] : []),
       ['auftrag', !!w.auftrag, 'Unterschriebenes Angebot ablegen'],
+      ...(w.zusageNachweis ? [['nachweis', zusageNachweisOk(w), zusageNachweisOk(w) ? nachweisText(w) : 'Nachweis der Zusage anhängen']] : []),
       ['bestellung', !!w.bestellungen?.length, w.bestellungen?.length ? `${w.bestellungen.length} ${w.bestellungen.length === 1 ? 'Bestellung' : 'Bestellungen'} eingetragen` : 'Material bestellen'],
       ['fortschritt', !!w.schritte?.length, w.schritte?.length ? 'Leistungen stehen' : 'Leistungen für die Baustelle festlegen'],
     ];
@@ -655,6 +660,7 @@ window.Projekt = (() => {
     $$('[data-todo]', el).forEach((b) => (b.onclick = () => {
       const id = b.dataset.todo;
       if (id === 'auftrag') $('#wAuftrag')?.click();
+      else if (id === 'nachweis') nachweisTippen(w);
       else jetztGehen(w, id);
     }));
   }
@@ -1320,6 +1326,7 @@ window.Projekt = (() => {
     if (v === 'ab') { try { datei = await auftragsbestaetigung(w, list); } catch (e) { console.error(e); $('#toast').hidden = true; toast('Die Auftragsbestätigung ging nicht: ' + e.message, 6000); } }
     await pdfInDokumente(w);
     await setzen('geplant');
+    if (zugesagt(w.status)) { try { await nachZusage(w, list); } catch (e) { console.warn('Nach der Zusage', e); } }
     if (datei) { toast('Auftragsbestätigung liegt im Projekt unter „Unterlagen“. Dort senden oder als versendet markieren.', 5000); pdfAnsicht(datei, datei.name); }
   }
   /** Auftragsbestätigung bauen und beim Auftrag ablegen: Eintrag in w.dokumente (art 'auftragsbestaetigung') und w.auftragsbestaetigung. */
@@ -1413,12 +1420,24 @@ window.Projekt = (() => {
     const d = new Date(z); d.setDate(d.getDate() + (+vorgabe('widerrufTage') || 14));
     return d.toISOString().slice(0, 10);
   }
+  /** Hinweis „Vorzeitiger Beginn fehlt“ (v144): nur Privat/WEG, nur solange kein Baustart steht oder er in der Widerrufsfrist liegt
+   *  (und die Frist noch läuft), und solange w.vorzeitig fehlt. Knöpfe: Erklärung zur Bestätigung schicken, Bestätigung anhängen. */
+  function vorzeitigFehlt(w) {
+    if (w.vorzeitig) return false;
+    const bis = widerrufBis(w);
+    if (bis && heuteIso() > bis) return false; // Frist ist vorbei, ein vorzeitiger Beginn ist kein Thema mehr
+    return !w.baustart || !bis || w.baustart <= bis;
+  }
   function vorzeitigHtml(w) {
     const k = window.Kunden?.byId?.(w.kundeId);
     if (!window.Angebot._intern.privatArt(k)) return '';
     const bis = widerrufBis(w), frueh = w.baustart && bis && w.baustart <= bis && !w.vorzeitig;
-    return `<label class="stk-vz"><input type="checkbox" id="wVorzeitig" ${w.vorzeitig ? 'checked' : ''}><span>Kunde hat den vorzeitigen Beginn angekreuzt${w.vorzeitig?.t ? ` <small>(${esc(new Date(w.vorzeitig.t).toLocaleDateString('de-DE'))})</small>` : ''}</span></label>
-      ${frueh ? `<p class="hint warn" style="margin:0 0 6px">Der Baustart liegt in der Widerrufsfrist (bis ${esc(datumText(bis))}). Ohne Kreuz beim vorzeitigen Beginn erst danach anfangen.</p>` : ''}`;
+    const vz = w.vorzeitig, na = w.vorzeitigAnfrage;
+    const nwT = vz?.nachweis ? (String(vz.nachweis).startsWith('wdok:') ? 'Bestätigung abgelegt' : String(vz.nachweis)) : '';
+    return `<label class="stk-vz"><input type="checkbox" id="wVorzeitig" ${vz ? 'checked' : ''}><span>Kunde hat den vorzeitigen Beginn angekreuzt${vz?.t ? ` <small>(${esc(new Date(vz.t).toLocaleDateString('de-DE'))}${nwT ? ' · ' + esc(nwT) : ''})</small>` : ''}</span></label>
+      ${vorzeitigFehlt(w) ? `<div class="vz-fehlt"><p class="stk-tipp warn" style="margin:0 0 4px">Vorzeitiger Beginn fehlt</p>
+        <p class="hint" style="margin:0 0 6px">${bis ? `Widerrufsfrist bis ${esc(datumText(bis))}. ` : ''}${frueh ? 'Der Baustart liegt in der Frist. ' : ''}Ohne Bestätigung des Kunden erst nach der Frist anfangen.${na?.t ? ` Erklärung geschickt am ${esc(new Date(na.t).toLocaleDateString('de-DE'))}${na.weg ? ' per ' + esc(Besuch.WEG_NAME[na.weg] || na.weg) : ''}.` : ''}</p>
+        <div class="stk-2"><button type="button" class="btn secondary small" data-vzbitte>${icon('mail')} Erklärung zur Bestätigung schicken</button><button type="button" class="btn secondary small" data-vzbest>${icon('upload')} Bestätigung anhängen</button></div></div>` : ''}`;
   }
   async function baustartTermin(w) {
     const id = 'bau-' + w.id;
@@ -1452,6 +1471,7 @@ window.Projekt = (() => {
       ${st === 'angebot' && w.versendetAm && nachfassUeber(w) < 0 ? `<p class="hint" style="margin:0 0 10px">Versendet am ${esc(datumText(w.versendetAm))}</p>` : ''}
       ${st === 'angebot' && w.versendetAm ? nachfassBlock(w) + nachfassFeld(w) : ''}
       ${st === 'abgesagt' && w.absage?.grund ? `<p class="hint" style="margin:0 0 10px">Grund: ${esc(w.absage.grund)} · ${esc(new Date(w.absage.t).toLocaleDateString('de-DE'))}</p>` : ''}
+      ${zugesagt(st) && w.zusageNachweis?.art === 'fehlt' && !zusageUnterschrieben(w) ? `<div class="stk-tipp warn nf-vor nw-fehlt"><span>Nachweis der Zusage fehlt</span><button type="button" class="btn secondary small" data-nwdazu>Nachweis anhängen</button></div>` : ''}
       ${allesErledigt ? `<p class="stk-tipp">${icon('check')} Alle Schritte sind abgehakt. Jetzt abschließen?</p>` : ''}
       ${knoepfe}</div>`;
   }
@@ -1633,6 +1653,7 @@ window.Projekt = (() => {
       await navigator.share({ files: [f], title: d.name, ohneDialog: true });
       const ab = (w.auftragsbestaetigung ??= { t: d.t, nr: '', dokId: d.key, gesendetAm: '' });
       if (!ab.gesendetAm) { ab.gesendetAm = heuteIso(); await save(w); }
+      await todoZu(`ab:${w.id}`);
       toast('Auftragsbestätigung gesendet');
       neuZeichnen(w);
     } catch (e) { if (e.name !== 'AbortError') toast('Senden nicht möglich: ' + e.message, 4000); }
@@ -1661,6 +1682,7 @@ window.Projekt = (() => {
       if (!datum) return;
       w.auftragsbestaetigung = { ...(w.auftragsbestaetigung || { t: d.t, nr: '', dokId: d.key }), gesendetAm: datum };
       await save(w);
+      await todoZu(`ab:${w.id}`);
       toast(`Als versendet markiert (${datumText(datum)})`);
       neuZeichnen(w);
     }
@@ -2179,7 +2201,177 @@ window.Projekt = (() => {
   }
 
   const forget = (id) => rooms.delete(id);
-  return { automatik, anlegen, angebotVersendet, gesperrt, gesperrtFrage, angebotKopieren, dateiZeigen, nachfassen, nachfassTage, nachfassFaellig, nachfassUeber, nachfassStaffel, nachfassFuerMich, nachfassStand, nachfassVorschlag, nachgefasst, nachfassNachricht, nachfassEmpfaenger, subAbsageListe, verfasserVon, teamIdVon, seitTagen, STATUS, ANGEBOT, ALLE, PHASEN, phase, farbe, pill, norm, zugesagt, statusName, statusKurz, raumAngebot, angebotMerken, forget, neu, neuDirekt, neuFuer, kundeUebernehmen, oeffnen, view, mappeView, moodboardView, migrate, raum, raeume, raumGespeichert, raumEntfernt, save, wahl, PKG_IDS, _intern: { kundeUnterschreibt, wegFragen, wegText, versandStand, versandPruefen, sendenMitMappe, alsVersendet, angebotSpeichern, titel, addRoom, raumAusScan, raumAnlegen, reiterSetzen, auftragsbestaetigung } };
+  // ---------- Version 144: Zusage mit Nachweis, vorzeitiger Beginn, To-dos nach der Zusage ----------
+  /** Gewähltes Angebot nach der Zusage (zugesagt, sonst das aktive). */
+  const gewaehlt = (w) => AngebotDaten.listeSync(w).find((a) => a.status === 'zugesagt') || AngebotDaten.aktivSync(w);
+  /** Hat der Kunde unterschrieben? Unterschriebenes Angebot abgelegt (w.auftrag) oder Unterschrift am iPad an der Fassung. */
+  function zusageUnterschrieben(w) {
+    if (w.auftrag) return true;
+    try { const a = gewaehlt(w); return !!(a?.fassungen || []).some((f) => f?.unterschrieben); } catch { return false; }
+  }
+  const zusageNachweisOk = (w) => zusageUnterschrieben(w) || (!!w.zusageNachweis && w.zusageNachweis.art !== 'fehlt');
+  const NW_ART = { datei: 'Mail oder WhatsApp', foto: 'Foto', telefon: 'telefonisch' };
+  function nachweisText(w) {
+    const n = w.zusageNachweis;
+    if (!n || n.art === 'fehlt') return zusageUnterschrieben(w) ? 'Kunde hat unterschrieben' : 'Nachweis der Zusage fehlt';
+    return n.art === 'telefon' ? n.notiz || 'Telefonisch zugesagt' : `Nachweis der Zusage: ${NW_ART[n.art] || n.art}`;
+  }
+  const isoHeute = () => heuteIso();
+  /** Notiz mit Datum (Tastatur-Mikrofon geht wie bei „Kurz notieren“). → { datum, notiz } oder null */
+  function notizFrage(titel, vorlageKey) {
+    return new Promise((res) => {
+      const el = document.createElement('div'); el.className = 'sheet-bg fest';
+      el.innerHTML = `<div class="sheet nf-sheet" role="dialog" aria-label="${esc(titel)}"><div class="sheet-h"><b>${esc(titel)}</b><button class="icon-btn" data-x aria-label="Schließen">${icon('x')}</button></div>
+        <div class="nf-body">
+          <label class="stk-feld nf-feld"><span>Am</span><input type="date" id="nwDatum" value="${isoHeute()}"></label>
+          <label for="nwNotiz">Kurze Notiz (freiwillig)</label>
+          <textarea id="nwNotiz" rows="3" data-frei placeholder="z. B. Herr Müller hat am Telefon zugesagt, Start nach Absprache. Tippen oder das Mikrofon der Tastatur nehmen."></textarea>
+          <p class="hint" id="nwVor"></p>
+          <button type="button" class="btn block" id="nwOk">Speichern</button>
+        </div></div>`;
+      const vor = () => textVon(vorlageKey, { datum: $('#nwDatum', el).value ? datumText($('#nwDatum', el).value) : '' });
+      const zeig = () => { $('#nwVor', el).textContent = 'Wird vermerkt als: ' + vor() + ($('#nwNotiz', el).value.trim() ? '. ' + $('#nwNotiz', el).value.trim() : ''); };
+      const close = (v) => { el.classList.remove('on'); setTimeout(() => el.remove(), 180); res(v); };
+      el.onclick = (e) => { if (e.target === el || e.target.closest('[data-x]')) close(null); };
+      $('#nwDatum', el).onchange = zeig; $('#nwNotiz', el).oninput = zeig; zeig();
+      $('#nwOk', el).onclick = () => { const n = $('#nwNotiz', el).value.trim(); close({ datum: $('#nwDatum', el).value || isoHeute(), notiz: vor() + (n ? '. ' + n : '') }); };
+      document.body.appendChild(el);
+      requestAnimationFrame(() => el.classList.add('on'));
+    });
+  }
+  /** Datei oder Foto als internes Dokument beim Vorgang ablegen (nie an den Kunden). → dokKey oder '' */
+  async function nachweisAblegen(w, quelle, { name, art }) {
+    let data = '', typ = '';
+    if (quelle === 'scan') { data = await Geraet.scannen(); typ = 'image/jpeg'; if (!data) return ''; data = await resize(data, 2200, 'image/jpeg', 0.85); }
+    else {
+      const [f] = await pickFiles(quelle === 'foto' ? { camera: true, accept: 'image/*' } : { accept: 'application/pdf,image/*' });
+      if (!f) return '';
+      if (f.size > 8e6) { toast('Die Datei ist zu groß (höchstens 8 MB).', 4000); return ''; }
+      data = await fileToDataUrl(f); typ = f.type || 'application/pdf';
+      if (typ.startsWith('image/')) { data = await resize(data, 2200, 'image/jpeg', 0.85); typ = 'image/jpeg'; }
+    }
+    const datei = `${name}_${isoHeute()}_${String(Date.now()).slice(-4)}.${typ === 'application/pdf' ? 'pdf' : 'jpg'}`;
+    if (w.isNew) { delete w.isNew; }
+    const dk = 'wdok:' + w.id + ':' + datei.replace(/[^\wäöüÄÖÜß.-]+/g, '_');
+    await kvSet(dk, data);
+    w.dokumente = [...(w.dokumente || []).filter((x) => x.key !== dk), { key: dk, name: datei, t: Date.now(), art, typ, intern: true }];
+    try { window.Buero?.ablage(w, datei, await (await fetch(data)).blob()); } catch (e) { console.warn('Ablage', e); }
+    return dk;
+  }
+  /** Auswahl: Mail oder WhatsApp (Screenshot/Datei), Foto (Scan), Notiz (telefonisch), Später.
+   *  → { art: 'datei'|'foto'|'telefon', t, wer, notiz, dokKey } | { art: 'spaeter' } | null (geschlossen) */
+  async function nachweisHolen(w, o) {
+    const pc = !!window.Tabelle?.istBuero();
+    const v = await sheet(o.titel, [
+      { label: 'Mail oder WhatsApp', sub: 'Screenshot oder Datei (Bild oder PDF) ablegen', icon: icon('upload'), value: 'datei' },
+      ...(pc ? [] : [{ label: 'Foto', sub: 'z. B. von einem Zettel oder Bildschirm', icon: icon('camera'), value: 'foto' }]),
+      ...(!pc && window.Geraet?.kann?.('scanner') ? [{ label: 'Dokument scannen', sub: 'Papier mit mehreren Seiten', icon: icon('file'), value: 'scan' }] : []),
+      { label: o.telLabel, sub: 'Datum ist vorausgefüllt, kurze Notiz per Tastatur oder Sprache', icon: icon('phone'), value: 'telefon' },
+      ...(o.spaeter ? [{ label: 'Später', sub: o.spaeter, icon: icon('x'), value: 'spaeter' }] : []),
+    ], { suche: '' });
+    if (!v) return null;
+    if (v === 'spaeter') return { art: 'spaeter' };
+    const wer = window.Kalender?.wer?.() || '';
+    if (v === 'telefon') {
+      const r = await notizFrage(o.telLabel, o.telVorlage);
+      if (!r) return null;
+      return { art: 'telefon', t: new Date(r.datum + 'T12:00').getTime(), wer, notiz: r.notiz, dokKey: '' };
+    }
+    try {
+      const dk = await nachweisAblegen(w, v, { name: o.datei, art: o.art });
+      if (!dk) return null;
+      return { art: v === 'datei' ? 'datei' : 'foto', t: Date.now(), wer, notiz: '', dokKey: dk };
+    } catch (e) { console.warn('Nachweis', e); toast('Ablegen ging nicht: ' + (e?.message || e), 5000); return null; }
+  }
+  const NW_OPT = { titel: 'Nachweis der Zusage', art: 'zusage-nachweis', datei: 'Zusage_Nachweis', telLabel: 'Telefonisch zugesagt', telVorlage: 'textZusageTelefon' };
+  /** Nach „Zugesagt“: To-dos anlegen, dann (ohne Unterschrift) nach dem Nachweis fragen. Überspringen = stiller Hinweis. */
+  async function nachZusage(w, list) {
+    await zusageTodos(w, list);
+    if (zusageUnterschrieben(w) || (w.zusageNachweis && w.zusageNachweis.art !== 'fehlt')) return;
+    const n = await nachweisHolen(w, { ...NW_OPT, titel: 'Nachweis der Zusage (keine Unterschrift)', spaeter: 'Ohne Nachweis weiter, im Projekt steht dann „Nachweis der Zusage fehlt“' });
+    w.zusageNachweis = n && n.art !== 'spaeter' ? n : { art: 'fehlt', t: Date.now(), wer: window.Kalender?.wer?.() || '' };
+    await save(w);
+    if (n && n.art !== 'spaeter') toast(n.art === 'telefon' ? 'Telefonische Zusage vermerkt' : 'Nachweis der Zusage abgelegt');
+    await neuZeichnen(w);
+  }
+  /** Hinweis oder Vorbereiten: Nachweis ansehen bzw. nachträglich anhängen. */
+  async function nachweisTippen(w) {
+    const n = w.zusageNachweis;
+    if (n?.dokKey && n.art !== 'fehlt') {
+      const d = (w.dokumente || []).find((x) => x.key === n.dokKey);
+      const v = await sheet('Nachweis der Zusage', [{ label: 'Ansehen', icon: icon('eye'), value: 'zeigen' }, { label: 'Anderen Nachweis anhängen', icon: icon('upload'), value: 'neu' }]);
+      if (v === 'zeigen') return dateiZeigen(await kvGet(n.dokKey), { name: d?.name || 'Nachweis', typ: d?.typ || 'image/jpeg' });
+      if (v !== 'neu') return;
+    } else if (n && n.art === 'telefon') {
+      const v = await sheet(n.notiz || 'Telefonisch zugesagt', [{ label: 'Anderen Nachweis anhängen', icon: icon('upload'), value: 'neu' }]);
+      if (v !== 'neu') return;
+    }
+    const r = await nachweisHolen(w, NW_OPT);
+    if (!r || r.art === 'spaeter') return;
+    w.zusageNachweis = r;
+    await save(w);
+    toast(r.art === 'telefon' ? 'Telefonische Zusage vermerkt' : 'Nachweis der Zusage abgelegt');
+    neuZeichnen(w);
+  }
+  /** Projekt-Ansprechpartner als Team-ID ('' = beide oder unbekannt). */
+  function projektWer(w) {
+    const n = String(w.ansprechpartner || vorgabe('ansprechProjekt') || '').trim();
+    if (!n || /^beide$/i.test(n) || !window.Angebot?._intern?.einePerson?.(n)) return '';
+    return teamIdVon(n);
+  }
+  /** To-dos nach der Zusage: „Subunternehmer … beauftragen“ je Sub mit Preisen im gewählten Angebot (an den Projekt-Ansprechpartner),
+   *  „Auftragsbestätigung an … schicken“ (an den Verfasser, solange sie nicht gesendet ist). Gleicher Schlüssel = nie doppelt. */
+  async function zusageTodos(w, list) {
+    if (!window.Todos) return;
+    await AngebotDaten.liste(w);
+    const a = gewaehlt(w), k = Kunden.byId(w.kundeId), kname = Kunden.name(k) || w.customer || 'Kunde';
+    const bezug = { kundeId: w.kundeId || '', vorgangId: w.id }, heute = isoHeute();
+    const pw = projektWer(w);
+    for (const pid of subIdsVon(a)) {
+      const p = window.Partner?.byId(pid); if (!p) continue;
+      await Todos.anlegen({ text: `Subunternehmer ${Partner.titel(p) || 'Partner'} beauftragen: ${w.titel || 'Projekt'}`, faellig: heute, prio: 'hoch', wer: pw,
+        bezug: { ...bezug, partnerId: pid }, art: 'subBeauftragen', schluessel: `subBeauftragen:${w.id}:${pid}` });
+    }
+    if (!w.auftragsbestaetigung?.gesendetAm) {
+      let vf = ''; try { await window.Angebot._intern.preisliste(); vf = verfasserVon(w, list); } catch {}
+      await Todos.anlegen({ text: `Auftragsbestätigung an ${kname} schicken: ${w.titel || 'Projekt'}`, faellig: heute, prio: 'mittel', wer: teamIdVon(vf),
+        bezug, art: 'auftragsbestaetigung', schluessel: `ab:${w.id}` });
+    }
+  }
+  /** Offenes To-do mit diesem Schlüssel erledigen. */
+  async function todoZu(schluessel) {
+    if (!window.Todos) return;
+    try { await Todos.laden(); for (const t of Todos.liste()) if (!t.erledigt && t.schluessel === schluessel) await Todos.erledigen(t.id); } catch (e) { console.warn('To-do', e); }
+  }
+  /** „Erklärung zur Bestätigung schicken“: Text an den Kunden (WEG/Firma: Ansprechpartner), Versandweg wählbar, nie von selbst. */
+  async function vorzeitigBitte(w) {
+    const k = Kunden.byId(w.kundeId); if (!k) return toast('Bitte zuerst einen Kunden zuordnen.');
+    const an = nachfassEmpfaenger(k);
+    const bis = widerrufBis(w);
+    const werte = { anrede: Kunden.briefAnrede(k), projekt: w.titel || 'Projekt', bis: bis ? datumText(bis) : '', vorzeitig: String(vorgabe('textVorzeitig') || '').trim() || textVon('textVorzeitigSatz', {}) };
+    const anName = an === k ? Kunden.name(k) : Kunden.personName(an) || Kunden.name(an);
+    const weg = await Besuch.nachricht(an, 'Vorzeitiger Beginn' + (anName ? ': ' + anName : ''), textVon('textVorzeitigBitte', werte), textVon('textVorzeitigBetreff', werte),
+      { mail: Kunden.angebotMail(k), mailLabel: 'für Angebote', anschrift: Kunden.postanschrift(k) || undefined, datei: `Vorzeitiger_Beginn_${w.titel || 'Projekt'}` });
+    if (!wegGilt(weg)) return;
+    w.vorzeitigAnfrage = { t: Date.now(), weg };
+    await save(w);
+    const kk = Kunden.byId(w.kundeId) || k;
+    kk.zeitleiste = [...(Array.isArray(kk.zeitleiste) ? kk.zeitleiste : []), { id: uid(), t: Date.now(), art: weg === 'mail' ? 'mail' : 'notiz', text: `Erklärung zum vorzeitigen Beginn per ${Besuch.WEG_NAME[weg] || weg} geschickt: „${w.titel || 'Projekt'}“${an !== k && anName ? ' an ' + anName : ''}`, wer: meinName().split(' ')[0] }];
+    await Kunden.speichern(kk);
+    toast('Vermerkt. Kommt die Bestätigung, hier „Bestätigung anhängen“.', 4000);
+    neuZeichnen(w);
+  }
+  /** „Bestätigung anhängen“: Datei, Foto oder Notiz → w.vorzeitig = { t, wer, nachweis: dokKey | Notiz }. */
+  async function vorzeitigBestaetigung(w) {
+    const r = await nachweisHolen(w, { titel: 'Bestätigung vorzeitiger Beginn', art: 'vorzeitig-nachweis', datei: 'Vorzeitiger_Beginn_Bestaetigung', telLabel: 'Mündlich oder am Telefon bestätigt', telVorlage: 'textVorzeitigNotiz' });
+    if (!r || r.art === 'spaeter') return;
+    w.vorzeitig = { t: Date.now(), wer: r.wer, nachweis: r.dokKey || r.notiz, art: r.art };
+    await save(w);
+    toast('Vorzeitiger Beginn bestätigt');
+    neuZeichnen(w);
+  }
+
+  return { automatik, anlegen, angebotVersendet, gesperrt, gesperrtFrage, angebotKopieren, dateiZeigen, nachfassen, nachfassTage, nachfassFaellig, nachfassUeber, nachfassStaffel, nachfassFuerMich, nachfassStand, nachfassVorschlag, nachgefasst, nachfassNachricht, nachfassEmpfaenger, subAbsageListe, verfasserVon, teamIdVon, zusageUnterschrieben, zusageTodos, nachweisText, seitTagen, STATUS, ANGEBOT, ALLE, PHASEN, phase, farbe, pill, norm, zugesagt, statusName, statusKurz, raumAngebot, angebotMerken, forget, neu, neuDirekt, neuFuer, kundeUebernehmen, oeffnen, view, mappeView, moodboardView, migrate, raum, raeume, raumGespeichert, raumEntfernt, save, wahl, PKG_IDS, _intern: { kundeUnterschreibt, wegFragen, wegText, versandStand, versandPruefen, sendenMitMappe, alsVersendet, angebotSpeichern, titel, addRoom, raumAusScan, raumAnlegen, reiterSetzen, auftragsbestaetigung } };
 })();
 // Ältere Aufrufe (PR „Wohnungen“) laufen weiter
 window.Wohnung = { neu: () => Projekt.neu(), oeffnen: (id) => Projekt.oeffnen(id), view: () => Projekt.view(), raumGespeichert: (p) => Projekt.raumGespeichert(p), raumEntfernt: (p) => Projekt.raumEntfernt(p) };
