@@ -235,11 +235,13 @@ window.Kalender = (() => {
     if (!Array.isArray(t.wer)) t.wer = [];
     t.erinnerung ??= state.settings.erinnerungAuto === false ? 0 : state.settings.erinnerungTage ?? 1;
     if (isNeu && t.mailKunde === undefined) t.mailKunde = state.settings.mailKundeAuto !== false;
-    const alt = isNeu ? null : JSON.stringify([t.datum, t.von, t.bis, t.ganztag, t.ort, t.titel]);
     t.partnerIds = subsVon(t); t.partnerId = t.partnerIds[0] || '';
     const subsSetzen = (l) => { t.partnerIds = [...new Set(l)]; t.partnerId = t.partnerIds[0] || ''; };
     const sperrOk = new Set(); // gesperrte Kunden/Subs, für die in diesem Termin schon eine Ausnahme gilt
-    let mailen = null; // null = automatisch (neu: ja, geändert: ja, wenn schon eine Bestätigung rausging)
+    // Erinnerung an Kunde, Subs und Vor-Ort nur mit Häkchen (E-Mail-Adressen); das Team bekommt sie immer
+    const erinAn = new Set(Array.isArray(t.erinnerungAn) ? t.erinnerungAn : (t.mailAn || []).filter((x) => x.erinnerung === true && x.rolle !== 'team').map((x) => x.email));
+    const erinStd = vorgabe('erinnerungExtern') === 'ja';
+    if (isNeu && erinStd && !Array.isArray(vorlage.erinnerungAn)) for (const x of empfaenger(t)) if (x.rolle !== 'team') erinAn.add(x.email);
     if (isNeu && t.kundeId && !t.objektId) { const k = Kunden.byId(t.kundeId); if (k?.objekte.length === 1) t.objektId = k.objekte[0].id; }
     if (isNeu && t.kundeId && !t.ort) { const k = Kunden.byId(t.kundeId), o = k && Kunden.objekt(k, t.objektId); t.ort = o ? Kunden.einzeilig(o.adresse) : ''; }
     // Ort vorschlagen: Büro → Büroanschrift (Firmendaten), sonst Anschrift des Kunden bzw. Objekts. Eigene Eingaben bleiben.
@@ -277,7 +279,10 @@ window.Kalender = (() => {
           <label>Notiz</label><textarea id="tNotiz" placeholder="z. B. Fliesenmuster mitbringen">${esc(t.notiz)}</textarea>
         </div>
         <div class="card kform tmail" id="tMail"></div>
-        <button class="btn big block" id="tSave">${icon('check')} Speichern</button>
+        ${state.settings.mailAktiv && window.Sync?.active()
+          ? `<button class="btn big block" id="tSaveSend">${icon('mail')} Speichern und senden</button>
+        <button class="btn secondary block" id="tSave" style="margin-top:10px">${icon('check')} Nur speichern</button>`
+          : `<button class="btn big block" id="tSave">${icon('check')} Speichern</button>`}
         <button class="btn secondary block" id="tIcs" style="margin-top:10px">${icon('calendar')} In den iPhone-Kalender übernehmen</button>
         ${isNeu ? '' : `<button class="link-danger" id="tDel">${icon('trash')} Termin löschen</button>`}`;
       const f = (id, key) => ($('#' + id).oninput = (e) => { t[key] = e.target.value; });
@@ -319,20 +324,23 @@ window.Kalender = (() => {
       const mailBox = () => {
         const el = $('#tMail'); if (!el) return;
         const an = empfaenger(t);
-        const fehlt = beteiligte(t).filter((x) => !x.email);
         const bereit = state.settings.mailAktiv && window.Sync?.active();
-        const geaendert = !isNeu && alt !== JSON.stringify([t.datum, t.von, t.bis, t.ganztag, t.ort, t.titel]);
-        const an_ = mailen ?? (isNeu || (geaendert && !!t.mailGesendet));
+        const artM = isNeu || !t.mailGesendet ? 'Terminbestätigung' : 'Änderung';
+        const extern = (x) => x.rolle !== 'team';
+        const angehakt = (x) => (x.vorOrt ? (t.mailVorOrt || []).includes(x.email) : x.rolle === 'kunde' ? t.mailKunde : !(t.mailOhne || []).includes(x.email));
+        const erin = +t.erinnerung > 0;
         el.innerHTML = `<div class="hv-h" style="margin-top:0">${icon('mail')}<span>E-Mail an die Beteiligten</span></div>
           ${bereit ? `
-          <label class="chk" style="margin-top:10px"><input type="checkbox" id="tMailAn" ${an_ ? 'checked' : ''}> ${isNeu ? 'Terminbestätigung senden' : t.mailGesendet ? 'Änderung senden' : 'Terminbestätigung senden'}</label>
-          <label style="margin-top:0">Erinnerung</label>
-          <select id="tErin">${[[0, 'keine'], [1, '1 Tag vorher'], [2, '2 Tage vorher'], [3, '3 Tage vorher'], [7, '1 Woche vorher']].map(([v, n]) => `<option value="${v}" ${+t.erinnerung === v ? 'selected' : ''}>${n}</option>`).join('')}</select>
+          <p class="hint" style="margin:8px 0 0">Es geht nur etwas raus, wenn du unten „Speichern und senden“ tippst: die ${artM} an alle mit Haken.</p>
           <label style="margin-top:12px">Wer bekommt die E-Mail?</label>
           <div class="tempf">${beteiligte({ ...t, mailKunde: true }).map((x) => x.email
-            ? `<label class="chk"><input type="checkbox" data-empf="${esc(x.email)}" data-rolle="${x.vorOrt ? 'vorort' : x.rolle}" ${(x.vorOrt ? (t.mailVorOrt || []).includes(x.email) : x.rolle === 'kunde' ? t.mailKunde : !(t.mailOhne || []).includes(x.email)) ? 'checked' : ''}> <span><b>${esc(x.name)}</b> <small>${esc(x.vorOrt ? 'Vor Ort, ' + x.rolleText : { team: 'Team', kunde: 'Kunde', partner: 'Subunternehmer' }[x.rolle])} · ${esc(x.email)}</small></span></label>`
+            ? `<div class="temp-z"><label class="chk"><input type="checkbox" data-empf="${esc(x.email)}" data-rolle="${x.vorOrt ? 'vorort' : x.rolle}" ${angehakt(x) ? 'checked' : ''}> <span><b>${esc(x.name)}</b> <small>${esc(x.vorOrt ? 'Vor Ort, ' + x.rolleText : { team: 'Team', kunde: 'Kunde', partner: 'Subunternehmer' }[x.rolle])} · ${esc(x.email)}</small></span></label>
+              ${erin && angehakt(x) ? (extern(x) ? `<label class="chk temp-erin"><input type="checkbox" data-erin="${esc(x.email)}" ${erinAn.has(x.email) ? 'checked' : ''}> Erinnerung senden</label>` : '<small class="temp-erin muted">Erinnerung kommt automatisch</small>') : ''}</div>`
             : `<p class="hint" style="margin:4px 0">${esc(x.name)}: keine E-Mail-Adresse hinterlegt</p>`).join('')}</div>
-          <p class="hint" style="margin-bottom:0">${an.length ? `Geht an ${an.length} ${an.length === 1 ? 'Person' : 'Personen'}.` : 'Niemand ausgewählt.'}</p>`
+          <p class="hint" style="margin-bottom:0" id="tAnZahl">${an.length ? `Geht an ${an.length} ${an.length === 1 ? 'Person' : 'Personen'}.` : 'Niemand ausgewählt.'}</p>
+          <label>Erinnerung</label>
+          <select id="tErin">${[[0, 'keine'], [1, '1 Tag vorher'], [2, '2 Tage vorher'], [3, '3 Tage vorher'], [7, '1 Woche vorher']].map(([v, n]) => `<option value="${v}" ${+t.erinnerung === v ? 'selected' : ''}>${n}</option>`).join('')}</select>
+          <p class="hint" style="margin:4px 0 0">Das Team bekommt die Erinnerung automatisch, Kunde und Subunternehmer nur mit Haken „Erinnerung senden“.</p>`
           : `<p class="hint" style="margin:8px 0 0">Bestätigung und Erinnerung per E-Mail sind noch nicht eingerichtet. Unter Einstellungen → Team steht, wie es geht.</p>`}
           <span class="tvor-l">Vorschau: So sieht die E-Mail aus</span>
           <div class="tvor">${beteiligte({ ...t, mailKunde: true }).map((x, i) => `<button type="button" class="qchip" data-tvor="${i}">${icon('eye')} ${esc(x.rolle === 'team' ? x.name : x.rolle === 'kunde' ? 'Kunde' : 'Subunternehmer')}</button>`).join('')}</div>`;
@@ -340,9 +348,10 @@ window.Kalender = (() => {
           const x = beteiligte({ ...t, mailKunde: true })[+b.dataset.tvor];
           mailVorschau({ ...t, kontext: kontext(t) }, x, isNeu || !t.mailGesendet ? 'bestaetigung' : 'aenderung');
         }));
-        if ($('#tMailAn')) $('#tMailAn').onchange = (e) => { mailen = e.target.checked; };
-        if ($('#tErin')) $('#tErin').onchange = (e) => { t.erinnerung = +e.target.value; };
+        if ($('#tErin')) $('#tErin').onchange = (e) => { t.erinnerung = +e.target.value; mailBox(); };
+        $$('[data-erin]', el).forEach((c) => (c.onchange = () => { c.checked ? erinAn.add(c.dataset.erin) : erinAn.delete(c.dataset.erin); }));
         $$('[data-empf]', el).forEach((c) => (c.onchange = () => {
+          if (c.checked && c.dataset.rolle !== 'team' && erinStd) erinAn.add(c.dataset.empf);
           if (c.dataset.rolle === 'kunde') t.mailKunde = c.checked;
           else if (c.dataset.rolle === 'vorort') { const s = new Set(t.mailVorOrt || []); c.checked ? s.add(c.dataset.empf) : s.delete(c.dataset.empf); t.mailVorOrt = [...s]; }
           else { const s = new Set(t.mailOhne || []); c.checked ? s.delete(c.dataset.empf) : s.add(c.dataset.empf); t.mailOhne = [...s]; }
@@ -351,7 +360,8 @@ window.Kalender = (() => {
       };
       mailBox();
       $$('[data-tw]').forEach((b) => b.addEventListener('click', mailBox));
-      $('#tSave').onclick = async () => {
+      // Grundregel: nichts geht automatisch raus. „Speichern und senden“ schickt die Mail an die Angehakten, „Nur speichern“ schickt nichts.
+      const speichern = async (senden) => {
         // Neuer Termin mit gesperrtem Kunden oder Sub (z. B. aus der Akte vorbelegt): nur mit Begründung
         if (isNeu && window.Sperre) for (const [x, sp] of [[Kunden.byId(t.kundeId), (y) => Kunden.speichern(y)], ...t.partnerIds.map((id) => [window.Partner?.byId(id), (y) => Partner.speichern(y)])]) {
           if (x && Sperre.ist(x) && !sperrOk.has(x.id)) { if (!(await Sperre.pruefen(x, 'Termin', sp))) return; sperrOk.add(x.id); }
@@ -359,8 +369,12 @@ window.Kalender = (() => {
         if (!t.titel.trim()) t.titel = zuKunde(t) ? `${art(t.art)[1].replace('termine', 'termin')} ${Kunden.name(Kunden.byId(t.kundeId)) || ''}`.trim() : art(t.art)[1].replace('termine', 'termin');
         t.updated = Date.now();
         const bereit = state.settings.mailAktiv && window.Sync?.active();
-        const sendJetzt = bereit && ($('#tMailAn')?.checked ?? false);
-        t.mailAn = bereit ? empfaenger(t) : t.mailAn || [];
+        const sendJetzt = bereit && senden;
+        if (bereit) {
+          t.mailAn = mitErinnerung(t, erinAn);
+          t.erinnerungAn = t.mailAn.filter((x) => x.rolle !== 'team' && x.erinnerung).map((x) => x.email);
+        }
+        if (sendJetzt && !t.mailAn.length) { toast('Niemand ausgewählt. Bitte einen Haken setzen oder „Nur speichern“.', 4000); return; }
         if ($('#tBesicht')?.checked && t.kundeId && !t.projektId) {
           t.projektId = await Projekt.anlegen(t.kundeId, t.objektId, /^Kundentermin\b/.test(t.titel) ? '' : t.titel);
           toast('Projekt angelegt (Besichtigung)');
@@ -370,16 +384,18 @@ window.Kalender = (() => {
         await kvSet('termin:' + t.id, t); alle.set(t.id, t); punkt(); window.Geraet?.kalenderAbgleich();
         tag = t.datum; monat = new Date(ausIso(t.datum).getFullYear(), ausIso(t.datum).getMonth(), 1);
         if (sendJetzt && t.mailAn.length) {
-          $('#tSave').disabled = true;
+          $('#tSave').disabled = true; if ($('#tSaveSend')) $('#tSaveSend').disabled = true;
           try {
             window.Sync.run?.(); // damit die Erinnerung den neuen Stand in der Cloud findet
             const r = await window.Sync.funktion('termin-mail', { aktion: t.mailGesendet ? 'aenderung' : 'bestaetigung', termin: t });
             t.mailGesendet = Date.now(); await kvSet('termin:' + t.id, t);
             toast(`Termin gespeichert, E-Mail an ${r.gesendet} ${r.gesendet === 1 ? 'Person' : 'Personen'} verschickt`, 3500);
           } catch (e) { toast('Termin gespeichert, aber die E-Mail ging nicht raus: ' + e.message, 6000); }
-        } else toast('Termin gespeichert');
+        } else toast(bereit ? 'Termin gespeichert, keine E-Mail verschickt' : 'Termin gespeichert');
         zurueck();
       };
+      $('#tSave').onclick = () => speichern(false);
+      if ($('#tSaveSend')) $('#tSaveSend').onclick = () => speichern(true);
       $('#tIcs').onclick = () => ics(t);
       if ($('#tVorOrt')) $('#tVorOrt').onclick = async () => {
         if (!t.projektId || !(await kvGet('wohnung:' + t.projektId))) {
@@ -419,6 +435,8 @@ window.Kalender = (() => {
     return out;
   }
   const empfaenger = (t) => beteiligte({ ...t, mailKunde: t.mailKunde }).filter((x) => /.+@.+\..+/.test(x.email) && (x.vorOrt ? (t.mailVorOrt || []).includes(x.email) : !(t.mailOhne || []).includes(x.email)));
+  /** Empfänger mit Kennzeichen für die Erinnerung (Cron in termin-mail): Team immer, alle anderen nur mit Häkchen. */
+  const mitErinnerung = (t, erinAn) => empfaenger(t).map((x) => ({ ...x, erinnerung: x.rolle === 'team' || erinAn.has(x.email) }));
   /** Termin-Vorlagen aus den Einstellungen: je Zeile „Titel | Art | Notiz“ (Art: kunde, baustelle, buero, privat). */
   const vorlagen = () => (vorgabe('terminVorlagen') || []).map((z) => { const [titel, art, ...n] = String(z).split('|').map((s) => s.trim()); return { titel, art: ARTEN.some((a) => a[0] === art) ? art : '', notiz: n.join(' | ') }; }).filter((v) => v.titel);
   /** Büroanschrift aus den Firmendaten (Einstellungen › Firma). */

@@ -7,7 +7,10 @@
 // Geheimnis (Edge Functions → Secrets): GEMINI_API_KEY = derselbe Gemini-Schlüssel wie in DOM (Einstellungen › KI).
 // Optional GEMINI_MODELL (Standard gemini-2.5-flash).
 // SUPABASE_URL, SUPABASE_ANON_KEY und SUPABASE_SERVICE_ROLE_KEY stellt Supabase selbst bereit.
-// Beim Anlegen „Verify JWT“ ausschalten: die Funktion prüft die Anmeldung selbst (wie „termin-mail“ und „push“).
+// „Verify JWT“ darf AN bleiben (es gibt keinen Zeitplan/Cron, nur Aufrufe aus der App): Die App schickt bei jedem Aufruf
+// das Anmelde-Token des Benutzers (Authorization: Bearer …) und den Publishable key (apikey). Zusätzlich prüft die
+// Funktion die Anmeldung selbst (angemeldet()). Kommt in der App trotzdem Fehler 401 (Supabase kann je nach Art der
+// Projektschlüssel das Token am Eingang nicht prüfen), Verify JWT ausschalten: die eigene Prüfung schützt die Funktion weiter.
 
 const env = (k: string) => Deno.env.get(k) ?? "";
 const URL_ = env("SUPABASE_URL"), SRK = env("SUPABASE_SERVICE_ROLE_KEY"), ANON = env("SUPABASE_ANON_KEY");

@@ -14,7 +14,7 @@ Danach bekommst du jeden Morgen zur eingestellten Uhrzeit eine Mitteilung wie �
    https://raw.githubusercontent.com/felix260796/dom-app/main/supabase/functions/push/index.ts
    (Link öffnen, alles markieren mit Strg+A, kopieren mit Strg+C, im Editor einfügen mit Strg+V.)
 5. Auf **Deploy function** klicken und kurz warten.
-6. In der Funktion unter **Details** bzw. **Settings** **Verify JWT** ausschalten und speichern.
+6. In der Funktion unter **Details** bzw. **Settings** **Verify JWT** ausschalten und speichern. Warum: Der Zeitplan (Schritt 2) ruft die Funktion ohne Anmeldung auf, nur mit dem `CRON_SECRET`; mit Verify JWT würde Supabase ihn abweisen. Offen ist die Funktion dadurch nicht: der Lauf geht nur mit dem richtigen `CRON_SECRET`, alles andere (Gerät anmelden, abmelden) nur mit Anmeldung aus der App (die Funktion prüft das selbst, sonst Fehler 401).
 
 Weitere Geheimnisse brauchst du nicht. Die Schlüssel für die Mitteilungen erzeugt die Funktion beim ersten Mal selbst und legt sie geschützt in Supabase ab.
 

@@ -11,7 +11,9 @@
 // Die Schlüssel für Web-Push (VAPID) erzeugt die Funktion beim ersten Aufruf selbst und legt sie im Speicher unter
 // „system/“ ab. Dort kommt nur Supabase selbst hin (die App sieht nur den Ordner „team“). Es gibt also keine
 // zusätzlichen Geheimnisse einzutragen, nur CRON_SECRET (dasselbe wie bei den Terminmails).
-// Beim Anlegen „Verify JWT“ ausschalten: die Funktion prüft die Anmeldung selbst.
+// Beim Anlegen „Verify JWT“ ausschalten. Grund: Der Zeitplan (Cron) ruft ohne Anmeldung auf, nur mit dem Header
+// x-cron-secret; mit Verify JWT würde Supabase diesen Aufruf abweisen. Geschützt ist die Funktion trotzdem:
+// „lauf“ nur mit dem richtigen CRON_SECRET, jeder andere Aufruf nur mit gültiger Anmeldung aus der App, sonst Fehler 401.
 // Seit 11.11.2026: Die iPhone-App aus TestFlight meldet sich mit { apns: <Token> } an. Dorthin geht die Mitteilung über
 // Apples Dienst (APNs). Dafür in Supabase drei Geheimnisse eintragen (Anleitung IPHONE_APP_EINRICHTEN.md):
 // APNS_KEY_P8 (Inhalt der Datei AuthKey_….p8), APNS_KEY_ID, APNS_TEAM_ID. Optional APNS_TOPIC (Bundle-ID).

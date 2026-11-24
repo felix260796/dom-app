@@ -154,10 +154,10 @@ async function einstellungSeite(k) {
         <button class="add-room" id="tpAdd">${icon('plus')} Person hinzufügen</button>
         <div class="sec-h"><h2>Terminmails</h2></div>
         <div class="card kform">
-          <p class="muted" style="margin-top:0">Beim Speichern eines Termins bekommen die Beteiligten eine Bestätigung mit Ort, Zeit und Anlass, vor dem Termin eine Erinnerung. Einmalig in Supabase einzurichten: <a href="https://github.com/felix260796/dom-app/blob/main/TERMINMAILS_EINRICHTEN.md" target="_blank" rel="noopener">Anleitung öffnen</a>.</p>
+          <p class="muted" style="margin-top:0">Beim Termin wählst du die Empfänger mit Haken. „Speichern und senden“ schickt ihnen eine Bestätigung mit Ort, Zeit und Anlass, „Nur speichern“ schickt nichts. Vor dem Termin bekommt das Team eine Erinnerung, Kunde und Subunternehmer nur mit Haken „Erinnerung senden“. Einmalig in Supabase einzurichten: <a href="https://github.com/felix260796/dom-app/blob/main/TERMINMAILS_EINRICHTEN.md" target="_blank" rel="noopener">Anleitung öffnen</a>.</p>
           <p><b>${S.mailAktiv ? 'Eingerichtet' : 'Noch nicht eingerichtet'}</b>${window.Sync?.active() ? '' : ' · zuerst den Cloud-Abgleich verbinden'}</p>
-          <label class="toggle" style="margin-top:12px"><input type="checkbox" id="mkAuto" ${S.mailKundeAuto !== false ? 'checked' : ''}><span class="tg"></span><span>Kunde bekommt bei neuen Terminen eine Bestätigung</span></label>
-          <label class="toggle"><input type="checkbox" id="erAuto" ${S.erinnerungAuto !== false ? 'checked' : ''}><span class="tg"></span><span>Erinnerungen automatisch verschicken</span></label>
+          <label class="toggle" style="margin-top:12px"><input type="checkbox" id="mkAuto" ${S.mailKundeAuto !== false ? 'checked' : ''}><span class="tg"></span><span>Kunde bei neuen Terminen anfangs angehakt</span></label>
+          <label class="toggle"><input type="checkbox" id="erAuto" ${S.erinnerungAuto !== false ? 'checked' : ''}><span class="tg"></span><span>Erinnerungen ans Team automatisch verschicken</span></label>
           <p class="hint" style="margin:2px 0 0">Beides ist nur die Voreinstellung. Beim einzelnen Termin kannst du es trotzdem an- oder abwählen.</p>
           <div id="erinBox" ${S.erinnerungAuto === false ? 'hidden' : ''}><label>Erinnerung standardmäßig</label>
           <select id="erinT">${[[0, 'keine'], [1, '1 Tag vorher'], [2, '2 Tage vorher'], [3, '3 Tage vorher'], [7, '1 Woche vorher']].map(([v, n]) => `<option value="${v}" ${(S.erinnerungTage ?? 1) === v ? 'selected' : ''}>${n}</option>`).join('')}</select></div>

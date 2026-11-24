@@ -2,7 +2,7 @@
 
 Einmalig, ca. 15–20 Minuten, am besten am PC. Voraussetzung: Der Cloud-Abgleich (Supabase) läuft schon.
 
-Danach gilt: Wenn du in der App einen Termin speicherst, bekommen alle Beteiligten (du, Deniel, der Subunternehmer, auf Wunsch der Kunde) eine **Terminbestätigung** mit Anlass, Zeit und Ort. Im Anhang ist eine Kalendereinladung. Zum eingestellten Zeitpunkt (z. B. 1 oder 2 Tage vorher) kommt eine **Erinnerung**. Änderst oder löschst du den Termin, geht auf Wunsch eine Änderung bzw. Absage raus.
+Danach gilt (seit App-Version 150): Beim Termin hakst du an, wer die Mail bekommt (du, Deniel, Kunde, jeder Subunternehmer, Ansprechpartner vor Ort). **Speichern und senden** schickt den Angehakten eine **Terminbestätigung** mit Anlass, Zeit und Ort, im Anhang eine Kalendereinladung. **Nur speichern** schickt nichts. Zum eingestellten Zeitpunkt (z. B. 1 oder 2 Tage vorher) kommt eine **Erinnerung**: an euch im Team immer, an Kunde und Subunternehmer nur, wenn bei ihnen „Erinnerung senden“ angehakt ist. Änderst du den Termin, geht die Änderung nur mit „Speichern und senden“ raus; löschst du ihn, fragt die App, ob eine Absage rausgehen soll.
 
 ---
 
@@ -31,7 +31,7 @@ Die Angaben findest du beim Anbieter unter „SMTP-Server“ bzw. „Postausgang
    https://raw.githubusercontent.com/felix260796/dom-app/main/supabase/functions/termin-mail/index.ts
    (Link öffnen, alles markieren mit Strg+A, kopieren mit Strg+C, im Editor einfügen mit Strg+V.)
 5. Auf **Deploy function** klicken und kurz warten.
-6. In der Funktion oben auf **Details** bzw. **Settings** gehen. Dort **Verify JWT** (bzw. „Enforce JWT verification“) **ausschalten** und speichern. Die Funktion prüft die Anmeldung selbst.
+6. In der Funktion oben auf **Details** bzw. **Settings** gehen. Dort **Verify JWT** (bzw. „Enforce JWT verification“) **ausschalten** und speichern. Warum: Der Zeitplan (Schritt 4) ruft die Funktion ohne Anmeldung auf, nur mit dem `CRON_SECRET`; mit Verify JWT würde Supabase ihn abweisen. Offen ist die Funktion dadurch nicht: Erinnerungen laufen nur mit dem richtigen `CRON_SECRET`, alles andere nur mit Anmeldung aus der App (die Funktion prüft das selbst, sonst Fehler 401).
 
 ## 3. Geheimnisse eintragen
 1. Links auf **Edge Functions** und dann auf **Secrets**.

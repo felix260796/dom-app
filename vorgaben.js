@@ -191,6 +191,7 @@ const VORGABEN = {
     ]],
     ['Kalender und Geburtstage', [
       { k: 'kalKW', l: 'Kalenderwoche (KW) im Kalender links anzeigen', t: 'janein', d: 'ja' },
+      { k: 'erinnerungExtern', l: 'Terminerinnerung an Kunde und Subunternehmer anfangs angehakt', t: 'janein', d: 'nein', h: 'Das Team (Felix, Deniel) bekommt die Erinnerung immer. Kunde, Subunternehmer und Ansprechpartner vor Ort nur, wenn beim Termin „Erinnerung senden“ angehakt ist.' },
       { k: 'terminVorlagen', l: 'Termin-Vorlagen (eine Zeile je Vorlage: Titel | Art | Notiz)', t: 'liste', d: [
         'Erstgespräch | kunde | Wünsche und Budget klären, Fotos machen, Termin für Vor-Ort-Besichtigung vereinbaren',
         'Vor-Ort-Termin | kunde | Gespräch aufnehmen, alle Räume fotografieren, Maße nehmen, Anschriften prüfen',
